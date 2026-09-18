@@ -12,21 +12,30 @@
  * `src/env.ts` already names the list this reads: "PUBLIC_ORIGINS: allowed browser origins for
  * CORS and WebSocket `Origin` checks". `src/match/wsServer.ts` was the only reader until now.
  *
- * THREE RULES THIS FILE KEEPS.
+ * THREE RULES THIS FILE KEEPS — never `*` and never credentials, `Vary: Origin` on everything it
+ * touches, and an unlisted origin is refused by silence rather than by a status. They are stated
+ * once, as the proposal below, rather than twice here.
  *
- *  - **Never `*`, and never credentials.** The client authenticates with a bearer token in a
- *    header (`apps/web/src/net/api.ts`), not with a cookie, so `Access-Control-Allow-Credentials`
- *    is never sent and the wildcard is never needed. A response either echoes one allowed origin
- *    or carries no CORS header at all.
- *  - **`Vary: Origin` on everything it touches**, because the answer depends on the request's
- *    origin and a shared cache must not serve one origin's answer to another.
- *  - **An unlisted origin is not an error.** It gets the ordinary response with no CORS headers,
- *    which is what the browser needs to see to refuse it; inventing a 403 would tell a page
- *    nothing it cannot already tell, and would change the answer a non-browser caller gets.
+ * NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+ *   Topic: The CORS contract for the REST surface
+ *   Ruling: The API answers a browser from an allowed origin by echoing that one origin, never
+ *     `*`, and never sends `Access-Control-Allow-Credentials`: §9.1's client authenticates with a
+ *     bearer token in a header, so a cookie is never in play and the wildcard is never needed, and
+ *     a response that carried credentials would make every allowed origin able to act as the
+ *     player. Every response the layer touches carries `Vary: Origin`, because the answer depends
+ *     on the request's origin and a shared cache must not serve one origin's answer to another.
+ *     An unlisted origin is not an error: it gets the ordinary response with no CORS headers,
+ *     which is what the browser needs in order to refuse it, where a 403 would tell a page nothing
+ *     it could not already tell and would change the answer a non-browser caller gets — `cy.request`
+ *     and the `wsPlayer` task are not subject to CORS at all, and §9.1 puts the rules in the
+ *     server, so CORS must never be load-bearing for a refusal. The allowed list is
+ *     `PUBLIC_ORIGINS`, the same list §9.2's WebSocket `Origin` check reads, so the two doors
+ *     cannot diverge.
+ *   Affects: §9.1, §9.2, §9.8; `api/cors.ts`, `match/wsServer.ts`, `env.ts`.
  *
- * NOT IN SPEC: SPEC §9 never writes out the header set. The two request headers below are the two
- * `apps/web/src/net/api.ts` sends (`authorization` and `content-type`) and the methods are the
- * five `Route["method"]` allows.
+ * §9 never writes out the header set itself, and it is derived rather than chosen: the two request
+ * headers below are the two `apps/web/src/net/api.ts` sends (`authorization` and `content-type`)
+ * and the methods are the five `Route["method"]` allows.
  */
 
 import type { Logger } from "./ports";
@@ -37,7 +46,11 @@ const ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 /** Exactly what `apps/web/src/net/api.ts` sets on a request. */
 const ALLOWED_HEADERS = "authorization, content-type";
 
-/** NOT IN SPEC: how long a browser may cache a preflight. Ten minutes; nothing depends on it. */
+/**
+ * Not in SPEC, and no R-row: a tuning value with no consequence. Ten minutes of preflight caching
+ * saves a round trip; nothing in the CORS contract above, and nothing a player or a client can
+ * observe, changes if it is zero or an hour.
+ */
 const PREFLIGHT_MAX_AGE_SECONDS = 600;
 
 /**

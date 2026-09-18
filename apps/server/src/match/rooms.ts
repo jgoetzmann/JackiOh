@@ -52,7 +52,12 @@ function loadLoadoutsModule(): Promise<LoadoutsModule> {
   return cachedLoadouts;
 }
 
-/** NOT IN SPEC: how many collisions a 30-bit code space is allowed before we give up (R149). */
+/**
+ * SPEC §11 R149: a room code "is minted by retrying a bounded number of times against the codes
+ * still in use and then reporting that no code is available, rather than retrying without limit".
+ * R149 requires the bound and leaves the number to config, the way R79 leaves its clocks; eight is
+ * far more than a 30-bit space (R104) ever needs against the codes R110 has not yet released.
+ */
 const CODE_ATTEMPTS = 8;
 
 // ---------------------------------------------------------------------------

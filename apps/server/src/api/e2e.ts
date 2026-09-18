@@ -95,13 +95,17 @@ export const E2E_INVITE_CODES: Readonly<Record<E2EInviteCodeKind, string>> = {
   exhausted: "XHST-XHST-XHST-XHST",
 };
 
-/** NOT IN SPEC: how far in the past the expired fixture's `expires_at` sits. Any past instant does. */
+/**
+ * Not in SPEC, and no R-row: a fixture value with no consequence. Any past instant makes the code
+ * expired, which is all R144's reseed needs; the rule it exercises is §9.4 step 5's rejection.
+ */
 const EXPIRED_CODE_AGE_MS = 60 * 60 * 1000;
 
 /**
- * NOT IN SPEC: `invite_codes.max_uses` for the fixtures. One, matching
- * `DEFAULT_INVITE_CODE_MAX_USES` in `codes.ts` and the db agent's
- * `max_uses int not null default 1`, so the exhausted fixture is exhausted at one use.
+ * Not in SPEC, and no R-row: the fixtures take the default rather than choosing. `max_uses` of one
+ * matches `DEFAULT_INVITE_CODE_MAX_USES` in `codes.ts` — where the proposed ruling for that default
+ * is written out — and the db agent's `max_uses int not null default 1`, so the exhausted fixture
+ * is exhausted at one use. Restating the number is all this does; it decides nothing.
  */
 const FIXTURE_CODE_MAX_USES = 1;
 
@@ -110,9 +114,10 @@ const FIXTURE_CODE_MAX_USES = 1;
 // ---------------------------------------------------------------------------
 
 /**
- * NOT IN SPEC: the wording when a caller asks this provider for something only the real managed
- * auth provider can do. §9.2 puts sign-up in the browser against the auth provider itself; the
- * fixture mode has three accounts and no way to mint a fourth.
+ * Not in SPEC, and no R-row: wording only, and only inside the test mode. §9.2 puts sign-up in the
+ * browser against the auth provider itself, and R144's fixture mode has three accounts and no way
+ * to mint a fourth, so this sentence tells whoever wrote the spec which mode they are in. No
+ * production path can reach it.
  */
 const SIGN_UP_UNAVAILABLE_MESSAGE =
   "This server is running BUILD M8's fixture auth: it has a fixed set of test accounts and cannot create one.";

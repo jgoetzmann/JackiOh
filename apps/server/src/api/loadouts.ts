@@ -105,9 +105,18 @@ export async function saveLoadout(
  * `catalogVersion` is the version the *request* claims; the stored loadout's own version is
  * checked too, since a loadout saved under an older catalog is exactly the stale case §9.4 names.
  *
- * NOT IN SPEC: the code for "this profile has never saved a loadout". §9.4 lists no rule for it
- * (L1 assumes a loadout exists), and it is not a client-freshness problem, so it reports as
- * `loadout_invalid` alongside the L1–L6 failures rather than as a 404.
+ * NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+ *   Topic: Queueing with no loadout at all
+ *   Ruling: A profile that has never saved a loadout fails the queue-time check as a loadout
+ *     failure, not as a missing resource. §9.4's L1 ("exactly 3 decks") assumes a loadout exists
+ *     and so cannot state the case, but the player is in exactly the position L1 describes — they
+ *     do not have three decks — and the thing to do about it is the same: go and build one. A 404
+ *     would say the *endpoint* found nothing, which sends a client looking for a route that is
+ *     working correctly, and it is not a staleness problem either, so it is not an "update
+ *     required". The rule generalises: a queue-time refusal that the player fixes in the
+ *     deckbuilder reports as `loadout_invalid`, and only a catalog mismatch reports as stale.
+ *   Affects: §9.4 (L1–L6, "at save and again at queue"), §9.5, R141; `api/loadouts.ts`,
+ *     `api/queue.ts`, `match/rooms.ts`.
  */
 export async function validateStoredLoadout(
   deps: ServerDeps,

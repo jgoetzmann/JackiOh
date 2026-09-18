@@ -188,9 +188,11 @@ export function putLoadout(
 /**
  * `GET /api/catalog`: card data for a screen that has no game running.
  *
- * NOT IN SPEC, and reported as such: §9.4 calls the catalog "static, versioned, shipped with the
+ * NOT IN SPEC, and no R-row yet. §9.4 calls the catalog "static, versioned, shipped with the
  * client", but the deckbuilder needs names and costs before any engine is loaded and the client
- * has no catalog of its own to ship yet. The server already holds `deps.catalog`, so it serves it.
+ * has no catalog of its own to ship yet, so the server serves the one it already holds. The
+ * proposed §11 row is written out once, on the server half, above `createCatalogRoutes` in
+ * `apps/server/src/api/catalog.ts`; this is the caller, not a second statement of the rule.
  */
 // It returns the whole `CardDefs` record and not a projection, because `@jackioh/validator`'s
 // `CatalogSnapshot.cards` is a `CardDefs` — the deckbuilder's client-side verdict (§9.4: "the

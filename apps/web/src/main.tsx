@@ -124,8 +124,10 @@ export function Gated({ allowPending = false, children }: GatedProps): ReactElem
   const status = account.me.profile.status;
   if (status === "pending" && !allowPending) return <Loading what="Redeem an invite code first." />;
   if (status === "banned") {
-    // NOT IN SPEC: §9.4 has three statuses and names a screen for two of them. The server refuses
-    // this account at every door; there is no screen to send it to, so it is told so here.
+    // Not in SPEC, and no R-row: §9.4 has three statuses and names a screen for two of them. This
+    // is a terminal message, not a decision — the server already refuses a banned account at every
+    // door (R145 reports it distinctly, because it depends on the caller's own account and leaks
+    // nothing), so nothing downstream rides on what this screen says and there is no rule to state.
     return (
       <div className="app-shell">
         <h1>JackiOh</h1>

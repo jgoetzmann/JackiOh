@@ -186,8 +186,9 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
     startGrace: (player: PlayerId): void => {
       if (stopped) return;
       const countdown = grace[player];
-      // NOT IN SPEC: a second `startGrace` before `clearGrace` keeps the first deadline, so a
-      // flapping socket cannot extend its own grace window indefinitely.
+      // SPEC §11 R147: "A second disconnect grace starting before the first is cleared keeps the
+      // first deadline, so a socket that flaps cannot extend its own grace indefinitely and stall
+      // the match."
       if (countdown.timer !== null) return;
       countdown.deadline = timers.now() + graceMs;
       countdown.timer = timers.after(graceMs, () => {

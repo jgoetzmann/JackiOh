@@ -168,8 +168,19 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
     return { ...deps.engine.viewFor(state, player), clockMs: clock.remainingFor(player) };
   }
 
+  /**
+   * §10.8's view and, beside it, BUILD M5-T2's array ("the client never computes legality itself;
+   * it asks `legalActions` and greys out the rest").
+   *
+   * `player` is passed to BOTH calls, which is the whole security property: a socket is only ever
+   * handed the actions its own seat may take. `legalActions(state, other(player))` would name every
+   * `play` in the opponent's hand and so hand over the hidden information §9.1 lists first.
+   *
+   * Both are read off the same `state` binding in the same tick, so the array is always true of the
+   * view it travels with — the actor's queue means no `reduce` can land between them.
+   */
   function pushView(player: PlayerId): void {
-    send(player, viewMessage(viewOf(player)));
+    send(player, viewMessage(viewOf(player), deps.engine.legalActions(state, player)));
   }
 
   function pushClock(player: PlayerId): void {
@@ -201,13 +212,15 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
       case "prompt":
         return { player: expiry.player, body: { type: "timeout" } };
       case "grace":
-        // NOT IN SPEC: `disconnectExpired` names the player in its body (§10.2), so the seat the
-        // action is *stamped* with is free. It is stamped as the disconnected player: the action
-        // is theirs, and a replay reads one seat rather than "whoever happened to be active".
+        // SPEC §11 R146: "a disconnect timeout belongs to the player who disconnected, because the
+        // loss is theirs". `disconnectExpired` names the player in its body (§10.2), so the seat
+        // the action is *stamped* with would otherwise be free; R146 fixes it so folding the log
+        // reads one seat rather than "whoever happened to be active".
         return { player: expiry.player, body: { type: "disconnectExpired", player: expiry.player } };
       case "ceiling":
-        // NOT IN SPEC: `ceilingReached` belongs to neither player. Stamped as the active seat, so
-        // a fold never has to guess.
+        // SPEC §11 R146: reaching the turn ceiling "belongs to neither and is stamped with the
+        // active seat as a convention", so a fold never has to guess. R79 makes it a draw and R112
+        // covers the reaper's version of the same ending.
         return { player: snapshot.active, body: { type: "ceilingReached" } };
     }
   }
@@ -429,12 +442,13 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
    * §9.8's action flood limit, `MATCH_ACTIONS_PER_SECOND` from `src/config.ts` (R109), held as one
    * window *per seat*.
    *
-   * NOT IN SPEC: the scope of the counter. §9.8 says "per-match rate limit in the actor" and R109
-   * says "5 actions per second per match", but `docs/architecture.md` §5.1 step 1 says "rate-limit
-   * the socket", and only the per-socket reading is safe: one shared per-match counter lets a
-   * flooding player spend the *opponent's* budget and have their legitimate clicks refused, which
-   * turns an anti-abuse limit into the abuse. So each seat gets the budget R109 names, and the
-   * match's ceiling is twice the number in the row.
+   * SPEC §11 R137 settles the scope of the counter: "Per seat, not per match." §9.8 says
+   * "per-match rate limit in the actor" and R109 says "5 actions per second per match", but one
+   * shared per-match counter lets a flooding player spend the *opponent's* budget and have the
+   * victim's legitimate clicks refused, "turning an anti-abuse limit into the abuse". So R137 gives
+   * each socket the allowance R109 names and makes the match's aggregate ceiling twice it, which is
+   * also the per-socket reading `docs/architecture.md` §5.1 step 1 asks for ("rate-limit the
+   * socket"). R157 applies the same reasoning to §9.8's per-account half in `api/http.ts`.
    */
   function floodExceeded(player: PlayerId, now: number): boolean {
     const recent = recentActions[player];

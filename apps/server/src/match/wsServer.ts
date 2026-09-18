@@ -23,8 +23,11 @@ import { encode, errorMessage } from "./protocol";
 export const WS_PATH = "/ws/match";
 
 /**
- * NOT IN SPEC: close codes. 4401/4403/4404 are the private-use mirrors of the HTTP statuses the
- * REST side returns for the same three refusals, so a client can reuse one table.
+ * SPEC §11 R148: "4401, 4403 and 4404 are private-use mirrors of the HTTP statuses the REST side
+ * returns for the same three refusals, with 1011 for an internal fault, so a client reuses one
+ * table." R148 also fixes what the socket may learn: every refusal answers with the same error
+ * code and only the close code varies, so a socket learns that it may not have this match and
+ * never which check said so (§9.1).
  */
 export const WS_CLOSE = {
   unauthorized: 4401,

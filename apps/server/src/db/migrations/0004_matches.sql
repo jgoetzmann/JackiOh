@@ -61,12 +61,11 @@ create table if not exists public.matches (
     -- ordered string -- digits 2-9 (8 symbols) plus A-Z minus I, O (24
     -- symbols) = 32 symbols, so each character carries log2(32) = 5 bits
     -- and a 6-character code carries exactly 30 bits (~1.07e9 codes).
-    -- That is a distinct derivation from the 16-character / 80-bit invite
-    -- code SPEC §9.4 already states, so pinning this exact literal as
-    -- canonical is worth its own SPEC §11 R-row. NOT ADDED HERE: this
-    -- task may only touch this one migration file, so the lead should
-    -- append that R-row (CLAUDE.md rule 3: "append a new R-row to
-    -- SPEC §11 in the same PR").
+    -- That derivation is SPEC §11 R104, which writes this alphabet out and
+    -- explains why §9.4's "32 symbols without 0/O/1/I/l" was unsatisfiable
+    -- (dropping those from 36 alphanumerics leaves 31): upper case only,
+    -- dropping 0/1/I/O, gives exactly 32, so a 6-character code is 30 bits.
+    -- R110 governs reuse and R149 the bounded mint.
     room_code ~ '^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$'
   ),
   constraint matches_players_differ_check check (

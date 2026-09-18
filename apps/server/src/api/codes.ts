@@ -37,12 +37,29 @@ import type { CodeAttemptResult, InviteCode, Profile, ServerDeps } from "./ports
 // Wording and defaults SPEC does not pin down
 // ---------------------------------------------------------------------------
 
-// NOT IN SPEC: §9.4 says a code has a `uses` counter and can be "exhausted" but never fixes a
-// default. One use per code matches the db agent's `invite_codes.max_uses int not null default 1`
-// in migration 0001, so minting through the API and inserting by hand agree.
+// NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+//   Topic: How many accounts one invite code activates
+//   Ruling: An invite code is single-use unless its mint says otherwise. §9.4 gives a code a
+//     `uses` counter and a state of "exhausted" but fixes no default, and one use is the value
+//     that makes the counter worth having: a code that activates one account is a unit of invite
+//     an operator can hand out and account for, while a multi-use default would silently turn one
+//     leaked code into an open door, which is the failure §9.8's brute-force row is about at the
+//     other end. A larger `max_uses` stays available to whoever mints deliberately.
+//   Affects: §9.4, §9.8, R106, R107; `api/codes.ts`, migration `0001_profiles_and_invites.sql`.
+//
+// One use also matches the db agent's `invite_codes.max_uses int not null default 1` in migration
+// 0001, so minting through the API and inserting by hand agree.
 export const DEFAULT_INVITE_CODE_MAX_USES = 1;
 
-// NOT IN SPEC: the client-facing wording for the rejections §9.4 does not write out. Only
+// SPEC §11 R145 decides which of these are allowed to be distinct at all: the identical error
+// covers "every outcome that depends on the **code**", while outcomes that depend only on the
+// caller's own account — "already active, banned or an unverified email" — are "reported
+// distinctly, because they leak nothing about the code space". The rate-limit and breaker
+// refusals are the same kind: both are facts about this caller, not about any code.
+//
+// Not in SPEC, and no R-row: the strings themselves. Which outcomes are distinguishable is R145's
+// ruling; what each distinguishable one says is wording with no protocol consequence, since a
+// client branches on the `ApiError` code and never on the sentence. Only
 // `REDEMPTION_IDENTICAL_ERROR` (from ../config) is spec-mandated, and only for the code failures.
 const RATE_LIMITED_MESSAGE = "Too many invite code attempts. Try again later.";
 const BREAKER_MESSAGE = "Invite redemption is temporarily unavailable. Try again later.";
@@ -142,9 +159,11 @@ export type RedeemInput = {
    * §9.4 step 1's "verified email", from `req.user.emailVerified` — which `auth.ts` takes from
    * the auth server's `email_confirmed_at`, never from a user-editable claim.
    *
-   * NOT IN SPEC: not in the signature the brief sketched, but step 1 cannot be implemented
-   * without it: `Profile` (ports.ts) carries no verification flag, and the authority for it is
-   * the auth provider, not the store.
+   * Not in SPEC, and no R-row: a signature, not a rule. It is not in the signature the brief
+   * sketched, but §9.4 step 1 cannot be implemented without it — `Profile` (ports.ts) carries no
+   * verification flag, and the authority for one is the auth provider, not the store. What step 1
+   * *does* with the flag is §9.4's, and how long a positive answer may be remembered is the
+   * proposed ruling in `api/auth.ts`.
    */
   emailVerified: boolean;
   /** Omitted by a direct caller, in which case this redemption gets a breaker of its own. */

@@ -88,8 +88,11 @@ export async function loadStore(env: ServerEnv): Promise<Store> {
 // ---------------------------------------------------------------------------
 
 /**
- * NOT IN SPEC: placeholders so `E2E=1 pnpm --dir apps/server dev` — the command `e2e/README.md`
- * documents — boots in a checkout with no `.env`.
+ * Not in SPEC, and no R-row: boot ergonomics for the test mode, not a rule. These are placeholders
+ * so `E2E=1 pnpm --dir apps/server dev` — the command `e2e/README.md` documents — boots in a
+ * checkout with no `.env`. The one value here that is a rule is `CATALOG_VERSION`, and it is not
+ * decided here: `core-1` is R105's Core-set version, seeded by migration
+ * `0001_profiles_and_invites.sql` and written in `.env.example`.
  *
  * `src/env.ts` validates the whole contract whatever the mode, and end-to-end mode reaches neither
  * Supabase (the fixture `AuthProvider` replaces it) nor Postgres (the in-memory `Store` replaces

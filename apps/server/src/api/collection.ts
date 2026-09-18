@@ -28,12 +28,15 @@ import { badRequest, ok, route, type ApiRequest, type Route } from "./http";
 import type { CollectionEntry, CollectionGrant, Profile, ServerDeps, Store } from "./ports";
 
 /**
- * NOT IN SPEC: the number of copies the launch grant hands out. SPEC §9.4 says only that
- * launch mode "grants every card to every active profile" (BUILD M6-T2); L3 caps a deck at
- * `MAX_COPIES` and L4 forbids a card id in two decks, so one copy is already enough to build all
- * three decks legally, and more copies would be unreachable. The db agent stores the same value
- * as `app.settings('launch_quantity') = 1` in migration `0002_collection.sql`; it is not exported
- * from `src/config.ts`, so it cannot be imported here yet. Import it the day it is.
+ * SPEC §11 R111 fixes this: the launch grant is "one copy of every non-token card". The reason the
+ * row gives for one — L3 caps a deck at `MAX_COPIES` and L4 forbids a card id in two decks, so one
+ * copy already builds all three decks legally and a second would be unreachable — is R111's, not
+ * this file's, and R141 then leans on it ("L5 is never a sole failure"). Nothing here re-derives
+ * the quantity; this is the TypeScript half of a value SPEC already owns.
+ *
+ * The db agent stores the same value as `app.settings('launch_quantity') = 1` in migration
+ * `0002_collection.sql`, which cites R111 in the same words; it is not exported from
+ * `src/config.ts`, so it cannot be imported here yet. Import it the day it is.
  *
  * Exported because R111's grant is a *database trigger* in production ("written by a trigger on
  * the `pending → active` transition"), so the end-to-end mode's in-memory store has to carry the
@@ -43,11 +46,12 @@ import type { CollectionEntry, CollectionGrant, Profile, ServerDeps, Store } fro
 export const LAUNCH_COPIES = 1;
 
 /**
- * NOT IN SPEC: the default `reason` for the launch grant. `collection_grants.reason` carries a
- * closed-set CHECK constraint in migration `0002_collection.sql`
+ * Not in SPEC, and no R-row: this string is forced, not decided. `collection_grants.reason` carries
+ * a closed-set CHECK constraint in migration `0002_collection.sql`
  * (`pack | craft | reward | refund | admin | launch`), so the launch path must use `"launch"` or
- * every insert fails at runtime. See the report: this is the one string in this file that has to
- * agree with a value the db agent owns and `src/config.ts` does not export.
+ * every insert fails at runtime, and that migration's own comment already cites R111 for why the
+ * ledger distinguishes a launch grant from a later `admin` correction. This is the one string in
+ * this file that has to agree with a value the db agent owns and `src/config.ts` does not export.
  */
 export const LAUNCH_GRANT_REASON = "launch";
 
@@ -75,9 +79,12 @@ export function callerProfile(req: ApiRequest): Profile {
 /**
  * Sums repeated ids and rejects a delta that is not a positive whole number.
  *
- * NOT IN SPEC: SPEC §9.4 describes grants and never revocation, and `collection.quantity >= 0`
- * plus `collection_grants.delta <> 0` are table constraints, so a zero or negative delta has no
- * defined meaning here. Revocation, if it ever lands, is its own path with its own `reason`.
+ * Not in SPEC, and no R-row: an input-shape check that mirrors a table constraint. §9.4 describes
+ * grants and never revocation, and `collection.quantity >= 0` plus `collection_grants.delta <> 0`
+ * are constraints migration `0002_collection.sql` already enforces, so a zero or negative delta
+ * has no meaning this function could give it — rejecting it here only turns a constraint violation
+ * into a named 400. Revocation, if it ever lands, is its own path with its own `reason`, and that
+ * would be a ruling; this is not.
  */
 function deltasFrom(entries: readonly CollectionEntry[]): Map<string, number> {
   const deltas = new Map<string, number>();

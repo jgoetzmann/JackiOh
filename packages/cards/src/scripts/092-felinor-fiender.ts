@@ -23,8 +23,10 @@
 //
 // Fiender itself is tagged Human, not Felinor (§8, catalog), so "all your Felinors" cannot include
 // it. It is excluded by id anyway, because Fuse unions its ingredients' tags (R77) and a fused
-// Felinor Fiender would otherwise count its own layer-4 stats into its own layer 2. SPEC does not
-// rule on that case; see the report for the R-row it wants.
+// Felinor Fiender would otherwise count its own layer-4 stats into its own layer 2. R131 rules on
+// exactly that: it never counts itself even once a Fuse has given it the tag, matched by instance
+// rather than by tag, and a second Fiender contributes only printed and buffed stats (R116), so the
+// layer cannot recurse.
 //
 // Layer 2 is now live: `unitView` in `engine/src/layers.ts` calls `scriptOf(instance).setStat` after
 // layer 1's printed face and BEFORE the layer-4 buffs and layer-5 auras, and it ADDS what the hook

@@ -360,10 +360,12 @@ export function createRouter(routes: readonly Route[], deps: ServerDeps): Router
    * abuse. So the key is the **account** — `profiles.id`, the row §9.4 owns, not the auth user id
    * and not the bearer token, either of which a caller can hold several of for one account.
    *
-   * NOT IN SPEC: what to key a request that names no account on. §9.8 and R109 say "per account",
-   * and an open route (sign-up, sign-in, the queue population) and a token that did not verify have
-   * none. They are keyed on the request's IP hash instead — never on one shared bucket, which would
-   * be exactly the failure R137 describes. The two namespaces are kept apart by their prefixes.
+   * SPEC §11 R157 settles what to key a request that names no account on: §9.8 and R109 say "per
+   * account", and an open route (sign-up, sign-in, the queue population) and a token that did not
+   * verify have none, so such a request "is counted against its IP hash instead, in a namespace of
+   * its own" — never on one shared bucket, which would be exactly the failure R137 describes. R157
+   * also fixes the account key as `profiles.id` rather than the auth user or the bearer token. The
+   * two namespaces are kept apart by their prefixes.
    */
   const limiter = createRateLimiter(floodLimits.apiRequestsPerMinute, API_RATE_WINDOW_MS);
 

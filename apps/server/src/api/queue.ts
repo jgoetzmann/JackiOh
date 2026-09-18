@@ -75,8 +75,11 @@ export function seedOverrideOf(
  * outside end-to-end mode — `seedOverrideOf` has already refused the field by then — and the map
  * empties itself as tickets resolve, so a production process keeps it permanently empty.
  *
- * NOT IN SPEC: `Ticket` (ports.ts) carries no seed, and adding one would put a test-mode field in
- * the shape `src/db/**` persists. R143 confines the exception to the test mode; so does this.
+ * Not in SPEC, and no R-row: where the seed is held is an implementation detail; R143 already
+ * rules on the seed itself ("the server mints it; a client never supplies one", with the test-mode
+ * exception). `Ticket` (ports.ts) carries no seed, and adding one would put a test-mode field into
+ * the shape `src/db/**` persists, so R143's exception is confined to this map the way the row
+ * confines it to the mode. `match/rooms.ts` holds `room code -> seed` for the same reason.
  */
 const e2eSeedByTicket = new Map<string, string>();
 
@@ -252,9 +255,18 @@ async function startPairedMatch(
  * One pairing sweep. Oldest ticket first, and for each of them the oldest qualifying opponent, so
  * the pair that has waited longest is made first.
  *
- * NOT IN SPEC: §9.5 fixes the window but not which qualifying opponent to pick inside it. Oldest
- * first (rather than closest rating) is chosen because the window is already the rating rule and
- * wait time is the thing a queued player can see going up.
+ * NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+ *   Topic: Which qualifying opponent a sweep pairs
+ *   Ruling: The oldest ticket is paired first, and against the oldest opponent its window admits —
+ *     not the closest in rating. §9.5 fixes the window (±100 rating, widening ±50 every 10 s,
+ *     uncapped after 60 s) and says nothing about the choice inside it, and the window is already
+ *     the rating rule: picking the closest rating inside a window that was widened precisely
+ *     because nobody closer was there re-applies the same criterion twice and leaves the player
+ *     who has waited longest waiting again. Wait time is also the one thing a queued player can
+ *     watch going up, which §9.5's "queue population instead of an endless spinner" is about. Ties
+ *     break on ticket id, so a sweep is deterministic and a replay of the same open set pairs the
+ *     same way.
+ *   Affects: §9.5, R108; `api/queue.ts`.
  *
  * @returns how many matches this sweep made.
  */
@@ -382,12 +394,23 @@ export function createQueueRoutes(): Route[] {
     }),
 
     /**
-     * Leaving the queue. Idempotent: a client that cancels twice, or whose ticket was paired a
-     * moment earlier, gets `cancelled: false` rather than an error it cannot act on.
+     * Leaving the queue. Idempotent; `cancelled: false` when there was nothing open to cancel.
      *
-     * NOT IN SPEC: §9.5 describes enqueue and pairing and never says how a player leaves. Cancel
-     * is the only reading that keeps "not already queued" satisfiable without waiting for a
-     * pairing, and it is what `tickets.status = 'cancelled'` exists for in migration 0004.
+     * NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+     *   Topic: How a player leaves the queue
+     *   Ruling: A queued player may cancel, and cancelling is idempotent: a client that cancels
+     *     twice, or whose ticket was paired a moment earlier, is told nothing was cancelled rather
+     *     than given an error it cannot act on. §9.5 describes enqueue and pairing and never says
+     *     how a player leaves, but its own enqueue assertion — the account is active "and not in a
+     *     match" — has no other way to become satisfiable again: without cancel a player who
+     *     queued by mistake is held until somebody pairs with them. It must be idempotent because
+     *     the race is unavoidable and one-sided: the sweeper (R108) can pair a ticket between the
+     *     client deciding to cancel and the request arriving, and at that point the match exists
+     *     and the player belongs in it. So cancel never unmakes a pairing; it only closes a ticket
+     *     that is still open.
+     *   Affects: §9.5, R108, R143; `api/queue.ts`, migration `0004_matches.sql`.
+     *
+     * `tickets.status = 'cancelled'` in migration 0004 is what this writes.
      */
     route("DELETE", "/api/queue", "active", async (req, deps) => {
       const profile = callerProfile(req);

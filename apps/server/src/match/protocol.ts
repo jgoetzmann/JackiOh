@@ -5,8 +5,9 @@
  * fixes what they may carry:
  *
  *  - §9.1: "the client sends intent, never state", and the client may only read
- *    `viewFor(state, playerId)`. So `view` carries a `PlayerView` and nothing else: no
- *    `GameState`, no opponent hand, no library order.
+ *    `viewFor(state, playerId)`. So `view` carries a `PlayerView` and, beside it, the *same
+ *    viewer's* `legalActions(state, viewer)` — no `GameState`, no opponent hand, no library order,
+ *    and never the other seat's array (see `ViewMessage`).
  *  - §9.3: "every action carries a client nonce, deduped server-side", and "`reduce` refuses
  *    illegal actions itself and returns the reason". `ack` reports the nonce and the log seq the
  *    action was written at; `error` relays the reducer's reason verbatim and never restates a rule.
@@ -97,8 +98,27 @@ export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];
 // Server -> client
 // ---------------------------------------------------------------------------
 
-/** §10.8: the whole payload is one `PlayerView`. Nothing else may ride along. */
-export type ViewMessage = { type: "view"; view: PlayerView };
+/**
+ * §10.8's `PlayerView`, plus the array the client greys the board out with.
+ *
+ * WHY `legal` RIDES HERE RATHER THAN IN A FRAME OF ITS OWN. §10.2: "`legalActions(state, playerId)`
+ * is exported and is what both the client UI and the My Pawn AI consume", and BUILD M5-T2: "The
+ * client never computes legality itself; it asks `legalActions` and greys out the rest." So the
+ * browser cannot render a usable board without it — with an empty array `end-turn` is disabled and
+ * no hand card is clickable. Two things settle where it goes:
+ *
+ *  - BUILD §1 fixes this file's message names as "hello, view, action, ack, error, prompt, clock".
+ *    A seventh name would be a protocol BUILD does not list; a field on a frame it does list is not.
+ *  - The array is only ever true *of one view*. Carried together they can never disagree, and a
+ *    client cannot render a board narrowed by an array minted against a state one action older.
+ *
+ * It is NOT hidden information and it is not a second channel for any: `legalActions(state, p)`
+ * enumerates the actions `p` itself may take, from `p`'s own hand, units and backrow, against
+ * targets the same `PlayerView` already shows. The actor passes the viewer as the player
+ * (`pushView`), so a socket never sees the other seat's array — which would leak the opponent's
+ * hand by naming every `play` in it (§9.1's "Hidden: ... opponent hand").
+ */
+export type ViewMessage = { type: "view"; view: PlayerView; legal: ActionBody[] };
 
 /** §9.3: the nonce that was accepted and the append-only log seq it was written at. */
 export type AckMessage = { type: "ack"; nonce: string; seq: number };
@@ -156,8 +176,9 @@ export const SERVER_MESSAGE_TYPES = ["view", "ack", "error", "prompt", "clock"] 
 // Builders
 // ---------------------------------------------------------------------------
 
-export function viewMessage(view: PlayerView): ViewMessage {
-  return { type: "view", view };
+/** `legal` must be `legalActions(state, view.viewer)`; the actor is the only caller (`pushView`). */
+export function viewMessage(view: PlayerView, legal: readonly ActionBody[]): ViewMessage {
+  return { type: "view", view, legal: [...legal] };
 }
 
 export function ackMessage(nonce: string, seq: number): AckMessage {

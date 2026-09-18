@@ -47,25 +47,48 @@ import {
 // Tunables SPEC does not pin down
 // ---------------------------------------------------------------------------
 
-// NOT IN SPEC: SPEC §9.4 requires a verified email at redemption but says nothing about how the
-// server learns of it. Asking the auth server on every request would put a round trip in front of
-// every authenticated call, so a *confirmed* email is remembered for this long per user id. Only
-// the positive answer is cached: confirmation is the direction that does not go backwards in
-// normal use, and never caching the negative means an account that has just clicked its
-// confirmation link sees the code screen unlock immediately instead of after a cache window.
+// NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+//   Topic: How long a verified email stays verified
+//   Ruling: §9.4 step 1's "verified email" is read from the auth provider, and only the
+//     *positive* answer may be remembered — for 30 seconds, per user id. Caching the positive is
+//     safe because confirmation does not go backwards in normal use, and refusing to cache the
+//     negative is what lets an account that has just clicked its confirmation link see the code
+//     screen unlock at once rather than after a cache window. The alternative, asking the auth
+//     server on every request, puts a round trip in front of every authenticated call, and the
+//     alternative of caching both directions makes a freshly verified account wait for no reason.
+//     A provider that cannot be reached still fails closed (`AdminLookup.unavailable`): the
+//     identity stands and the email counts as unverified, so the cache can only ever shorten the
+//     path to a `yes` the provider already gave.
+//   Affects: §9.4 (redemption step 1), §9.2; `api/auth.ts`, `api/codes.ts`.
+//
+// SPEC §9.4 requires a verified email at redemption but says nothing about how the server learns
+// of it, which is the gap above.
 const EMAIL_CONFIRMED_CACHE_TTL_MS = 30_000;
 
 /** Supabase issues project JWTs with this audience for a signed-in user. */
 const AUTHENTICATED_AUDIENCE = "authenticated";
 
-// NOT IN SPEC: the client-facing wording for a provider rejection. Deliberately identical for
-// "no such account", "wrong password" and "already registered" so neither endpoint becomes an
-// account-enumeration oracle (§9.8's spirit; §9.4 does not write the strings).
+// NOT IN SPEC, and no R-row yet — PROPOSED RULING for §11:
+//   Topic: The scope of the identical sign-up and sign-in error (extends R145)
+//   Ruling: Sign-up and sign-in answer identically for every outcome that depends on **whether an
+//     account exists** — "no such account", "wrong password" and "already registered" — so neither
+//     endpoint becomes an account-enumeration oracle. This is R145's principle one door earlier:
+//     R145 makes the redemption error identical for everything that depends on the code and
+//     distinct for everything that depends only on the caller's own account, and an email address
+//     is exactly the fact an unauthenticated caller must not be able to probe. §9.8's brute-force
+//     row asks for the invite gate to resist enumeration, which a sign-up endpoint that says "that
+//     address is taken" undoes. One error per endpoint rather than one for both, because the two
+//     endpoints are already distinguishable by the route.
+//   Affects: §9.2, §9.4, §9.8, R145; `api/auth.ts`.
+//
+// §9.4 does not write these strings; the ruling above is about their being one string, not about
+// their wording.
 const SIGN_UP_FAILED_MESSAGE = "Could not create that account.";
 const SIGN_IN_FAILED_MESSAGE = "That email and password do not match an account.";
 
-// NOT IN SPEC: what to say when the password path is not configured on this server (§9.2 puts
-// sign-in in the browser, against Supabase Auth, so this is the normal deployment).
+// Not in SPEC, and no R-row: wording only. §9.2 puts sign-in in the browser against Supabase Auth,
+// so a server with no publishable key is the normal deployment and this sentence is an operator
+// diagnostic for whoever called a route this deployment does not broker. Nothing branches on it.
 const PASSWORD_PATH_DISABLED_MESSAGE =
   "This server does not broker passwords: sign up and sign in against Supabase Auth from the client.";
 
@@ -103,9 +126,10 @@ export type AuthApiResult = {
  * The password half of the provider (publishable key only). Absent when this server has no
  * publishable key configured, which is the expected deployment.
  *
- * NOT IN SPEC: an injectable seam rather than a direct `createClient` call inside each method.
- * `@supabase/supabase-js` builds its own transport, so without this seam these paths could only
- * be exercised against a live project.
+ * Not in SPEC, and no R-row: a test seam, not a rule. An injectable interface rather than a direct
+ * `createClient` call inside each method, because `@supabase/supabase-js` builds its own transport
+ * and without the seam these paths could only be exercised against a live project. Which shape the
+ * seam takes changes nothing a client or a player can observe.
  */
 export type PasswordAuthClient = {
   signUp: (email: string, password: string) => Promise<AuthApiResult>;
@@ -152,15 +176,19 @@ export type SupabaseAuthInput = {
   /** `ServerEnv.SUPABASE_JWT_SECRET`: the legacy HS256 shared secret, if the project still signs with one. */
   jwtSecret?: string;
   fetchImpl?: typeof fetch;
-  /** NOT IN SPEC: test seam; see `PasswordAuthClient`. */
+  /** Not in SPEC, and no R-row: test seam; see `PasswordAuthClient`. */
   clientFactory?: (input: SupabaseAuthClientInput) => SupabaseAuthClients;
   /**
-   * NOT IN SPEC: test seam for the JWKS. Production leaves it unset and gets
+   * Not in SPEC, and no R-row: test seam for the JWKS. Production leaves it unset and gets
    * `createRemoteJWKSet` against `jwksUrl`; jose 5 offers no way to hand that a custom fetch, so
    * a test injects a local key set instead.
    */
   keySet?: JWTVerifyGetKey;
-  /** NOT IN SPEC: the clock behind `EMAIL_CONFIRMED_CACHE_TTL_MS`; defaults to the host clock. */
+  /**
+   * Not in SPEC, and no R-row: test seam for the clock behind `EMAIL_CONFIRMED_CACHE_TTL_MS`;
+   * defaults to the host clock. The cache's *duration* is the proposed ruling above; that it can
+   * be driven by an injected clock is how it is tested.
+   */
   now?: () => number;
 };
 
@@ -208,8 +236,13 @@ function toSession(session: AuthApiSession, user: AuthApiUser): AuthSession {
   return {
     accessToken: session.access_token,
     refreshToken: session.refresh_token ?? null,
-    // NOT IN SPEC: `AuthSession.expiresAt` carries no unit in ports.ts. Epoch milliseconds, to
-    // match `Timers.now()`; GoTrue's `expires_at` is epoch seconds.
+    // Not in SPEC, and no R-row: a unit conversion, not a choice. `AuthSession.expiresAt` carries
+    // no unit in ports.ts, so it is pinned here to epoch milliseconds to match `Timers.now()` —
+    // the only clock this server compares it against — while GoTrue's `expires_at` is epoch
+    // seconds. There is no second defensible answer once `Timers.now()` is milliseconds, so this
+    // documents a contract rather than deciding one. (It does reach the client, in
+    // `apps/web/src/net/api.ts`'s `session.expiresAt`; if §11 ever writes out the wire shapes,
+    // that is where this belongs.)
     expiresAt:
       typeof session.expires_at === "number" ? Math.round(session.expires_at * 1000) : null,
     user: toAuthUser(user),
