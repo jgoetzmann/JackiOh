@@ -79,9 +79,11 @@ export const radiant: Script = {
 - **`base` and `radiant` are both required**, even when they are the same object — cards with no
   radiant text in §8 (#38, #80, #93.1, #95.1, #96 and the shared tokens) still become Radiant as a
   flag (SPEC §5.2), so write `export const radiant = base;` and say so in a comment.
-- The `Script` shape is `{ cost?, cry?, death?, startOfGame?, startOfTurn?, endOfTurn?, aura?,
-  triggers?, activate?, onPlayHook?, handTriggers?, staticFlags?, targets?, modes? }`
-  (`packages/engine/src/script.ts`, SPEC §10.9). A spell's script hangs off `cry`: that is the
+- The `Script` shape is `{ cost?, cry?, death?, startOfGame?, resume?, delayed?, setStat?,
+  startOfTurn?, endOfTurn?, aura?, triggers?, activate?, onPlayHook?, handTriggers?, staticFlags?,
+  targets?, modes? }` (`packages/engine/src/script.ts`, SPEC §10.9). `resume` is the named
+  continuation a prompt answer re-enters (R113), `delayed` the hook a scheduled effect lands on
+  (R126), and `setStat` layer 2's stat hook (R116) — 13 card files already export one of them. A spell's script hangs off `cry`: that is the
   on-resolve hook for a Spell as well as the Cry of a permanent.
 
 **Purity (CLAUDE.md rules 4 and 5).** A hook is `(ctx: EffectContext) => Effect[]`. It reads
