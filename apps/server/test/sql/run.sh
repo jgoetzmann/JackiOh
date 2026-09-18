@@ -16,7 +16,8 @@
 # when every migration applied without noise and every check passed. It exits 1
 # when psql stops on an error (`\set ON_ERROR_STOP on` plus a `raise exception`
 # from a failed assertion), and also when any check merely *prints* FAIL or
-# UNEXPECTED: `raise notice` does not stop psql, and 02/03 still report that way.
+# UNEXPECTED: `raise notice` does not stop psql, so the grep below stays as a
+# second net even though all three files now raise.
 #
 # 00_supabase_stub.sql stands in for the Supabase-managed pieces the migrations
 # reference (the `anon`/`authenticated`/`service_role` roles, `auth.users` and
@@ -80,8 +81,10 @@ for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle; do
     echo "!!! $f: psql exited $status — a check raised, and everything after it was skipped"
     failed=1
   fi
-  # A `raise notice 'FAIL ...'` leaves psql's exit status at 0, so the text is the
-  # only signal. 01 raises exceptions instead, but 02 and 03 still use notices.
+  # A `raise notice 'FAIL ...'` leaves psql's exit status at 0, so the text would be
+  # the only signal. All three files raise instead, which is why the exit-status
+  # check above is the primary gate; this grep is the backstop for a check that ever
+  # regresses to a notice.
   if printf '%s\n' "$out" | grep -E 'FAIL|UNEXPECTED' >/dev/null 2>&1; then
     echo "!!! $f: a check reported FAIL/UNEXPECTED (see the lines above)"
     failed=1
