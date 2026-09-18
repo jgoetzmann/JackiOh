@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createRouter, type Router } from "../../src/api/http";
+import { createLoadoutRoutes, deckFor, validateStoredLoadout } from "../../src/api/loadouts";
 import type { Ids, ServerDeps, StoredLoadout } from "../../src/api/ports";
 import { CODE_ALPHABET, ROOM_CODE_LENGTH } from "../../src/config";
 import {
@@ -234,5 +235,132 @@ describe("R149 — the bounded room-code mint (§9.5, R110)", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.level).toBe("alert");
     expect(h.deps.store.tables.rooms).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §9.4 / §9.5 / §9.8 — the host's deck is frozen into the room
+// ---------------------------------------------------------------------------
+
+/**
+ * The room half of §9.8's "Deck swapped after matchmaking → decks are frozen into the ticket". A
+ * room has the same exposure as a queue ticket and a wider window for it: `src/match/rooms.ts`
+ * freezes the host's deck at `POST /api/rooms` ("the chosen deck is frozen into the room the moment
+ * it is created, so editing the loadout afterwards cannot change the match") and the match is not
+ * created until somebody joins — which may be up to `roomCodeTtlMs` later, with the deckbuilder
+ * open the whole time.
+ *
+ * Unlike the blocks above, these run the **real** `src/api/loadouts.ts` through the `LoadLoadouts`
+ * seam and put the real `PUT /api/loadout` on the same router, so "the host saves a different
+ * loadout" is the endpoint a player would use and the freeze under test is the production one. The
+ * stub `loadouts` the rest of this file uses answers with a constant and could not express a swap.
+ */
+describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () => {
+  /** Three disjoint decks out of the test catalog: A, B and C, eight ids each. */
+  function decksOf(target: TestDeps): [string[], string[], string[]] {
+    const playable = target.catalog.cardIds.filter((cardId) => !target.catalog.isToken(cardId));
+    const per = Math.floor(playable.length / 3);
+    return [
+      playable.slice(0, per),
+      playable.slice(per, per * 2),
+      playable.slice(per * 2, per * 3),
+    ];
+  }
+
+  /** The real loadout module behind the seam `createRoomRoutes` was given for exactly this. */
+  const realLoadouts: LoadLoadouts = async () => ({ validateStoredLoadout, deckFor });
+
+  function freezeHarness(): {
+    deps: TestDeps;
+    router: Router;
+    host: string;
+    guest: string;
+    decks: [string[], string[], string[]];
+  } {
+    const deps = createTestDeps({ ids: roomIds() });
+    const host = deps.auth.addUser({ userId: "user-host", email: "host@example.test" });
+    const guest = deps.auth.addUser({ userId: "user-guest", email: "guest@example.test" });
+    deps.store.seedProfile({ id: HOST, userId: "user-host", status: "active" });
+    deps.store.seedProfile({ id: GUEST, userId: "user-guest", status: "active" });
+    return {
+      deps,
+      router: createRouter([...createRoomRoutes(realLoadouts), ...createLoadoutRoutes()], deps),
+      host,
+      guest,
+      decks: decksOf(deps),
+    };
+  }
+
+  function save(
+    h: ReturnType<typeof freezeHarness>,
+    token: string,
+    decks: string[][],
+  ): Promise<Response> {
+    return h.router(
+      jsonRequest(
+        "PUT",
+        "/api/loadout",
+        { catalogVersion: h.deps.catalog.version, decks },
+        { token },
+      ),
+    );
+  }
+
+  /** The deck the started match gave this profile's seat. */
+  function deckInMatchFor(h: ReturnType<typeof freezeHarness>, profileId: string): string[] | undefined {
+    const started = h.deps.matches.started.at(-1);
+    return started?.seats.find((seat) => seat.profileId === profileId)?.deck;
+  }
+
+  it("a loadout saved between the create and the join does not change the host's deck (§9.8)", async () => {
+    const h = freezeHarness();
+    const [a, b, c] = h.decks;
+
+    // PREMISE: the deck the host freezes and the one they swap to share no card, so "the match used
+    // the frozen deck" and "the match used the current loadout" cannot both be true.
+    expect(a).not.toHaveLength(0);
+    expect(a.filter((cardId) => c.includes(cardId))).toEqual([]);
+
+    expect((await save(h, h.host, [a, b, c])).status).toBe(200);
+    expect((await save(h, h.guest, [a, b, c])).status).toBe(200);
+
+    // 1. The host opens a room on deck 0. The freeze happens here.
+    const created = await create(h.router, h.host, { deckIndex: 0 });
+    expect(created.status).toBe(200);
+    const { code } = await readJson<{ code: string }>(created);
+    expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(a);
+
+    // 2. The swap, while the room sits open waiting for somebody to type the code.
+    expect((await save(h, h.host, [c, b, a])).status).toBe(200);
+    // PREMISE: the save landed — otherwise there is nothing that could leak into the match.
+    expect((await h.deps.store.loadouts.get(HOST))?.decks[0]).toEqual(c);
+    // …and the room is untouched by it.
+    expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(a);
+
+    // 3. The guest joins on deck 1, which is neither of the host's two, so each seat is identifiable.
+    expect((await join(h.router, h.guest, code, { deckIndex: 1 })).status).toBe(200);
+
+    expect(deckInMatchFor(h, HOST)).toEqual(a);
+    expect(deckInMatchFor(h, GUEST)).toEqual(b);
+    // The substitute deck reached no seat at all.
+    expect(JSON.stringify(h.deps.matches.started)).not.toContain(c[0] ?? "");
+  });
+
+  it("the control: the same swap made BEFORE the create is the deck the room freezes", async () => {
+    // Without this, the test above would pass against a room that ignored loadouts entirely.
+    // Exactly one thing moves between the two: whether the save happens before or after the create.
+    const h = freezeHarness();
+    const [a, b, c] = h.decks;
+
+    expect((await save(h, h.host, [a, b, c])).status).toBe(200);
+    expect((await save(h, h.guest, [a, b, c])).status).toBe(200);
+    expect((await save(h, h.host, [c, b, a])).status).toBe(200);
+
+    const created = await create(h.router, h.host, { deckIndex: 0 });
+    const { code } = await readJson<{ code: string }>(created);
+    expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(c);
+
+    expect((await join(h.router, h.guest, code, { deckIndex: 1 })).status).toBe(200);
+    expect(deckInMatchFor(h, HOST)).toEqual(c);
   });
 });

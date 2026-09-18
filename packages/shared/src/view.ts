@@ -75,9 +75,31 @@ export type HeroView = {
   power: HeroPowerView | null;
 };
 
+/**
+ * One player-level modifier (§10.1 `PlayerState.mods`) as the hero panel shows it.
+ *
+ * `id` is the `PlayerModifier.id` that §10.3's `modifierChanged` event already names on both
+ * seats, so the badge an animation plays on is the badge the view carries. `label` is a short
+ * caption built from the modifier's own kind and numbers — and its timing while R48 keeps it
+ * dormant — and it is the *whole* of what a modifier reveals: never `sourceId`, never the card
+ * that installed it, so nothing that could name a face-down card rides out on a badge.
+ */
+export type ModifierView = {
+  id: string;
+  label: string;
+};
+
 export type SideView = {
   player: PlayerId;
   hero: HeroView;
+  /**
+   * The player modifiers on this seat, in the order they were installed. Public on BOTH seats:
+   * every modifier in the Core set is installed by the Cry of a card played face-up (§10.5 step 4,
+   * #35, #77, #78, #79), and `modifierChanged` is already an unredacted event for both players, so
+   * the label states only what the public play already said. Nothing derived from a hidden card
+   * travels with it (see `ModifierView`).
+   */
+  modifiers: ModifierView[];
   mana: { current: number; max: number };
   /** Full cards for the viewer; a count only for the opponent (§10.8). */
   hand: CardView[] | { count: number };

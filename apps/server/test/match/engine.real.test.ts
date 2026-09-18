@@ -14,6 +14,12 @@
  * It asks only what the adapter is responsible for — that the engine is reachable, registered and
  * driveable through the port's own surface. The rules those calls run are `packages/engine`'s and
  * `packages/cards`' business, and the fuzz suite plays 1,000 whole games of them (BUILD §4).
+ *
+ * Its two legal decks come from `decksTheEngineAccepts` (`test/fakes/engine.ts`), the probe this
+ * file used to hold privately — the reasoning for probing the size rather than importing
+ * `DECK_SIZE` moved with it, and so did the "refused every deck size" failure that catches an
+ * unregistered catalog. It is shared now because the real-engine blocks of `actor.test.ts` and
+ * `recovery.test.ts` need the same two decks.
  */
 
 import { describe, expect, it } from "vitest";
@@ -22,7 +28,7 @@ import type { Action, ActionBody, PlayerId } from "@jackioh/shared";
 
 import { loadCatalog } from "../../src/api/catalog";
 import { enginePort } from "../../src/match/engine.real.ts";
-import type { EnginePort, EngineState } from "../../src/match/engine.ts";
+import { decksTheEngineAccepts } from "../fakes/engine";
 
 /**
  * Actions that would end the game or that only the server may send (R79, R84). The walk below
@@ -37,37 +43,6 @@ const NEVER_CHOOSE = new Set<ActionBody["type"]>([
   "disconnectExpired",
   "ceilingReached",
 ]);
-
-/**
- * Two legal decks of real card ids.
- *
- * The deck size is not spelled here and is not imported either: BUILD §2 keeps `DECK_SIZE` in
- * `packages/engine/src/config.ts` and nothing restates it, and `engine.real.ts` is meant to be the
- * only file in `apps/server` that reaches `@jackioh/engine` — including from a test. So the size is
- * whatever the engine accepts: the slices grow until `createGame` stops objecting.
- *
- * That loop is also the assertion. With the catalog unregistered *every* size is refused, so the
- * failure this file exists for shows up here, as "the real engine refused every deck size", with
- * the engine's own sentence attached.
- */
-function firstAcceptedDecks(
-  port: EnginePort,
-  pool: readonly string[],
-  seed: string,
-): { state: EngineState; decks: [string[], string[]] } {
-  const refusals = new Set<string>();
-  for (let size = 1; size * 2 <= pool.length; size += 1) {
-    const decks: [string[], string[]] = [pool.slice(0, size), pool.slice(size, size * 2)];
-    try {
-      return { state: port.createGame({ seed, decks }), decks };
-    } catch (error) {
-      refusals.add(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(
-    `the real engine refused every deck size built from the catalog:\n  ${[...refusals].join("\n  ")}`,
-  );
-}
 
 describe("the real engine port (src/match/engine.real.ts)", () => {
   it("builds without the engine reporting a missing export", () => {
@@ -84,7 +59,7 @@ describe("the real engine port (src/match/engine.real.ts)", () => {
     const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
     const port = enginePort();
 
-    const { state, decks } = firstAcceptedDecks(port, pool, "engine-real-createGame");
+    const { state, decks } = decksTheEngineAccepts(port, pool, "engine-real-createGame");
 
     // The decks really are §8 cards, so an empty registered catalog could not have produced this.
     expect(decks[0][0]).toBe(pool[0]);
@@ -97,7 +72,7 @@ describe("the real engine port (src/match/engine.real.ts)", () => {
     const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
     const port = enginePort();
 
-    const { state: created } = firstAcceptedDecks(port, pool, "engine-real-firstplay");
+    const { state: created } = decksTheEngineAccepts(port, pool, "engine-real-firstplay");
     let state = port.beginGame(created).state;
 
     // Walk the real game through the port's own surface — `snapshot` for whose turn it is,

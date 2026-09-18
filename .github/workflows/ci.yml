@@ -95,6 +95,40 @@ jobs:
         if: always()
         run: docker rm -f jackioh-pg-test || true
 
+  # The production `Store` against a real Postgres. Separate from `checks` for the same reason `sql`
+  # is: `pnpm test` stays hermetic and needs no Docker, and the half of this contract that CAN run
+  # hermetically already runs there — `contract.ts` is one suite executed against two stores, the
+  # in-memory one in `pnpm test` and this one here. That pair is the check whose absence let
+  # `src/db/store.ts` not exist at all while 233 server tests passed against a fake nothing compared
+  # it to.
+  db:
+    name: store contract (real Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Like the `sql` job, no `services:` block: run.sh starts and drives its own container, applies
+      # the Supabase stub, runs the real src/db/migrate.ts over the four migrations, applies the
+      # grants and then runs vitest. Its exit status is the gate.
+      - name: pre-pull postgres
+        run: docker pull postgres:16
+
+      - name: the store contract and the database-only tests
+        run: pnpm test:db
+
+      # run.sh removes it on exit already; this is the belt-and-braces path for a killed job. The
+      # name is the one the script uses — checked, not guessed.
+      - name: remove the container
+        if: always()
+        run: docker rm -f jackioh-pg-store-test || true
+
   e2e:
     name: e2e (${{ matrix.browser }})
     runs-on: ubuntu-latest

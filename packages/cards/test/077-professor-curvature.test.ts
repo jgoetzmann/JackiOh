@@ -119,6 +119,48 @@ describe("#77 Professor Curvature — base", () => {
   });
 });
 
+/**
+ * R169, BUILD M5-T4 ("badge list equals the view's modifiers"). Until R169 the discount existed
+ * only in `state.players[p].mods`, which no view carried and no component drew, so a player had no
+ * way to know Professor Curvature was on them — least of all on the turn it was played, where R48
+ * makes it change no card's cost either. The proof is the view, not the state.
+ */
+describe("#77 Professor Curvature — visible to the player while active (R169, §10.8)", () => {
+  it("shows a badge on the controller's seat the moment it resolves, saying it waits for next turn", () => {
+    const s = board(false);
+
+    s.play(CURVATURE);
+
+    const badges = s.view("p1").you.modifiers;
+    expect(badges, "the discount is on the board and so is its badge").toHaveLength(1);
+    expect(badges[0]?.label).toBe("Cost-4 cards cost 1 less (next turn)");
+    // §10.3 names the badge by id, so the animation lands on the element the view carries.
+    expect(badges[0]?.id).toBe(s.state.players.p1.mods[0]?.id);
+  });
+
+  it("the badge drops its hedge on the turn the discount bites, and goes at that turn's cleanup", () => {
+    const s = board(false);
+    s.play(CURVATURE);
+
+    toMyNextTurn(s);
+
+    expect(s.view("p1").you.modifiers.map((modifier) => modifier.label)).toEqual(["Cost-4 cards cost 1 less"]);
+    // R48: the same cleanup that ends the discount ends the badge, so neither outlives the other.
+    s.endTurn();
+    expect(s.view("p1").you.modifiers).toEqual([]);
+  });
+
+  it("the opponent sees it too: a Cry resolved face-up is public (§10.5 step 4)", () => {
+    const s = board(true);
+
+    s.play(CURVATURE);
+
+    expect(s.view("p2").opponent.modifiers.map((modifier) => modifier.label)).toEqual([
+      "Cost-4 cards cost 2 less (next turn)",
+    ]);
+  });
+});
+
 describe("#77 Professor Curvature — radiant", () => {
   it("R48 radiant does nothing on the turn it was played either", () => {
     const s = board(true);

@@ -512,9 +512,39 @@ describe("target resolution", () => {
     expect(locateInstance(baseView(), HAND_CARD)).toBeNull();
   });
 
-  it("resolves a target for every event type without throwing", () => {
+  // NOT THE ASSERTION THAT MATTERS. This only proves a row returns a string; it cannot prove the
+  // string names an element, because nothing here renders. A row that points at a testid no
+  // component draws passed this test for the whole of M5 — `modifierChanged` did, and #77
+  // Professor Curvature and #78 /fullsend were invisible to the player because of it. The real
+  // assertion lives in `animation-targets.test.tsx`, which renders the client and checks the
+  // element is in the document; this one is kept only for the rows whose samples name cards the
+  // fixture does not hold, and it is strengthened to say WHICH rows may legitimately go dark.
+  it("resolves a target for every event type without throwing, and only the documented rows go dark", () => {
+    // Rows that resolve to nothing on a seat that shows nothing (§10.6), plus the rows whose
+    // `SAMPLES` entry names a card this fixture does not render at all — those are a property of
+    // the sample, not of the table, which is exactly why this test cannot stand in for the real one.
+    const mayBeNull = new Set<GameEventType>([
+      "promptOpened",
+      "promptAnswered",
+      "drawOffered",
+      "damage",
+      "healed",
+      "divineShieldLost",
+      "buffed",
+      "keywordGranted",
+      "counterChanged",
+      "costChanged",
+      "transformed",
+      "fused",
+      "positionSwitched",
+      "attackDeclared",
+      "attackCancelled",
+    ]);
+
     for (const type of GAME_EVENT_TYPES) {
       expect(() => targetFor(SAMPLES[type], view), type).not.toThrow();
+      if (mayBeNull.has(type)) continue;
+      expect(targetFor(SAMPLES[type], view), `${type} must resolve to an element`).not.toBeNull();
     }
   });
 });

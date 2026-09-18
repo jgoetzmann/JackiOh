@@ -3,14 +3,16 @@
 // The hero is a click and drop target like any card — `hero-<side>` — so an attack can land on
 // it. Whether it may be attacked is `props.highlight.legal`; Taunt lives in the engine.
 //
-// FINDING against SPEC §10.8 (BUILD M5-T4 `modifierChanged`: "badge list equals the view's
-// modifiers"): `PlayerView` has no modifier list. `HeroView` is `{ health, armor, powers, power }`
-// and `SideView` adds `player`, `mana`, `hand`, `libraryCount`, `graveyard`, `exile`, `resolving`,
-// `units`, `backrow`, `locks`, `reserved`, `fatigueCount` — nothing carries the player modifiers
-// the `modifierChanged` event refers to by `modifierId`. So this component renders no modifier
-// badges: there is nothing in the view to render, and inventing them from the event window would
-// be a guess (it is the last N events, so a badge could appear and never leave). Adding, say,
-// `modifiers: { id: string; label: string }[]` to `SideView` is the fix.
+// The modifier badges (BUILD M5-T4 `modifierChanged`: "badge list equals the view's modifiers")
+// come from `SideView.modifiers`, which R169 put in the view — `{ id, label }` per §10.1 modifier,
+// on both seats. The list is rendered here and nowhere else, so `modifiers-<side>` (the testid the
+// M5-T4 animation table resolves `modifierChanged` to) has exactly one element per seat. The
+// container is rendered even when the list is empty, because the fade the table plays on it is
+// the animation for the modifier that has just *left*.
+//
+// Nothing is derived here: the label is the view's, the order is the view's, and a modifier the
+// view does not carry is not drawn. Reconstructing badges from the event window would be a guess —
+// it is the last N events (§10.8), so a badge could appear and never leave.
 //
 // SECOND FINDING, on `HeroView.powers`: the view now carries every Heroic Power a player
 // controls, each separately once-per-turn (R43), and each one's `instanceId`. `contract.ts` has
@@ -20,6 +22,7 @@
 
 import type { ReactElement } from "react";
 
+import { animTestid } from "./animations.ts";
 import { allowDrop, completeDrop, cx, isLegal, isSelected, legalAttr, PopLayer, type Pops } from "./Card.tsx";
 import {
   sideView,
@@ -53,6 +56,9 @@ export default function Hero(props: HeroProps): ReactElement {
   const target: ClickTarget = { on: "hero", side };
 
   const powerLegal = isLegal(props.highlight, testid.power);
+
+  const modifiersId = animTestid.modifiers(side);
+  const modifiers = seat.modifiers ?? [];
 
   return (
     <div
@@ -136,6 +142,28 @@ export default function Hero(props: HeroProps): ReactElement {
             <span className="power-x">{power.x}</span>
           </span>
         ))}
+
+      {/* R169: one badge per `SideView.modifiers` entry, in the view's order. Always present, so
+          `modifierChanged` has an element to fade even when the badge that changed is the one that
+          has just gone. */}
+      <span
+        className="modifiers"
+        data-testid={modifiersId}
+        data-count={modifiers.length}
+        data-animating={props.animating?.get(modifiersId)}
+        aria-label={side === "you" ? "Your modifiers" : "Opponent modifiers"}
+      >
+        {modifiers.map((modifier) => (
+          <span
+            key={modifier.id}
+            className="modifier-badge"
+            data-modifier-id={modifier.id}
+            title={modifier.label}
+          >
+            {modifier.label}
+          </span>
+        ))}
+      </span>
 
       <PopLayer pops={props.pops} />
     </div>

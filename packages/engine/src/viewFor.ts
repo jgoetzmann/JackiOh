@@ -16,6 +16,10 @@
 //     it is open and whose it is, nothing more.
 //   - R97: the event stream is redacted, not truncated. An event that names a card the viewer may
 //     not read keeps its type and its animation fields and shows `HIDDEN_ID` for that card.
+//   - R169: the player modifiers (§10.1 `mods`) travel on both seats as `{ id, label }`, because
+//     every one of them is installed by a card played face-up and `modifierChanged` is already
+//     public in both directions. The caption is built from the modifier's own kind and numbers and
+//     never from its `sourceId`, so no card identity can leave through a badge.
 //
 // Stats are never read off an instance: `layers.unitView` recomputes every stat and keyword on read
 // (§10.4), so no stored total ever reaches the client.
@@ -25,6 +29,7 @@ import type {
   CardView,
   GameEvent,
   HeroPowerView,
+  ModifierView,
   PendingOption,
   PendingView,
   PlayerId,
@@ -38,12 +43,13 @@ import { defOf, findDef } from "./catalog";
 import { hasExertion } from "./combat";
 import { heroArmorOf } from "./damage";
 import { unitView as unitLayers } from "./layers";
-import { effectiveCost } from "./mana";
+import { effectiveCost, modifierIsLive } from "./mana";
 import {
   findInstance,
   type CardInstance,
   type GameState,
   type Pile,
+  type PlayerModifier,
   type PlayerState,
   type PromptOption,
 } from "./state";
@@ -201,6 +207,63 @@ function heroPowersOf(state: GameState, player: PlayerId): HeroPowerView[] {
 }
 
 // ---------------------------------------------------------------------------
+// Player modifiers (§10.1 `mods`, §10.3 `modifierChanged`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The discount half of `modifierLabel`, split out because `costDiscount` is the one kind whose
+ * caption has to say *what* it applies to: R48's current-cost gate (#77), §8 #35's "next Spell",
+ * and #78's flat "your cards" are three different sentences off one kind.
+ */
+function discountLabel(mod: Extract<PlayerModifier, { kind: "costDiscount" }>): string {
+  const less = `cost${mod.oncePerTurn === true ? "s" : ""} ${mod.amount} less`;
+  if (mod.onlyCurrentCost !== undefined) return `Cost-${mod.onlyCurrentCost} cards ${less}`;
+  if (mod.onlyType !== undefined) {
+    return mod.oncePerTurn === true ? `Next ${mod.onlyType} ${less}` : `${mod.onlyType}s ${less}`;
+  }
+  return mod.oncePerTurn === true ? `Next card ${less}` : `Your cards ${less}`;
+}
+
+/**
+ * A badge caption for one modifier, built from the modifier alone. The switch is exhaustive over
+ * `PlayerModifier["kind"]` on purpose: with no `default`, a new kind does not compile until someone
+ * decides what the player is told about it.
+ *
+ * `sourceId` (#79 Twinspell's instance) is deliberately not read: it is a card id, and the view
+ * must not hand either seat an identity through a badge.
+ */
+function modifierLabel(mod: PlayerModifier): string {
+  switch (mod.kind) {
+    case "costDiscount":
+      return discountLabel(mod);
+    case "echoNextSpell":
+      return `Next Spell gains Echo +${mod.amount}`;
+    case "radiantFirstCheapCard":
+      return `First card costing ${mod.maxCost} or less becomes Radiant`;
+    case "comboDraw":
+      return `Your cards gain "Combo: draw ${mod.amount}"`;
+    case "quickstrikerDamage":
+      return `Your cards gain "Combo X: X damage to the enemy hero"`;
+  }
+}
+
+/**
+ * §10.8 does not list the player modifiers, so R169 decides them: both seats carry the list, since
+ * every Core modifier is installed by the Cry of a card played face-up and `modifierChanged` is
+ * already public in both directions (see `redactEvent`). Only the id and the caption travel.
+ *
+ * R48: a modifier that covers the controller's *next* turn is installed at once and bites later, so
+ * the caption says so while `modifierIsLive` is still false — otherwise #77's badge would claim a
+ * discount on the very turn the discount does nothing.
+ */
+function modifierViews(state: GameState, player: PlayerId): ModifierView[] {
+  return state.players[player].mods.map((mod) => ({
+    id: mod.id,
+    label: modifierIsLive(state, mod) ? modifierLabel(mod) : `${modifierLabel(mod)} (next turn)`,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // One side of the board
 // ---------------------------------------------------------------------------
 
@@ -225,6 +288,8 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
       powers,
       power: powers[0] ?? null,
     },
+    // R169: the badge list beside the hero, public on both seats.
+    modifiers: modifierViews(state, player),
     mana: { current: side.mana.current, max: side.mana.max },
     // §10.8: the viewer's own hand in full, the opponent's as a count.
     hand: player === viewer ? side.hand.map((card) => cardView(state, card)) : { count: side.hand.length },

@@ -299,6 +299,47 @@ describe("Board", () => {
     expect(screen.getByTestId(testid.log)).toBeInTheDocument();
   });
 
+  // BUILD M5-T4 `modifierChanged`: "badge list equals the view's modifiers" (R169).
+  it("draws one modifier badge per view modifier, on both seats, and none of its own", () => {
+    const view = fullBoardView();
+    render(<Board view={view} />);
+
+    for (const [side, modifiers] of [
+      ["you", view.you.modifiers],
+      ["opponent", view.opponent.modifiers],
+    ] as const) {
+      const list = screen.getByTestId(`modifiers-${side}`);
+      const badges = [...list.querySelectorAll(".modifier-badge")];
+
+      // Equal as a list, in order: same ids, same captions, same length. A badge the view does not
+      // carry, or a modifier the panel drops, fails here.
+      expect(badges.map((badge) => badge.getAttribute("data-modifier-id"))).toEqual(
+        modifiers.map((modifier) => modifier.id),
+      );
+      expect(badges.map((badge) => badge.textContent)).toEqual(modifiers.map((modifier) => modifier.label));
+    }
+
+    // Both seats: §10.8 gives a player no privacy over their own badges, and the opponent's list is
+    // the one an animation on `modifiers-opponent` needs to land on.
+    expect(screen.getByTestId("modifiers-you").querySelectorAll(".modifier-badge")).toHaveLength(2);
+    expect(screen.getByTestId("modifiers-opponent").querySelectorAll(".modifier-badge")).toHaveLength(1);
+  });
+
+  it("keeps the modifier list in the DOM when it is empty, so the fade has something to play on", () => {
+    // `modifierChanged { added: false }` animates after the badge is gone, so the container is not
+    // conditional on the list being non-empty.
+    const view = fullBoardView();
+    const emptied = { ...view, you: { ...view.you, modifiers: [] } };
+    const animating = new Map([["modifiers-you", "modifierChanged" as const]]);
+
+    render(<Board view={emptied} animating={animating} />);
+
+    const list = screen.getByTestId("modifiers-you");
+    expect(list).toBeInTheDocument();
+    expect(list.querySelectorAll(".modifier-badge")).toHaveLength(0);
+    expect(list.getAttribute("data-animating")).toBe("modifierChanged");
+  });
+
   it("sets data-animating and takes the pop text from the matching event", () => {
     const view = fullBoardView();
     const target = view.you.units[0];

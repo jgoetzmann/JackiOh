@@ -63,11 +63,52 @@ function namedRows(files: string[]): Map<number, string[]> {
   return found;
 }
 
+/**
+ * Every `R<n>` mentioned ANYWHERE in the tracked source — comments, `describe` titles, SQL headings,
+ * prose in a test file — not just `it("R<n> …")` titles.
+ *
+ * This is the direction the script was missing, and it was missed the way these things always are:
+ * an agent implemented a decision SPEC does not make, cited "R169" in ten comments and two
+ * `describe` titles, correctly left SPEC.md to a human — and this script said "every row is named,
+ * and no test names a row that does not exist", because R169 appeared in no `it` title. BUILD §5
+ * asks for the opposite of that in as many words: "SPEC.md has a §11 row for every ruling the code
+ * makes; no ruling exists only in code comments", and REVIEW B4 grades exactly that MAJOR.
+ *
+ * A broad `\bR\d+\b` sweep sounds like it would drown in false positives and does not: over every
+ * tracked .ts/.tsx/.sql file it finds 169 distinct ids, 168 of them §11 rows. If a genuine false
+ * positive ever appears, narrow it here rather than deleting the check.
+ */
+function citedAnywhere(): Map<number, string[]> {
+  const found = new Map<number, string[]>();
+  const skip = new Set(["node_modules", "dist", "coverage", ".git", "artifacts"]);
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(entry.name)) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (/\.(ts|tsx|sql)$/.test(entry.name)) {
+        for (const match of readFileSync(full, "utf8").matchAll(/\bR(\d+)\b/g)) {
+          const id = Number(match[1]);
+          const where = found.get(id) ?? [];
+          const short = full.slice(repo.length + 1);
+          if (!where.includes(short)) where.push(short);
+          found.set(id, where);
+        }
+      }
+    }
+  };
+  for (const top of ["packages", "apps"]) walk(join(repo, top));
+  return found;
+}
+
 const rows = specRows();
 const named = namedRows(testFiles());
+const cited = citedAnywhere();
 
 const missing = rows.filter((id) => !named.has(id));
 const unknown = [...named.keys()].filter((id) => !rows.includes(id)).sort((a, b) => a - b);
+const uncited = [...cited.keys()].filter((id) => !rows.includes(id)).sort((a, b) => a - b);
 
 console.log(`SPEC §11: ${String(rows.length)} rows, R${String(rows[0])}–R${String(rows[rows.length - 1])}`);
 console.log(`named by a test: ${String(rows.length - missing.length)}`);
@@ -82,6 +123,18 @@ if (unknown.length > 0) {
   for (const id of unknown) console.log(`  R${String(id)}  ${(named.get(id) ?? []).join(", ")}`);
 }
 
-if (missing.length === 0 && unknown.length === 0) console.log("\nevery row is named, and no test names a row that does not exist.");
+if (uncited.length > 0) {
+  console.log(`\nONLY IN CODE — an R-id the source cites that §11 does not have (BUILD §5: "no ruling`);
+  console.log(`exists only in code comments"). Append the row to SPEC §11, or stop citing the id:`);
+  for (const id of uncited) console.log(`  R${String(id)}  ${(cited.get(id) ?? []).join(", ")}`);
+}
 
-process.exit(missing.length === 0 && unknown.length === 0 ? 0 : 1);
+const clean = missing.length === 0 && unknown.length === 0 && uncited.length === 0;
+if (clean) {
+  console.log(
+    `\nevery row is named, no test names a row that does not exist, and no R-id is cited in code` +
+      ` without a §11 row (${String(cited.size)} ids cited across the source).`,
+  );
+}
+
+process.exit(clean ? 0 : 1);

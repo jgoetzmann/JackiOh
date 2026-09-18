@@ -170,6 +170,49 @@ describe("#78 /fullsend — base", () => {
   });
 });
 
+/**
+ * R169, BUILD M5-T4 ("badge list equals the view's modifiers"). /fullsend's two riders lived only
+ * in `state.players[p].mods`: the discount showed up indirectly as a smaller number on a hand card,
+ * with nothing to say why, and the Combo draw had no trace in any view at all. Both are badges now.
+ */
+describe("#78 /fullsend — visible to the player while active (R169, §10.8)", () => {
+  it("shows both riders as badges the moment the spell resolves", () => {
+    const s = board(false);
+
+    s.play(FULLSEND);
+
+    const badges = s.view("p1").you.modifiers;
+    expect(badges.map((modifier) => modifier.label)).toEqual([
+      "Your cards cost 1 less",
+      'Your cards gain "Combo: draw 1"',
+    ]);
+    // The ids are the engine's, so a `modifierChanged` animation lands on the badge it names.
+    expect(badges.map((modifier) => modifier.id)).toEqual(s.state.players.p1.mods.map((mod) => mod.id));
+  });
+
+  it("the badges go at cleanup, with the modifiers they stand for (§2.2)", () => {
+    const s = board(false);
+    s.play(FULLSEND);
+    expect(s.view("p1").you.modifiers).toHaveLength(2);
+
+    s.endTurn();
+
+    expect(s.view("p1").you.modifiers).toEqual([]);
+  });
+
+  it("the opponent sees them too: playing a Spell is public (§10.5 step 4)", () => {
+    const s = board(true);
+
+    s.play(FULLSEND);
+
+    // "Cost 2 less" restates only the number; the Combo rider is unchanged by the radiant cell.
+    expect(s.view("p2").opponent.modifiers.map((modifier) => modifier.label)).toEqual([
+      "Your cards cost 2 less",
+      'Your cards gain "Combo: draw 1"',
+    ]);
+  });
+});
+
 describe("#78 /fullsend — radiant", () => {
   it("costs 2 less this turn and keeps every other clause (§8 Conventions)", () => {
     const s = board(true);

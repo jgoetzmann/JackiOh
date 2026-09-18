@@ -138,6 +138,32 @@
   font-weight: 700;
 }
 
+/* R169's badge list beside the hero, and the element `modifierChanged` fades (BUILD M5-T4).
+   It is in the DOM even while empty — that is the point, since the fade for a modifier that has
+   just expired plays after the badge is gone — so it takes no space until it holds something. */
+.modifiers {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.modifier-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--mana) 55%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mana) 14%, var(--bg-sunken));
+  color: var(--text-dim);
+  font-size: 0.78em;
+}
+
 /* ------------------------------------------------------------------------- mana and piles --- */
 
 .mana {

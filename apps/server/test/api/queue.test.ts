@@ -24,6 +24,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ratingWindow } from "../../src/config";
 import { createRouter, type Router } from "../../src/api/http";
+import { createLoadoutRoutes } from "../../src/api/loadouts";
 import { createQueueRoutes, tryPair } from "../../src/api/queue";
 import type { Ticket } from "../../src/api/ports";
 import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
@@ -428,5 +429,122 @@ describe("§9.4's gate on the queue (BUILD M6-T1)", () => {
 
     expect(queued.status).toBe(200);
     expect((await readJson<QueueBody>(queued)).status).toBe("open");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §9.4 / §9.5 / §9.8 — the deck is frozen into the ticket
+// ---------------------------------------------------------------------------
+
+/**
+ * §9.8's abuse vector, by its own name: "Deck swapped after matchmaking → decks are frozen into the
+ * ticket". §9.4 states the rule ("Decks are frozen into the queue ticket") and `src/api/queue.ts`
+ * claims it in its header: "Nothing below re-reads `loadouts` after the ticket exists, so a loadout
+ * edited while queued cannot change the match that ticket becomes."
+ *
+ * That claim was only ever checked at the level of `deckFor` returning a non-aliased array
+ * (`loadouts.test.ts`), which is a claim about JavaScript rather than about the queue: it would
+ * hold just as well if `startPairedMatch` re-read the loadout it had already frozen. So this block
+ * runs the vector end to end and through HTTP — enqueue, then **save a different loadout**, then
+ * pair — with the loadout routes in the same router, because "saves a different loadout" is
+ * something the player does with `PUT /api/loadout` and not something a test does to the store.
+ *
+ * Every case carries its control, and the controls are the point: an assertion that a match used
+ * deck A is worthless unless the same fixture, with the save moved earlier, uses deck B.
+ */
+describe("§9.8 — decks are frozen into the queue ticket (§9.4, §9.5)", () => {
+  /** Queue and loadout routes on one router, so a player can do both things in one session. */
+  function fullRouter(target: TestDeps): Router {
+    return createRouter([...createQueueRoutes(), ...createLoadoutRoutes()], target);
+  }
+
+  /**
+   * The same three decks, with deck 0 and deck 2 exchanged. Slot 0 — the one every enqueue below
+   * asks for — therefore holds a set of ids disjoint from the one it held before, so "the match
+   * used the frozen deck" and "the match used the current loadout" can never both be true.
+   */
+  function swapped(target: TestDeps): string[][] {
+    const [first, second, third] = decksFrom(target);
+    return [third ?? [], second ?? [], first ?? []];
+  }
+
+  async function save(
+    target: TestDeps,
+    route: Router,
+    token: string,
+    decks: string[][],
+  ): Promise<Response> {
+    return route(
+      jsonRequest("PUT", "/api/loadout", { catalogVersion: target.catalog.version, decks }, { token }),
+    );
+  }
+
+  /** The deck the started match gave this profile's seat, as the actor will be handed it. */
+  function deckInMatchFor(target: TestDeps, profileId: string): string[] | undefined {
+    const started = target.matches.started.at(-1);
+    return started?.seats.find((seat) => seat.profileId === profileId)?.deck;
+  }
+
+  it("a loadout saved after enqueue does not change the match that ticket becomes (§9.8)", async () => {
+    const route = fullRouter(deps);
+    const swapper = activeProfile(deps, "swapper");
+    const rival = activeProfile(deps, "rival");
+    await saveLoadoutFor(deps, "swapper");
+    await saveLoadoutFor(deps, "rival");
+
+    const frozen = decksFrom(deps)[0] ?? [];
+    const substitute = swapped(deps)[0] ?? [];
+
+    // PREMISE: the two decks share no card at all. Without this the assertions below could be
+    // satisfied by a match that used the *new* loadout and simply looked the same.
+    expect(frozen).not.toHaveLength(0);
+    expect(frozen.filter((cardId) => substitute.includes(cardId))).toEqual([]);
+
+    // 1. Queue with deck 0. The ticket freezes it here and nowhere else.
+    const queued = await readJson<QueueBody>(await enqueue(swapper, 0));
+    const ticketId = queued.ticketId ?? "";
+    expect(queued.status).toBe("open");
+    expect((await deps.store.tickets.get(ticketId))?.deck).toEqual(frozen);
+
+    // 2. The swap, through the endpoint a player would use, while the ticket is still open.
+    const saved = await save(deps, route, swapper, swapped(deps));
+    expect(saved.status).toBe(200);
+    // PREMISE: the save really landed. A rejected save would make every assertion below pass for
+    // the wrong reason — there would be nothing to leak into the match.
+    expect((await deps.store.loadouts.get("swapper"))?.decks[0]).toEqual(substitute);
+    // …and the ticket is untouched by it.
+    expect((await deps.store.tickets.get(ticketId))?.deck).toEqual(frozen);
+
+    // 3. Someone pairs with the queued player, and the match is created.
+    const paired = await readJson<QueueBody>(await enqueue(rival, 0));
+    expect(paired.status).toBe("matched");
+
+    // §9.4, §9.5: the match runs the deck the ticket froze, not the one the player is holding now.
+    expect(deckInMatchFor(deps, "swapper")).toEqual(frozen);
+    const row = deps.store.tables.matches.at(-1);
+    const seat = row?.players.indexOf("swapper") ?? -1;
+    expect(seat).toBeGreaterThanOrEqual(0);
+    expect(row?.decks[seat]).toEqual(frozen);
+    // The substitute deck reached neither the match row nor the actor's seats.
+    expect(JSON.stringify([row?.decks, deps.matches.started])).not.toContain(substitute[0] ?? "");
+  });
+
+  it("the control: the same swap made BEFORE the enqueue is the deck the match uses", async () => {
+    // Without this, the test above would pass against a queue that ignored loadouts entirely.
+    // Exactly one thing moves between the two: whether the save happens before or after enqueue.
+    const route = fullRouter(deps);
+    const swapper = activeProfile(deps, "early");
+    const rival = activeProfile(deps, "late");
+    await saveLoadoutFor(deps, "early");
+    await saveLoadoutFor(deps, "late");
+
+    const substitute = swapped(deps)[0] ?? [];
+    expect((await save(deps, route, swapper, swapped(deps))).status).toBe(200);
+
+    const queued = await readJson<QueueBody>(await enqueue(swapper, 0));
+    expect((await deps.store.tickets.get(queued.ticketId ?? ""))?.deck).toEqual(substitute);
+
+    expect((await readJson<QueueBody>(await enqueue(rival, 0))).status).toBe("matched");
+    expect(deckInMatchFor(deps, "early")).toEqual(substitute);
   });
 });

@@ -16,7 +16,15 @@
 // The Trap, Field Trap and "secret" definitions this file needs live here rather than in a shared
 // fixture, as effects-swap.test.ts does for its own Trap (BUILD §0, CLAUDE.md).
 
-import type { CardDef, CardView, GameEvent, PendingView, PlayerId, PlayerView } from "@jackioh/shared";
+import type {
+  CardDef,
+  CardView,
+  DistributiveOmit,
+  GameEvent,
+  PendingView,
+  PlayerId,
+  PlayerView,
+} from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { defOf, registerCatalog, registeredCatalog } from "../src/catalog";
 import { HAND_CAP } from "../src/config";
@@ -28,9 +36,11 @@ import {
   newInstance,
   type CardInstance,
   type GameState,
+  type PlayerModifier,
   type PromptOption,
   type Resume,
 } from "../src/state";
+import { addModifier } from "../src/modifiers";
 import { HIDDEN_ID, VIEW_EVENT_LIMIT, viewFor } from "../src/viewFor";
 import { lockZone, placeOnField } from "../src/zones";
 import { plain } from "./fixtures/combat";
@@ -651,5 +661,128 @@ describe("viewFor (§10.8, M3-T6)", () => {
     const serialized = JSON.stringify(viewFor(state, "p1"));
     expect(serialized).not.toContain("burn");
     expect(serialized).not.toContain("freeze");
+  });
+});
+
+/* ----------------------------------------------------------------------------------------- *
+ * R169: the player modifiers (§10.1 `mods`) in the view
+ * ----------------------------------------------------------------------------------------- */
+
+describe("viewFor player modifiers (R169, §10.1, §10.3 modifierChanged)", () => {
+  /** Installs a modifier the way a card script does, so the id is the engine's own. */
+  function install(state: GameState, player: PlayerId, mod: DistributiveOmit<PlayerModifier, "id">): PlayerModifier {
+    return addModifier(sinkFor(state), player, mod);
+  }
+
+  it("R169 carries both seats' modifiers as { id, label }, in order, and nothing else", () => {
+    const state = game("modifiers-both-seats");
+    // #77 Professor Curvature, live: its discount is the controller's next turn (R48).
+    const curvature = install(state, "p1", {
+      kind: "costDiscount",
+      amount: 1,
+      onlyCurrentCost: 4,
+      expiry: { until: "nextTurnOf", player: "p1", fromTurn: 1 },
+    });
+    // #78 /fullsend's two turn-scoped riders, in the order the Cry installs them.
+    const discount = install(state, "p1", {
+      kind: "costDiscount",
+      amount: 1,
+      expiry: { until: "thisTurn", turn: state.turn },
+    });
+    const combo = install(state, "p1", {
+      kind: "comboDraw",
+      amount: 1,
+      expiry: { until: "thisTurn", turn: state.turn },
+    });
+    // #79 Twinspell on the other seat.
+    const echo = install(state, "p2", { kind: "echoNextSpell", amount: 1, expiry: { until: "used" } });
+
+    const view = viewFor(state, "p1");
+
+    expect(view.you.modifiers.map((modifier) => modifier.id)).toEqual([curvature.id, discount.id, combo.id]);
+    expect(view.you.modifiers).toEqual([
+      { id: curvature.id, label: "Cost-4 cards cost 1 less" },
+      { id: discount.id, label: "Your cards cost 1 less" },
+      { id: combo.id, label: 'Your cards gain "Combo: draw 1"' },
+    ]);
+    // §10.8 gives a seat no privacy over its own badges, and `modifierChanged` is already public
+    // in both directions, so the opponent's list travels too.
+    expect(view.opponent.modifiers).toEqual([{ id: echo.id, label: "Next Spell gains Echo +1" }]);
+
+    // The mirror view agrees: each seat sees the same two lists, swapped.
+    const theirs = viewFor(state, "p2");
+    expect(theirs.you.modifiers).toEqual(view.opponent.modifiers);
+    expect(theirs.opponent.modifiers).toEqual(view.you.modifiers);
+
+    // `{ id, label }` and no more: no kind, no amount, no expiry, no source.
+    for (const modifier of [...view.you.modifiers, ...view.opponent.modifiers]) {
+      expect(Object.keys(modifier).sort()).toEqual(["id", "label"]);
+    }
+  });
+
+  it("R169 a board with no modifiers carries an empty list on both seats", () => {
+    const view = viewFor(game("modifiers-empty"), "p1");
+    expect(view.you.modifiers).toEqual([]);
+    expect(view.opponent.modifiers).toEqual([]);
+  });
+
+  it("R169 + R48 say so on the badge while the modifier is installed but not yet live", () => {
+    const state = game("modifiers-dormant");
+    // The turn #77 was played: `mana.modifierIsLive` is false, so the discount does nothing yet.
+    install(state, "p1", {
+      kind: "costDiscount",
+      amount: 2,
+      onlyCurrentCost: 4,
+      expiry: { until: "nextTurnOf", player: "p1", fromTurn: state.turn },
+    });
+
+    // The radiant face of #77, so the number is 2.
+    expect(at(viewFor(state, "p1").you.modifiers, 0).label).toBe("Cost-4 cards cost 2 less (next turn)");
+
+    // p1's next turn: the discount bites, and the badge stops hedging.
+    state.turn += 2;
+    expect(at(viewFor(state, "p1").you.modifiers, 0).label).toBe("Cost-4 cards cost 2 less");
+  });
+
+  it("R169 labels every PlayerModifier kind from the modifier alone", () => {
+    const state = game("modifiers-labels");
+    install(state, "p1", {
+      kind: "costDiscount",
+      amount: 1,
+      onlyType: "Spell",
+      oncePerTurn: true,
+      expiry: { until: "thisTurn", turn: state.turn },
+    });
+    install(state, "p1", { kind: "radiantFirstCheapCard", maxCost: 1, expiry: { until: "never" } });
+    install(state, "p1", { kind: "quickstrikerDamage", expiry: { until: "never" } });
+
+    expect(viewFor(state, "p1").you.modifiers.map((modifier) => modifier.label)).toEqual([
+      // §8 #35 Lunar Eclipse: "the next Spell you play this turn costs 1 less".
+      "Next Spell costs 1 less",
+      // §8 #64 Gifted Program.
+      "First card costing 1 or less becomes Radiant",
+      // §8 #38 Quickstriker.
+      'Your cards gain "Combo X: X damage to the enemy hero"',
+    ]);
+  });
+
+  it("R169 a modifier's sourceId never travels, so a badge cannot name a face-down card (§9.1)", () => {
+    const state = game("modifiers-source");
+    // #79 Twinspell keeps the instance that installed the rider (R30). Point it at a card p1 may
+    // not read at all — a face-down trap in p2's backrow — so a leak would be unmistakable.
+    const trap = put(state, secretTrap.id, slot("p2", "backrow", 1));
+    install(state, "p2", {
+      kind: "echoNextSpell",
+      amount: 2,
+      sourceId: trap.id,
+      expiry: { until: "used" },
+    });
+
+    const view = viewFor(state, "p1");
+    expect(view.opponent.modifiers).toEqual([
+      { id: at(state.players.p2.mods, 0).id, label: "Next Spell gains Echo +2" },
+    ]);
+    expect(JSON.stringify(view)).not.toContain(`"${trap.id}"`);
+    expect(JSON.stringify(view)).not.toContain(trap.defId);
   });
 });

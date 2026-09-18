@@ -9,13 +9,22 @@
  * (§9.1), a malformed frame is answered rather than fatal, the per-match flood limit rejects the
  * overflow (§9.8), and a disconnect starts the grace both clients render (§9.5).
  *
- * The clock is a stub here on purpose: `src/match/clock.ts` is M7-T1 and another agent's file, so
- * the actor takes `CreateMatchClock` through `ActorDeps` and this file supplies a deterministic
- * one. The day the real clock lands it drops straight in.
+ * Item 4 is made twice. Most of this file runs on the scripted port in `test/fakes/engine.ts`,
+ * which can be driven to any situation in one action; the block near the bottom runs the same
+ * acceptance item on the **real** engine (`src/match/engine.real.ts`), because a redaction cannot
+ * be proved against a `viewFor` the test suite wrote. That block's own header says what only it
+ * can see.
+ *
+ * The clock is a stub here on purpose, and no longer because `src/match/clock.ts` is unfinished —
+ * it is finished, has `clock.test.ts` to itself and is driven for real by `recovery.test.ts`. It is
+ * a stub because the actor takes `CreateMatchClock` through `ActorDeps` and half the tests below
+ * fire an expiry *on demand* (`clock.expire({ kind: "grace", player: "p1" })`), which a real clock
+ * only does by advancing time past a deadline.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { ActionBody, PlayerId, PlayerView } from "@jackioh/shared";
+import { loadCatalog } from "../../src/api/catalog";
 import type { MatchClocks, ResultRow } from "../../src/api/ports";
 import { MATCH_ACTIONS_PER_SECOND } from "../../src/config";
 import type { MatchActor } from "../../src/match/actor";
@@ -27,9 +36,11 @@ import type {
   MatchClock,
   RecordResultInput,
 } from "../../src/match/contracts";
+import type { EnginePort } from "../../src/match/engine";
+import { enginePort } from "../../src/match/engine.real.ts";
 import { createMatchRegistry } from "../../src/match/registry";
 import { createMatchSocketHandler, socketFromWs, WS_CLOSE } from "../../src/match/wsServer";
-import { createFakeEngine, fakeDeck } from "../fakes/engine";
+import { createFakeEngine, decksTheEngineAccepts, fakeDeck } from "../fakes/engine";
 import { createFakeSocket, type FakeSocket } from "../fakes/socket";
 import { createTestDeps, TEST_CATALOG_VERSION } from "../fakes/deps";
 
@@ -138,7 +149,13 @@ type Harness = {
 };
 
 async function harness(
-  options: { p1Deck?: string[]; p2Deck?: string[]; attach?: boolean } = {},
+  options: {
+    p1Deck?: string[];
+    p2Deck?: string[];
+    attach?: boolean;
+    /** The real `EnginePort` for the block at the bottom of this file; the fake otherwise. */
+    engine?: EnginePort;
+  } = {},
 ): Promise<Harness> {
   const deps = createTestDeps();
   const clocks = stubClocks();
@@ -148,7 +165,7 @@ async function harness(
     timers: deps.timers,
     config: deps.config,
     log: deps.log,
-    engine: createFakeEngine(),
+    engine: options.engine ?? createFakeEngine(),
     createClock: clocks.create,
     recordResult: recordResult as unknown as ActorDeps["recordResult"],
   };
@@ -226,6 +243,24 @@ function errors(socket: FakeSocket): { type: "error"; code: string; message: str
 function acks(socket: FakeSocket): { type: "ack"; nonce: string; seq: number }[] {
   return socket.ofType<{ type: "ack"; nonce: string; seq: number }>("ack");
 }
+
+/**
+ * Keys that only exist on a `GameState`, never on a `PlayerView` (§10.1 vs §10.8). A frame naming
+ * one of them is a state that escaped, whatever its values happen to be.
+ */
+const STATE_ONLY_KEYS = new Set([
+  "library",
+  "libraries",
+  "hands",
+  "decks",
+  "seed",
+  "rngCursor",
+  "triggerQueue",
+  "echoQueue",
+  "applied",
+  "pendingChoice",
+  "state",
+]);
 
 /** Every value that appears anywhere in a frame, with its key path, for the leak scan. */
 function walk(value: unknown, visit: (key: string, value: unknown) => void, key = "$"): void {
@@ -350,20 +385,6 @@ describe("M6-T4 the match actor", () => {
 
     const leaked: string[] = [];
     const stateShaped: string[] = [];
-    // Keys that only exist on a `GameState`, never on a `PlayerView` (§10.1 vs §10.8).
-    const forbiddenKeys = new Set([
-      "library",
-      "libraries",
-      "hands",
-      "decks",
-      "seed",
-      "rngCursor",
-      "triggerQueue",
-      "echoQueue",
-      "applied",
-      "pendingChoice",
-      "state",
-    ]);
 
     for (const [socket, secrets] of [
       [p2, p1Hand],
@@ -371,7 +392,7 @@ describe("M6-T4 the match actor", () => {
     ] as const) {
       for (const frame of socket.sent) {
         walk(JSON.parse(frame), (key, value) => {
-          if (forbiddenKeys.has(key)) stateShaped.push(`${key} in ${frame.slice(0, 40)}`);
+          if (STATE_ONLY_KEYS.has(key)) stateShaped.push(`${key} in ${frame.slice(0, 40)}`);
           if (typeof value === "string" && secrets.has(value)) leaked.push(value);
         });
       }
@@ -684,6 +705,152 @@ describe("the legal-action array on the view frame (BUILD M5-T2, §10.2)", () =>
     expect(lastView(p1).result).not.toBeNull();
     expect(legalOf(p1)).toEqual([]);
     expect(legalOf(p2)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M6-T4 acceptance 4 again, with the REAL engine under the actor
+// ---------------------------------------------------------------------------
+
+/**
+ * The same acceptance item, against `packages/engine`'s own `viewFor`.
+ *
+ * Everything above runs on `test/fakes/engine.ts`, whose `viewFor` is written by this test suite —
+ * so it proves that the actor and the protocol add no leak *on top of* a redaction, and cannot
+ * prove the redaction. That is fine for the clock, the log and the flood limit, which is what the
+ * fake is for, but CLAUDE.md rule 7 ("the client ... never sees hidden information") is the one
+ * property where the component under test and the component asserted must not be the same file.
+ *
+ * So this block builds the real port (`src/match/engine.real.ts`, itself covered by
+ * `engine.real.test.ts`), deals two decks of real §8 card ids through `registry.start`, and runs the
+ * leak scan over the bytes the sockets actually received. Three things only exist here:
+ *
+ *  - the hands are dealt by `beginGame`'s real opening draw, not by a scripted `splice`;
+ *  - `PlayerView.events` is a real redacted stream (R97), where the fake always sends `[]` — the
+ *    `drawn` event for every card in the opponent's opening hand carries that card's `defId` in the
+ *    state, and R97's `HIDDEN_ID` is the only reason it does not reach the other socket;
+ *  - the open prompt is a real mulligan, whose options name the chooser's own hand card by card
+ *    (`setup.ts` `mulliganPrompt`), so R81's "only the viewer's own prompt carries its options" is
+ *    carrying real ids rather than the fake's single `{ key: "none" }`.
+ */
+
+describe("M6-T4 acceptance 4 with the real engine (§10.8, CLAUDE.md rule 7)", () => {
+  /** The real port, the real §8 catalog and two disjoint decks of real ids. */
+  async function realEngine(): Promise<{
+    engine: EnginePort;
+    pool: string[];
+    decks: [string[], string[]];
+  }> {
+    const catalog = await loadCatalog();
+    const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
+    const engine = enginePort();
+    return { engine, pool, decks: decksTheEngineAccepts(engine, pool, "seed-actor").decks };
+  }
+
+  /** Keeps the whole hand, which is what makes the scan below sound: nothing leaves a hand. */
+  function keepEverything(socket: FakeSocket): ActionBody {
+    const cards = hand(lastView(socket));
+    expect(cards.length).toBeGreaterThan(0);
+    return { type: "mulligan", keep: cards.map((card) => card.instanceId) };
+  }
+
+  it("the opponent's socket never receives the other hand's defIds, through the real viewFor", async () => {
+    const { engine, pool, decks } = await realEngine();
+    const [p1Deck, p2Deck] = decks;
+
+    // PREMISE: the two decks are real §8 ids and share none, so a defId found on the wrong socket
+    // can only have come from the other player's deck.
+    expect(p1Deck[0]).toBe(pool[0]);
+    expect(p1Deck.filter((cardId) => p2Deck.includes(cardId))).toEqual([]);
+
+    const { actor, p1, p2 } = await harness({ engine, p1Deck, p2Deck });
+
+    // §2.1: the game opens on p1's mulligan. Both keep everything, so every card dealt is still in
+    // the hand it was dealt to when the scan runs — a card returned to the library would be one the
+    // scan could not reason about, and a card played would be public (§10.8).
+    expect(lastView(p1).pending).toMatchObject({ forYou: true, kind: "mulligan" });
+    expect(lastView(p2).pending).toMatchObject({ forYou: false, pendingFor: "p1" });
+    await send(actor, p1, "mull-1", keepEverything(p1));
+    await send(actor, p2, "mull-2", keepEverything(p2));
+
+    // Out of setup and into the first real turn (§2.1, R10: p1 draws), then a reconnect-style full
+    // view push, so the scan covers a view built after play has started as well as the attach ones.
+    expect(actor.snapshot().phase).toBe("main");
+    await send(actor, p1, "t1", { type: "endTurn" });
+    p2.receiveJson({ type: "hello" });
+    await actor.idle();
+
+    const p1Hand = new Set(hand(lastView(p1)).map((card) => card.defId));
+    const p2Hand = new Set(hand(lastView(p2)).map((card) => card.defId));
+    // PREMISE: both hands really hold real cards. Empty sets would make every scan below vacuous.
+    expect(p1Hand.size).toBeGreaterThan(0);
+    expect(p2Hand.size).toBeGreaterThan(0);
+    for (const defId of [...p1Hand, ...p2Hand]) expect(pool).toContain(defId);
+
+    // PREMISE: the frames really carry the events the fake never produced, so the R97 half of the
+    // scan is exercising something.
+    expect(lastView(p1).events.length).toBeGreaterThan(0);
+
+    const leaked: string[] = [];
+    const stateShaped: string[] = [];
+    for (const [socket, secrets] of [
+      [p2, p1Hand],
+      [p1, p2Hand],
+    ] as const) {
+      for (const frame of socket.sent) {
+        walk(JSON.parse(frame), (key, value) => {
+          if (STATE_ONLY_KEYS.has(key)) stateShaped.push(`${key} in ${frame.slice(0, 40)}`);
+          if (typeof value === "string" && secrets.has(value)) leaked.push(value);
+        });
+      }
+    }
+
+    expect(leaked).toEqual([]);
+    expect(stateShaped).toEqual([]);
+
+    // What the opponent does get is a count (§10.8), and the count is right.
+    expect(lastView(p2).opponent.hand).toEqual({ count: p1Hand.size });
+    expect(lastView(p1).opponent.hand).toEqual({ count: p2Hand.size });
+    expect(lastView(p2).opponent.libraryCount).toBeGreaterThan(0);
+    // §9.1: a library is a count for both players — the viewer's own included.
+    expect(lastView(p2).you.libraryCount).toBeGreaterThan(0);
+  });
+
+  it("R81: a real mulligan prompt's options reach only the player who holds it", async () => {
+    // The fake's prompt carries one `{ key: "none" }` option, so this is the assertion the fake
+    // could not make: the real mulligan prompt names every card in the chooser's hand by instance
+    // id and by `defId` (`setup.ts` `mulliganPrompt`, `viewFor.ts` `optionView`).
+    const { engine, decks } = await realEngine();
+    const { p1, p2 } = await harness({ engine, p1Deck: decks[0], p2Deck: decks[1] });
+
+    const pending = lastView(p1).pending;
+    if (pending === null || !pending.forYou) throw new Error("p1 holds no prompt");
+    // PREMISE: the options really do name the cards, so the negative below is about redaction and
+    // not about an empty option list.
+    expect(pending.options.length).toBeGreaterThan(0);
+    expect(pending.options.map((option) => option.defId)).toEqual(
+      hand(lastView(p1)).map((card) => card.defId),
+    );
+
+    // §10.6, R81: p2 learns that a prompt is open and whose, and nothing else — not the choiceId,
+    // not an option, not a card.
+    expect(lastView(p2).pending).toEqual({ forYou: false, pendingFor: "p1" });
+
+    // Whole values, never substrings: real instance ids are `c<n>`, so `c2` is a prefix of p2's own
+    // `c21` and a substring search would report a leak that is not one.
+    const secrets = new Set<string>([pending.choiceId]);
+    for (const option of pending.options) {
+      secrets.add(option.key);
+      if (option.instanceId !== undefined) secrets.add(option.instanceId);
+      if (option.defId !== undefined) secrets.add(option.defId);
+    }
+    const seen: string[] = [];
+    for (const frame of p2.sent) {
+      walk(JSON.parse(frame), (_key, value) => {
+        if (typeof value === "string" && secrets.has(value)) seen.push(value);
+      });
+    }
+    expect(seen).toEqual([]);
   });
 });
 

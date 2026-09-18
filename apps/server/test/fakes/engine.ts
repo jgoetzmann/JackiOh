@@ -1,10 +1,14 @@
 /**
  * A scripted `EnginePort` for the server tests.
  *
- * `packages/engine` is mid-build (M3 in flight: `viewFor`, `prompts`, `traps` and `combat` do not
- * exist yet), and a server test should not depend on the rules anyway: what M6-T4 and M7 have to
- * prove is about the actor, the clock and the log, not about JackiOh's rules. This fake keeps the
- * real engine's contract exactly where the server relies on it:
+ * WHY IT STILL EXISTS. Not because the engine is unavailable — `packages/engine` has been complete
+ * since M3 closed, `viewFor` included, and `src/match/engine.real.ts` binds it (with its own tests
+ * in `test/match/engine.real.test.ts`). It exists because what M6-T4 and M7 have to prove is about
+ * the actor, the clock, the log and the results writer, and each of those needs a *terminal state
+ * on demand*: `test-lethal` reaches `hero-death` in one action and `test-mutual-lethal`
+ * `both-heroes-dead`, where the real engine would need a whole game of real cards to get there and
+ * the test would then be measuring the rules. It keeps the real engine's contract exactly where the
+ * server relies on it:
  *
  *  - `reduce` is pure, returns `{ state, events, error? }` and refuses illegal actions itself;
  *  - a reused nonce returns the original events and does not advance the state (SPEC §9.3);
@@ -12,10 +16,20 @@
  *  - `fold({ seed, decks, log })` rebuilds the same state, so crash recovery is testable;
  *  - a prompt is state, answered by another action (§9.3).
  *
+ * WHAT IT MAY NOT BE USED TO PROVE. Its `viewFor` is written here, so a test that asserts the
+ * redaction against this port is asserting this file. The hidden-information claim (§10.8,
+ * CLAUDE.md rule 7) is therefore made against the **real** engine, in the last `describe` of
+ * `test/match/actor.test.ts`: the real port under the real actor, two disjoint decks of real §8
+ * ids, and the leak scan run over the bytes the sockets received. What the fake's own leak scan
+ * shows is the remaining half — that the actor and the protocol add nothing on top of a redaction.
+ *
  * Scripted cards, so a test can reach a situation without the real catalog:
  *  - `test-prompt-self`   opens a prompt for the player who played it;
  *  - `test-prompt-enemy`  opens a prompt for the other player (a trap firing on your turn, R79);
- *  - `test-lethal`        ends the match: the player who played it wins by `hero-death`.
+ *  - `test-lethal`        ends the match: the player who played it wins by `hero-death`;
+ *  - `test-mutual-lethal` ends the match: both heroes die in the same check, a draw by
+ *                         `both-heroes-dead` (§2.5's second row — the one ending no other scripted
+ *                         card can reach, and the seventh of the reasons `api/results.ts` writes).
  */
 
 import type { Action, GameEvent, PlayerId, PlayerView, SideView } from "@jackioh/shared";
@@ -51,6 +65,8 @@ function emptySide(player: PlayerId, fake: FakeState, viewer: PlayerId): SideVie
   return {
     player,
     hero: { health: 30, armor: 0, powers: [], power: null },
+    // R169: `SideView.modifiers`. The fake runs no card scripts, so no modifier is ever installed.
+    modifiers: [],
     mana: { current: 4, max: 4 },
     hand:
       player === viewer
@@ -173,6 +189,13 @@ export function createFakeEngine(): EnginePort {
           if (defId === "test-lethal") {
             next.result = { winner: player, reason: "hero-death" };
             events.push({ type: "gameOver", winner: player, reason: "hero-death" });
+          }
+          if (defId === "test-mutual-lethal") {
+            // §2.5: "Both heroes at 0 or less in the same check" is a draw, not a win for whoever
+            // struck. `packages/engine/src/stateCheck.ts` picks the reason the same way — two dead
+            // heroes in one check, so nobody is named the winner.
+            next.result = { winner: "draw", reason: "both-heroes-dead" };
+            events.push({ type: "gameOver", winner: "draw", reason: "both-heroes-dead" });
           }
           break;
         }
@@ -341,4 +364,41 @@ export function createFakeEngine(): EnginePort {
 export function fakeDeck(extra: readonly string[] = []): string[] {
   const filler = Array.from({ length: 20 - extra.length }, (_, i) => `test-card-${i}`);
   return [...extra, ...filler];
+}
+
+/**
+ * Two legal, disjoint decks for the **real** engine port — the counterpart of `fakeDeck` for the
+ * three files that drive `src/match/engine.real.ts` (`engine.real.test.ts`, and the real-engine
+ * blocks of `actor.test.ts` and `recovery.test.ts`).
+ *
+ * It takes the port as a parameter and imports nothing from `@jackioh/engine`, so a test that only
+ * wants the scripted port above still does not pull the engine and `packages/cards`' 109 scripts
+ * into its process — which is the whole reason `src/match/engine.ts` loads the real binding lazily.
+ *
+ * The deck size is not written here and not imported either: BUILD §2 keeps `DECK_SIZE` in
+ * `packages/engine/src/config.ts`, nothing restates it, and `engine.real.ts` is meant to be the only
+ * file in `apps/server` that reaches `@jackioh/engine`. So the size is whatever the engine accepts:
+ * the slices grow until `createGame` stops objecting.
+ *
+ * That loop is also an assertion. With the card catalog unregistered *every* size is refused, so
+ * that failure surfaces here as "the real engine refused every deck size", with the engine's own
+ * sentences attached, rather than as a shapeless throw inside whatever called this.
+ */
+export function decksTheEngineAccepts(
+  port: EnginePort,
+  pool: readonly string[],
+  seed: string,
+): { state: EngineState; decks: [string[], string[]] } {
+  const refusals = new Set<string>();
+  for (let size = 1; size * 2 <= pool.length; size += 1) {
+    const decks: [string[], string[]] = [pool.slice(0, size), pool.slice(size, size * 2)];
+    try {
+      return { state: port.createGame({ seed, decks }), decks };
+    } catch (error) {
+      refusals.add(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new Error(
+    `the real engine refused every deck size built from the catalog:\n  ${[...refusals].join("\n  ")}`,
+  );
 }

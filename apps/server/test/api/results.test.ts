@@ -1,11 +1,11 @@
 /**
  * BUILD M7-T2: "one integration test per reason".
  *
- * §2.5's six live endings each get a test — `hero-death`, `concede`, `draw-accepted`, `turn-cap`,
- * `disconnect`, `match-ceiling` — and each one drives the scripted engine to produce the outcome
- * rather than hand-writing it, so the reason strings under test are the ones `reduce` really
- * emits. Then the two things §9.5 asks of the writer itself: it is idempotent, and the reaper
- * resolves anything past the ceiling.
+ * §2.5's seven endings each get a test — `hero-death`, `both-heroes-dead`, `concede`,
+ * `draw-accepted`, `turn-cap`, `disconnect`, `match-ceiling` — and each one drives the scripted
+ * engine to produce the outcome rather than hand-writing it, so the reason strings under test are
+ * the ones `reduce` really emits. Then the two things §9.5 asks of the writer itself: it is
+ * idempotent, and the reaper resolves anything past the ceiling.
  */
 
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,10 @@ const A = "profile-a";
 const B = "profile-b";
 
 const seats: readonly [MatchSeat, MatchSeat] = [
-  { profileId: A, player: "p1", deck: fakeDeck(["test-lethal"]) },
+  // Hand slot 0 is `test-lethal` (one hero dies) and slot 1 `test-mutual-lethal` (both do), so the
+  // two §2.5 endings that differ only in how many heroes the state check finds dead are reachable
+  // from the same fixture and differ by nothing but which card is played.
+  { profileId: A, player: "p1", deck: fakeDeck(["test-lethal", "test-mutual-lethal"]) },
   { profileId: B, player: "p2", deck: fakeDeck() },
 ];
 
@@ -133,6 +136,32 @@ describe("results (M7-T2)", () => {
     expect(row.turns).toBe(1);
     expect(row.ratingBefore).toEqual([1000, 1000]);
     await expectOneEnding(deps, { winner: A, reason: "hero-death", ratingAfter: [WIN, LOSS] });
+  });
+
+  it("both-heroes-dead: both heroes dying in the same check is a draw, and rates as one (§2.5)", async () => {
+    // The seventh reason `api/results.ts`'s own header names and `0004_matches.sql`'s `reason`
+    // CHECK allows. It is the one ending that is a *draw produced by lethal damage*, so the thing
+    // to prove is that the writer scores it 0.5/0.5 and names no winner — `scoreForSeat` decides
+    // that on `outcome.winner === "draw"` alone, and a writer that read the reason instead (or
+    // that treated "somebody died" as a win) would name A here.
+    const deps = await scenario({ ratings: [1200, 1000] });
+    const row = await record(deps, [{ type: "play", instanceId: "p1-h1", playerId: "p1" }]);
+
+    // PREMISE: the scripted engine really produced this reason, so the assertions below are about
+    // the writer and not about a string this file typed out.
+    expect(row.reason).toBe("both-heroes-dead");
+    expect(row.turns).toBe(1);
+    expect(row.ratingBefore).toEqual([1200, 1000]);
+
+    // The same Elo move a draw gets anywhere else (R79): the favourite gives, the underdog takes.
+    const expected = eloUpdate(1200, 1000, 0.5);
+    expect(expected.a).toBeLessThan(1200);
+    expect(expected.b).toBeGreaterThan(1000);
+    await expectOneEnding(deps, {
+      winner: null,
+      reason: "both-heroes-dead",
+      ratingAfter: [expected.a, expected.b],
+    });
   });
 
   it("concede: the conceding player loses (§2.5)", async () => {

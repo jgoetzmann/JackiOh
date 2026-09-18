@@ -8,6 +8,7 @@ import type {
   GameEvent,
   HeroPowerView,
   Keyword,
+  ModifierView,
   PendingOption,
   PendingView,
   PlayerId,
@@ -78,6 +79,7 @@ export function emptySide(player: PlayerId, over: Partial<SideView> = {}): SideV
   return {
     player,
     hero: { health: 30, armor: 0, powers: [], power: null },
+    modifiers: [],
     mana: { current: 4, max: 4 },
     hand: [],
     libraryCount: 12,
@@ -127,6 +129,19 @@ export function baseView(over: Partial<PlayerView> = {}): PlayerView {
     ...over,
   };
 }
+
+/**
+ * R169's badge list: what `viewFor` hands the hero panel for #77 Professor Curvature (still
+ * dormant, R48) and #78 /fullsend's Combo rider. The captions are the engine's own, copied, so a
+ * drift in `viewFor.modifierLabel` shows up as a fixture that no longer matches the engine's test.
+ */
+export const yourModifiers: ModifierView[] = [
+  { id: "m1", label: "Cost-4 cards cost 1 less (next turn)" },
+  { id: "m2", label: 'Your cards gain "Combo: draw 1"' },
+];
+
+/** The opponent's side of the same list — §10.8 gives a seat no privacy over its own badges. */
+export const opponentModifiers: ModifierView[] = [{ id: "m3", label: "Next Spell gains Echo +1" }];
 
 /** §8 #98: a Heroic Power the viewer controls, with the instance `activatePower` needs. */
 export const heroPower: HeroPowerView = {
@@ -180,6 +195,7 @@ export function fullBoardView(over: Partial<PlayerView> = {}): PlayerView {
         powers: [heroPower],
         power: heroPower,
       },
+      modifiers: yourModifiers,
       mana: { current: 2, max: 4 },
       hand: [
         card({ defId: "core-002", cost: 1 }),
@@ -201,6 +217,7 @@ export function fullBoardView(over: Partial<PlayerView> = {}): PlayerView {
     }),
     opponent: emptySide("p2", {
       hero: { health: 30, armor: 0, powers: [], power: null },
+      modifiers: opponentModifiers,
       mana: { current: 0, max: 3 },
       hand: { count: 6 },
       libraryCount: 9,

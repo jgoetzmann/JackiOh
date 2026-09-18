@@ -130,6 +130,12 @@ const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
 const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
 const SERVER_LOADOUTS_TEST = "../../../apps/server/test/api/loadouts.test.ts";
 const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
+
+/** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
+const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
+const CARDS_FULLSEND_TEST = "../../cards/test/078-fullsend.test.ts";
+/** R169's client-side proof: the animation table's targets, checked against a rendered DOM. */
+const WEB_ANIMATION_TARGETS_TEST = "../../../apps/web/src/game/animation-targets.test.tsx";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1456,6 +1462,16 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // in one reduction and the three the cancel is made of were dropped from the front of the window.
   it("R168 keeps a whole action in the view's event window, so N is a floor and not a cap", () => {
     provenIn(168, "viewFor.test.ts");
+  });
+
+  // Proved by viewFor.test.ts's five "R169 …" tests (both seats' lists, the empty board, R48's
+  // "(next turn)" caption, the label for every `PlayerModifier` kind, and the `sourceId` that never
+  // travels), by the two card files for the cards §11 names — #77 Professor Curvature and
+  // #78 /fullsend, which changed the game invisibly until this row — and by apps/web's
+  // `animation-targets.test.tsx`, which renders the client and proves `modifiers-<side>` is an
+  // element that exists, the check BUILD M5-T4's `modifierChanged` row had never had.
+  it("R169 puts the player modifiers in the view on both seats, as id and caption only", () => {
+    provenIn(169, "viewFor.test.ts", CARDS_CURVATURE_TEST, CARDS_FULLSEND_TEST, WEB_ANIMATION_TARGETS_TEST);
   });
 });
 
