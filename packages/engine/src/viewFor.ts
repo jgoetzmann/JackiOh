@@ -329,9 +329,24 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): Game
     case "discarded":
     case "drawn":
     case "addedToHand":
-    case "trapFired":
     case "radiantSet":
       return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : event;
+
+    /**
+     * R154: the one identity R97's "judged by where the card sits now" cannot decide, so the row
+     * names the seat instead — the controller reads `instanceId` and `defId`, the other player
+     * reads the sentinel. Firing a Trap consumes it into its owner's graveyard (a public pile) or
+     * leaves a Field Trap face-up, so `mayRead` would call every fired trap public and hand the
+     * opponent the card's identity on the event that announces the flip. The animation needs the
+     * opposite: §10.10's `trapFired` row flips a card back in the right lane, and §10.8 gives a
+     * face-down trap no instance id to hang that on. `row`, `lane` and `controller` are not
+     * identity and always travel, which is the whole point of the row — the opponent animates the
+     * flip in the right zone without being told which card it was.
+     */
+    case "trapFired":
+      return event.controller === viewer
+        ? event
+        : { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
 
     // §9.1: library order is hidden from both players, so the slot never travels either way.
     case "shuffledIn":

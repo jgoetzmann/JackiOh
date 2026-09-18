@@ -7,7 +7,7 @@ Work order for implementing JackiOh from `SPEC.md` (the master game specificatio
 - Read SPEC.md end to end before writing code. Re-read the relevant section before each task.
 - Tasks are `M<milestone>-T<n>`. Each lists **Files** and **Acceptance**. A task is done when every acceptance item is a green automated test (or a lint rule), not when the code exists.
 - Milestones are gates. Do not start M(n+1) until the M(n) gate passes.
-- Rulings: every SPEC §11 row (R1–R154 as of 2026-09-17) is implemented exactly as written. Rows marked "decide" (R1, R2, R4, R5, R14, R26, R39) live behind named constants in `packages/engine/src/config.ts` so a designer can flip them in one line. Every ruling has a test whose name starts with its id, e.g. `it("R8 Death fires on both deaths of a Reborn unit")`.
+- Rulings: every SPEC §11 row (R1–R155 as of 2026-09-17) is implemented exactly as written. Rows marked "decide" (R1, R2, R4, R5, R14, R26, R39) live behind named constants in `packages/engine/src/config.ts` so a designer can flip them in one line. Every ruling has a test whose name starts with its id, e.g. `it("R8 Death fires on both deaths of a Reborn unit")`.
 - If SPEC.md is silent on something you hit, follow Hearthstone semantics, add a row to SPEC §11 (next R-number) in the same PR, and name the test after it.
 - M1–M3 acceptance items that name a card (Gravedigger, Hinder, CN-Virus, Twinspell, Mana Well, Jlockeed Shredder, Big D-fender, Moths to the Flame, Big Felinor, Hit Job, Right-house defender and others) are tested with a test-only fixture script under `packages/engine/test/fixtures/` that reproduces just that behaviour; the real card test in M4 covers the same case again.
 - Stack: TypeScript strict; pnpm workspaces; vitest; eslint with `no-restricted-properties` banning `Math.random`, `Date.now`, `new Date()` inside `packages/engine` and `packages/cards`; React + Vite for `apps/web`; Cypress for `e2e`; Postgres for `apps/server`; one stateful actor per match (Cloudflare Durable Objects or an equivalent single-threaded actor runtime).
@@ -266,7 +266,7 @@ Acceptance: `JSON.stringify(viewFor(state, P1))` contains no `defId` from P2's h
 - `lethal.ts`: projected damage of a declared attack after armor and cap versus hero health (R44).
 Acceptance: each subsystem has a test file with at least one case per bullet in its spec row; `scorer.rank(state)` returns a total order that is stable across runs; `aiPolicy` given a seed produces the same action sequence.
 
-**M3 gate.** R62's end-of-turn half (end-of-turn triggers, then the trap window, then delayed effects, then cleanup) has a named test now that traps and delayed effects exist; all effects and subsystems tested; `engine/test/rulings.test.ts` exists with one `it("R<n> …")` per §11 row (R1–R154) (rows that only concern cards may delegate to the card test and reference it by name in a comment).
+**M3 gate.** R62's end-of-turn half (end-of-turn triggers, then the trap window, then delayed effects, then cleanup) has a named test now that traps and delayed effects exist; all effects and subsystems tested; `engine/test/rulings.test.ts` exists with one `it("R<n> …")` per §11 row (R1–R155) (rows that only concern cards may delegate to the card test and reference it by name in a comment).
 
 ### M4 — Catalog and card scripts (`packages/cards`)
 
@@ -545,7 +545,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - `pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e` all green in CI.
 - `catalog.test.ts` passes: 100 cards, 9 tokens, rarity counts 35/37/16/7/5.
 - `missing-tests.ts` prints nothing.
-- `rulings.test.ts` covers every SPEC §11 row, R1–R154 (script `rulings-coverage.ts` lists any missing id).
+- `rulings.test.ts` covers every SPEC §11 row, R1–R155 (script `rulings-coverage.ts` lists any missing id).
 - Fuzz gate: `pnpm fuzz` runs 1,000 seeds with the full card pool and prints its own counts (seeds, throws, non-terminations, replay mismatches, endings). `pnpm test` sweeps the same file at a reduced seed count as a smoke wave; the card pool is never reduced, and any exclusion must be a named entry in `POOL_EXCLUSIONS` with a reason, printed on every run so a narrowing cannot be hidden.
 - `animations.test.ts` passes: every event type animated, reduced-motion path drains synchronously.
 - A networked room-code game between two browsers completes and records a result.

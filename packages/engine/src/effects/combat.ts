@@ -76,14 +76,18 @@ export type ForcedAttackerFilter = {
  * pure, deterministic and replay-stable — the event list is the same on every fold of the log — and
  * it needs no new `GameState` field, no callback and no mutable scratch on the context.
  *
- * The one imprecision is honest and bounded: `ctx.events` is the sink's list for the whole action,
- * so a `summoned` event from something earlier in the same action is also in it. `defId` and the
- * side filter already narrow that, and a card that needs an exact per-script window would need the
- * engine to mark where its list began — reported, not faked here.
+ * R136 closes the window `ctx.events` alone leaves open: the sink's list is the whole action's, so
+ * a `summoned` event from something earlier in it — a second copy of a card, or a trap that fired
+ * mid-action — would read as this script's own. `ctx.eventsFrom` is where this script's events
+ * begin, set by `resolve.makeContext` when the context was built, so the walk starts there and a
+ * card reads only what it did itself. A context that carries no mark — only a hand-built literal in
+ * a test — falls back to 0, the whole action, which is what this read did before R136.
  */
 function freshlySummoned(ctx: EffectContext): Set<string> {
   return new Set(
-    ctx.events.flatMap((event) => (event.type === "summoned" ? [event.instanceId] : [])),
+    ctx.events
+      .slice(ctx.eventsFrom)
+      .flatMap((event) => (event.type === "summoned" ? [event.instanceId] : [])),
   );
 }
 

@@ -7,7 +7,7 @@ import { castTailResume, landAfterResolution, queueEchoRepeats } from "./echo";
 import type { Rng } from "./rng";
 import type { Effect, EffectContext, Hook, Script } from "./script";
 import { scriptOf } from "./scripts";
-import type { CardInstance, GameState } from "./state";
+import { findInstance, type CardInstance, type GameState } from "./state";
 import { owe } from "./work";
 import { firstFreeZone, placeOnField, removeFromAnyZone } from "./zones";
 
@@ -25,6 +25,11 @@ export function makeContext(sink: EngineSink, self: CardInstance | null, options
     state: sink.state,
     rng: sink.rng,
     events: sink.events,
+    // R136: this script's own event window opens where the sink's list stands right now. Every
+    // context is built here, so this is the one place the mark has to be taken; a resumed
+    // continuation calls back through here and therefore opens a fresh window, not the one its
+    // first pass had.
+    eventsFrom: sink.events.length,
     controller: options.controller ?? self?.controller ?? sink.state.active,
     self,
     radiant: self?.radiant ?? false,
@@ -175,4 +180,36 @@ export function castCard(sink: EngineSink, instance: CardInstance, options: Hook
     // above, so #60 Bear Honeypot's "costing 1 or less" admits every cast card (R56).
     costPaid: 0,
   });
+  // R70: a cast "counts as a play for everything that counts or reacts to plays", and §5.1's flag
+  // is one of those. A cast with Echo repeats owed parks instead and is flagged by the play
+  // pipeline's own step 7, which is the driver that finishes that tail.
+  flagReturnToHandAtEndOfTurn(sink.state, instance.id);
+}
+
+/**
+ * §5.1 and R155: "Spells with 'End of turn: add this back to your hand' are flagged
+ * `returnToHandAtEndOfTurn` when played and return from the graveyard at the end of that turn".
+ * This is that flag, written at the one moment §10.5 describes — step 7, as the Spell lands in the
+ * graveyard — so the card carries its own answer and nothing has to infer it later.
+ *
+ * The three conditions are step 7's own sentence, in order. It must be a Spell: a Unit with an
+ * `endOfTurn` hook (#13 Jlockeed Shredder-10) that was played and died on the turn it was played is
+ * in the graveyard too, and it must not return from there (R153). Its resolving face must declare
+ * an end-of-turn return, which for a Spell is exactly an `endOfTurn` hook — #23 Reoccurring Dream,
+ * #24 Efficiency Dividend and #31 KY's Math Equation are the only three in Core, and the only
+ * `endOfTurn` a Spell can have, since R153 gives a graveyard no other hook. And it must have
+ * reached the **graveyard**: a Spell that says "exile this on play" (#39 Recycling Initiative) is
+ * not in the graveyard when step 7 is done, so it is never flagged and never comes back.
+ *
+ * `turn.cleanup` clears it at the end of that turn, which is what makes the flag mean "this turn"
+ * rather than "for ever" — a flagged card that returns to hand and is later discarded into the
+ * graveyard must stay there (R153).
+ */
+export function flagReturnToHandAtEndOfTurn(state: GameState, instanceId: string): void {
+  const card = findInstance(state, instanceId);
+  if (card === undefined) return;
+  if (card.zone.z !== "graveyard") return;
+  if (defOf(state, card.defId).type !== "Spell") return;
+  if (scriptOf(card).endOfTurn === undefined) return;
+  card.returnToHandAtEndOfTurn = true;
 }

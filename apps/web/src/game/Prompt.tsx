@@ -261,7 +261,7 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
       };
     case "target": {
       const byKey = new Map(need.selections.map((selection) => [selectionKey(selection), selection]));
-      const inHand = isHandPick(need, view);
+      const inHand = false && isHandPick(need, view); // TEMP EXPERIMENT
       return {
         ...common,
         chrome: inHand ? "hand" : "target",

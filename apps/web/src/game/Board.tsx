@@ -10,7 +10,7 @@
 
 import type { ReactElement } from "react";
 
-import type { CardView, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
+import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
 import { animTestid } from "./animations.ts";
 import Card, { allowDrop, cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
@@ -22,6 +22,7 @@ import {
   sideView,
   testid,
   type AnimatingMap,
+  type AnimationFrames,
   type BoardControl,
   type BoardProps,
   type Highlight,
@@ -67,12 +68,17 @@ function heroTargetId(view: PlayerView, testId: string): PlayerId | null {
   return null;
 }
 
-function amountFor(view: PlayerView, testId: string, type: GameEventType): number | undefined {
+function amountFor(
+  view: PlayerView,
+  events: readonly GameEvent[],
+  testId: string,
+  type: GameEventType,
+): number | undefined {
   const player = heroTargetId(view, testId);
   const instanceId = testId.startsWith("card-") ? testId.slice("card-".length) : null;
   // The last matching event wins: the runner animates them in order.
-  for (let index = view.events.length - 1; index >= 0; index -= 1) {
-    const event = view.events[index];
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
     if (event === undefined || event.type !== type) continue;
     if (event.type === "healthLost") {
       if (player !== null && event.player === player) return event.amount;
@@ -86,22 +92,41 @@ function amountFor(view: PlayerView, testId: string, type: GameEventType): numbe
   return undefined;
 }
 
-export function popsFrom(view: PlayerView, animating: AnimatingMap | undefined): ReadonlyMap<string, Pops> {
+/**
+ * The numbers to pop, one entry of the current burst at a time.
+ *
+ * `animated` is what the runner has played since the board last caught up; each entry knows both
+ * the elements it marks and the events it is playing, and the amount comes from the latter. It
+ * cannot come from `view`: that is the view the runner is still HOLDING BACK (BUILD M5-T4), so by
+ * definition it does not yet carry the event being animated. Keeping the whole burst rather than
+ * only the entry in flight is what lets both halves of a trade stand on screen together.
+ *
+ * A caller with no burst to hand falls back to "whatever is animating, against the shown view",
+ * which is what a board rendered straight out of a fixture wants.
+ */
+export function popsFrom(
+  view: PlayerView,
+  animating: AnimatingMap | undefined,
+  animated?: readonly AnimationFrames[],
+): ReadonlyMap<string, Pops> {
   const pops = new Map<string, Pops>();
-  if (animating === undefined) return pops;
-  for (const [testId, type] of animating) {
-    if (!POP_EVENTS.includes(type)) continue;
-    const amount = amountFor(view, testId, type);
-    if (amount === undefined) continue;
-    const current = pops.get(testId) ?? {};
-    pops.set(
-      testId,
-      type === "damage"
-        ? { ...current, damage: amount }
-        : type === "healed"
-          ? { ...current, heal: amount }
-          : { ...current, loss: amount },
-    );
+  const sources: readonly AnimationFrames[] =
+    animated ?? (animating === undefined ? [] : [{ frames: animating, events: view.events }]);
+  for (const source of sources) {
+    for (const [testId, type] of source.frames) {
+      if (!POP_EVENTS.includes(type)) continue;
+      const amount = amountFor(view, source.events, testId, type);
+      if (amount === undefined) continue;
+      const current = pops.get(testId) ?? {};
+      pops.set(
+        testId,
+        type === "damage"
+          ? { ...current, damage: amount }
+          : type === "healed"
+            ? { ...current, heal: amount }
+            : { ...current, loss: amount },
+      );
+    }
   }
   return pops;
 }
@@ -282,8 +307,15 @@ function ControlButton({
   );
 }
 
-export default function Board({ view, highlight = NO_HIGHLIGHT, animating, onClick, onControl }: BoardProps): ReactElement {
-  const pops = popsFrom(view, animating);
+export default function Board({
+  view,
+  highlight = NO_HIGHLIGHT,
+  animating,
+  animated,
+  onClick,
+  onControl,
+}: BoardProps): ReactElement {
+  const pops = popsFrom(view, animating, animated);
   const yourHand: CardView[] | { count: number } = view.you.hand;
 
   return (

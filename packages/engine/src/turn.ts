@@ -27,7 +27,7 @@ import { runResume } from "./prompts";
 import type { EngineSink, HookName } from "./resolve";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import type { CardInstance, GameState, Resume, WorkItem } from "./state";
+import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
 import { runTrapWindow } from "./traps";
 import { queueHooksInTriggerOrder, settle } from "./triggers";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
@@ -258,12 +258,29 @@ registerWorkHandler(START_OF_TURN_WORK, runOwedStartOfTurn);
  * HERE, at the end of the turn the effect took, and not at that player's next turn start — clearing
  * it later leaves them locked out of a turn that is no longer the one My Pawn took. `startTurn`
  * still clears it as a backstop, for a flag somehow set on the player who is not the active one.
+ *
+ * R155: §5.1's `returnToHandAtEndOfTurn` is cleared here for the same reason. §10.5 step 7 sets it
+ * as the Spell lands in the graveyard and R68's end-of-turn queue — which has already run by the
+ * time cleanup does — is what acts on it, so this is the end of the one turn the flag was ever
+ * about. Leaving it set would make the card return from the graveyard on every later turn it
+ * happened to be in one, including after it was merely discarded or milled (R153).
  */
+function clearReturnFlags(state: GameState, player: PlayerId): void {
+  // The cards this player played this turn are exactly the ones step 7 could have flagged: it
+  // writes the flag on the card it just landed, and `countAsPlayed` logged that same card on this
+  // player's turn log. `startTurn` empties the log, so this is still that list.
+  for (const id of new Set(state.players[player].turnLog.playedIds)) {
+    const card = findInstance(state, id);
+    if (card?.returnToHandAtEndOfTurn === true) delete card.returnToHandAtEndOfTurn;
+  }
+}
+
 function cleanup(sink: EngineSink, player: PlayerId): void {
   expireModifiers(sink, player);
   const side = sink.state.players[player];
   side.turnLog.unspentAtEnd = side.mana.current;
   side.aiTurn = false;
+  clearReturnFlags(sink.state, player);
 }
 
 // ---------------------------------------------------------------------------

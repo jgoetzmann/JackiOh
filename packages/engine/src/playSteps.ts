@@ -52,7 +52,12 @@ import {
   whyAnswerRefused,
   type AnswerInput,
 } from "./prompts";
-import { applyEffects, makeContext, type EngineSink } from "./resolve";
+import {
+  applyEffects,
+  flagReturnToHandAtEndOfTurn,
+  makeContext,
+  type EngineSink,
+} from "./resolve";
 import {
   findInstance,
   type CardInstance,
@@ -573,6 +578,12 @@ function echoStep(sink: EngineSink, run: PlayRun): void {
  * graveyard and `cardResolved` goes out — once per play, here, after step 6 has drained every Echo
  * repeat, which is the moment R17 gives Bear Honeypot, Unstable Clone Machine and Unlicensed
  * Experimentation.
+ *
+ * R155: this is also where §5.1's `returnToHandAtEndOfTurn` is written, because this is the step
+ * §5.1 describes — the Spell has just reached the graveyard, and only a card that got there this
+ * way returns from it at the end of the turn. `resolve.flagReturnToHandAtEndOfTurn` holds the three
+ * conditions; it runs after the landing because "reached the graveyard" is one of them, and it is a
+ * no-op for everything else the step lands — a permanent, and a Spell that exiled itself (#39).
  */
 function finishStep(sink: EngineSink, run: PlayRun): void {
   landAfterResolution(sink, {
@@ -584,6 +595,7 @@ function finishStep(sink: EngineSink, run: PlayRun): void {
     // carries 0 (R70), which `runOwedCastTail` puts on the run it drives.
     costPaid: run.costPaid,
   });
+  flagReturnToHandAtEndOfTurn(sink.state, run.instanceId);
 }
 
 // ---------------------------------------------------------------------------

@@ -79,12 +79,23 @@ export function playsThisTurn(state: GameState, player: PlayerId): number {
  * R86: such an id drops out of the pool instead of staying in it and making the E step fizzle at
  * random, following R60's shape for a random pick over existing cards ("or all of them if fewer
  * exist"): "a card you played this turn" is the card, not the object that card left behind.
+ *
+ * R133: the log records one entry per play, so a card played, bounced and replayed appears twice.
+ * The pool is the *set* of cards played, not the list of plays, so each id is weighed once and a
+ * replayed card is one candidate for `rng.pick`. Deduping by id before the lookup keeps R86's half
+ * intact — a `Set` of ids cannot resurrect a card that has ceased to exist — and the first play's
+ * position is kept, so the pool stays in play order and the pick stays replayable.
  */
 export function playedCardsThisTurn(state: GameState, player: PlayerId): CardInstance[] {
-  return state.players[player].turnLog.playedIds.flatMap((id) => {
+  const seen = new Set<string>();
+  const out: CardInstance[] = [];
+  for (const id of state.players[player].turnLog.playedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
     const card = findInstance(state, id);
-    return card === undefined ? [] : [card];
-  });
+    if (card !== undefined) out.push(card);
+  }
+  return out;
 }
 
 /**

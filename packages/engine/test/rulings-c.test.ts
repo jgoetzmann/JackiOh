@@ -64,7 +64,13 @@ import {
 } from "../src/playChoices";
 import { RESUME_HOOK, answerPrompt, openPrompt, resumeSelf, runResume } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
-import { applyEffects, castCard, makeContext, type EngineSink } from "../src/resolve";
+import {
+  applyEffects,
+  castCard,
+  flagReturnToHandAtEndOfTurn,
+  makeContext,
+  type EngineSink,
+} from "../src/resolve";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts, scriptsFor } from "../src/scripts";
 import { findInstance, newInstance, type CardInstance, type GameState, type Resume } from "../src/state";
@@ -256,6 +262,11 @@ const cube = unit("cube", 4, 6, { cost: 0 });
 /** R153: one card carrying the three hooks a hand and a graveyard must not answer. */
 const zoneHooks = def("zone-hooks", "Field Spell");
 
+/** R155: #23's shape — a Spell whose resolving face declares an end-of-turn return. */
+const returnSpell = def("return-spell", "Spell", { cost: 0 });
+/** R155: #13's shape — a Unit with an end-of-turn hook, which must never be flagged. */
+const dyingUnit = unit("dying-unit", 1, 1, { cost: 0 });
+
 /** R124 and R125: #90's shape — an Anti-oneshot Armor card, whose *cap* is a ceiling, not a reduction. */
 const guard = def("guard", "Field Spell");
 
@@ -310,6 +321,8 @@ const DEFS: CardDef[] = [
   cube,
   guard,
   zoneHooks,
+  returnSpell,
+  dyingUnit,
   delayedHookCard,
   delayedStepCard,
   ghostCard,
@@ -495,6 +508,8 @@ const SCRIPTS: Record<string, CardScripts> = {
   // R123: one declaration carrying both halves — a pick the script reads out of `ctx.targets`, and
   // an `amount` that is §6.3's Tribute cost.
   [guard.id]: both({ staticFlags: { antiOneshot: true } }),
+  [returnSpell.id]: both({ endOfTurn: () => [note("returned")] }),
+  [dyingUnit.id]: both({ endOfTurn: () => [note("unit-end")] }),
   // R153: a card with all three of the hooks whose zones the ruling narrows.
   [zoneHooks.id]: both({
     startOfTurn: () => [note("startOfTurn")],
@@ -2192,8 +2207,14 @@ describe("SPEC §11 R150 and R154: summing reads and the trapFired payload (M3 g
     expect(Object.keys(fired)).toContain("row");
     expect(Object.keys(fired)).toContain("lane");
 
+    // `viewFor` reads its event stream off `state.applied`, which only a completed `reduce` writes
+    // (`rememberNonce`). This fixture drives the sink directly, so the action has to be recorded
+    // the way `reduce` would before any view can see it.
+    state.applied = [{ nonce: "r154", events: sink.events }];
+
     // Its identity follows §10.8's redaction: the controller reads it, the other player reads the
-    // sentinel. This half already holds, so the fixture is live and only the lane is missing.
+    // sentinel — keyed to the controller and NOT to the card's current zone, because firing the
+    // trap moves it to a public graveyard (R97's exception, stated in R154).
     const owner = viewFor(state, "p1");
     const other = viewFor(state, "p2");
     const seenBy = (view: ReturnType<typeof viewFor>): { instanceId: string; defId: string } => {
@@ -2397,5 +2418,85 @@ describe("SPEC §11 R151 and R153: arrivals and zone-gated hooks (M3 gate)", () 
     // the enumeration.
     expect(holders("startOfTurn")).toEqual([onField.id]);
     expect(holders("onPlayHook")).toEqual([onField.id]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R155: when the return-to-hand flag is set (§5.1, §10.5 step 7).
+// ---------------------------------------------------------------------------
+
+describe("SPEC §11 R155: the return-to-hand flag (M3 gate)", () => {
+  it("R155 flags a Spell that asks to return as step 7 lands it in the graveyard, and clears it that turn", () => {
+    const state = game("r155-flag");
+    put(state, logCard.id, slot("p1", "backrow", NOTE_LANE));
+    const sink = sinkFor(state);
+
+    // The real call site: a cast goes through the same landing a play does (R70), so this is §10.5
+    // step 7 doing the flagging rather than the setter being poked directly.
+    const spell = must(inHand(state, returnSpell.id, "p1")[0], "a returning Spell");
+    castCard(sink, spell);
+    expect(state.players.p1.graveyard.map((card) => card.id)).toContain(spell.id);
+    expect(spell.returnToHandAtEndOfTurn).toBe(true);
+
+    // Each of step 7's three conditions, checked by a card that fails exactly one of them. None of
+    // these may be flagged, or the flag would mean no more than "in the graveyard this turn".
+    //
+    // Not a Spell: #13's shape, a Unit with an end-of-turn hook that died the turn it was played.
+    // It is in the play log AND in the graveyard, which is why the log cannot stand in for this.
+    const unit = must(inHand(state, dyingUnit.id, "p1")[0], "a Unit with an end-of-turn hook");
+    unit.zone = { z: "graveyard", player: "p1" };
+    state.players.p1.hand = state.players.p1.hand.filter((card) => card.id !== unit.id);
+    state.players.p1.graveyard.push(unit);
+    state.players.p1.turnLog.playedIds.push(unit.id);
+    expect(scriptsFor(unit.defId).base.endOfTurn).toBeDefined();
+    flagReturnToHandAtEndOfTurn(state, unit.id);
+    expect(unit.returnToHandAtEndOfTurn).not.toBe(true);
+
+    // A Spell whose face declares no end-of-turn return.
+    const plain = must(inHand(state, spellCrier.id, "p1")[0], "a Spell with no end-of-turn hook");
+    plain.zone = { z: "graveyard", player: "p1" };
+    state.players.p1.graveyard.push(plain);
+    flagReturnToHandAtEndOfTurn(state, plain.id);
+    expect(plain.returnToHandAtEndOfTurn).not.toBe(true);
+
+    // And #39's shape: a Spell that exiled itself is not in the graveyard when step 7 runs.
+    const exiled = must(inHand(state, returnSpell.id, "p1")[0], "a second returning Spell");
+    exiled.zone = { z: "exile", player: "p1" };
+    state.players.p1.exile.push(exiled);
+    flagReturnToHandAtEndOfTurn(state, exiled.id);
+    expect(exiled.returnToHandAtEndOfTurn).not.toBe(true);
+
+    // The flag means "this turn": cleanup clears it at the end of the turn that set it.
+    expect(state.active).toBe("p1");
+    endTurn(sink);
+    expect(spell.returnToHandAtEndOfTurn).not.toBe(true);
+  });
+
+  it("R155 makes the flag alone the graveyard's gate, so this turn's play log is not enough", () => {
+    const state = game("r155-gate");
+
+    // A flagged Spell in the graveyard answers its end-of-turn return (R153's one graveyard hook).
+    const flagged = must(inHand(state, returnSpell.id, "p1")[0], "a returning Spell");
+    flagged.zone = { z: "graveyard", player: "p1" };
+    state.players.p1.hand = [];
+    state.players.p1.graveyard.push(flagged);
+    flagged.returnToHandAtEndOfTurn = true;
+    expect(triggerHoldersWithHook(state, "endOfTurn").map((holder) => holder.card.id)).toEqual([flagged.id]);
+
+    // An identical Spell in the same graveyard, played this very turn but never flagged — because
+    // it never landed there through step 7 — answers nothing. Being in the log is not the gate.
+    const unflagged = newInstance(state, returnSpell.id, "p1", { z: "graveyard", player: "p1" });
+    state.players.p1.graveyard.push(unflagged);
+    state.players.p1.turnLog.playedIds.push(unflagged.id);
+    state.players.p1.turnLog.cardsPlayed += 1;
+    expect(unflagged.returnToHandAtEndOfTurn).toBeUndefined();
+    expect(triggerHoldersWithHook(state, "endOfTurn").map((holder) => holder.card.id)).toEqual([flagged.id]);
+
+    // Flagging it is what admits it, so the gate is the flag and nothing else.
+    unflagged.returnToHandAtEndOfTurn = true;
+    expect(triggerHoldersWithHook(state, "endOfTurn").map((holder) => holder.card.id)).toEqual([
+      flagged.id,
+      unflagged.id,
+    ]);
   });
 });

@@ -23,7 +23,7 @@ import {
   type ReactElement,
 } from "react";
 
-import type { ActionBody, GameEventType, PlayerView } from "@jackioh/shared";
+import type { ActionBody, PlayerView } from "@jackioh/shared";
 
 import Board from "./Board.tsx";
 import Prompt from "./Prompt.tsx";
@@ -33,6 +33,7 @@ import {
   createAnimationQueue,
   newEventsSince,
   prefersReducedMotion,
+  type AnimationEntry,
   type AnimationQueue,
 } from "./animations.ts";
 import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
@@ -78,7 +79,19 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
    * has not. `animation-queue` below is that missing element: it carries the in-flight event for
    * exactly as long as the runner has one, and it is `hidden`, so it animates nothing itself.
    */
-  const [inFlight, setInFlight] = useState<GameEventType | undefined>(undefined);
+  const [inFlight, setInFlight] = useState<AnimationEntry | null>(null);
+  /**
+   * Every entry the runner has started since the board last caught up.
+   *
+   * A `.damage-pop` / `.heal-pop` / `.loss-pop` shows the amount from the event being animated
+   * (BUILD M5-T4), and one action routinely deals several: an attack pops a number on the
+   * defender and then one on the attacker. Reading only the entry in flight would make each pop
+   * vanish the instant the next entry starts, so a player watching a trade sees the first number
+   * flash and disappear before the second arrives. The burst is kept whole instead — every pop it
+   * produced stays up until the board catches up, which is also when `shown` swaps and the numbers
+   * become the card's own stats.
+   */
+  const [burst, setBurst] = useState<readonly AnimationEntry[]>([]);
   const queue = useRef<AnimationQueue | null>(null);
 
   if (queue.current === null) {
@@ -97,7 +110,12 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   useLayoutEffect(() => {
     const stop = runner.subscribe(() => {
       setAnimating(runner.animating() as Map<string, never>);
-      setInFlight(runner.inFlight()?.type);
+      const entry = runner.inFlight();
+      setInFlight(entry);
+      setBurst((prev) => {
+        if (entry === null) return prev.length === 0 ? prev : [];
+        return prev.includes(entry) ? prev : [...prev, entry];
+      });
     });
     return () => {
       stop();
@@ -131,7 +149,13 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         : newEventsSince(previous.events, view.events);
 
     if (previous !== null && previous.viewer !== view.viewer) runner.drain();
-    if (fresh.length > 0) runner.enqueue(fresh, view);
+    // Planned against the view the board is STILL SHOWING, not the one that has just arrived.
+    // BUILD M5-T4: "the state view updates after the animation for that event completes", so an
+    // event animates over the board as it was before it happened — which is the only board that
+    // still has the card it destroys. Planning against the new view leaves `damage` and
+    // `destroyed` with no element for the unit that just died, so nothing shakes and no number
+    // pops on the very card the event is about.
+    if (fresh.length > 0 && previous !== null) runner.enqueue(fresh, previous);
     if (runner.idle()) setShown(view);
   }, [view, runner]);
 
@@ -172,6 +196,7 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   );
 
   const highlight = useMemo(() => highlightFor(shown, legal, interaction), [shown, legal, interaction]);
+  const animated = useMemo(() => burst.map((entry) => ({ frames: entry.frames, events: entry.events })), [burst]);
 
   const lastTurnEvent = [...shown.events].reverse().find((e) => e.type === "turnStarted" || e.type === "turnAutoEnded");
   const banner = bannerText(shown, lastTurnEvent?.type);
@@ -193,8 +218,8 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
 
   return (
     <div className="game" data-testid="game" data-viewer={shown.viewer}>
-      {inFlight === undefined ? null : (
-        <span data-testid="animation-queue" data-animating={inFlight} hidden aria-hidden="true" />
+      {inFlight === null ? null : (
+        <span data-testid="animation-queue" data-animating={inFlight.type} hidden aria-hidden="true" />
       )}
       {error != null && error !== "" ? (
         <p className="game-error" data-testid="action-error" role="alert">
@@ -228,6 +253,7 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         view={shown}
         highlight={highlight}
         animating={animating}
+        animated={animated}
         onClick={handleClick}
         onControl={handleControl}
       />

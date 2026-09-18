@@ -10,6 +10,21 @@ export type EffectContext = {
   rng: Rng;
   /** Effects append here; reduce returns the list (§10.3). */
   events: GameEvent[];
+  /**
+   * R136: where *this script's* events begin in `events`. The array is the whole action's sink, so
+   * a card that asks "what did I just do" — #60 Bear Honeypot's "they attack it", and the same
+   * shape in #24, #31, #33, #38 — must read `events.slice(eventsFrom)` and never the earlier
+   * entries, or a second copy of a card, or a trap firing mid-action, feeds its condition. Set once
+   * where the context is built (`resolve.makeContext`), so a step re-entered after a prompt opens a
+   * new window rather than reviving the original one.
+   *
+   * Optional only because `packages/engine/test/pauses.test.ts` (line 227) hand-builds a context
+   * literal instead of calling `makeContext`, and a test is not this task's to edit. Every engine
+   * path builds its context through `makeContext`, which always sets it; absent it reads as 0 —
+   * the whole action, the pre-R136 reading — and each reader spells that default out at the point
+   * it slices. Once that literal is allowed to change this becomes required.
+   */
+  eventsFrom: number;
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */

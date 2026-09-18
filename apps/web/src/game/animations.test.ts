@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ANIMATIONS,
+  BURST_BUDGET_MS,
+  MIN_ENTRY_MS,
   type AnimationEntry,
   animTestid,
   createAnimationQueue,
@@ -655,7 +657,13 @@ describe("createAnimationQueue", () => {
 
   it("schedules exactly one timer per non-zero-duration entry over a long stream", () => {
     const clock = fakeClock();
-    const queue = createAnimationQueue({ schedule: clock.schedule, reducedMotion: false });
+    // The burst budget is lifted here so the BUILD M5-T4 durations are the ones scheduled; what the
+    // budget does to a stream this long is pinned by the test below instead.
+    const queue = createAnimationQueue({
+      schedule: clock.schedule,
+      reducedMotion: false,
+      burstBudgetMs: Number.POSITIVE_INFINITY,
+    });
     const events = longStream(3);
     const entries = planEntries(events, view, false);
     const timed = entries.filter((e) => e.durationMs > 0);
@@ -666,6 +674,50 @@ describe("createAnimationQueue", () => {
     expect(clock.schedule).toHaveBeenCalledTimes(timed.length);
     expect(clock.schedule.mock.calls.map((c) => c[1])).toEqual(timed.map((e) => e.durationMs));
     expect(queue.idle()).toBe(true);
+  });
+
+  it("plays a burst too long for the budget proportionally faster, never below the floor", () => {
+    const clock = fakeClock();
+    const queue = createAnimationQueue({ schedule: clock.schedule, reducedMotion: false });
+    const events = longStream(3);
+    const timed = planEntries(events, view, false).filter((e) => e.durationMs > 0);
+    const planned = timed.reduce((sum, e) => sum + e.durationMs, 0);
+    expect(planned, "this stream is well past the budget").toBeGreaterThan(BURST_BUDGET_MS);
+
+    queue.enqueue(events, view);
+    clock.flush();
+
+    const scheduled = clock.schedule.mock.calls.map((call) => Number(call[1]));
+    // Still one timer per entry: the budget shortens entries, it never drops one.
+    expect(scheduled).toHaveLength(timed.length);
+    for (const [index, ms] of scheduled.entries()) {
+      expect(ms, "no entry is lengthened").toBeLessThanOrEqual(timed[index]?.durationMs ?? 0);
+      expect(ms, "and none is squeezed below the floor").toBeGreaterThanOrEqual(MIN_ENTRY_MS);
+    }
+    // The floor is what a stream of this length costs; without it the budget would be exact.
+    expect(scheduled.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(
+      Math.max(BURST_BUDGET_MS, timed.length * MIN_ENTRY_MS),
+    );
+    expect(queue.idle()).toBe(true);
+  });
+
+  it("leaves a burst inside the budget at the BUILD durations", () => {
+    const clock = fakeClock();
+    const queue = createAnimationQueue({ schedule: clock.schedule, reducedMotion: false });
+
+    queue.enqueue(
+      [
+        { type: "attackDeclared", attackerId: "u1", targetId: "u6", forced: false },
+        { type: "damage", sourceId: "u1", targetId: "u6", amount: 2, combat: true },
+      ],
+      view,
+    );
+    clock.flush();
+
+    expect(clock.schedule.mock.calls.map((call) => call[1])).toEqual([
+      BUILD_DURATIONS.attackDeclared,
+      BUILD_DURATIONS.damage,
+    ]);
   });
 
   it("reports testid → eventType while an entry is in flight", () => {

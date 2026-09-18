@@ -606,9 +606,28 @@ export type AnimationQueueOptions = {
   reducedMotion?: boolean;
   /** Fired once each time the queue goes from busy to empty. */
   onSettled?: () => void;
+  /** Overrides for the burst budget below; the defaults are what the client ships with. */
+  burstBudgetMs?: number;
+  minEntryMs?: number;
 };
 
 const EMPTY_ANIMATING: AnimatingMap = new Map<string, GameEventType>();
+
+/**
+ * How long one action's animations may hold the board back, and the shortest an entry may be
+ * squeezed to.
+ *
+ * BUILD M5-T4 fixes a duration per event, and a single action can produce a lot of events: an
+ * attack that kills a unit and hands the turn on (R82 ends a dead turn by itself, and the turn
+ * after it can auto-end too) is fifteen rows of the table back to back — five seconds in which the
+ * board shows a stale view and the player cannot do anything. That is not a rule and not a
+ * rendering detail: it is the client deciding how long a click may freeze the game, and the answer
+ * is "not this long". So a burst that would run past the budget is played proportionally faster,
+ * with a floor so no event flashes past unseen. A burst inside the budget keeps the table's exact
+ * durations, which is every burst the M5-T4 acceptance rows describe.
+ */
+export const BURST_BUDGET_MS = 2_400;
+export const MIN_ENTRY_MS = 120;
 
 /** Two events are the same occurrence when every field of them is. Order-stable by construction. */
 function sameEvent(a: GameEvent | undefined, b: GameEvent | undefined): boolean {
@@ -651,6 +670,8 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
     });
   const reducedMotion = options.reducedMotion ?? prefersReducedMotion();
   const onSettled = options.onSettled;
+  const burstBudgetMs = options.burstBudgetMs ?? BURST_BUDGET_MS;
+  const minEntryMs = options.minEntryMs ?? MIN_ENTRY_MS;
   // `options.now` is accepted for parity with the client's other injected clocks and is
   // deliberately unread: `schedule` owns every deadline, so the runner keeps no timestamps and
   // stays free of a clock it would have to mock.
@@ -670,6 +691,18 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
     if (!owed) return;
     owed = false;
     onSettled?.();
+  }
+
+  /** Squeeze what is still waiting so the whole backlog fits the burst budget. See the note above. */
+  function fitBudget(): void {
+    const total = queue.reduce((sum, entry) => sum + entry.durationMs, 0);
+    if (total <= burstBudgetMs) return;
+    const factor = burstBudgetMs / total;
+    for (let i = 0; i < queue.length; i += 1) {
+      const entry = queue[i];
+      if (entry === undefined || entry.durationMs <= 0) continue;
+      queue[i] = { ...entry, durationMs: Math.max(minEntryMs, Math.round(entry.durationMs * factor)) };
+    }
   }
 
   function pump(): void {
@@ -702,6 +735,7 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
       const entries = planEntries(events, view, reducedMotion);
       if (entries.length > 0) queue.push(...entries);
       owed = true;
+      fitBudget();
       pump();
     },
     animating() {

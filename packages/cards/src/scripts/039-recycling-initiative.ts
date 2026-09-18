@@ -70,13 +70,19 @@ function excludedId(ctx: EffectContext): string | undefined {
  * R71: the log is read here, when the delayed effect runs, so later plays are in it — through the
  * engine's read-only `playedIdsThisTurn` (engine/src/query.ts), which gives the ids in play order.
  * R86: an id whose instance no longer exists is skipped rather than fizzled on.
+ * R133: the log holds one entry per play, so a card played, bounced and replayed is two entries and
+ * one card. "Every other card you played this turn" is the set of cards, not the list of plays, so
+ * each id yields one copy; deduping by id leaves R86's skip untouched.
  */
 function copiesOfOtherPlays(ctx: EffectContext, discount: number): Effect[] {
   const selfId = excludedId(ctx);
   const out: Effect[] = [];
+  const seen = new Set<string>();
 
   for (const id of playedIdsThisTurn(ctx.state, ctx.controller)) {
     if (id === selfId) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
     const card = findInstance(ctx.state, id);
     if (card === undefined) continue;
 

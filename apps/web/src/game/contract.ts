@@ -5,7 +5,7 @@
 // was clicked, `actions.ts` turns that into an `ActionBody` chosen from `legalActions`, and the
 // engine decides. `Highlight` is a set of `data-testid`s the engine has already blessed.
 
-import type { GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
+import type { GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
 /** Viewer-relative sides. `viewFor` already orients the view, so the DOM says "you"/"opponent". */
 export type Side = "you" | "opponent";
@@ -84,10 +84,22 @@ export const NO_HIGHLIGHT: Highlight = { legal: new Set(), selected: new Set() }
 /** Elements currently mid-animation, keyed by `data-testid` (M5-T4). */
 export type AnimatingMap = ReadonlyMap<string, GameEventType>;
 
+/** One animation entry as the board reads it: what it marks, and the events it is playing. */
+export type AnimationFrames = { frames: AnimatingMap; events: readonly GameEvent[] };
+
 export type BoardProps = {
   view: PlayerView;
   highlight?: Highlight;
   animating?: AnimatingMap;
+  /**
+   * The animation entries the runner has started since the board last caught up (M5-T4), each one
+   * the elements it marks paired with the events it is playing. The number pops read from these
+   * rather than from `view`, for two reasons: `view` is the view the runner is still holding back,
+   * so it does not carry the event being animated at all; and one action deals several numbers —
+   * an attack pops one on the defender and then one on the attacker — which have to stay on screen
+   * together rather than each vanishing as the next entry starts.
+   */
+  animated?: readonly AnimationFrames[];
   onClick?: (target: ClickTarget) => void;
   onControl?: (control: BoardControl) => void;
 };

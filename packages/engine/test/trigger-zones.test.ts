@@ -284,14 +284,24 @@ describe("R153 a card registers only the triggers its zone allows (§10.3, §6.2
     expect(notes(afterStart).filter((step) => step === "wanderer:start")).toEqual([]);
   });
 
-  it("R153 the turn log is the flag the shipped spells actually set, so a played spell still returns", () => {
-    // #23, #24 and #31 gate themselves on `turnLog.playedIds` because no verb sets the flag yet, so
-    // the registry takes the log as the flag too — otherwise the fix would strand all three.
+  it("R155 the flag, not the turn log, is what lets a graveyard spell answer its return", () => {
+    // This test used to assert the turn log, because nothing set `returnToHandAtEndOfTurn` and the
+    // registry took the log as a stand-in. R155 gives §10.5 step 7 the setter, so the flag is now
+    // the gate and the log is no longer consulted — which is strictly more correct, since the log
+    // cannot tell a spell that asked to return from a card that merely happened to be played.
     const played = playing("tz-gy-log");
     const spell = bury(played, wanderer.id, "p1");
-    played.players.p1.turnLog.playedIds = [...played.players.p1.turnLog.playedIds, spell.id];
+    spell.returnToHandAtEndOfTurn = true;
 
     expect(notes(act(played, { type: "endTurn", playerId: "p1" }))).toEqual(["wanderer:end"]);
+
+    // Being in this turn's play log is NOT enough on its own any more: that is the R155 change,
+    // and asserting it here is what stops the flag check silently reverting to the old behaviour.
+    const logged = playing("tz-gy-logonly");
+    const viaLog = bury(logged, wanderer.id, "p1");
+    logged.players.p1.turnLog.playedIds = [...logged.players.p1.turnLog.playedIds, viaLog.id];
+    expect(triggerHoldersWithHook(logged, "endOfTurn", "p1")).toEqual([]);
+    expect(notes(act(logged, { type: "endTurn", playerId: "p1" }))).toEqual([]);
 
     // Unflagged and unplayed: a copy that was milled or discarded, or one left from an earlier
     // turn, stays in the graveyard and answers nothing.

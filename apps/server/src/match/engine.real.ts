@@ -1,16 +1,24 @@
 // The real `EnginePort`, and the ONLY file in `apps/server` that imports `@jackioh/engine`.
 //
 // It is excluded from `apps/server/tsconfig.json` and reached only through the unanalyzed dynamic
-// import in `engine.ts`, because `packages/engine/src/index.ts` re-exports `./combat`,
-// `./playChoices`, `./prompts`, `./triggers`, `./traps` and `./viewFor`, none of which exist yet
-// (M3 in flight). Re-include it — and make the import in `engine.ts` static — the day
-// `pnpm exec tsc -p packages/engine/tsconfig.json` is green.
+// import in `engine.ts`. That exclusion was taken while `packages/engine` did not compile; it does
+// now (`tsc -p packages/engine/tsconfig.json` exits 0), so the exclusion and the dynamic import are
+// both ready to be undone — tracked as B-18 in reviews/2026-09-18-part-b-gate.md.
+//
+// WHY `registerAll()` IS HERE. `createGame` looks its card definitions up in the engine's
+// registered catalog, and `packages/cards` is the one module that owns the catalog and the 109
+// scripts (SPEC §10.9, BUILD M4-T2). Without this call `registeredCatalog()` is empty and every
+// real match throws on the first card of the first deck — the server tests miss it because they
+// inject a fake engine port. It is idempotent by identity comparison in `packages/cards`, so
+// calling it on every port build costs nothing. The client does the same in its own composition
+// root; neither assembles a catalog of its own, which would be a second source of card data.
 //
 // Nothing here decides a rule. It renames engine functions onto the port and projects the public
 // bookkeeping the clock needs; the `as` casts only strip the opaque `EngineState` brand that
 // keeps the rest of the server from reading hidden information (SPEC §10.8).
 
 import * as engine from "@jackioh/engine";
+import { registerAll } from "@jackioh/cards";
 
 import { EngineUnavailableError, REQUIRED_ENGINE_EXPORTS } from "./engine.ts";
 import type { EnginePort, EngineState, MatchSnapshot } from "./engine.ts";
@@ -27,6 +35,8 @@ export function enginePort(): EnginePort {
   const mod = engine as unknown as Record<string, unknown>;
   const missing = REQUIRED_ENGINE_EXPORTS.filter((name) => typeof mod[name] !== "function");
   if (missing.length > 0) throw new EngineUnavailableError(missing);
+
+  registerAll();
 
   const api = engine as unknown as {
     createGame: (args: { seed: string; decks: [string[], string[]]; catalog?: unknown }) => unknown;

@@ -41,10 +41,8 @@
 // review's B-2 and B-3 found.
 
 import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
-import { PLAYER_IDS } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import { applyResumable, runHookResumable } from "./prompts";
-import { wasPlayedThisTurn } from "./query";
 import type { EngineSink, HookName } from "./resolve";
 import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
@@ -121,20 +119,18 @@ const GRAVEYARD_HOOK: HookName = "endOfTurn";
  * `returnToHandAtEndOfTurn` when it is played and answers its `endOfTurn` hook from the graveyard on
  * that turn alone (#23 Reoccurring Dream, #24 Efficiency Dividend, #31 KY's Math Equation).
  *
- * No effect verb sets that flag yet — the three cards gate themselves on the turn log instead (see
- * their scripts, and the report) — so the registry reads both and takes either as the flag. Both
- * logs are read because a card's owner and its controller can differ and each of the three names a
- * different one. The `Spell` test is what keeps the log from speaking for anything else: a Unit with
- * an `endOfTurn` hook (#13 Jlockeed Shredder-10) that was played and died on the same turn is in the
- * graveyard and in the log, and it must not shred from there.
+ * R155 now sets that flag: §10.5 step 7 writes it as it sends to the graveyard a Spell whose
+ * resolving face declares the return, and `cleanup` clears it at the end of the turn. So the flag
+ * alone is the gate, and the turn-log fallback this used to carry is gone — it was strictly less
+ * correct, because the log cannot tell a Spell that asked to return from a Unit with an end-of-turn
+ * hook (#13 Jlockeed Shredder-10) that merely died on the turn it was played, nor from a Spell that
+ * left the graveyard mid-resolution and was discarded back into it the same turn.
  *
  * Everything else in a graveyard registers nothing: a spell left over from an earlier turn, and a
  * copy that arrived by being discarded or milled and was never played at all (R153).
  */
-function flaggedForReturn(state: GameState, card: CardInstance): boolean {
-  if (card.returnToHandAtEndOfTurn === true) return true;
-  if (defOf(state, card.defId).type !== "Spell") return false;
-  return PLAYER_IDS.some((player) => wasPlayedThisTurn(state, player, card));
+function flaggedForReturn(card: CardInstance): boolean {
+  return card.returnToHandAtEndOfTurn === true;
 }
 
 /**
@@ -151,7 +147,7 @@ function flaggedForReturn(state: GameState, card: CardInstance): boolean {
 function zoneRegistersHook(state: GameState, holder: TriggerHolder, hook: HookName): boolean {
   if (holder.zone === "hand") return false;
   if (holder.zone === "graveyard") {
-    return hook === GRAVEYARD_HOOK && flaggedForReturn(state, holder.card);
+    return hook === GRAVEYARD_HOOK && flaggedForReturn(holder.card);
   }
   return true;
 }

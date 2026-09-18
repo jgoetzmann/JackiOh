@@ -236,6 +236,9 @@ function hit(sink: EngineSink, amount: number): void {
     x: 0,
     embiggened: false,
     data: {},
+    // R136: this hand-built context starts its own event window at the sink's current end, which
+    // is what `makeContext` would give it.
+    eventsFrom: sink.events.length,
   });
 }
 
