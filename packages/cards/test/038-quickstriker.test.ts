@@ -87,6 +87,38 @@ describe("#38 Quickstriker", () => {
     s.expectHealth("p2", HERO);
   });
 
+  it("R119 does not answer its own arrival: the play that puts it on the field deals nothing", () => {
+    const s = scenario({
+      p1: {
+        hand: [RAPID_REPLENISH, QUICKSTRIKER, TEMPO_TIMMY],
+        library: [SPARE, SPARE, SPARE],
+      },
+      p2: { hand: [SPARE], library: [SPARE] },
+    });
+
+    // §10.5 step 4 places the card, counts the play and emits `cardPlayed` before it settles, so
+    // Quickstriker is already a registered watcher when its OWN play is dispatched. R119: it does
+    // not fire on that event, so this second play of the turn deals 0 rather than 1.
+    s.play(RAPID_REPLENISH).play(QUICKSTRIKER).expectHealth("p2", HERO);
+
+    // The arrival still COUNTS as a card played earlier, so the next play deals 2 (R119 excludes
+    // the arriving card from answering, not from the count §6.2 reads).
+    s.play(TEMPO_TIMMY).expectHealth("p2", HERO - 2);
+  });
+
+  it("R119 holds for the radiant face too: it is the same trigger, so the same arrival is silent", () => {
+    const s = scenario({
+      p1: {
+        hand: [RAPID_REPLENISH, { def: QUICKSTRIKER, radiant: true }, TEMPO_TIMMY],
+        library: [SPARE, SPARE, SPARE],
+      },
+      p2: { hand: [SPARE], library: [SPARE] },
+    });
+
+    s.play(RAPID_REPLENISH).play(QUICKSTRIKER).expectHealth("p2", HERO);
+    s.play(TEMPO_TIMMY).expectHealth("p2", HERO - 2);
+  });
+
   it("radiant behaves exactly as the base face does: 0, then 1", () => {
     const s = scenario({
       p1: {

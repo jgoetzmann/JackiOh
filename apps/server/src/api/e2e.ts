@@ -257,7 +257,7 @@ function inviteCodeFor(
   now: number,
 ): InviteCode {
   // §9.4: "stored hashed". `hashes.code` normalises (upper case, separators dropped) before
-  // hashing, exactly as `resolveCode` in codes.ts does on the way in, so a typed
+  // hashing, exactly as `redeemCode` in codes.ts does on the way in, so a typed
   // `abcd efgh jkmn pqrs` finds the same row as `ABCD-EFGH-JKMN-PQRS`.
   const base: InviteCode = {
     id: deps.ids.uuid(),

@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R167, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R170, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -1472,6 +1472,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // element that exists, the check BUILD M5-T4's `modifierChanged` row had never had.
   it("R169 puts the player modifiers in the view on both seats, as id and caption only", () => {
     provenIn(169, "viewFor.test.ts", CARDS_CURVATURE_TEST, CARDS_FULLSEND_TEST, WEB_ANIMATION_TARGETS_TEST);
+  });
+
+  it("R170 answers a profile that vanished mid-redemption with a conflict, not a 401", () => {
+    provenIn(170, SERVER_CODES_TEST);
   });
 });
 

@@ -15,23 +15,33 @@
  * §9.8's "Invite code brute force" row names the same mitigations: "80-bit hashed codes,
  * per-account and per-IP limits, verified email, circuit breaker (9.4)".
  *
- * Two consequences of §9.4's ordering, which the code below depends on:
+ * WHERE THE TRANSACTION LIVES. All six steps are `deps.store.redeem` — one port call, which the
+ * Postgres store answers with one statement (`select app.redeem_invite_code(...)`, migration 0001
+ * §6) and the in-memory stores answer with the same six steps in SPEC's order. This file used to
+ * orchestrate them out of six separate port calls inside `Store.tx`, which committed as one real
+ * transaction but meant §9.4 was implemented twice — once here in TypeScript and once in the SQL
+ * function that sat unused. The two consequences of §9.4's ordering that used to be stated here
+ * are now stated where they are enforced (`ports.ts`, `Store.redeem`): steps 2 and 3 reject before
+ * step 4 so the window drains, and a rejection is returned rather than thrown so the attempt row
+ * survives.
  *
- *  - Steps 2 and 3 reject *before* step 4, so a rate-limited attempt is not itself logged. The
- *    window therefore drains: a caller who is already over the limit cannot keep their own
- *    counter pinned by retrying, and the cheap checks run before anything touches the code table.
- *  - Because of that, a rejection must be **returned**, never thrown out of the transaction: a
- *    throw would roll back the attempt row step 4 requires, and the next attempt would see a
- *    shorter history than it should.
+ * WHAT IS STILL THIS FILE'S. Three things the store cannot do and §9.4 still requires:
+ *  - R107's response floor. "Identical time" is padding, and SQL cannot pad.
+ *  - R106's circuit breaker: the one that alerts, backs `GET /api/codes/status` and disables
+ *    redemption before the store is touched. `Store.redeem` may also answer `circuit_open` from
+ *    the database's own switch; both come back as the same 503.
+ *  - R145's distinctions. The store answers `not_pending` for "no such profile", "banned" and
+ *    "already active" together; R145 requires those three to be reported distinctly, because they
+ *    depend on the caller's own account and leak nothing about the code space. They are decided
+ *    here, from the profile `resolveCaller` already resolved, before the store is called.
  *
- * Every number here comes from `deps.limits` (filled from `src/config.ts` by `defaultLimits()`)
- * and every constant from `../config`. Nothing in this file restates a value from SPEC.
+ * Every constant here comes from `../config`. Nothing in this file restates a value from SPEC.
  */
 
 import { INVITE_CODE_LENGTH, REDEMPTION_IDENTICAL_ERROR } from "../config";
 import { formatCode, isWellFormedCode, normalizeCode } from "./crypto";
 import { ApiError, errorResponse, ok, padTo, route, str, type ApiRequest, type Route } from "./http";
-import type { CodeAttemptResult, InviteCode, Profile, ServerDeps } from "./ports";
+import type { InviteCode, Profile, RedeemResult, ServerDeps } from "./ports";
 
 // ---------------------------------------------------------------------------
 // Wording and defaults SPEC does not pin down
@@ -151,6 +161,11 @@ export function createBreakerState(): BreakerState {
 export type RedeemOutcome = { ok: true } | { ok: false; error: ApiError };
 
 export type RedeemInput = {
+  /**
+   * The caller's profile as `resolveCaller` (http.ts) resolved it for this request. Read here only
+   * for R145's three distinct account refusals; the authority on "is this account still pending"
+   * is `Store.redeem`, which re-reads it under a row lock inside the transaction.
+   */
   profile: Profile;
   /** Whatever the client typed; normalized and hashed here, never stored. */
   plainCode: string;
@@ -170,117 +185,85 @@ export type RedeemInput = {
   breaker?: BreakerState;
 };
 
-/** What the transaction decided, including the operator-only reason for `code_attempts`. */
-type Attempt = { outcome: RedeemOutcome; result: CodeAttemptResult; reason: string };
-
 export async function redeemCode(deps: ServerDeps, input: RedeemInput): Promise<RedeemOutcome> {
   const breaker = input.breaker ?? createBreakerState();
   const now = deps.timers.now();
 
-  // §9.4's circuit breaker, checked before step 1: while it is open nothing touches the profile,
-  // the attempt log or the code table, which is the point of having it.
+  // R106's breaker, checked before step 1: while it is open nothing touches the profile, the
+  // attempt log or the code table, which is the point of having it.
   if (now < breaker.openUntil) {
     return { ok: false, error: new ApiError("unavailable", BREAKER_MESSAGE) };
   }
 
-  // §9.4: "Redemption is one server-side transaction". Steps 1-6 all run inside it.
-  const outcome = await deps.store.tx(async (t): Promise<RedeemOutcome> => {
-    // ---- Step 1: "reject unless the account is pending with a verified email" ----------------
-    // Re-read inside the transaction: the profile handed in was resolved before it opened, and a
-    // concurrent redemption may already have flipped it.
-    const profile = await t.profiles.getById(input.profile.id);
-    if (profile === null) {
-      return { ok: false, error: new ApiError("unauthorized", "sign in first") };
-    }
-    if (profile.status === "banned") {
-      return { ok: false, error: new ApiError("account_banned", BANNED_MESSAGE) };
-    }
-    if (profile.status === "active") {
-      // Not a code failure — §9.4 only makes redemption the pending → active transition, so an
-      // active account asking again is a conflict, and it is told so plainly.
-      return { ok: false, error: new ApiError("conflict", ALREADY_ACTIVE_MESSAGE) };
-    }
-    if (!input.emailVerified) {
-      return { ok: false, error: new ApiError("email_unverified", EMAIL_UNVERIFIED_MESSAGE) };
-    }
+  // R145's three account-shaped refusals, which `Store.redeem` answers as one `not_pending` and
+  // §9.4 requires to be distinguishable. They are decided from the profile `resolveCaller` already
+  // resolved for this request; the store re-checks the same thing under its own lock, so a profile
+  // that changes between here and there is still caught — as `not_pending`, below.
+  const profile = input.profile;
+  if (profile.status === "banned") {
+    return { ok: false, error: new ApiError("account_banned", BANNED_MESSAGE) };
+  }
+  if (profile.status === "active") {
+    // Not a code failure — §9.4 only makes redemption the pending → active transition, so an
+    // active account asking again is a conflict, and it is told so plainly.
+    return { ok: false, error: new ApiError("conflict", ALREADY_ACTIVE_MESSAGE) };
+  }
+  // §9.4 step 1's "verified email", from the access token (R159). The store asks the managed-auth
+  // table the same question and may still answer `email_unverified`; refusing here first is what
+  // keeps an unverified caller from spending a row in the attempt log.
+  if (!input.emailVerified) {
+    return { ok: false, error: new ApiError("email_unverified", EMAIL_UNVERIFIED_MESSAGE) };
+  }
 
-    const since = now - deps.limits.redeemWindowMs;
+  // §9.4: codes are "stored hashed", so the plaintext is normalized and hashed here and the store
+  // is handed a hash. A code that could never exist — wrong length, or a character outside §9.4's
+  // alphabet — travels as `null` rather than being refused early, because §9.4 logs the attempt
+  // (step 4) before it looks anything up (step 5): a malformed code must cost the same row a
+  // wrong one does, or it would be the one cheap probe in this endpoint.
+  const normalized = normalizeCode(input.plainCode);
+  const codeHash = isWellFormedCode(normalized, INVITE_CODE_LENGTH)
+    ? deps.hashes.code(normalized)
+    : null;
 
-    // ---- Step 2: "reject if this profile made more than 5 attempts in the last hour" ---------
-    // Strictly `>`, and the count excludes the attempt being made, because step 4 logs it below.
-    // So the SEVENTH attempt is the first refused: attempt 6 sees 5 rows, and 5 is not "more than
-    // 5". config.ts carries the reasoning.
-    const byProfile = await t.codes.countAttemptsByProfile(profile.id, since);
-    if (byProfile > deps.limits.redeemPerProfilePerHour) {
-      return { ok: false, error: new ApiError("rate_limited", RATE_LIMITED_MESSAGE) };
-    }
-
-    // ---- Step 3: "reject if this IP hash made more than 20" ----------------------------------
-    const byIp = await t.codes.countAttemptsByIp(input.ipHash, since);
-    if (byIp > deps.limits.redeemPerIpPerHour) {
-      return { ok: false, error: new ApiError("rate_limited", RATE_LIMITED_MESSAGE) };
-    }
-
-    const attempt = await resolveCode(deps, t, { ...input, profileId: profile.id }, now);
-
-    // ---- Step 4: "log the attempt either way" ------------------------------------------------
-    // Written last, with the outcome steps 5 and 6 produced, because `CodeStore` (ports.ts) has
-    // only `logAttempt` — there is no way to write a row now and flip its result later, the way
-    // the db agent's SQL does with an UPDATE of its own row. Since this is the *same*
-    // transaction, the two orders commit identically and nothing outside can tell them apart;
-    // what matters, and what holds, is that every attempt which got past steps 2 and 3 is
-    // logged, whether the code turned out to be good or not.
-    await t.codes.logAttempt({
-      profileId: input.profile.id,
-      ipHash: input.ipHash,
-      result: attempt.result,
-      reason: attempt.reason,
-      at: now,
-    });
-
-    return attempt.outcome;
-  });
+  // §9.4: "Redemption is one server-side transaction." This is it.
+  const result = await deps.store.redeem({ profileId: profile.id, codeHash, ipHash: input.ipHash });
+  const outcome = outcomeFor(result);
 
   if (!outcome.ok) await noteFailure(deps, breaker, now);
   return outcome;
 }
 
 /**
- * Steps 5 and 6. Returns the outcome instead of throwing, so the attempt row step 4 owes is never
- * rolled back by a rejection (see this file's header).
+ * `Store.redeem`'s result as the response §9.4 owes. Every code-dependent result collapses onto
+ * R145's one identical error; everything else depends only on the caller's own account or on the
+ * service's availability, and says so.
  */
-async function resolveCode(
-  deps: ServerDeps,
-  t: { codes: ServerDeps["store"]["codes"]; profiles: ServerDeps["store"]["profiles"] },
-  input: { plainCode: string; profileId: string },
-  now: number,
-): Promise<Attempt> {
-  const reject = (reason: string): Attempt => ({
-    outcome: { ok: false, error: identicalCodeError() },
-    result: "rejected",
-    reason,
-  });
-
-  // ---- Step 5: "look up by hash and reject if revoked, expired or exhausted" -----------------
-  const normalized = normalizeCode(input.plainCode);
-  // A malformed code (wrong length, or a character outside the alphabet) takes the identical
-  // path: no oracle distinguishes "well formed but unknown" from "could never be a code".
-  if (!isWellFormedCode(normalized, INVITE_CODE_LENGTH)) return reject("malformed");
-
-  const code = await t.codes.findByHash(deps.hashes.code(normalized));
-  if (code === null) return reject("missing");
-  if (code.revoked) return reject("revoked");
-  if (code.expiresAt !== null && code.expiresAt <= now) return reject("expired");
-  if (code.uses >= code.maxUses) return reject("exhausted");
-
-  // ---- Step 6: "increment uses and set the account active, atomically" ----------------------
-  // `claim` is the atomic increment (ports.ts: "Two concurrent callers cannot both win the last
-  // use"), so a false return is a code that ran out between the check above and here.
-  const claimed = await t.codes.claim(code.id, now);
-  if (!claimed) return reject("exhausted");
-
-  await t.profiles.setStatus(input.profileId, "active");
-  return { outcome: { ok: true }, result: "ok", reason: "redeemed" };
+function outcomeFor(result: RedeemResult): RedeemOutcome {
+  switch (result) {
+    case "ok":
+      return { ok: true };
+    case "not_pending":
+      // The store re-read the profile under its lock and found it no longer pending, though this
+      // request resolved it as pending moments earlier: a concurrent redemption, a ban, or the row
+      // itself gone. The store cannot say which — `app.redeem_invite_code` answers `not_pending`
+      // for all three from one `select … for update` — so one answer covers them, and R170 fixes
+      // it as the conflict: the token verified and the caller was resolved, so nothing about their
+      // authorization failed; what changed is the state the request was about. The pending →
+      // active flip is also the only transition §9.4 gives redemption, so it is what almost always
+      // happened.
+      return { ok: false, error: new ApiError("conflict", ALREADY_ACTIVE_MESSAGE) };
+    case "email_unverified":
+      return { ok: false, error: new ApiError("email_unverified", EMAIL_UNVERIFIED_MESSAGE) };
+    case "rate_limited_profile":
+    case "rate_limited_ip":
+      // §9.4 steps 2 and 3. Which of the two windows refused is not told apart: the per-IP one
+      // would say something about the other accounts behind the same address.
+      return { ok: false, error: new ApiError("rate_limited", RATE_LIMITED_MESSAGE) };
+    case "circuit_open":
+      return { ok: false, error: new ApiError("unavailable", BREAKER_MESSAGE) };
+    case "invalid_code":
+      return { ok: false, error: identicalCodeError() };
+  }
 }
 
 /**

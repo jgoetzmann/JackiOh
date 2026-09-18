@@ -56,6 +56,7 @@ import type {
   MatchStatus,
   Profile,
   ProfileStatus,
+  RedeemResult,
   ResultRow,
   Room,
   Store,
@@ -432,12 +433,10 @@ export type PostgresStore = Store & {
   /** Closes the pool. Nothing in `src/index.ts` calls it; tests and a graceful shutdown do. */
   close: () => Promise<void>;
   /**
-   * SPEC §9.4's redemption as the ONE database transaction the spec describes, rather than the six
-   * port calls `src/api/codes.ts` currently makes inside `Store.tx`. Not part of `Store`: the port
-   * has no `redeem` method, so nothing calls this yet. It is here, and tested against a real
-   * database in `test/db/redeem.spec.ts`, because `app.redeem_invite_code` is where §9.4's
-   * transaction actually lives and the day `ports.ts` grows a `redeem` method this is the
-   * one-line adoption. See the report and KNOWN DIVERGENCES (redemption).
+   * `Store.redeem` under the name `test/db/postgres.spec.ts` drives it by, kept because that suite
+   * is about `app.redeem_invite_code` specifically rather than about the port. It is the same
+   * function; `codeHash` is narrowed to `string` because a spec that means "no such code" says so
+   * with a hash that matches nothing.
    */
   redeemInviteCode: (input: {
     profileId: string;
@@ -446,15 +445,33 @@ export type PostgresStore = Store & {
   }) => Promise<RedeemResult>;
 };
 
-/** Exactly the strings `app.redeem_invite_code` returns (migration 0001 §6). */
-export type RedeemResult =
-  | "ok"
-  | "not_pending"
-  | "email_unverified"
-  | "rate_limited_profile"
-  | "rate_limited_ip"
-  | "circuit_open"
-  | "invalid_code";
+/**
+ * Exactly the strings `app.redeem_invite_code` returns (migration 0001 §6) — defined by the port,
+ * because both stores answer with them, and re-exported here since this module's own name for the
+ * SQL function's return type is what `test/db/postgres.spec.ts` reads.
+ */
+export type { RedeemResult };
+
+/** Anything else out of the function is a schema this store was not built against. */
+const REDEEM_RESULTS: readonly RedeemResult[] = [
+  "ok",
+  "not_pending",
+  "email_unverified",
+  "rate_limited_profile",
+  "rate_limited_ip",
+  "circuit_open",
+  "invalid_code",
+];
+
+function toRedeemResult(value: unknown): RedeemResult {
+  if (typeof value === "string" && (REDEEM_RESULTS as readonly string[]).includes(value)) {
+    return value as RedeemResult;
+  }
+  throw new Error(
+    `app.redeem_invite_code returned ${JSON.stringify(value)}, which is not one of ` +
+      `${REDEEM_RESULTS.join(", ")} (migration 0001 §6)`,
+  );
+}
 
 /**
  * A `Store` over `pg`. `src/index.ts` calls this with `{ connectionString: env.DATABASE_URL }`.
@@ -472,17 +489,7 @@ export function createPostgresStore(options: PostgresStoreOptions): PostgresStor
     await pool.end();
   };
 
-  const session = poolSession(pool);
-  store.redeemInviteCode = async (input) => {
-    const { rows } = await session.query<{ redeem_invite_code: string }>(
-      input.profileId,
-      "select app.redeem_invite_code($1::uuid, $2::text, $3::text)",
-      [input.profileId, input.codeHash, input.ipHash],
-    );
-    const value = rows[0]?.redeem_invite_code;
-    if (value === undefined) throw new Error("app.redeem_invite_code returned no row");
-    return value as RedeemResult;
-  };
+  store.redeemInviteCode = store.redeem;
 
   return store;
 }
@@ -533,6 +540,36 @@ function buildStore(session: Session): Store {
     } finally {
       client.release();
     }
+  };
+
+  // -------------------------------------------------------------------------
+  // Redemption (SPEC §9.4) — rule 1 of this file's header, at its clearest: the whole six-step
+  // transaction is one `app.*` call and the SQL stays the authority.
+  // -------------------------------------------------------------------------
+
+  /**
+   * ports.ts, `Store.redeem`: SPEC §9.4's redemption, whole. `app.redeem_invite_code` (migration
+   * 0001 §6) holds all six steps under one profile row lock and one code row lock, never raises
+   * for an expected rejection, and returns one of seven strings — which is why the port's result
+   * type is those strings and nothing friendlier.
+   *
+   * `session.query` wraps this in a transaction and stamps the subject like every other method
+   * here; inside `Store.tx` it joins the enclosing one instead, so a caller that has already
+   * opened a transaction gets the function's work committed with theirs rather than beside it.
+   *
+   * A `null` `codeHash` is passed through as SQL NULL on purpose: `where code_hash = null` matches
+   * no row, so a code that could never exist is refused by the same lookup that refuses one that
+   * was simply never minted — after the attempt has been logged, which is what ports.ts asks for.
+   */
+  store.redeem = async ({ profileId, codeHash, ipHash }) => {
+    const { rows } = await session.query<{ redeem_invite_code: string }>(
+      profileId,
+      "select app.redeem_invite_code($1::uuid, $2::text, $3::text)",
+      [profileId, codeHash, ipHash],
+    );
+    const row = rows[0];
+    if (row === undefined) throw new Error("app.redeem_invite_code returned no row");
+    return toRedeemResult(row.redeem_invite_code);
   };
 
   // -------------------------------------------------------------------------
@@ -1326,15 +1363,29 @@ function countCards(deck: readonly string[]): { card_id: string; count: number }
 // listed here, asserted in `test/db/contract.ts` where they are observable, and repeated in the
 // report that came with this file.
 //
-//  * redemption. SPEC §9.4's six steps live in `app.redeem_invite_code` as ONE database
-//    transaction. `Store` has no `redeem` method — `src/api/codes.ts` makes six port calls inside
-//    `Store.tx` instead — so no method here can call it without doubling the attempt log and the
-//    status flip. The function is reachable as `PostgresStore.redeemInviteCode` and tested; adopting
-//    it needs a `redeem` method on the port, which `src/api/ports.ts` (the runtime agent's file)
-//    owns.
+//  * redemption limits. §9.4's "more than 5 attempts", "more than 20" and "the last hour" are
+//    written into `app.redeem_invite_code`'s body, and the breaker's knobs into `app.settings`;
+//    the migrations are checksum-locked, so neither can be made to read `ApiLimits`. The in-memory
+//    stores take all three as options defaulting to the same `src/config.ts` constants
+//    `defaultLimits()` copies into `ApiLimits`, so the two agree at today's values and a test can
+//    shrink them on the fake path only. Changing a number for a real deployment means
+//    `app.settings` and a new migration, not `src/config.ts`.
 //  * attempt reason. `CodeAttempt.reason` ("a coarse reason for operators") has no column in
 //    `public.code_attempts`, which stores only `succeeded`. It is dropped on write, so a store
-//    round-trip cannot return it. Nothing reads it back today (`CodeStore` has no attempt read).
+//    round-trip cannot return it. Nothing reads it back today (`CodeStore` has no attempt read),
+//    and `Store.redeem` returns a result code rather than a reason for the same reason: the
+//    granularity the fake can record is granularity Postgres cannot.
+//  * redemption's email check. `app.redeem_invite_code` reads `auth.users.email_confirmed_at`
+//    itself; the in-memory stores have no such table and answer through
+//    `RedemptionSettings.emailVerified`, true unless a caller says otherwise. The server refuses an
+//    unverified caller from the access token (R159) before either store is reached, so this only
+//    shows up in a test that calls the port directly — which `test/db/contract.ts` does.
+//  * redemption's circuit breaker. The SQL function refuses when `app.settings.redemption_enabled`
+//    is false OR when its own count of recent failures crosses R106's threshold. The in-memory
+//    stores implement the switch and not the counter, because the server's own R106 breaker
+//    (`src/api/codes.ts`) is checked before the store is touched, holds the same numbers and is
+//    what alerts — a fake that counted as well would open during BUILD M6-T1's 150-sample timing
+//    test, whose whole point is 150 uninterrupted failures.
 //  * profile email. `public.profiles` has no email column — §9.4's managed auth provider owns it
 //    on `auth.users` — so `Profile.email` is read from there (`service_role` needs SELECT on
 //    `auth.users`, which Supabase grants) and the `email` argument to `profiles.create` is ignored.

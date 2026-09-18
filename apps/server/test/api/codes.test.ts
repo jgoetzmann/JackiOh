@@ -150,6 +150,48 @@ describe("§9.4 step 1: pending account with a verified email (R145)", () => {
     expect(deps.store.tables.codes[0]?.uses).toBe(0);
     expect(deps.store.tables.attempts).toHaveLength(0);
   });
+
+  /**
+   * R170. `resolveCaller` (http.ts) reads the caller's profile before the handler runs, and
+   * `Store.redeem` reads it again inside the transaction; the row can go between the two. The
+   * store cannot say which of §9.4 step 1's refusals it hit — `app.redeem_invite_code` answers
+   * `not_pending` for a missing row, a banned one and an active one alike — so the server reports
+   * the conflict, not a second 401 after authorization has already passed.
+   *
+   * `onCall` fires on the way into `Store.redeem`, before its first read, which is exactly the gap
+   * R170 is about.
+   */
+  it("R170 answers a profile that vanishes mid-redemption with a conflict, not a 401", async () => {
+    const deps = codeDeps();
+    const router = createRouter(createCodesRoutes(), deps);
+    const { token, profileId } = seedCaller(deps, "vanishes");
+    const minted = await mintInviteCode(deps);
+
+    deps.store.onCall = (method) => {
+      if (method !== "redeem") return;
+      deps.store.onCall = null;
+      const rows = deps.store.tables.profiles;
+      rows.splice(rows.findIndex((row) => row.id === profileId), 1);
+    };
+
+    const response = await redeem(router, token, minted.formatted);
+
+    // 409, not the 401 the six-step version answered here: the token verified and the caller was
+    // resolved, so nothing about their authorization failed — the state the request was about
+    // changed underneath it. "No such identity" is still a 401, but it belongs to
+    // `verifyAccessToken`, one layer earlier, and never to this handler.
+    expect(response.status).toBe(409);
+    const body = await readJson<ErrorBody>(response);
+    expect(body.error.code).toBe("conflict");
+    // R145: a refusal about the caller's own account never borrows the code's identical error.
+    expect(body.error.message).not.toBe(REDEMPTION_IDENTICAL_ERROR);
+
+    // Refused at step 1, so step 4 never runs: no attempt row, exactly as for a banned or an
+    // already-active caller above. §9.4 orders steps 1-3 ahead of the log, and a vanished profile
+    // is a step 1 refusal like any other.
+    expect(deps.store.tables.attempts).toHaveLength(0);
+    expect(deps.store.tables.codes[0]?.uses).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

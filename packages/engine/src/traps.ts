@@ -150,7 +150,9 @@ function trapTriggersOf(trap: CardInstance): TrapTrigger[] {
 
 /**
  * R119: the events that say a card arrived. A card does not answer the play that put it onto the
- * field — "it was not yet in play when that play began" — so a trap is never offered the
+ * field. Not because it was absent when the play began — §10.5 step 4 places it and only then emits
+ * `cardPlayed`, so it is already a registered watcher by the time its own arrival is dispatched.
+ * The exclusion is deliberate, and for traps it lives here: a trap is never offered the
  * `cardPlayed`, `summoned` or `cardResolved` event that names the trap itself. R17's two moments are
  * both in this list, which is why the rule belongs here and not in each card's predicate: Sheepish
  * answers step 4's `summoned`/`cardPlayed` pair, and Bear Honeypot, Unstable Clone Machine and

@@ -10,9 +10,16 @@
  *  - `matches.appendActions` refuses a seq that already exists (append-only, §9.3);
  *  - `results.insert` refuses a second row for the same match (§9.5).
  *
+ * `redeem` (§9.4's six-step transaction) is not reimplemented here: it is `createInMemoryRedeem`
+ * from `src/api/e2e-store.ts`, the same function the end-to-end fixture store uses, so the two
+ * in-memory stores cannot answer a redemption differently while only one of them is under
+ * `test/db/contract.ts`. It runs through this store's own methods, so `onCall` charges each step
+ * and a test can wrap one of them.
+ *
  * `onCall` is the fault-injection seam: a test throws from it to fail one method mid-transaction.
  */
 
+import { createInMemoryRedeem, type RedemptionSettings } from "../../src/api/e2e-store";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -71,7 +78,18 @@ export type MemoryStore = Store & {
   seedProfile: (input: Partial<Profile> & { id: string }) => Profile;
 };
 
-export function createMemoryStore(): MemoryStore {
+export type MemoryStoreOptions = {
+  /**
+   * The clock `Store.redeem` reads — `Timers.now` of the deps this store belongs to, so a test on
+   * a virtual clock sees its own time in `code_attempts.at` and in the attempt windows. Postgres
+   * reads the database clock in the same place.
+   */
+  now?: () => number;
+  /** §9.4's attempt limits, the redemption kill switch and email verification (see e2e-store.ts). */
+  redemption?: Partial<RedemptionSettings>;
+};
+
+export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore {
   const tables = emptyTables();
   let depth = 0;
   let nextProfile = 1;
@@ -119,6 +137,18 @@ export function createMemoryStore(): MemoryStore {
     } finally {
       depth -= 1;
     }
+  };
+
+  // §9.4's six steps, shared with `src/api/e2e-store.ts`. `call` is charged for the transaction
+  // itself as well as for each step it takes through the port.
+  const redeem = createInMemoryRedeem({
+    store,
+    now: options.now ?? (() => Date.now()),
+    ...(options.redemption === undefined ? {} : { settings: options.redemption }),
+  });
+  store.redeem = async (input) => {
+    call("redeem");
+    return redeem(input);
   };
 
   store.profiles = {

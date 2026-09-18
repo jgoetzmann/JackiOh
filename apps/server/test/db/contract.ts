@@ -233,6 +233,250 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
     });
 
     // -----------------------------------------------------------------------
+    // Redemption (SPEC §9.4's one server-side transaction)
+    // -----------------------------------------------------------------------
+
+    /**
+     * `Store.redeem` is the whole of §9.4's six steps, and the two implementations of it are as
+     * far apart as this port gets: one `select app.redeem_invite_code(...)` against migration
+     * 0001's plpgsql, and `createInMemoryRedeem` walking the same six steps over the fake's
+     * tables. Nothing above this block would notice if they disagreed — `src/api/codes.ts` calls
+     * the port and the whole server suite runs on the fake — so every result code the port
+     * declares is exercised here, against both.
+     */
+    describe("redeem (SPEC §9.4)", () => {
+      /** The hash is opaque to the store; what matters is that it is the same one both times. */
+      const codeHash = (): string => `hash-${id()}`;
+
+      async function mint(
+        over: { maxUses?: number; expiresAt?: number | null; revoked?: boolean } = {},
+      ): Promise<{ id: string; codeHash: string }> {
+        const row = {
+          id: id(),
+          codeHash: codeHash(),
+          maxUses: over.maxUses ?? 1,
+          uses: 0,
+          revoked: over.revoked ?? false,
+          expiresAt: over.expiresAt ?? null,
+          createdAt: harness.now(),
+        };
+        await store.codes.insert(row);
+        return { id: row.id, codeHash: row.codeHash };
+      }
+
+      /** Attempts logged for this profile inside §9.4's window — step 4's evidence. */
+      async function attempts(profileId: string): Promise<number> {
+        return store.codes.countAttemptsByProfile(profileId, harness.now() - 60_000);
+      }
+
+      async function usesOf(hash: string): Promise<number> {
+        return must(await store.codes.findByHash(hash), "the code").uses;
+      }
+
+      async function statusOf(profileId: string): Promise<string> {
+        return must(await store.profiles.getById(profileId), "the profile").status;
+      }
+
+      /** §9.4 step 6: "increment uses and set the account active, atomically." */
+      it("activates a pending account, consumes one use and logs the attempt", async () => {
+        const profile = await pendingProfile();
+        const code = await mint();
+
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip-ok" }),
+        ).toBe("ok");
+
+        expect(await statusOf(profile.id)).toBe("active");
+        expect(await usesOf(code.codeHash)).toBe(1);
+        expect(await attempts(profile.id)).toBe(1);
+        // R111's launch grant rides the pending → active transition, wherever it is made.
+        expect(await store.collection.get(profile.id)).toHaveLength(harness.playableIds.length);
+      });
+
+      /**
+       * §9.4: "Missing, expired and exhausted codes return an identical error." Revoked joins them
+       * (step 5 names it) and so does a hash the caller has already established cannot be a code
+       * (`codeHash: null`) — the one result code means no caller can tell the five apart.
+       */
+      it("answers missing, revoked, expired, exhausted and malformed identically", async () => {
+        const revoked = await mint({ revoked: true });
+        const expired = await mint({ expiresAt: harness.now() - 60_000 });
+        const exhausted = await mint();
+        expect(await store.codes.claim(exhausted.id, harness.now())).toBe(true);
+
+        const cases: { name: string; hash: string | null }[] = [
+          { name: "missing", hash: codeHash() },
+          { name: "revoked", hash: revoked.codeHash },
+          { name: "expired", hash: expired.codeHash },
+          { name: "exhausted", hash: exhausted.codeHash },
+          { name: "malformed", hash: null },
+        ];
+
+        for (const kind of cases) {
+          const profile = await pendingProfile();
+          expect(
+            await store.redeem({ profileId: profile.id, codeHash: kind.hash, ipHash: `ip-${kind.name}` }),
+            kind.name,
+          ).toBe("invalid_code");
+          // Refused, but not for free: §9.4 logs the attempt (step 4) before it looks anything up.
+          expect(await statusOf(profile.id), kind.name).toBe("pending");
+          expect(await attempts(profile.id), kind.name).toBe(1);
+        }
+
+        expect(await usesOf(revoked.codeHash)).toBe(0);
+        expect(await usesOf(expired.codeHash)).toBe(0);
+        expect(await usesOf(exhausted.codeHash)).toBe(1);
+      });
+
+      /**
+       * §9.4 step 1, "reject unless the account is pending": one result for every account that is
+       * not. R145 makes `src/api/codes.ts` tell banned from already-active from unknown, which it
+       * does from the caller's own profile — the store cannot and does not.
+       */
+      it("refuses an account that is not pending, without logging an attempt", async () => {
+        const profile = await activeProfile();
+        const code = await mint({ maxUses: 5 });
+
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+        ).toBe("not_pending");
+        expect(await usesOf(code.codeHash)).toBe(0);
+        expect(await attempts(profile.id)).toBe(0);
+      });
+
+      /** §9.4 step 1's other half: "with a verified email". */
+      it("refuses a pending account whose email is not verified", async () => {
+        const profile = await pendingProfile();
+        const code = await mint({ maxUses: 5 });
+        await harness.setEmailVerified(profile.id, false);
+
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+        ).toBe("email_unverified");
+        expect(await statusOf(profile.id)).toBe("pending");
+        expect(await usesOf(code.codeHash)).toBe(0);
+        expect(await attempts(profile.id)).toBe(0);
+
+        // And verifying it is all that stood in the way.
+        await harness.setEmailVerified(profile.id, true);
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+        ).toBe("ok");
+      });
+
+      /**
+       * §9.4 step 2: "reject if this profile made more than 5 attempts in the last hour" — and
+       * step 2 runs before step 4, so a caller already over the limit cannot pin their own counter
+       * by retrying.
+       */
+      it("rate-limits a profile past its hourly attempts and logs nothing more", async () => {
+        const profile = await pendingProfile();
+        const code = await mint({ maxUses: 9 });
+        const at = harness.now();
+        for (let i = 0; i < 6; i += 1) {
+          await store.codes.logAttempt({
+            profileId: profile.id,
+            ipHash: "ip-flood",
+            result: "rejected",
+            reason: "missing",
+            at,
+          });
+        }
+
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip-flood" }),
+        ).toBe("rate_limited_profile");
+        expect(await attempts(profile.id)).toBe(6);
+        expect(await statusOf(profile.id)).toBe("pending");
+        expect(await usesOf(code.codeHash)).toBe(0);
+      });
+
+      /** §9.4 step 3: "reject if this IP hash made more than 20" — a different window, per address. */
+      it("rate-limits an IP hash past its hourly attempts", async () => {
+        const profile = await pendingProfile();
+        const code = await mint({ maxUses: 9 });
+        const ipHash = `ip-${id()}`;
+        const at = harness.now();
+        // Nobody's profile in particular: the neighbours behind one NAT, so step 2 stays at zero.
+        for (let i = 0; i < 21; i += 1) {
+          await store.codes.logAttempt({
+            profileId: null,
+            ipHash,
+            result: "rejected",
+            reason: "missing",
+            at,
+          });
+        }
+
+        expect(await attempts(profile.id)).toBe(0);
+        expect(await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash })).toBe(
+          "rate_limited_ip",
+        );
+        expect(await statusOf(profile.id)).toBe("pending");
+      });
+
+      /**
+       * §9.4: "A global circuit breaker disables redemption." This is the database's own switch,
+       * which the store answers `circuit_open` from; the server's R106 breaker (`codes.ts`) is a
+       * separate object that never lets a request reach here while it is open.
+       */
+      it("refuses every redemption while the database's redemption switch is off", async () => {
+        const profile = await pendingProfile();
+        const code = await mint();
+        await harness.setRedemptionEnabled(false);
+
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+        ).toBe("circuit_open");
+        // A good code is refused too, unspent, and the attempt still costs the caller a row.
+        expect(await statusOf(profile.id)).toBe("pending");
+        expect(await usesOf(code.codeHash)).toBe(0);
+        expect(await attempts(profile.id)).toBe(1);
+
+        await harness.setRedemptionEnabled(true);
+        expect(
+          await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+        ).toBe("ok");
+      });
+
+      /**
+       * §9.4 step 6 again, from the other side: "Two concurrent callers cannot both win the last
+       * use" (ports.ts). One code, two accounts, one activation.
+       */
+      it("lets a single-use code activate exactly one account", async () => {
+        const first = await pendingProfile();
+        const second = await pendingProfile();
+        const code = await mint({ maxUses: 1 });
+
+        expect(
+          await store.redeem({ profileId: first.id, codeHash: code.codeHash, ipHash: "ip-a" }),
+        ).toBe("ok");
+        expect(
+          await store.redeem({ profileId: second.id, codeHash: code.codeHash, ipHash: "ip-b" }),
+        ).toBe("invalid_code");
+
+        expect(await statusOf(first.id)).toBe("active");
+        expect(await statusOf(second.id)).toBe("pending");
+        expect(await usesOf(code.codeHash)).toBe(1);
+      });
+
+      /** R161: "a larger maximum stays available to whoever mints deliberately." */
+      it("spends a multi-use code once per account until it is exhausted", async () => {
+        const code = await mint({ maxUses: 2 });
+        const profiles = [await pendingProfile(), await pendingProfile(), await pendingProfile()];
+        const results = [];
+        for (const profile of profiles) {
+          results.push(
+            await store.redeem({ profileId: profile.id, codeHash: code.codeHash, ipHash: "ip" }),
+          );
+        }
+
+        expect(results).toEqual(["ok", "ok", "invalid_code"]);
+        expect(await usesOf(code.codeHash)).toBe(2);
+      });
+    });
+
+    // -----------------------------------------------------------------------
     // Collection (SPEC §9.4's entitlement ledger)
     // -----------------------------------------------------------------------
 

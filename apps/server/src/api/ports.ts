@@ -67,11 +67,19 @@ export type ServerConfig = {
  * place fills this in from `src/config.ts`: `defaultLimits()` in `src/api/deps.ts`.
  */
 export type ApiLimits = {
-  /** §9.4 step 2: redemption attempts per profile per hour. */
+  /**
+   * §9.4 step 2: redemption attempts per profile per hour.
+   *
+   * ENFORCED BY THE STORE, NOT BY A HANDLER. §9.4's redemption is one transaction and
+   * `Store.redeem` is it, so steps 2 and 3 run where steps 4-6 run — inside the database, under
+   * the same lock. This is the deployment's copy of the number, from `src/config.ts`, which is
+   * also where the in-memory stores take their default; `app.redeem_invite_code` writes §9.4's
+   * `5` into its own body (see `src/db/store.ts`'s KNOWN DIVERGENCES, "redemption limits").
+   */
   redeemPerProfilePerHour: number;
-  /** §9.4 step 3: redemption attempts per IP hash per hour. */
+  /** §9.4 step 3: redemption attempts per IP hash per hour. Enforced by the store, as above. */
   redeemPerIpPerHour: number;
-  /** The window both counters use. */
+  /** The window both counters use. Enforced by the store, as above. */
   redeemWindowMs: number;
   /**
    * §9.4: "identical error in identical time" for missing, expired and exhausted codes. Every
@@ -230,6 +238,53 @@ export type CodeAttempt = {
   at: number;
 };
 
+/**
+ * Exactly the strings `app.redeem_invite_code(uuid, text, text)` returns — migration 0001 §6 lists
+ * them, and nothing else is a legal answer. The set is the SQL function's contract, so the port
+ * states it rather than a shape that would be pleasanter in TypeScript:
+ *
+ *  - `not_pending` covers "no such profile", "banned" and "already active" together, because the
+ *    function decides all three from one `select ... for update` and cannot tell a caller which.
+ *    R145 requires those three to be reported *distinctly* to the client, so `codes.ts` decides
+ *    them from the caller's own resolved profile before it calls here and treats this result as
+ *    the race it is: the account stopped being pending between the two. R170 fixes what that race
+ *    answers — a conflict, never a second 401 after authorization has already passed.
+ *  - `email_unverified` is the function's own read of `auth.users.email_confirmed_at`, which
+ *    `public.profiles` does not carry. The server already knows the answer from the access token
+ *    (R159) and refuses first; this is the database's independent second opinion.
+ *  - `circuit_open` is the *database-side* half of §9.4's breaker (`app.settings.redemption_enabled`
+ *    plus the function's own failure count). It is not the same object as the server's R106
+ *    breaker in `codes.ts`, which alerts, backs `GET /api/codes/status` and is checked before this
+ *    port is touched at all. Both answer 503.
+ *  - missing, revoked, expired and exhausted all collapse onto `invalid_code`, which is §9.4's
+ *    "Missing, expired and exhausted codes return an identical error" at the storage layer as well
+ *    as at the wire.
+ */
+export type RedeemResult =
+  | "ok"
+  | "not_pending"
+  | "email_unverified"
+  | "rate_limited_profile"
+  | "rate_limited_ip"
+  | "circuit_open"
+  | "invalid_code";
+
+export type RedeemInviteCodeInput = {
+  profileId: string;
+  /**
+   * The keyed hash of the normalized code (`Hashes.code`); the store never sees plaintext.
+   *
+   * `null` means the caller has already established that this string could never be a code at all
+   * — wrong length, or a character outside §9.4's alphabet (R104). It is passed down rather than
+   * refused early because §9.4 orders the attempt log (step 4) *before* the lookup (step 5): a
+   * malformed code must still cost the caller a row in `code_attempts`, or it would be the one
+   * cheap probe in an interface built to make probing expensive. Both implementations answer
+   * `invalid_code` for it, indistinguishably from a code that was simply never minted.
+   */
+  codeHash: string | null;
+  ipHash: string;
+};
+
 export type CodeStore = {
   insert: (code: InviteCode) => Promise<void>;
   findByHash: (codeHash: string) => Promise<InviteCode | null>;
@@ -237,13 +292,16 @@ export type CodeStore = {
    * §9.4 step 6: one atomic statement. Increments `uses` only while the code is unrevoked,
    * unexpired and unexhausted; returns false otherwise. Two concurrent callers cannot both win
    * the last use.
+   *
+   * Redemption does not call this — `Store.redeem` is the whole transaction. It stays because the
+   * in-memory stores build step 6 out of it and the contract suite drives it directly.
    */
   claim: (codeId: string, now: number) => Promise<boolean>;
-  /** §9.4 step 4: the attempt is logged either way. */
+  /** §9.4 step 4: the attempt is logged either way. Written by `Store.redeem`. */
   logAttempt: (attempt: CodeAttempt) => Promise<void>;
   countAttemptsByProfile: (profileId: string, since: number) => Promise<number>;
   countAttemptsByIp: (ipHash: string, since: number) => Promise<number>;
-  /** §9.4: the global circuit breaker's input — system-wide failures in a window. */
+  /** §9.4: the server-side circuit breaker's input — system-wide failures in a window (R106). */
   countFailures: (since: number) => Promise<number>;
 };
 
@@ -425,6 +483,28 @@ export type ResultStore = {
  */
 export type Store = {
   tx: <T>(fn: (t: Store) => Promise<T>) => Promise<T>;
+  /**
+   * SPEC §9.4's redemption, whole: "Redemption is one server-side transaction: (1) reject unless
+   * the account is pending with a verified email; (2) reject if this profile made more than 5
+   * attempts in the last hour; (3) reject if this IP hash made more than 20; (4) log the attempt
+   * either way; (5) look up by hash and reject if revoked, expired or exhausted; (6) increment
+   * uses and set the account active, atomically."
+   *
+   * It sits beside `tx` rather than under `codes` because it *is* a transaction and it writes
+   * three tables (`profiles`, `invite_codes`, `code_attempts`); it is not an operation on the code
+   * table. In Postgres it is one statement — `select app.redeem_invite_code(...)`, migration 0001
+   * §6 — which is why the result type is that function's return values verbatim.
+   *
+   * Two orderings the spec fixes and both implementations keep:
+   *  - steps 2 and 3 reject BEFORE step 4, so a caller already over the limit does not pin their
+   *    own counter by retrying and a flood is cheap to refuse;
+   *  - a rejection is RETURNED, never thrown, so the attempt row step 4 owes is never rolled back
+   *    by a later rejection in the same transaction.
+   *
+   * What it deliberately does not do is time: §9.4's "identical error in identical time" is R107's
+   * response floor, which is the server's job (`codes.ts`) and which SQL cannot deliver.
+   */
+  redeem: (input: RedeemInviteCodeInput) => Promise<RedeemResult>;
   profiles: ProfileStore;
   codes: CodeStore;
   collection: CollectionStore;

@@ -13,6 +13,9 @@
  *
  *  - `tx` snapshots every table and restores it if the callback throws, so §9.4's "writes
  *    `collection` and `collection_grants` in one transaction" is really all-or-nothing;
+ *  - `redeem` runs §9.4's six steps in SPEC's order inside one `tx` and answers the same seven
+ *    result codes `app.redeem_invite_code` does, so the redemption the server calls here is the
+ *    redemption it calls in Postgres;
  *  - `codes.claim`, `rooms.claim` and `tickets.claimPair` are single-shot, so the second of two
  *    racing callers loses (§9.4 step 6, §9.5);
  *  - `matches.appendActions` refuses a `seq` that already exists (append-only, §9.3);
@@ -35,6 +38,11 @@
  * existing tests keep seeing the store their assertions were written against.
  */
 
+import {
+  CODE_ATTEMPTS_PER_IP_PER_HOUR,
+  CODE_ATTEMPTS_PER_PROFILE_PER_HOUR,
+  CODE_ATTEMPT_WINDOW_SECONDS,
+} from "../config";
 import { LAUNCH_COPIES, LAUNCH_GRANT_REASON } from "./collection";
 import type {
   CatalogInfo,
@@ -46,6 +54,8 @@ import type {
   MatchRow,
   Profile,
   ProfileStatus,
+  RedeemInviteCodeInput,
+  RedeemResult,
   ResultRow,
   Room,
   Store,
@@ -87,11 +97,150 @@ function emptyTables(): Tables {
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+// ---------------------------------------------------------------------------
+// SPEC §9.4's redemption, in memory (`Store.redeem`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The database state `app.redeem_invite_code` reads that no other port method can reach, and the
+ * three numbers §9.4 writes into the function's body. Defaults come from `src/config.ts` — the
+ * same constants `defaultLimits()` copies into `ApiLimits` — so the fixture and the deployment
+ * agree without either restating a value.
+ */
+export type RedemptionSettings = {
+  /** §9.4 step 2: "more than 5 attempts in the last hour". */
+  attemptsPerProfilePerHour: number;
+  /** §9.4 step 3: "more than 20". */
+  attemptsPerIpPerHour: number;
+  /** The window both counters are taken over. */
+  attemptWindowMs: number;
+  /**
+   * `app.settings.redemption_enabled` — the database-side kill switch the SQL function checks
+   * before the lookup and answers `circuit_open` from. A hook rather than a value so a caller can
+   * flip it between calls, which is how the store contract drives it against both stores.
+   */
+  enabled: () => boolean;
+  /**
+   * `auth.users.email_confirmed_at is not null` for this profile (§9.4 step 1). `public.profiles`
+   * has no such column and neither does `Profile`, so the SQL function joins `auth.users` for it
+   * and the fixture asks here. True by default: BUILD M8's three fixture accounts are all verified
+   * (`src/api/e2e.ts`), and the server refuses an unverified caller from the access token (R159)
+   * before this port is reached.
+   */
+  emailVerified: (profileId: string) => boolean;
+};
+
+export function defaultRedemptionSettings(
+  overrides: Partial<RedemptionSettings> = {},
+): RedemptionSettings {
+  return {
+    attemptsPerProfilePerHour: CODE_ATTEMPTS_PER_PROFILE_PER_HOUR,
+    attemptsPerIpPerHour: CODE_ATTEMPTS_PER_IP_PER_HOUR,
+    attemptWindowMs: CODE_ATTEMPT_WINDOW_SECONDS * 1000,
+    enabled: () => true,
+    emailVerified: () => true,
+    ...overrides,
+  };
+}
+
+/**
+ * §9.4's six steps over a `Store`'s own methods, which is what makes this the fake half of
+ * `app.redeem_invite_code` rather than a second reading of §9.4: the steps run in SPEC's order,
+ * rejections are returned and never thrown, and every read and write goes back through the port so
+ * a fake's own invariants (`codes.claim` is single-shot, `profiles.setStatus` carries R111's launch
+ * grant) hold here exactly as they do for any other caller.
+ *
+ * Both in-memory stores share this one function — `src/api/e2e-store.ts` and
+ * `test/fakes/store.ts` — so the two fakes cannot drift from each other while the contract suite
+ * only runs against the first.
+ */
+export function createInMemoryRedeem(deps: {
+  store: Store;
+  /** The runtime's `Timers.now`; `app.redeem_invite_code` reads the database clock here. */
+  now: () => number;
+  settings?: Partial<RedemptionSettings>;
+}): (input: RedeemInviteCodeInput) => Promise<RedeemResult> {
+  const settings = defaultRedemptionSettings(deps.settings);
+
+  return async ({ profileId, codeHash, ipHash }) => {
+    const store = deps.store;
+    const now = deps.now();
+
+    // §9.4: "Redemption is one server-side transaction." In Postgres the whole of this is one
+    // `select app.redeem_invite_code(...)`; here it is one `tx`, so a fault leaves nothing behind.
+    return store.tx(async (): Promise<RedeemResult> => {
+      const log = async (result: CodeAttempt["result"], reason: string): Promise<void> => {
+        await store.codes.logAttempt({ profileId, ipHash, result, reason, at: now });
+      };
+
+      // ---- Step 1: "reject unless the account is pending with a verified email" --------------
+      // One result for "no such profile", "banned" and "already active", exactly as the SQL's
+      // `if not found or v_status is distinct from 'pending'` decides them together.
+      const profile = await store.profiles.getById(profileId);
+      if (profile === null || profile.status !== "pending") return "not_pending";
+      if (!settings.emailVerified(profileId)) return "email_unverified";
+
+      const since = now - settings.attemptWindowMs;
+
+      // ---- Step 2: "reject if this profile made more than 5 attempts in the last hour" --------
+      // Strictly `>`, and the count excludes the attempt being made because step 4 logs it below,
+      // so the SEVENTH attempt is the first refused (`src/config.ts` carries the reasoning).
+      if ((await store.codes.countAttemptsByProfile(profileId, since)) > settings.attemptsPerProfilePerHour) {
+        return "rate_limited_profile";
+      }
+
+      // ---- Step 3: "reject if this IP hash made more than 20" ---------------------------------
+      if ((await store.codes.countAttemptsByIp(ipHash, since)) > settings.attemptsPerIpPerHour) {
+        return "rate_limited_ip";
+      }
+
+      // The database-side kill switch, checked where the SQL checks it: after the cheap refusals
+      // and before the lookup. Unlike steps 2 and 3 this one DOES log the attempt, because the
+      // caller got far enough to spend one.
+      if (!settings.enabled()) {
+        await log("rejected", "circuit_open");
+        return "circuit_open";
+      }
+
+      // ---- Steps 4 and 5: log the attempt either way, then "look up by hash and reject if
+      // revoked, expired or exhausted" ---------------------------------------------------------
+      // The log is written with the outcome rather than ahead of it: `CodeStore` has only
+      // `logAttempt`, and no way to flip a row's result afterwards the way the SQL updates its
+      // own. Inside one transaction the two orders commit identically; what matters is that every
+      // attempt past steps 2 and 3 leaves a row, whichever way the code turned out.
+      const reject = async (reason: string): Promise<RedeemResult> => {
+        await log("rejected", reason);
+        return "invalid_code";
+      };
+
+      // A code that could never exist (§9.4's alphabet and length) takes the identical path: no
+      // oracle separates "well formed but unknown" from "not a code at all".
+      if (codeHash === null) return reject("malformed");
+
+      const code = await store.codes.findByHash(codeHash);
+      if (code === null) return reject("missing");
+      if (code.revoked) return reject("revoked");
+      if (code.expiresAt !== null && code.expiresAt <= now) return reject("expired");
+      if (code.uses >= code.maxUses) return reject("exhausted");
+
+      // ---- Step 6: "increment uses and set the account active, atomically" --------------------
+      // `claim` is the atomic increment, so a false return is a code that ran out between the
+      // check above and here.
+      if (!(await store.codes.claim(code.id, now))) return reject("exhausted");
+      await store.profiles.setStatus(profileId, "active");
+      await log("ok", "redeemed");
+      return "ok";
+    });
+  };
+}
+
 export type E2EStoreOptions = {
   /** R111 needs to know which ids are non-token and unbanned; §9.4 L3 and L6 define both. */
   catalog: CatalogInfo;
   /** The `Timers.now` of the runtime this store belongs to; never `Date.now()` directly. */
   now: () => number;
+  /** What the database would answer for §9.4's limits, kill switch and email verification. */
+  redemption?: Partial<RedemptionSettings>;
 };
 
 export type E2EStore = Store & {
@@ -175,6 +324,15 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
       depth -= 1;
     }
   };
+
+  // §9.4's redemption as one transaction. Built from this store's own methods, so R111's trigger
+  // on `setStatus` and `codes.claim`'s single-shot guarantee take part exactly as they would for
+  // any other caller.
+  store.redeem = createInMemoryRedeem({
+    store,
+    now: options.now,
+    ...(options.redemption === undefined ? {} : { settings: options.redemption }),
+  });
 
   // -------------------------------------------------------------------------
   // Profiles

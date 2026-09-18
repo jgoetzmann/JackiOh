@@ -348,14 +348,27 @@ export type TestDeps = ServerDeps & {
 };
 
 export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
+  // The clock and the limits are settled first because the store reads both: §9.4's redemption is
+  // one store transaction (`Store.redeem`), so the attempt windows and the clock stamped on
+  // `code_attempts.at` belong to the store, and a test that swaps either must have its fake store
+  // swap with it.
+  const timers = overrides.timers ?? createManualTimers();
+  const limits = overrides.limits ?? testLimits();
   const base = {
-    store: createMemoryStore(),
+    store: createMemoryStore({
+      now: () => timers.now(),
+      redemption: {
+        attemptsPerProfilePerHour: limits.redeemPerProfilePerHour,
+        attemptsPerIpPerHour: limits.redeemPerIpPerHour,
+        attemptWindowMs: limits.redeemWindowMs,
+      },
+    }),
     auth: createFakeAuth(),
-    timers: createManualTimers(),
+    timers,
     hashes: createHashes({ code: "test-code-pepper", ip: "test-ip-pepper" }),
     ids: createFakeIds(),
     config: testConfig(),
-    limits: testLimits(),
+    limits,
     catalog: createTestCatalog(),
     validateLoadout: permissiveValidator,
     matches: createFakeMatchDirectory(),
