@@ -29,20 +29,16 @@
 // modifiers above are still live while the exile runs. The trap window itself is not in `endTurn`
 // yet (see the report).
 //
-// The continuation is the card's own `delayed` hook because that is the only shape `turn.ts` can
-// re-enter: `runDelayed` calls `runHook(sink, card, effect.resume.hook as HookName, …)`, and
-// `resolve.hookOf` resolves a FUNCTION on the Script, never a `resume` step table. /fullsend is a
-// Spell, so by the time the hook fires the instance is in the graveyard, which `turn.findAnywhere`
-// searches; its `radiant` flag persists in every zone (R78), so the radiant face's hook is the one
-// that runs.
-//
-// Missing verbs (see the report): the delayed effect is `delay({ at, step, data })` and `exileHand({
-// player })`, plus `addPlayerModifier({ player, mod })` as for #77. `modifiers.scheduleDelayed` and
-// `modifiers.addModifier` are the engine-side implementations and neither is exported by
-// `effects/index.ts`. This is the same wall #24 Efficiency Dividend hit: an engine-side player-state
-// write with no effect verb in front of it.
+// The continuation is one entry in this card's `resume` step table, named by the `delay` that
+// schedules it (`hook: RESUME_HOOK`). R126: `turn.runDelayed` re-enters a delayed effect through
+// `prompts.runResume`, the one reader that resolves either shape — a `Hook` on the script or a step
+// table — so a card registers its continuation once and never twice. /fullsend is a Spell, so by
+// the time the step runs the instance is in the graveyard; the stored `Resume` names the script and
+// the face, and its `radiant` flag persists in every zone (R78), so the radiant face's step is the
+// one that runs — and R127 has it run even if there were no instance left to find at all.
 
 import type { Hook, Script } from "@jackioh/engine";
+import { RESUME_HOOK } from "@jackioh/engine";
 import { addPlayerModifier, delay, exileHand, gainMana } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -84,13 +80,9 @@ function fullsend(discount: number): Script {
         },
       }),
       // R62: `delay` takes a PlayerSpec, so "my own end of turn" is "self" (§6.3, §2.2).
-      delay({ at: { phase: "end", player: "self" }, step: EXILE_STEP }),
+      delay({ at: { phase: "end", player: "self" }, step: EXILE_STEP, hook: RESUME_HOOK }),
     ],
-    // `turn.ts` re-enters a delayed effect through `runHook`, which resolves a function on the
-    // Script — so the continuation is this hook, named by `resume.hook === "delayed"`.
-    delayed: exileTheHand,
-    // Belt and braces while `scheduleDelayedEffect` does not exist: should the factory write
-    // `hook: "resume"` instead of `hook: "delayed"`, `prompts.runResume` finds the same step here.
+    // The one registration (R126): the step table the `delay` above names.
     resume: { [EXILE_STEP]: exileTheHand },
   };
 }

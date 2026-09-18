@@ -36,45 +36,17 @@
 // picked — twice; §8.5 and R77 neither forbid it nor de-duplicate, and R60 has generated cards
 // repeating elsewhere, so nothing here narrows the later pools.
 //
-// BLOCKED (§8.5 #99 "Fuse them; the result costs 0 and goes to your hand"):
-// `subsystems/fuse.ts` has the whole rule — `fuse(sink, { ingredients, target?, toHand? })` — but it
-// is a subsystem function over an `EngineSink`, not an `Effect`, so a card file cannot call it
-// (CLAUDE.md rule 5), and `FuseArgs.ingredients` is `readonly CardInstance[]` while a Discover hands
-// over catalog ids. Nothing in the effects barrel creates an instance from a definition without
-// also putting it in a zone (`addToHand` would emit `addedToHand` and could be burned by the hand
-// cap; `summon` needs a field zone), so there is no way to build the ingredient list either.
-// Reported. What is needed:
-//
-//   // packages/engine/src/effects/fuse.ts (new), re-exported from effects/index.ts
-//
-//   /** §6.3 Fuse as an effect (R77). Exactly the subsystem, wrapped: for each `defIds` entry it
-//    *  creates `newInstance(state, defId, player, { z: "gone", player })` — an ingredient in no
-//    *  pile, so no zone event fires and nothing can reach it — resolves each `instanceIds` entry
-//    *  with `findInstance`, then calls `fuse(sink, { ingredients, target?, toHand? })` and leaves
-//    *  the `fused` event and `state.transientDefs` to it. */
-//   export function fuseCards(args: {
-//     /** Ingredients that are definitions only: #99's Discover picks. */
-//     defIds?: readonly string[];
-//     /** Ingredients that already exist as cards: #85 Unlicensed Experimentation's pair. */
-//     instanceIds?: readonly string[];
-//     /** R77's kept instance: the on-field ingredient the result becomes. #99 never passes one. */
-//     targetInstanceId?: string;
-//     /** R77's Craft a Card path: whose hand the fresh `costOverride` 0 result goes to. */
-//     toHand?: PlayerSpec;
-//   }): Effect;
-//
-// (The alternative the engine team may prefer is widening `FuseArgs.ingredients` to
-// `readonly (CardInstance | string)[]`, a defId standing for an ingredient that was never a card,
-// and exporting a thin `Effect` around `fuse`. Either way this file stays a list of effects.)
-//
-// The last step returns `[]` until the verb lands, and imports nothing that does not exist: one
-// unresolvable import in `src/scripts/` takes down `_generated.ts` and with it all 109 cards.
-// Everything before it — the two (or three) chained Discovers and the picks they carry — is
-// complete and compiles today.
+// THE VERB (§8.5 #99 "Fuse them; the result costs 0 and goes to your hand"): `fuseCards` in the
+// effects barrel, which is `subsystems/fuse.ts` wrapped and nothing more. `fuse(sink, { ingredients,
+// target?, toHand? })` has the whole rule but takes an `EngineSink` and mutates state, which a card
+// file may not do (CLAUDE.md rule 5), and its `ingredients` are `CardInstance`s while a Discover
+// hands over catalog ids — so `defIds` is the spelling this card uses, and the effect makes each
+// pick an ingredient in no pile at all (R86's `{ z: "gone" }`) before handing the list over. R102
+// composes the result member by member; none of it is reimplemented here.
 
 import type { Effect, EffectContext, Hook, Script } from "@jackioh/engine";
 import { subsystems } from "@jackioh/engine";
-import { chosenOptions, discoverFromCatalog } from "@jackioh/engine/effects";
+import { chosenOptions, discoverFromCatalog, fuseCards } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-099");
@@ -118,9 +90,10 @@ function withAnswer(ctx: EffectContext): string[] {
  */
 function craft(picks: readonly string[]): Effect[] {
   if (picks.length < subsystems.FUSE_MIN_INGREDIENTS) return [];
-  // See the BLOCKED note in the header. With `fuseCards` in the effects barrel this is:
-  //   return [fuseCards({ defIds: [...picks], toHand: "self" })]
-  return [];
+  // No target: nothing of this fusion was ever on a board, so R77 takes the ingredients' shared
+  // type ("Unit", both Discovers query it) and hands back a fresh non-Radiant card with
+  // `costOverride` 0. "your hand" is the caster's (§8.5).
+  return [fuseCards({ defIds: [...picks], toHand: "self" })];
 }
 
 /** `discovers` is the whole of the difference between the two faces (§8.5's radiant cell). */

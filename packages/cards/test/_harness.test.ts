@@ -18,11 +18,19 @@
 // that cross a turn boundary give both sides something to do. See `_harness.ts`'s header.
 
 import { describe, expect, it } from "vitest";
-import { HAND_CAP, MAX_MANA } from "@jackioh/engine";
-import { DEFAULT_TURN, scenario } from "./_harness";
+import { HAND_CAP, MAX_MANA, effectiveCost, type CardInstance } from "@jackioh/engine";
+import { DEFAULT_TURN, scenario, type PileName, type Scenario } from "./_harness";
 
 /** A unit each side can always act with, so `reduce` never auto-ends a turn under a test. */
 const ANCHOR = { def: "core-056", lane: 5 } as const;
+
+/**
+ * A whole §3.2 Stack pile, top-first, which `unit()` cannot give: it answers with the card on top.
+ * `state.players[p].units[lane - 1]` is the pile itself (`Pile = CardInstance[]`, §10.1).
+ */
+const pileAt = (s: Scenario, player: "p1" | "p2", lane: number): CardInstance[] => [
+  ...(s.state.players[player].units[lane - 1] ?? []),
+];
 
 describe("harness setup", () => {
   it("places hand, field, backrow, library, graveyard and exile cards in the right zones", () => {
@@ -186,6 +194,155 @@ describe("harness setup", () => {
     const implied = scenario({ p1: { field: ["core-006", "core-025"] } });
     expect(implied.backrow("p1", 1)?.defId).toBe("core-006");
     expect(implied.unit("p1", 1)?.defId).toBe("core-025");
+  });
+
+  it("§3.2 `stack: true` buries the lane's card, with an explicit lane or the entry before it", () => {
+    const s = scenario({
+      p1: {
+        field: [
+          "core-043", // lane 1: the leftmost free zone
+          { def: "core-025", stack: true }, // no lane of its own: onto the entry before it
+          { def: "core-056", lane: 4 },
+          { def: "core-025", stack: true, lane: 4 }, // an explicit lane: onto lane 4's card
+        ],
+      },
+    });
+
+    // Two piles, not four zones: a stacked entry takes no lane of its own.
+    expect(pileAt(s, "p1", 1).map((c) => c.defId)).toEqual(["core-025", "core-043"]);
+    expect(pileAt(s, "p1", 4).map((c) => c.defId)).toEqual(["core-025", "core-056"]);
+    expect(s.unit("p1", 2)).toBeNull();
+    expect(s.unit("p1", 3)).toBeNull();
+    expect(s.unit("p1", 5)).toBeNull();
+
+    // `unit()` answers with the card on top, which is the one that acts (§3.2).
+    expect(s.unit("p1", 1)?.defId).toBe("core-025");
+    expect(s.unit("p1", 4)?.defId).toBe("core-025");
+    // R13: the buried card is still on the field, it is just not the one acting.
+    s.expectInZone(pileAt(s, "p1", 1)[1]!, "field");
+  });
+
+  it("§3.2 a three-deep pile reads top-first, so the list reads bottom-first", () => {
+    const s = scenario({
+      p1: {
+        field: [
+          "core-043", // written first, so it is at the BOTTOM
+          { def: "core-025", stack: true },
+          { def: "core-056", stack: true }, // written last, so it is on TOP
+        ],
+      },
+    });
+
+    const pile = pileAt(s, "p1", 1);
+    expect(pile.map((c) => c.defId)).toEqual(["core-056", "core-025", "core-043"]);
+    expect(s.unit("p1", 1)?.defId).toBe("core-056");
+
+    // Instances are created in list order whatever the pile order is, so reading the pile
+    // bottom-first gives the ids in the order they were handed out.
+    const bottomFirst = [...pile].reverse().map((c) => Number(c.id.slice(1)));
+    expect(bottomFirst).toEqual([...bottomFirst].sort((a, b) => a - b));
+  });
+
+  it("§3.2 a dormant card keeps the damage and position the setup gave it (R13)", () => {
+    const s = scenario({
+      p1: {
+        field: [
+          { def: "core-043", position: "DEF", damage: 4 },
+          { def: "core-025", stack: true },
+        ],
+      },
+    });
+
+    const buried = pileAt(s, "p1", 1)[1]!;
+    expect(buried.defId).toBe("core-043");
+    // Dormant is not "gone": the damage and the position are the ones it will resume with (R13).
+    expect(buried.damage).toBe(4);
+    expect(buried.position).toBe("DEF");
+    expect(s.unit("p1", 1)?.id).not.toBe(buried.id);
+    s.expectInZone(buried, "field");
+  });
+
+  it("refuses a repeated lane without `stack`, a stack over nothing, and a stack in the backrow", () => {
+    // The refusal names the fix: the only legal way to repeat a lane is a §3.2 pile.
+    expect(() =>
+      scenario({ p1: { field: [{ def: "core-025", lane: 2 }, { def: "core-056", lane: 2 }] } }),
+    ).toThrow(/add `stack: true` to entry \[1\]/);
+
+    // `stack: true` on the first entry: there is no card under it, and no lane either.
+    expect(() => scenario({ p1: { field: [{ def: "core-025", stack: true }] } })).toThrow(
+      /`stack: true` but lane \? holds nothing yet/,
+    );
+    // Same with a lane that names an empty zone: the card it buries goes EARLIER in the list.
+    expect(() =>
+      scenario({ p1: { field: [{ def: "core-025", lane: 1 }, { def: "core-056", stack: true, lane: 3 }] } }),
+    ).toThrow(/`stack: true` but lane 3 holds nothing yet/);
+
+    // §3.2: the backrow holds one card per zone, so there is no pile to build there.
+    expect(() => scenario({ p1: { backrow: ["core-041", { def: "core-073", stack: true }] } })).toThrow(
+      /`stack: true` is a unit-zone pile/,
+    );
+  });
+
+  it("seeds §10.1's instance counters, and leaves them empty when the entry says nothing", () => {
+    const s = scenario({
+      p1: {
+        field: [
+          { def: "core-043", counters: { plague: 2 } }, // #91's plague counters
+          { def: "core-025", counters: { grade: 3 }, lane: 2 }, // #93's grade
+          { def: "core-056", lane: 3 },
+        ],
+      },
+    });
+
+    expect(s.unit("p1", 1)?.counters).toEqual({ plague: 2 });
+    expect(s.unit("p1", 2)?.counters).toEqual({ grade: 3 });
+    expect(s.unit("p1", 3)?.counters).toEqual({});
+  });
+
+  it("R78 seeds costMod and costOverride in all four off-field zones", () => {
+    const s = scenario({
+      p1: {
+        hand: [{ def: "core-025", costMod: -1 }],
+        library: [{ def: "core-025", costOverride: 0 }],
+        graveyard: [{ def: "core-025", costMod: 2 }],
+        exile: [{ def: "core-025", costOverride: 1, costMod: -1 }],
+      },
+    });
+    const at = (zone: PileName): CardInstance => s.pile("p1", zone)[0]!;
+
+    // R65/R66 read the cost at resolution through `effectiveCost`, printed 4 for core-025.
+    expect(at("hand").costMod).toBe(-1);
+    expect(effectiveCost(s.state, at("hand"))).toBe(3);
+    expect(at("library").costOverride).toBe(0);
+    expect(effectiveCost(s.state, at("library"))).toBe(0);
+    expect(at("graveyard").costMod).toBe(2);
+    expect(effectiveCost(s.state, at("graveyard"))).toBe(6);
+    // Both layers at once: the override replaces the printed cost and the mod still applies over it.
+    expect(at("exile")).toMatchObject({ costMod: -1, costOverride: 1 });
+    expect(effectiveCost(s.state, at("exile"))).toBe(0);
+
+    // An entry that says nothing leaves both alone: costMod 0, no override, printed cost.
+    const bare = scenario({ p1: { hand: ["core-025"] } });
+    const untouched = bare.hand("p1")[0]!;
+    expect(untouched.costMod).toBe(0);
+    expect(untouched.costOverride).toBeUndefined();
+    expect(effectiveCost(bare.state, untouched)).toBe(4);
+  });
+
+  it("R33 writes `faceUp` exactly as given, so `false` reads back false and not undefined", () => {
+    const s = scenario({
+      p1: {
+        backrow: [
+          { def: "core-041", faceUp: false }, // a Trap, explicitly face-down
+          { def: "core-073", faceUp: true, lane: 2 },
+          { def: "core-041", lane: 3 }, // nothing said: the flag stays unset
+        ],
+      },
+    });
+
+    expect(s.backrow("p1", 1)?.faceUp).toBe(false);
+    expect(s.backrow("p1", 2)?.faceUp).toBe(true);
+    expect(s.backrow("p1", 3)?.faceUp).toBeUndefined();
   });
 
   it("honours statsOverride (§10.4 layer 1, R41)", () => {

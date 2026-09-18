@@ -76,6 +76,7 @@ const SEEDS = {
 const attackIs = (n: number): string => `[data-attack="${n}"]`;
 const healthIs = (n: number): string => `[data-health="${n}"]`;
 const maxHealthIs = (n: number): string => `[data-max-health="${n}"]`;
+const armorIs = (n: number): string => `[data-armor="${n}"]`;
 
 /**
  * One seat's hand, read off `window.__jackioh.state` with the same cast `support/commands.ts` uses
@@ -259,12 +260,14 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
     openGame(SEEDS.target);
     ensureSeat("p1");
 
-    // #15 Me and Mr Token is two bodies for one mana (itself plus a Rush Token, placed per R64),
-    // so Hit Job's declared target has more than one candidate and the picker has to ask (R90).
+    // #15 Me and Mr Token is two bodies for one mana (itself plus a Rush Token, which R64 puts in
+    // the leftmost empty lane — lane 2), so Hit Job's declared target has more than one candidate
+    // and the picker has to ask (R90). The two are told apart by lane rather than by name: the
+    // token's name is inside Me and Mr Token's own card text, so a name lookup would be ambiguous.
     cy.playByName("Me and Mr Token", { zone: { side: "you", row: "units", lane: 1 } });
-    cy.fieldCardByName("Rush Token").should("not.eq", "");
 
-    cy.fieldCardByName("Me and Mr Token").then((victim) => {
+    cy.instanceAt("p1", "units", 1).then((victim) => {
+      cy.instanceAt("p1", "units", 2).should("not.eq", "");
       toP1Turn(2);
       select("Hit Job");
       pickerOpensOnce("target");
@@ -276,7 +279,9 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
       pickerAnswered("target");
 
       cy.get(ts(cardId(victim))).should("not.exist");
-      cy.fieldCardByName("Rush Token").should("not.eq", "");
+      cy.instanceAt("p1", "units", 2).then((token) => {
+        cy.get(ts(cardId(token))).should("exist");
+      });
       // The destroyed unit and the resolved spell (§5.1) are both in the graveyard; the Rush Token
       // would not be, since a unit token never enters one (R11).
       cy.get(ts(graveyardCountId("you"))).should("have.text", "2");
@@ -353,9 +358,11 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
     cy.playByName("Mr. Vanilla", { zone: { side: "you", row: "units", lane: 4 } });
 
     toP1Turn(3);
-    cy.fieldCardByName("Me and Mr Token").then((mrToken) => {
-      cy.fieldCardByName("Tempo Timmy").then((timmy) => {
-        cy.fieldCardByName("Mr. Vanilla").then((vanilla) => {
+    // By lane, not by name: the Rush Token in lane 2 renders "Rush Token", which is also inside
+    // Me and Mr Token's own card text, so only the lane says which unit is which.
+    cy.instanceAt("p1", "units", 1).then((mrToken) => {
+      cy.instanceAt("p1", "units", 3).then((timmy) => {
+        cy.instanceAt("p1", "units", 4).then((vanilla) => {
           select("Lava Golem");
           pickerOpensOnce("tribute");
           cy.gameState().should((state) => {
@@ -371,12 +378,17 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
             cy.get(ts(cardId(id))).should("not.exist");
           }
           // The three sacrificed cards are deaths (§6.3 Sacrifice), and the Rush Token that was
-          // not picked is still on the board.
+          // not picked is still in lane 2 — a unit token never reaches a graveyard (R11), so the
+          // count is three and not four.
           cy.get(ts(graveyardCountId("you"))).should("have.text", "3");
-          cy.fieldCardByName("Rush Token").should("not.eq", "");
-          // #55 is a 10/5 with Armor 3 and Taunt, so the golem the Tribute paid for is on the board.
-          cy.fieldCardByName("Lava Golem").then((golem) => {
+          cy.instanceAt("p1", "units", 2).then((token) => {
+            cy.get(ts(cardId(token))).should("exist");
+          });
+          // #55 is a 10/5 with Armor 3 and Taunt. Lane 5 is the only zone that was open when the
+          // play was built, so that is where the golem the Tribute paid for stands.
+          cy.instanceAt("p1", "units", 5).then((golem) => {
             cy.get(ts(cardId(golem))).find(attackIs(10)).should("exist");
+            cy.get(ts(cardId(golem))).find(armorIs(3)).should("exist");
           });
         });
       });

@@ -36,7 +36,7 @@
 // are driven by clicks rather than by `cy.attack`, which settles first. Each pop assertion is
 // followed by the durable stat it implies, so the run is checked twice over.
 //
-// Seed `04-combat-1056` was chosen against these fixtures so Mr. Vanilla and Tempo Timmy are in
+// Seed `04-combat-284` was chosen against these fixtures so Mr. Vanilla and Tempo Timmy are in
 // player 1's opening hand, Pointmaster arrives by its second turn, and Mr. Vanilla and Jilliax are
 // in player 2's hand for its first and second.
 
@@ -51,7 +51,7 @@ import {
 } from "../../support/testids.ts";
 import type { PlayerId } from "../../support/types.ts";
 
-const SEED = seedFor("04-combat-1056");
+const SEED = seedFor("04-combat-284");
 
 /**
  * Card hooks BUILD M5-T4's acceptance rows read ("stat numbers ... equal the view's", the position

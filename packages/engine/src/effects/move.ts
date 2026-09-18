@@ -7,6 +7,8 @@
 // single-card form uses. One implementation per move, so "bounce" can only ever mean one thing.
 
 import { addToHand } from "../draw";
+import { effectiveCost, isXCost } from "../mana";
+import { zoneCards } from "../query";
 import type { Effect, EffectContext } from "../script";
 import type { CardInstance } from "../state";
 import { isUnitToken, moveToZone } from "../zones";
@@ -105,6 +107,71 @@ export function exileAdjacentTo(args: { target: TargetSpec } & BoardScope): Effe
     apply(ctx): void {
       const { target, ...scope } = args;
       for (const card of adjacentTo(ctx, target, scope)) exileCard(ctx, card);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exile out of the off-field zones, by cost (§6.3, R26, R66, R135)
+// ---------------------------------------------------------------------------
+
+/** The three zones a card can be exiled out of by a sweep; the exile pile is where they go. */
+export type ExileZone = "library" | "hand" | "graveyard";
+
+/** R135's order, and §8 #94's: library, then hand, then graveyard. */
+export const EXILE_ZONE_ORDER: readonly ExileZone[] = ["library", "hand", "graveyard"];
+
+/**
+ * Which cards in those zones a sweep takes, by what they cost NOW (R65, R66). The cost is
+ * `effectiveCost` and never `queryCost`: `queryCost` reads a DEFINITION, so it cannot see the
+ * `costMod` #7 Jewelosco Scarab left on an instance or the discount #95 Call to Chaos put across a
+ * whole library, and R66 asks for each card's cost at resolution.
+ */
+export type CostFilter = {
+  /** The parity of the card's current cost (#94's "every odd-cost card", R26). */
+  parity?: "odd" | "even";
+  /** An exact current cost. */
+  cost?: number;
+  /** R66: X-cost cards are exempt, since R65 reads one out of play as 0 and it is nobody's number. */
+  exemptXCost?: boolean;
+};
+
+/** Whether one card passes a cost filter, read at the moment the effect applies (R66). */
+function matchesCost(ctx: EffectContext, card: CardInstance, filter: CostFilter): boolean {
+  if (filter.exemptXCost === true && isXCost(ctx.state, card)) return false;
+  const cost = effectiveCost(ctx.state, card);
+  if (filter.cost !== undefined && cost !== filter.cost) return false;
+  if (filter.parity === "odd" && cost % 2 === 0) return false;
+  if (filter.parity === "even" && cost % 2 !== 0) return false;
+  return true;
+}
+
+/**
+ * §6.3 Exile over a player's off-field zones, by cost: #94 Genn's Greed's "exile every odd-cost card
+ * in your library, hand and GY (X-cost cards exempt)".
+ *
+ * R135 is the whole shape of it. The zones are walked in the order §8 names — library, then hand,
+ * then graveyard, which `EXILE_ZONE_ORDER` holds so the order is stated once — and EACH CARD IS ITS
+ * OWN EXILE, down the same `exileCard` a single `exile` uses: `state.counters.exiled` moves once per
+ * card (R55) and anything watching sees one `exiled` event per card rather than a batch. Each pile is
+ * snapshotted before it is walked (`zoneCards` copies), because exiling splices the pile underneath.
+ *
+ * The scope is one player's zones, never both: §8 #94 says "YOUR library, hand and GY".
+ */
+export function exileMatching(
+  args: { zones?: readonly ExileZone[]; player?: PlayerSpec } & CostFilter = {},
+): Effect {
+  return {
+    kind: "exileMatching",
+    apply(ctx): void {
+      const { zones, player, ...filter } = args;
+      const owner = playerOf(ctx, player ?? "self");
+      for (const zone of zones ?? EXILE_ZONE_ORDER) {
+        for (const card of zoneCards(ctx.state, owner, zone)) {
+          if (!matchesCost(ctx, card, filter)) continue;
+          exileCard(ctx, card);
+        }
+      }
     },
   };
 }

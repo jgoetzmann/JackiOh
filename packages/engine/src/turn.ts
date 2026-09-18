@@ -97,6 +97,8 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   const side = state.players[player];
   side.turnsStarted += 1;
   side.turnLog = { playedIds: [], cardsPlayed: 0 };
+  // R152's backstop: the lockout ends at the cleanup of the turn it was set for, so by now it is
+  // already false for the player whose turn My Pawn took. This clears one set on the other player.
   side.aiTurn = false;
   resetExertion(sink, player);
 
@@ -120,11 +122,19 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   state.phase = "main";
 }
 
-/** Cleanup (§2.2): "this turn" modifiers expire and the turn log is closed. */
+/**
+ * Cleanup (§2.2): "this turn" modifiers expire, the turn log is closed and the AI lockout ends.
+ *
+ * R152: §8 #96 says the opponent's client is locked out "until end of turn", so the flag is cleared
+ * HERE, at the end of the turn the effect took, and not at that player's next turn start — clearing
+ * it later leaves them locked out of a turn that is no longer the one My Pawn took. `startTurn`
+ * still clears it as a backstop, for a flag somehow set on the player who is not the active one.
+ */
 function cleanup(sink: EngineSink, player: PlayerId): void {
   expireModifiers(sink, player);
   const side = sink.state.players[player];
   side.turnLog.unspentAtEnd = side.mana.current;
+  side.aiTurn = false;
 }
 
 // ---------------------------------------------------------------------------

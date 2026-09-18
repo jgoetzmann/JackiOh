@@ -30,18 +30,17 @@
 // R62 fixes when it happens (refresh → start-of-turn delayed effects → start-of-turn triggers →
 // draw), R68 the order among several (creation order), and `turn.runDelayed` owns both.
 //
-// !! BLOCKED — MISSING VERB (reported with this card) !!
-// `effects/index.ts` has no way to schedule a delayed effect, although `state.delayed`, `Resume`,
-// `modifiers.scheduleDelayed`, `prompts.resumeSelf` and `turn.runDelayed` all exist. The verb this
-// card is written against is
-//     delay({ at: { phase: "start" | "end", player: "self" | "enemy" }, step: string,
-//             data?: Record<string, unknown> }): Effect
-// a thin wrapper: `scheduleDelayed(ctx, ctx.controller, { phase, player: playerOf(ctx, player) },
-// resumeSelf(ctx, step, data))`, so the stored `Resume` names this script, the `resume` hook
-// (`RESUME_HOOK`), the step and the captured data, with `instanceId` optional exactly so the
-// continuation outlives the instance (R76). #23, #24, #31, #39, #50 and #78 all need it.
+// THE VERB AND WHERE ITS CONTINUATION LIVES (R126, R127). `delay` stores a `Resume` naming this
+// script, the hook key, the step and the captured data, and `turn.runDelayed` re-enters it through
+// the one reader — `prompts.runResume`, which resolves `resume.hook` against either a `Hook` on the
+// script or a step table. So the step is registered ONCE, in the `resume` table, and `delay` is
+// told so with `hook: RESUME_HOOK` (its default is the `delayed` hook). R126: "A card must never
+// have to register one continuation under two keys." R127 is the other half and the reason this
+// card carries the target id in `data`: the entry re-enters with `ctx.self === null` when Kpop
+// Fanatic has died in between, which is exactly R76's case.
 
 import type { EffectContext, Hook, Script } from "@jackioh/engine";
+import { RESUME_HOOK } from "@jackioh/engine";
 import { delay, steal } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -66,12 +65,9 @@ function capturedTargetId(ctx: EffectContext): string | null {
   return typeof id === "string" ? id : null;
 }
 
-/** Both faces run this: "Divine Shield; same" changes the keywords, printed in the catalog. */
 /**
- * R62's continuation, registered on BOTH keys on purpose — see #39 for the full reasoning: `delay`
- * schedules `hook: "delayed"`, which `turn.runDelayed` can only reach as a FUNCTION on the script,
- * while `resume` is what `prompts.runResume` reads. Under `resume` alone this stole nothing, with
- * no error. R76's fizzles are steal's own no-ops: gone from the field, or already yours.
+ * R62's continuation, registered once in the `resume` table (R126). R76's fizzles are steal's own
+ * no-ops: a target gone from the field, or one already yours.
  */
 const stealStep: Hook = (ctx) => {
   const targetId = capturedTargetId(ctx);
@@ -79,6 +75,7 @@ const stealStep: Hook = (ctx) => {
   return [steal({ instanceId: targetId })];
 };
 
+/** Both faces run this: "Divine Shield; same" changes the keywords, printed in the catalog. */
 const kpopFanatic: Script = {
   // §6.3: a permanent is a Unit, Field Spell, Trap or Field Trap, so both enemy rows are offered.
   targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit", "backrow"] } }],
@@ -89,11 +86,11 @@ const kpopFanatic: Script = {
       delay({
         at: { phase: "start", player: "self" },
         step: STEAL_STEP,
+        hook: RESUME_HOOK,
         data: { [TARGET_KEY]: targetId },
       }),
     ];
   },
-  delayed: stealStep,
   resume: { [STEAL_STEP]: stealStep },
 };
 

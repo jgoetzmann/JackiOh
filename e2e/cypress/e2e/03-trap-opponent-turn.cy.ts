@@ -152,10 +152,13 @@ describe("BUILD M8 03 — a trap fires on the other player's turn", () => {
             cy.get(ts(cardId(saintess))).should("have.attr", "data-radiant", "true");
           });
 
-          // …and the turn ends the ordinary way, so the trap left nothing half-resolved.
-          cy.endTurn();
+          // …and the turn finishes the ordinary way, so the trap left nothing half-resolved.
+          // Both mana are spent by now, so this is player 1 pressing `end-turn` or R82 having
+          // ended it for them; the assertion is that the game moved on either way.
+          advanceToTurn(4);
           cy.gameState().should((state) => {
-            expect(state.active, "player 1 ended its own turn").to.eq("p2");
+            expect(state.turn, "player 1's turn finished").to.eq(4);
+            expect(state.active, "and player 2 is up").to.eq("p2");
             expect(state.result, "the game is still running").to.eq(null);
           });
         });

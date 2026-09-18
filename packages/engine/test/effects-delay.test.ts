@@ -1,15 +1,18 @@
 // The two `modifiers.ts` verbs: `delay` and `addPlayerModifier`
-// (SPEC §2.2, §2.3, §6.3 Cost/Mana, §10.1, §10.6; R30, R48, R62, R68, R76, R86; BUILD M3-T1/M3-T5).
+// (SPEC §2.2, §2.3, §6.3 Cost/Mana, §10.1, §10.6; R30, R48, R62, R68, R76, R86, R126; BUILD
+// M3-T1/M3-T5).
 //
 // `test/modifiers.test.ts` already proves the SUBSYSTEM — `scheduleDelayed`, `dueDelayed`,
 // `addModifier`, `expireModifiers` and R62's two points in the turn loop. This file proves the two
 // EFFECTS in front of it: that what a card file writes lands as the record the subsystem expects,
 // and that the record really comes back at the turn boundary running the card's own script.
 //
-// It also pins two gaps in `turn.ts`'s `runDelayed`, which is NOT part of this work. Both are
-// marked `it.fails`, so vitest reports them green while they are broken and turns RED the moment
-// either is fixed — which is the point: a known-failing test naming a real gap is worth more than a
-// passing tautology, and it cannot be forgotten. Each carries the one-line fix in a comment.
+// It also pins ONE remaining gap in `effects/delay.ts`, which is NOT part of this work. It is
+// marked `it.fails`, so vitest reports it green while it is broken and turns RED the moment it is
+// fixed — which is the point: a known-failing test naming a real gap is worth more than a passing
+// tautology, and it cannot be forgotten. It carries its fix in a comment. The gap that used to sit
+// beside it — `turn.runDelayed` being unable to re-enter a `resume` step table — is closed, and
+// R126 now states the rule it was missing; its test is in "delay: coming due" below.
 //
 // The fixture cards are registered here on top of the shared fixture catalog, so no shared fixture
 // has to grow for them (CLAUDE.md, BUILD §0).
@@ -215,7 +218,7 @@ describe("delay: scheduling (§10.1, §10.6, R62, R68)", () => {
   });
 });
 
-describe("delay: coming due (§2.2, R62, R76, R86)", () => {
+describe("delay: coming due (§2.2, R62, R76, R86, R126)", () => {
   it("R62 the hook: \"delayed\" form round-trips a real end-of-turn boundary with its captured data", () => {
     const state = playing("delay-round-trip");
     const scribe = put(state, bolt.id, slot("p1", "units", 1));
@@ -230,6 +233,41 @@ describe("delay: coming due (§2.2, R62, R76, R86)", () => {
     // The card's own `delayed` hook ran, reading the amount the continuation carried.
     expect(ended.players.p2.hero.health).toBe(HERO_HEALTH - 3);
     // R62/§10.1: the entry is dropped once it has resolved, so it never fires twice.
+    expect(ended.delayed).toEqual([]);
+  });
+
+  /**
+   * R126's other spelling, on the same fixture: `boltScript` registers the identical continuation
+   * under BOTH keys — its own `delayed` hook (the test above) and an entry in its `resume` step
+   * table (this one) — so the two tests differ in nothing but `resume.hook`.
+   *
+   * This was a gap: `turn.runDelayed` re-entered with `resolve.runHook`, which does `script[name]`
+   * and CALLS the result, so `hook: "resume"` threw "hook is not a function" instead of looking
+   * `resume.step` up in the table, and a card whose continuation sat only in `resume` resolved to
+   * nothing at all. R126 settles it — "a card must never have to register one continuation under
+   * two keys" — and `runDelayed` now goes through `prompts.runResume`, the one reader that
+   * resolves both shapes.
+   */
+  it("R126 the step-table form re-enters too: one reader resolves a hook or a `resume` step", () => {
+    const state = playing("delay-step-table");
+    const scribe = put(state, bolt.id, slot("p1", "units", 1));
+    run(
+      state,
+      [
+        delay({
+          at: { phase: "end", player: "self" },
+          step: BOLT_STEP,
+          hook: RESUME_HOOK,
+          data: { amount: 4 },
+        }),
+      ],
+      { self: scribe, controller: "p1" },
+    );
+    expect(only(state.delayed).resume.hook).toBe(RESUME_HOOK);
+
+    // The fixture's `resume` table holds exactly this step, and the reader looks it up there.
+    const ended = endTurns(state, 1);
+    expect(ended.players.p2.hero.health).toBe(HERO_HEALTH - 4);
     expect(ended.delayed).toEqual([]);
   });
 
@@ -307,82 +345,29 @@ describe("delay: coming due (§2.2, R62, R76, R86)", () => {
   });
 });
 
-describe("delay: engine gaps in turn.runDelayed (not part of this work)", () => {
+describe("delay: the remaining gap in effects/delay.ts (not part of this work)", () => {
   /**
    * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   * GAP 1 — `turn.runDelayed` CANNOT RE-ENTER A `resume` STEP TABLE.
+   * GAP — A DELAY SCHEDULED WITH NO `ctx.self` HAS NO SCRIPT TO RE-ENTER.
    *
-   * `packages/engine/src/turn.ts`, in `runDelayed`:
-   *     runHook(sink, card, effect.resume.hook as HookName, { data: …, controller: … });
-   * and `resolve.runHook` does `script[name]` and then CALLS the result. `Script.resume` is a
-   * RECORD of steps, not a function, so `hook: "resume"` throws "hook is not a function" instead
-   * of looking `resume.step` up in the table. `work.ts`'s `cardStepFor` already handles both
-   * shapes, and `prompts.runResume` is the public function built on it.
+   * The engine half of this is fixed: `turn.runDelayed` no longer drops an entry whose
+   * `resume.instanceId` is missing, and `prompts.runResume` resumes a continuation whose instance
+   * has ceased to exist with `ctx.self === null` (R127). What is left is in THIS directory:
+   * `prompts.resumeSelf` can only name the def id through `ctx.self`, so a scheduler with a null
+   * self stores `defId: ""` — the passing "records a continuation with no instance" test above
+   * pins exactly that — and `runResume` then finds no face, no hook and nothing to run.
    *
-   * THE ONE-LINE FIX, in `packages/engine/src/turn.ts`'s `runDelayed`: replace the
-   * `findAnywhere` + `runHook` pair with
-   *     runResume(sink, effect.resume, { controller: effect.owner });
-   * (import from `./prompts`). That fixes GAP 2 below at the same time, makes a delayed effect
-   * resumable when its step opens a prompt (§9.3), and drops `findAnywhere` entirely, since
-   * `runResume` finds the instance itself with `findInstance` and resumes with `ctx.self === null`
-   * when it is gone.
+   * THE FIX, in `packages/engine/src/effects/delay.ts`: give `delay` a `defId` option that the
+   * card names when it has no instance to speak for it, and pass it into the stored `Resume` in
+   * place of `resumeSelf`'s `ctx.self.defId`. No Core card is in that position — every card that
+   * delays is on the field or parked in `resolving` when it does — so this stays reported, not
+   * built, and this file does not own `src/`.
    *
-   * THIS TEST IS `it.fails`: it passes while the gap is open and turns RED when it is closed —
-   * delete the `.fails` then. #39 Recycling Initiative and #50 Kpop Fanatic both keep their
-   * continuation in `resume`, so until this is fixed they must pass `hook: DELAYED_HOOK` (the
-   * default) and put the step in a `delayed` hook instead.
+   * THIS TEST IS `it.fails`: it passes while the gap is open and turns RED the moment the option
+   * lands — delete the `.fails` then.
    * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    */
-  it.fails("GAP §10.6: a delay whose hook is the resume step table never re-enters it", () => {
-    const state = playing("delay-step-table");
-    const scribe = put(state, bolt.id, slot("p1", "units", 1));
-    run(
-      state,
-      [
-        delay({
-          at: { phase: "end", player: "self" },
-          step: BOLT_STEP,
-          hook: RESUME_HOOK,
-          data: { amount: 4 },
-        }),
-      ],
-      { self: scribe, controller: "p1" },
-    );
-    expect(only(state.delayed).resume.hook).toBe(RESUME_HOOK);
-
-    // The fixture's `resume` table holds exactly this step, so a reader that understood the table
-    // would run it. `runHook` calls the table itself instead.
-    const ended = endTurns(state, 1);
-    expect(ended.players.p2.hero.health).toBe(HERO_HEALTH - 4);
-  });
-
-  /**
-   * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   * GAP 2 — `turn.runDelayed` DROPS EVERY DELAY WITH NO `resume.instanceId`.
-   *
-   * `packages/engine/src/turn.ts`, in `runDelayed`:
-   *     const instance = effect.resume.instanceId;
-   *     …
-   *     if (instance === undefined) continue;        // <-- silently never fires
-   * So a delay scheduled by a script with no `ctx.self` is stored, comes due, is dropped from
-   * `state.delayed` and never runs — the one shape §10.6 and R76 explicitly allow ("an instance
-   * that has ceased to exist resumes with `ctx.self === null`, which is why a step carries what it
-   * needs in `data`").
-   *
-   * THE ONE-LINE FIX is GAP 1's: `runResume(sink, effect.resume, { controller: effect.owner })`
-   * resumes a continuation with no instance perfectly well.
-   *
-   * A SECOND HALF, IN THIS DIRECTORY, IF ANY CARD EVER NEEDS IT: `prompts.resumeSelf` can only
-   * name the def id through `ctx.self`, so with a null self it stores `defId: ""` and there is no
-   * script to re-enter either. `delay` would then need a `defId` option. No Core card is in that
-   * position — every card that delays is on the field or parked in `resolving` when it does — so
-   * this is reported, not built.
-   *
-   * THIS TEST IS `it.fails` for both halves together; the assertion above it (the passing
-   * "records a continuation with no instance" test) pins the scheduling half separately.
-   * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   */
-  it.fails("GAP R76: a delay scheduled with no ctx.self comes due and is dropped without firing", () => {
+  it.fails("GAP R76: a delay scheduled with no ctx.self stores no def id, so nothing re-enters", () => {
     const state = playing("delay-no-self-fires");
     run(state, [delay({ at: { phase: "end", player: "self" }, step: BOLT_STEP, data: { amount: 7 } })], {
       self: null,

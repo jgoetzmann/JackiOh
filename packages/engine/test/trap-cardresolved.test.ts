@@ -134,14 +134,19 @@ function game(seed: string): GameState {
   return ready;
 }
 
-/** §10.5 step 7's event, as `echo.landAfterResolution` builds it. */
-function resolved(instance: CardInstance, permanent: boolean): GameEvent {
+/**
+ * §10.5 step 7's event, as `echo.landAfterResolution` builds it. `costPaid` repeats what step 2
+ * charged (0 for a cast, R70) and is carried on the event rather than looked up, per R89 — #60
+ * reads it for "costing 1 or less". Nothing here turns on the amount, so it defaults to 0.
+ */
+function resolved(instance: CardInstance, permanent: boolean, costPaid = 0): GameEvent {
   return {
     type: "cardResolved",
     player: instance.controller,
     instanceId: instance.id,
     defId: instance.defId,
     permanent,
+    costPaid,
   };
 }
 

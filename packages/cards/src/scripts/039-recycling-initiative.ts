@@ -11,9 +11,9 @@
 //     end of turn it has grown, so cards played AFTER this one are copied too. That is also why the
 //     clause is a delayed effect and not an `endOfTurn` hook: the card is in exile by then, and
 //     `turn.triggerOrder` only walks units and the backrow, so an `endOfTurn` hook would never be
-//     reached. `turn.runDelayed`'s `findAnywhere` does search the exile pile, so the continuation
-//     comes back to this script even though the card is gone from play (the same shape R76 gives
-//     #50 Kpop Fanatic).
+//     reached. A delayed continuation names its script by stored def id, so it comes back to this
+//     script even though the card is gone from play (R127, the same shape R76 gives #50 Kpop
+//     Fanatic) — with `ctx.self` whatever `findInstance` makes of it, exile pile included.
 //   - R86 is the `findInstance` skip below: an id whose instance has ceased to exist (a unit token
 //     that left the field, R11) drops out of the pool instead of fizzling on it. An id whose card
 //     merely changed zone is still in the pool, which is why nothing here filters on `zone`.
@@ -23,23 +23,15 @@
 //     twice in a turn (bounced and replayed, #24) is copied twice: the Engine cell says "every card
 //     in `turnLog.playedIds`", and that list holds one entry per play.
 //
-// !! BLOCKED — MISSING VERB (reported; the signature is the one #50 Kpop Fanatic is written
-// against, so ONE verb unblocks #23, #24, #31, #39, #50 and #78) !!
-//     delay({ at: { phase: "start" | "end", player: "self" | "enemy" }, step: string,
-//             data?: Record<string, unknown> }): Effect
-// a thin wrapper over `modifiers.scheduleDelayed(ctx, ctx.controller, at, resumeSelf(ctx, step,
-// data))`. `state.delayed`, `Resume`, `scheduleDelayed`, `prompts.resumeSelf` and `turn.runDelayed`
-// all exist; `effects/index.ts` exposes no verb for any of it, and a card file may not build its own
-// effect (CLAUDE.md rule 5). The call is written below so this card is correct the moment it lands.
-//
-// Two further engine notes, both reported:
-//   - `turn.runDelayed` re-enters a continuation with `resolve.runHook`, which looks a hook up as
-//     `script[name]`. A `Resume` built by `resumeSelf` names `hook: "resume"`, and `Script.resume`
-//     is a TABLE of steps, not a `Hook` — so `runHook` would try to call an object. It has to go
-//     through `prompts.runResume`, which is the function that understands a step table.
-//   - `reduce.ts` moves a resolving Spell to the graveyard unconditionally after its Cry, which
-//     drags this card straight back out of exile. "Exile this on play" is undone by the play
-//     pipeline for #34, #39, #72 and #97 alike.
+// WHERE THE CONTINUATION LIVES (R126, R127). `delay` stores a `Resume` — "script id + step +
+// captured data", never a closure — and `turn.runDelayed` re-enters it through the one reader,
+// `prompts.runResume`, which resolves `resume.hook` against either shape: a `Hook` on the script or
+// a step table (`resume`, where `resume.step` picks the entry). So this card registers its
+// continuation ONCE, in the `resume` table that every other pause in the repo uses, and says so by
+// passing `hook: RESUME_HOOK` to `delay` (whose default is the `delayed` hook). R126: "A card must
+// never have to register one continuation under two keys". R127 covers the rest: the entry is named
+// by stored def id, so it re-enters with `ctx.self === null` once this card is in exile, which is
+// why the id it needs travels in `data`.
 //
 // !! BLOCKED — MISSING VERB ARGUMENT (reported; #7 Jewelosco Scarab asks for the same one) !!
 //     addToHand(args: { defId; player?; radiant?; costOverride?; costMod?: number })
@@ -52,7 +44,7 @@
 // which R78 keeps in every zone.
 
 import type { Effect, EffectContext, Hook, Script } from "@jackioh/engine";
-import { findInstance, playedIdsThisTurn } from "@jackioh/engine";
+import { findInstance, playedIdsThisTurn, RESUME_HOOK } from "@jackioh/engine";
 import { addToHand, delay, exile } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -104,15 +96,7 @@ function copiesOfOtherPlays(ctx: EffectContext, discount: number): Effect[] {
 
 /** The two faces differ only in what a copy costs. */
 function recyclingInitiative(discount: number): Script {
-  /**
-   * R62's continuation, registered on BOTH keys on purpose. `delay` schedules it as
-   * `hook: "delayed"`, and `turn.runDelayed` re-enters that through `resolve.runHook`, which does
-   * `script[hook]` and CALLS it — so only a function on `delayed` is reachable from there. The
-   * `resume` entry is what `prompts.runResume` reads, and it is the shape that survives the
-   * `runDelayed` fix (one reader for both, see the report). Registering one named hook twice costs
-   * nothing and is correct either way; registering it only under `resume` resolved to NOTHING at
-   * all, silently, because `runHook` returns early when `script.delayed` is undefined.
-   */
+  /** R62's continuation, registered once: the `resume` step table the `delay` below names. */
   const copyStep: Hook = (ctx) => copiesOfOtherPlays(ctx, discount);
 
   return {
@@ -121,12 +105,12 @@ function recyclingInitiative(discount: number): Script {
       delay({
         at: { phase: "end", player: "self" },
         step: COPY_STEP,
+        hook: RESUME_HOOK,
         ...(ctx.self === null ? {} : { data: { [SELF_KEY]: ctx.self.id } }),
       }),
       // "Exile this on play."
       exile({ target: { of: "self" } }),
     ],
-    delayed: copyStep,
     resume: { [COPY_STEP]: copyStep },
   };
 }

@@ -1,7 +1,7 @@
 {
   "id": "03-sheepish-b",
   "spec": "03-trap-opponent-turn.cy.ts",
-  "description": "Player 2's deck for the Sheepish spec: #41 Sheepish and nineteen cards the spec never plays. Sheepish is the only Trap in either deck, so the face-down card in player 2's backrow can only be that one and the trap that fires on player 1's turn is unambiguous. Nothing else here is a Trap, a Field Trap, a Cast-on-draw card or a Quickdraw card, and every card is choice-free at play time, so player 2's turns are a bare set-and-pass.",
+  "description": "Player 2's deck for the Sheepish spec: #41 Sheepish and nineteen cards the spec never plays. Sheepish is the only Trap in either deck, so the face-down card in player 2's backrow can only be that one and the trap that fires on player 1's turn is unambiguous. Nothing else here is a Trap, a Field Trap, a Cast-on-draw card or a Quickdraw card, and every card is choice-free at play time, so player 2's turns are a bare set-and-pass. No card here carries a start-of-turn, end-of-turn or on-play hook that acts on the board (#58 Rush Token Farm and #64 Gifted Program were removed for exactly that): `triggerHoldersWithHook` in packages/engine/src/triggers.ts gathers those hooks from the HAND as well as the field, so a Rush Token Farm sitting in hand summons a unit every turn and a Gifted Program in hand makes a cheap play Radiant - which would move the board and the stats this spec asserts. Reported as an engine finding; the fixture does not rely on it either way.",
   "cards": [
     "core-001",
     "core-003",

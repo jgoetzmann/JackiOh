@@ -80,22 +80,18 @@ export function injectedEnginePort(): EnginePort | null {
 }
 
 /**
- * `engine.real.ts` is excluded from `tsconfig.json` and hidden from Vite's graph by
- * `@vite-ignore`, because `packages/engine/src/index.ts` re-exports six modules that do not
- * exist yet (`combat`, `playChoices`, `prompts`, `triggers`, `traps`, `viewFor`). Until M3 lands
- * this import fails and the hotseat route shows why. When the engine compiles, replace this
- * whole function body with `return (await import("./engine.real.ts")).enginePort()` and drop the
- * `exclude` entry in `tsconfig.json`.
+ * The import is dynamic so Vite code-splits the engine and the 109 card scripts out of the first
+ * paint — `/login`, `/invite` and `/decks` never need them. It is a plain analyzable
+ * `import("./engine.real.ts")`, not the `@vite-ignore` string specifier this used to be: that
+ * workaround existed only while `packages/engine/src/index.ts` re-exported modules that did not
+ * exist yet, and `tsc -p packages/engine/tsconfig.json` is green now, so the module is in
+ * `apps/web/tsconfig.json` and typechecked like everything else.
  */
 export function loadEnginePort(): Promise<EnginePort> {
   if (injected !== null) return Promise.resolve(injected);
   if (loading !== null) return loading;
-  const specifier = "./engine.real.ts";
-  loading = import(/* @vite-ignore */ specifier)
-    .then((mod: { enginePort?: () => EnginePort }) => {
-      if (typeof mod.enginePort !== "function") throw new EngineUnavailableError(["enginePort"]);
-      return mod.enginePort();
-    })
+  loading = import("./engine.real.ts")
+    .then((mod) => mod.enginePort())
     .catch((cause: unknown) => {
       loading = null;
       if (cause instanceof EngineUnavailableError) throw cause;

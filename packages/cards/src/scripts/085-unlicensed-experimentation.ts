@@ -19,29 +19,25 @@
 //     exactly how that last sentence happens. So `when` counts Immutable permanents and `run`
 //     does not.
 //
-// WHICH EVENT (R61, R70, §10.5). `cardPlayed` is the only event that names a play: `reduce.ts`
-// emits it for a play from hand and `resolve.castCard` emits it for a cast, which R70 makes a play
-// "for every rule that counts or reacts to plays". A summon — Recruit, a copy, a token, Reborn, a
-// Transform result — emits `summoned` and never `cardPlayed`, so R61's exclusions are the event's
-// own, with one exception this card has to make itself: a TOKEN CARD can be played from a hand
-// (#75's Rush Token card, Combo-Fodder), which would emit `cardPlayed`, and R61 says tokens never
-// set this off. Hence the token check in `playedPermanent`.
+// WHICH EVENT (R17, R61, R70, §10.5). §10.5 step 7's `cardResolved`, not step 4's `cardPlayed`.
+// Both name a play — `playSteps.ts` reports a play from hand and `resolve.castCard` a cast, which
+// R70 makes a play "for every rule that counts or reacts to plays" — but R17 puts this trap at step
+// 7, "after a played permanent's Cry", while step 4 is #41 Sheepish's moment, before it ("Sheepish
+// fires on the `summoned`/`cardPlayed` pair emitted at step 4 … Bear Honeypot, Unstable Clone
+// Machine and Unlicensed Experimentation fire on the events step 7 emits", `traps.ts`). Watching
+// `cardPlayed` would fuse the played permanent away before its own Cry ever ran.
 //
-// !! ENGINE GAP 1 — TIMING (reported) !!
-// R17 and §10.5 put this trap at step 7, "after a played permanent's Cry", while `cardPlayed` is
-// emitted at step 4, before the Cry — that is the very timing #41 Sheepish relies on ("Sheepish
-// fires on the `summoned`/`cardPlayed` pair emitted at step 4, before the Cry of step 5; Bear
-// Honeypot, Unstable Clone Machine and Unlicensed Experimentation fire on the events step 7 emits",
-// `traps.ts`). One event cannot be both, and no event in `@jackioh/shared`'s union marks the end of
-// a resolution, so the two moments are indistinguishable to a trap today. The engine needs one of:
-//   (a) a new event, emitted by §10.5 step 7 for a played or cast permanent, which this card then
-//       watches instead of `cardPlayed`:
-//           | { type: "cardResolved"; player: PlayerId; instanceId: string; defId: string }
-//   (b) or a timing field on the trap trigger, with `traps.ts` filtering matches by it at each of
-//       §10.5's two dispatch points:
-//           timing?: "onPlay" | "afterResolution"    // default "onPlay" (#41's step 4)
-// (a) is the smaller change and is the one §10.5's wording implies. Until then this card watches
-// `cardPlayed` and therefore fires one step early: the played permanent's Cry has not run yet.
+// A summon — Recruit, a copy, a token, Reborn, a Transform result — emits `summoned` and never
+// either of these, so R61's exclusions are the event's own, with one exception this card has to
+// make itself: a TOKEN CARD can be played from a hand (#75's Rush Token card, Combo-Fodder), and
+// R61 says tokens never set this off. Hence the token check in `playedPermanent`.
+//
+// "PLAYED PERMANENTS ONLY" IS `event.permanent` (R61). Step 7 answers the question itself: the flag
+// says whether the card is still in play at the moment it resolved, which is exactly what this trap
+// needs and what a Spell can never be. It also settles the cases a board re-check would have to
+// guess at — a Unit #41 Sheepish has already transformed away, a token that ceased to exist, R138's
+// cast permanent that found no zone and went to its graveyard — all report false, so none of them
+// arms this trap and nothing here reads a zone.
 //
 // FUSE, VIA THE EFFECTS BARREL (§6.3 Fuse, R77, R23, R61).
 // `fuseCards({ instanceIds, targetInstanceIds, pick })` is the verb. The loop over the targets is
@@ -68,12 +64,8 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-085");
 
-type PlayEvent = Extract<GameEvent, { type: "cardPlayed" }>;
-
-/** §5.1: every type but Spell is a permanent. */
-function isPermanent(type: CardType): boolean {
-  return type !== "Spell";
-}
+/** §10.5 step 7's event: a play or a cast that has finished resolving (R17, R70). */
+type ResolvedEvent = Extract<GameEvent, { type: "cardResolved" }>;
 
 /** R61 and §5.1: "Field Trap counts as Trap", in both directions, so both read as one key. */
 function typeKey(type: CardType): CardType {
@@ -82,17 +74,20 @@ function typeKey(type: CardType): CardType {
 
 /**
  * The permanent this play put on the opponent's field, or null when the event is not one this trap
- * answers: the controller's own play, a Spell, a token (R61), or a card that is no longer there
- * (an earlier trap transformed it, or its own Cry killed it).
+ * answers: the controller's own play, a Spell or anything else that is no longer in play (R61's
+ * `permanent`), a token (R61), or a card the instance table can no longer name.
  */
-function playedPermanent(ctx: EffectContext, event: PlayEvent): CardInstance | null {
+function playedPermanent(ctx: EffectContext, event: ResolvedEvent): CardInstance | null {
   // §8: "the opponent plays". A trap never answers its own controller's play.
   if (event.player === ctx.controller) return null;
+  // R61: "played permanents only". Step 7 read this as it landed, so no board check is needed and
+  // a Spell, or a Unit an earlier trap has already taken off the field, is out by the same test.
+  if (!event.permanent) return null;
+
   const card = findInstance(ctx.state, event.instanceId);
-  if (card === undefined || card.zone.z !== "field") return null;
+  if (card === undefined) return null;
 
   const played = defOf(ctx.state, card.defId);
-  if (!isPermanent(played.type)) return null;
   // R61: "tokens … never set it off", including a token card played from a hand.
   if (played.token || played.tags.includes("Token")) return null;
   return card;
@@ -117,10 +112,10 @@ function matchingPermanents(ctx: EffectContext, type: CardType): CardInstance[] 
 function experimentation(onAll: boolean): TrapTrigger {
   return {
     id: onAll ? "85r-unlicensed-experimentation" : "85-unlicensed-experimentation",
-    on: ["cardPlayed"],
+    on: ["cardResolved"],
     when: (ctx) => {
       const event = ctx.event;
-      if (event.type !== "cardPlayed") return false;
+      if (event.type !== "cardResolved") return false;
       const played = playedPermanent(ctx, event);
       if (played === null) return false;
       // §8: "whose type matches one you control". R61 counts an Immutable permanent of yours here,
@@ -129,7 +124,7 @@ function experimentation(onAll: boolean): TrapTrigger {
     },
     run: (ctx) => {
       const event = ctx.event;
-      if (event.type !== "cardPlayed") return [];
+      if (event.type !== "cardResolved") return [];
       const played = playedPermanent(ctx, event);
       if (played === null) return [];
 

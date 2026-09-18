@@ -10,14 +10,24 @@
  * stdout is the gate: one line per uncovered card, naming the test file it expects, and exit 1.
  * All 109 covered -> stdout is empty and the exit code is 0, so CI can gate a milestone on it.
  *
- * stderr carries two warnings that never change the exit code but stop a typo from hiding forever:
- *   - a card-shaped test filename that names no catalog card (`15-hit-job.test.ts`, unpadded), and
- *   - a test file that reaches the right card through a misspelled slug.
+ * ONE FILE MAY COVER A CARD AND ITS TOKEN. A card-defined token (`core-090-1` CN-Virus,
+ * `core-093-1` Combo-Fodder, `core-095-1` Chaos Golem) exists only because its generator makes it,
+ * and its behaviour is usually easiest to read in the generator's own test file. So a token with no
+ * file of its own counts as covered when its generator's test file EXERCISES it — names the token's
+ * catalog id in full — and that is reported as a NOTE on stderr rather than as a hole. Nothing is
+ * hard-coded: the rule is the id relationship (`core-090-1`'s generator is `core-090`) plus the
+ * mention, so the next shared file works without another edit here.
+ *
+ * stderr carries three notices that never change the exit code but stop a typo from hiding forever:
+ *   - a card-shaped test filename that names no catalog card (`15-hit-job.test.ts`, unpadded),
+ *   - a test file that reaches the right card through a misspelled slug, and
+ *   - a token covered inside its generator's file rather than in a file of its own.
  *
  * Every path resolves from this file's own URL, never `process.cwd()`.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { compareSortKeys, expectedBasename, resolveBasename, slugPrefixOf, sortKey } from "./naming";
 
@@ -43,11 +53,23 @@ export type TestFileNote = {
   expected?: string;
 };
 
+/** A card-defined token whose coverage lives inside its generator's test file, not its own. */
+export type SharedCoverage = {
+  id: string;
+  name: string;
+  /** The card whose file exercises it (`core-090-1` -> `core-090`). */
+  generator: string;
+  /** That file, package-relative. */
+  file: string;
+};
+
 export type Audit = {
   missing: readonly MissingTest[];
   /** Card-shaped filenames that name no catalog card, plus misspelled slugs. */
   notes: readonly TestFileNote[];
-  /** How many of the 109 have a test file. */
+  /** Tokens covered inside their generator's file; counted as covered, reported as a NOTE. */
+  shared: readonly SharedCoverage[];
+  /** How many of the 109 are covered — by a file of their own or by their generator's. */
   covered: number;
   total: number;
 };
@@ -74,6 +96,33 @@ function looksLikeCardTest(basename: string): boolean {
   return /^\d/.test(basename) || /^t-/.test(basename);
 }
 
+/**
+ * The cards a token's coverage may live in, nearest first: its generator, then its generator's
+ * generator, and so on. A token id is its generator's id plus a `-<n>` sub-index (`core-090-1` ->
+ * `core-090`), so the chain is read straight off the id — a plain card and a shared token
+ * (`core-t-rush`) have none, and a generator that ships no card of that id is skipped.
+ */
+function generatorIdsOf(id: string, allIds: readonly string[]): string[] {
+  const chain: string[] = [];
+  let prefix = slugPrefixOf(id);
+  while (/-\d+$/.test(prefix)) {
+    prefix = prefix.replace(/-\d+$/, "");
+    const owner = allIds.find((other) => slugPrefixOf(other) === prefix);
+    if (owner !== undefined) chain.push(owner);
+  }
+  return chain;
+}
+
+/**
+ * Whether a test file really exercises `id`, rather than carrying it as the PREFIX of some longer
+ * string. `const VIRUS = "core-090-1"` exercises it; the seed `"core-090-1-cry"` and the id
+ * `core-090-10` do not, so the boundary is "no word character and no dash on either side".
+ */
+function exercises(source: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`).test(source);
+}
+
 export function auditTests(): Audit {
   const entries = catalogEntries();
   const ids = entries.map((entry) => entry.id);
@@ -88,6 +137,8 @@ export function auditTests(): Audit {
 
   const testedIds = new Set<string>();
   const notes: TestFileNote[] = [];
+  /** The test file each covered card owns, so a token can go looking inside its generator's. */
+  const fileOf = new Map<string, string>();
 
   for (const file of files) {
     if (!file.endsWith(".test.ts")) continue;
@@ -101,22 +152,52 @@ export function auditTests(): Audit {
       continue;
     }
     testedIds.add(id);
+    fileOf.set(id, file);
     const expected = expectedBasename(id, nameOf.get(id) ?? id);
     if (basename !== expected) notes.push({ basename, id, expected: `${expected}.test.ts` });
   }
 
+  // A token with no file of its own: covered when its generator's file exercises it by id.
+  const shared: SharedCoverage[] = [];
+  const sourceCache = new Map<string, string>();
+  const coveredByGenerator = (id: string, name: string): boolean => {
+    for (const generator of generatorIdsOf(id, ids)) {
+      const file = fileOf.get(generator);
+      if (file === undefined) continue;
+      let source = sourceCache.get(file);
+      if (source === undefined) {
+        source = readFileSync(join(TEST_DIR, file), "utf8");
+        sourceCache.set(file, source);
+      }
+      if (!exercises(source, id)) continue;
+      shared.push({ id, name, generator, file: `${TEST_DIR_LABEL}/${file}` });
+      return true;
+    }
+    return false;
+  };
+
+  const byIndex = (a: { id: string }, b: { id: string }): number =>
+    compareSortKeys(sortKey(slugPrefixOf(a.id), a.id), sortKey(slugPrefixOf(b.id), b.id));
+
   const missing = entries
     .filter((entry) => !testedIds.has(entry.id))
+    .filter((entry) => !coveredByGenerator(entry.id, entry.name))
     .map((entry) => ({
       id: entry.id,
       name: entry.name,
       expected: `test/${expectedBasename(entry.id, entry.name)}.test.ts`,
     }))
-    .sort((a, b) =>
-      compareSortKeys(sortKey(slugPrefixOf(a.id), a.id), sortKey(slugPrefixOf(b.id), b.id)),
-    );
+    .sort(byIndex);
 
-  return { missing, notes, covered: testedIds.size, total: entries.length };
+  shared.sort(byIndex);
+
+  return {
+    missing,
+    notes,
+    shared,
+    covered: testedIds.size + shared.length,
+    total: entries.length,
+  };
 }
 
 function main(): void {
@@ -141,6 +222,13 @@ function main(): void {
           ` convention spells it ${note.expected}.`,
       );
     }
+  }
+
+  for (const token of audit.shared) {
+    console.error(
+      `missing-tests: NOTE ${token.id} ${token.name} has no test file of its own; ${token.file}` +
+        ` (${token.generator}, the card that makes it) exercises it, so it counts as covered.`,
+    );
   }
 
   if (audit.missing.length === 0) {

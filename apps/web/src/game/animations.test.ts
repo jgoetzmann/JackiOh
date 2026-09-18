@@ -81,7 +81,7 @@ const BUILD_DURATIONS: Record<GameEventType, number> = {
 
 const SAMPLES: { [K in GameEventType]: Extract<GameEvent, { type: K }> } = {
   cardPlayed: { type: "cardPlayed", player: "p1", instanceId: "c1", defId: "core-002", costPaid: 1 },
-  cardResolved: { type: "cardResolved", player: "p1", instanceId: "c1", defId: "core-002", permanent: true },
+  cardResolved: { type: "cardResolved", player: "p1", instanceId: "c1", defId: "core-002", permanent: true, costPaid: 1 },
   summoned: { type: "summoned", player: "p1", instanceId: "c1", defId: "core-002", row: "units", lane: 2 },
   damage: { type: "damage", sourceId: "u1", targetId: "hero-p2", amount: 4, combat: true },
   healthLost: { type: "healthLost", player: "p1", amount: 3 },

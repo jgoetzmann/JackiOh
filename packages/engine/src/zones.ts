@@ -227,6 +227,14 @@ export type MoveResult = "moved" | "vanished";
 /**
  * Move a card to one of its owner's off-field zones. Unit tokens cease to exist instead (R11),
  * and a unit-token card leaving hand or library other than by being drawn or played does too.
+ *
+ * R151's arrival hook is deliberately NOT here, although this is the single point every zone change
+ * goes through: the roll a card makes as it arrives needs the match rng, and this function takes a
+ * `GameState`, which holds only the seed and the cursor `reduce` stores between actions. Building an
+ * rng from those mid-action would repeat draws the action's own rng has already taken and would have
+ * its advanced cursor thrown away by `reduce`'s `next.rngCursor = sink.rng.cursor`. The hook lives
+ * one layer up, on the sink-holding funnels every hand and library arrival passes through —
+ * `draw.addToHand` and `draw.shuffleIntoLibrary` (`runArrivalHooks` in `draw.ts`).
  */
 export function moveToZone(
   state: GameState,

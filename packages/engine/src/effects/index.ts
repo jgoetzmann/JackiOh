@@ -58,9 +58,10 @@ export type {
 // Destroy, Sacrifice, and the board-wide and adjacent forms (§6.3, §4.5, §3.1, R46, R59).
 export { destroy, destroyAdjacentTo, destroyAll, sacrifice } from "./destroy";
 
-// Exile, Bounce, Discard, Counter, and the board-wide and whole-hand forms
-// (§6.3, §2.4, §3.1, R11, R12, R16, R31).
+// Exile, Bounce, Discard, Counter, and the board-wide, whole-hand and by-cost forms
+// (§6.3, §2.4, §3.1, R11, R12, R16, R26, R31, R66, R135).
 export {
+  EXILE_ZONE_ORDER,
   bounce,
   bounceAll,
   counter,
@@ -71,7 +72,9 @@ export {
   exileAdjacentTo,
   exileAll,
   exileHand,
+  exileMatching,
 } from "./move";
+export type { CostFilter, ExileZone } from "./move";
 
 // Steal (§6.3).
 export { steal, stealAll } from "./steal";
@@ -112,8 +115,8 @@ export type { DamageAllArgs, DamageEffectArgs } from "./damage";
 // Lose health (§6.3, R18).
 export { loseHealth } from "./loseHealth";
 
-// Draw (§6.3, §2.4, R58).
-export { draw } from "./draw";
+// Draw, of the top card or of a card the script named out of a library (§6.3, §2.4, R4, R58, R135).
+export { draw, drawFromLibrary } from "./draw";
 
 // Add to hand: creates OR moves the card (§6.3, §2.4, R4, R57, R60, R65).
 export { addRandomFromCatalog, addRandomFromGraveyard, addToHand } from "./addToHand";

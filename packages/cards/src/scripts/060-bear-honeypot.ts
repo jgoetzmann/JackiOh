@@ -24,34 +24,24 @@
 // R53 (all of it) is the forced attack: skip §4.2 steps 1-3, so position, summoning sickness and
 // Taunt are ignored and no exertion is spent; the target still strikes back; the attackers go in
 // lane order; each attack is its own combat followed by its own state check; and the next attacker
-// attacks only if the target is still on the field. `forceAttacksOn` (engine/src/combat.ts) already
-// implements exactly that — the gap is only its Effect wrapper (see below).
+// attacks only if the target is still on the field. `forceAttacksOn` (engine/src/combat.ts) is
+// exactly that, and `forcedAttacks` in the effects barrel is its Effect wrapper.
 //
-// TWO ENGINE GAPS this file is written against. Neither is faked here (CLAUDE.md rule 5):
+// WHICH EVENT, AND WHY NOT `cardPlayed` (R17, §10.5 steps 4 and 7). R17 gives one play two trap
+// moments: #41 Sheepish at step 4, on the `cardPlayed`/`summoned` pair, before the Cry — and this
+// card at step 7, "after the card resolves", which is `cardResolved` (`echo.landAfterResolution`
+// emits it once per play or cast, after step 6 has drained every Echo repeat). Watching `cardPlayed`
+// would be wrong and not merely early: the Engine cell requires the played unit to be on the field
+// with its Cry already resolved, which is what makes "they attack it" reach anything.
 //
-// 1. THERE IS NO POST-RESOLUTION EVENT. R17 needs two trap moments on one play: #41 Sheepish before
-//    the Cry, this card after the card has resolved. traps.ts says the second one fires "on the
-//    events step 7 emits", but §10.5 step 7 emits nothing for a played Unit or Field Spell —
-//    `reduce.ts`'s `playCard` emits `cardPlayed` + `summoned` and then runs the Cry, and for a Spell
-//    `cardPlayed`, the Cry, then `enteredGraveyard`. `cardPlayed` is the step-4 event, so watching
-//    it would fire this trap BEFORE the played unit's Cry, which is #41's timing and not this
-//    card's. Proposed: a `cardResolved` event with `cardPlayed`'s exact payload
-//    ({ player, instanceId, defId, costPaid, x?, embiggened? }), emitted at §10.5 step 7 after the
-//    Cry and after the Echo repeats of step 6, added to the `GameEvent` union, to `GAME_EVENT_TYPES`
-//    and to §10.3's list with BUILD M5-T4's animation row. #33 Unstable Clone Machine and #85
-//    Unlicensed Experimentation need the same event. Until it exists — and until `reduce`'s play
-//    pipeline calls `fireTrapsFor` at all, which it does not today — this trap cannot fire.
-// 2. THERE IS NO FORCED-ATTACK EFFECT. `forceAttack`/`forceAttacksOn` take an `EngineSink` and are
-//    not in the effects barrel, so no card can reach them. Proposed:
-//      forcedAttacks({ attackers: { side: "self" | "enemy"; defId?: string; summonedThisScript?: boolean },
-//                      target: { instanceId: string } | { of: TargetSpec } }): Effect
-//    resolving the attacker list in lane order through `activeUnitsOf` and delegating to
-//    `forceAttacksOn`, which already stops when the target has left the field (R53). #9 Moths to the
-//    Flame wants the same verb from the other side (`{ side: "enemy" }`, target `{ of: "self" }`).
-//    `summonedThisScript` is what makes "they attack it" mean the tokens THIS trap just summoned
-//    rather than every Rush Token its controller happens to own; see the report.
+// `cardResolved` also carries `costPaid` for R89's sake — a trigger answering an event reads what
+// it needs OFF the event, because step 7's instance may have been reset since step 4 — so the R56
+// threshold below never re-derives a cost from the board.
+//
+// `summonedThisScript` on the forced-attack filter is what makes "they attack it" mean the tokens
+// THIS trap just summoned rather than every Rush Token its controller happens to own.
 
-import type { GameEvent, PlayerId } from "@jackioh/shared";
+import type { GameEvent } from "@jackioh/shared";
 import type { Effect, EffectContext, Script, TrapTrigger } from "@jackioh/engine";
 import { defOf } from "@jackioh/engine";
 import { fillBoard, forcedAttacks, summon } from "@jackioh/engine/effects";
@@ -62,33 +52,16 @@ export const def = cardDef("core-060");
 /** §7's shared Rush Token, 3/3 with Rush. */
 const RUSH_TOKEN = "core-t-rush";
 
-/**
- * Gap 1 above: the §10.5 step 7 event this trap must watch. The cast is the one place this file is
- * ahead of the engine — delete it and write `on: ["cardResolved"]` once `shared/src/events.ts`
- * carries the member. Watching `cardPlayed` instead would be wrong, not merely early: the Engine
- * cell requires the played unit to be on the field with its Cry already resolved.
- */
-const CARD_RESOLVED = "cardResolved" as GameEvent["type"];
-
-/** The fields the step-7 event carries; identical to `cardPlayed`'s, which is why it is the same shape. */
-type ResolvedPlay = { player: PlayerId; instanceId: string; defId: string; costPaid: number };
-
-/**
- * Read the play off the event. `"costPaid" in event` is the narrowing that works for both the
- * `cardPlayed` member the union has today and the `cardResolved` member it needs, so nothing here
- * asserts a shape the engine has not published.
- */
-function resolvedPlay(event: GameEvent): ResolvedPlay | null {
-  return "costPaid" in event ? event : null;
-}
+/** §10.5 step 7's event: the play this trap answers, with the cost R56 reads. */
+type ResolvedPlay = Extract<GameEvent, { type: "cardResolved" }>;
 
 /**
  * "When the opponent plays a card costing 1 or less" (radiant: any card). Returns the play when the
  * trap answers this event and null when it must stay armed.
  */
 function match(ctx: EffectContext & { event: GameEvent }, anyCost: boolean): ResolvedPlay | null {
-  const played = resolvedPlay(ctx.event);
-  if (played === null) return null;
+  const played = ctx.event;
+  if (played.type !== "cardResolved") return null;
   // "the opponent plays": the trap's own controller setting off their own trap is not the trigger.
   if (played.player === ctx.controller) return null;
   // R56 and R70: the cost actually paid, so a cast (0) is always "1 or less".
@@ -117,11 +90,16 @@ function tokensAndAttack(ctx: EffectContext, played: ResolvedPlay, fill: boolean
   ];
 }
 
-/** One face's trigger. `TrapTrigger` is `TriggerDef` plus the `when` predicate traps.ts reads. */
+/**
+ * One face's trigger. `TrapTrigger` is `TriggerDef` plus the `when` predicate traps.ts reads, and
+ * the whole condition lives in that predicate (R99, R61): `run` is reached only once the trap
+ * really is firing, so the `null` branch below is narrowing and never a decision — a 2-cost play
+ * has already been declined by `when` and left the trap armed and face-down.
+ */
 function honeypot(anyCost: boolean, fill: boolean): TrapTrigger {
   return {
     id: "bear-honeypot",
-    on: [CARD_RESOLVED],
+    on: ["cardResolved"],
     when: (ctx) => match(ctx, anyCost) !== null,
     run: (ctx) => {
       const played = match(ctx, anyCost);

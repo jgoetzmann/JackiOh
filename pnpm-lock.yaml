@@ -78,6 +78,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@jackioh/cards':
+        specifier: workspace:*
+        version: link:../../packages/cards
       '@jackioh/engine':
         specifier: workspace:*
         version: link:../../packages/engine

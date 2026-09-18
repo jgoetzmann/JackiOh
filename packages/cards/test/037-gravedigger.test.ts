@@ -124,7 +124,25 @@ describe("#37 Gravedigger", () => {
     expect(s.pile("p1", "graveyard").map((card) => card.defId).sort()).toEqual([HIT_JOB, STOCKPILE].sort());
   });
 
-  it("radiant resumes across the prompt: the start-of-turn draw still happens and the turn lands in main", () => {
+  /**
+   * KNOWN FAILING, and deliberately so — the assertion states R62's order, not the engine's.
+   *
+   * R62: "Refresh → start-of-turn delayed effects → start-of-turn triggers → draw". So a
+   * start-of-turn trigger that opens a prompt must hold the draw until the prompt is answered and
+   * the trigger has run to the end. The engine draws first: the log today is
+   *     turnStarted, manaChanged, promptOpened, drawn, addedToHand, promptAnswered, …
+   * with the turn's draw landing INSIDE the open prompt. That is the same bug class R62/R113 just
+   * fixed at the end of a turn — the end of turn now parks its remainder in `state.work` and the
+   * answer finishes it (R122) — still present at the start of one.
+   *
+   * THE FIX IS NOT IN THIS DIRECTORY: `packages/engine/src/turn.ts`'s `startTurn` runs
+   * `queueHooksInTriggerOrder` + `settle` and then `draw` straight through, so a pause inside the
+   * trigger queue leaves the draw to run under the prompt. It needs the end of turn's shape: a
+   * start-of-turn work item that owes the draw, parked when the triggers pause and resumed by the
+   * action that answers (R113, R117, R122). Everything else in this test passes — the resume does
+   * happen, the draw does happen and the turn does land in `main`; only the ORDER is wrong.
+   */
+  it("R62 radiant resumes across the prompt: the draw comes AFTER the start-of-turn trigger", () => {
     const s = scenario({
       seed: SEED,
       p1: {
@@ -142,7 +160,9 @@ describe("#37 Gravedigger", () => {
     // The draw that follows the start-of-turn hook happened, and the picked card is there too.
     expect(defIdsInHand(s).sort()).toEqual([DRAWN, MANA_WELL].sort());
     expect(s.state.phase).toBe("main");
-    s.expectEvents("promptOpened", "drawn", "promptAnswered", "addedToHand");
+    // R62's order, as a subsequence: the Discover opens, is answered and puts its pick in hand,
+    // and only then does the turn draw. Red until `turn.ts` owes the draw to `state.work`.
+    s.expectEvents("promptOpened", "promptAnswered", "addedToHand", "drawn", "addedToHand");
   });
 
   it("radiant does nothing with an empty graveyard: no prompt at all (§6.3)", () => {

@@ -4,8 +4,9 @@
 // `thisTurn`, `nextTurnOf(player)` and `used` — at its boundary, with R48's timing (a next-turn
 // modifier does nothing on the turn it was made) in a test of its own. The delayed half proves
 // they resolve at their R62 point in creation order, that Kpop Fanatic's steal fires after its
-// unit has died (§8 #50, R76), and that Efficiency Dividend's mana is a `mana.nextTurnMod` rather
-// than a delayed effect at all (§8 #24).
+// unit has died (§8 #50, R76), that a continuation whose instance has ceased to exist still
+// resolves with `ctx.self === null` (R127), and that Efficiency Dividend's mana is a
+// `mana.nextTurnMod` rather than a delayed effect at all (§8 #24).
 //
 // The expiry boundaries call `expireModifiers` directly, so one state object carries a whole test
 // and the modifier ids stay comparable; `reduce` clones, so the tests that need a real turn
@@ -115,9 +116,19 @@ function both(script: Script): CardScripts {
 
 const MOD_DEFS: CardDef[] = [delayedBolt, kpopFanatic, endOfTurnDrawer, costFive, cheapSpell];
 
+/**
+ * Every `ctx.self` `delayedBolt`'s continuation has been re-entered with, as an instance id or
+ * `null`. R127 ("a continuation with no instance still resolves … with `ctx.self === null`") is a
+ * statement about the context the step runs in, which is only observable from inside the script.
+ */
+const selfAtResume: (string | null)[] = [];
+
 const MOD_SCRIPTS: Record<string, CardScripts> = {
   [delayedBolt.id]: both({
-    activate: (ctx) => [damage({ to: { of: "enemyHero" }, amount: Number(ctx.data.amount ?? 0) })],
+    activate: (ctx) => {
+      selfAtResume.push(ctx.self === null ? null : ctx.self.id);
+      return [damage({ to: { of: "enemyHero" }, amount: Number(ctx.data.amount ?? 0) })];
+    },
   }),
   [kpopFanatic.id]: both({
     activate: (ctx) => [steal({ instanceId: String(ctx.data.target ?? "") })],
@@ -537,15 +548,25 @@ describe("delayed effects (§10.1, R62, R68)", () => {
     expect(state.players.p1.mana).toMatchObject({ max: 3, current: 3, nextTurnMod: 0 });
   });
 
-  it("§10.1 a delayed effect whose instance has ceased to exist is dropped rather than throwing", () => {
+  it("R127 a delayed effect whose instance has ceased to exist still resolves, with ctx.self === null", () => {
     let state = playing("delayed-missing");
     const sink = sinkFor(state);
     const ghost = newInstance(state, delayedBolt.id, "p1", { z: "gone", player: "p1" });
     scheduleDelayed(sink, "p1", { phase: "start", player: "p1" }, resume(delayedBolt.id, ghost.id, { amount: 3 }));
+    selfAtResume.length = 0;
 
+    // The intent this test was written for still holds — the missing instance must not throw:
+    // `endTurns` goes through `act`, which rethrows anything `reduce` raised.
     state = endTurns(state, 2);
     expect(state.turn).toBe(3);
-    expect(state.players.p2.hero.health).toBe(30);
+
+    // R127: the continuation names its script by stored def id, so it re-enters all the same —
+    // dropping it would silently lose a sequence, which R113 forbids. The 3 comes out of
+    // `resume.data`, which is where a step keeps what it needs precisely because `self` may be gone.
+    expect(state.players.p2.hero.health).toBe(27);
+    expect(selfAtResume).toEqual([null]);
+
+    // Resolved once and dropped: R127 makes it fire, not fire twice.
     expect(state.delayed).toEqual([]);
   });
 });

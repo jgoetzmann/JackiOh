@@ -35,7 +35,14 @@ describe("#8 Mr. Vanilla (§8.1 row 8)", () => {
     s.expectStats("core-008", { attack: 3, health: 3, maxHealth: 3 });
     expect(unitOf(s, "p1", "core-008").keywords).toContainEqual({ kind: "Immutable" });
     // "Keywords only": the play emits the play itself and nothing else — no Cry, no trigger.
-    expect(s.lastEvents.map((event) => event.type)).toEqual(["manaChanged", "cardPlayed", "summoned"]);
+    // `cardResolved` closes every play (§10.5 step 7, R17's second trap moment), so it is part of
+    // the bare skeleton and not text of this card's.
+    expect(s.lastEvents.map((event) => event.type)).toEqual([
+      "manaChanged",
+      "cardPlayed",
+      "summoned",
+      "cardResolved",
+    ]);
   });
 
   it("R23 Radiant is still allowed on an Immutable card: the 7/7 face, still Immutable", () => {

@@ -296,8 +296,10 @@ describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
     // R84: the policy never picks `concede`, so the game is still running.
     expect(state.result).toBeNull();
     expect(events.length).toBeGreaterThan(1);
-    // R44: the lockout is only cleared by `turn.ts`, at that player's own next turn start.
-    expect(state.players.p1.aiTurn).toBe(true);
+    // R152: the lockout lasts "until end of turn" (§8 #96), so `turn.ts`'s cleanup clears it as the
+    // turn the AI just played out closes — a player is never locked out of a turn that is no longer
+    // the one the effect took. `startTurn` keeps its own clear only as a backstop.
+    expect(state.players.p1.aiTurn).toBe(false);
   });
 
   it("R44 is deterministic from the seed: the same board plays out the same way twice", () => {

@@ -71,6 +71,10 @@ export function unitView(state: GameState, instance: CardInstance): UnitView {
   // it as "Felinor Fiender *adds* the sum of your Felinors' layer-4 stats", so the hook returns the
   // sum rather than a finished total, and R39's "never below printed" floors each sum at 0 — a
   // Felinor carrying a negative health buff can pull the total back toward printed, never past it.
+  // R132 and R150: this is the ONE floor R39 asks for, on each stat's combined total separately.
+  // The contributors reach the hook unfloored (`statsWithBuffs`), so a negative buff really does
+  // pull its sum down, and flooring attack here never touches the health sum (R116's per-component
+  // clamp).
   // Vanilla has cleared the card's scripts, so a Vanilla'd body keeps its printed stats (§6.1).
   if (instance.vanilla !== true) {
     const setStat = scriptOf(instance).setStat;
@@ -124,13 +128,25 @@ export function unitView(state: GameState, instance: CardInstance): UnitView {
 }
 
 /**
- * §10.4 layers 1 to 4: printed stats plus permanent buffs, before auras. R89's death snapshot and
- * a set-stat layer that sums other units (#92) both need the pre-aura numbers.
+ * §10.4 layers 1 to 4: printed stats plus permanent buffs, before auras — the reading a set-stat
+ * layer that sums other units needs (#92 Felinor Fiender, R116).
+ *
+ * R150: NO PER-UNIT FLOOR. §10.4 floors attack at layer 5 and at nothing earlier, so this reading
+ * reports what layers 1 to 4 actually come to, negative included. A `Math.max(0, …)` here would be
+ * invisible to a single card and wrong for every caller that sums: a Felinor carrying a −5 buff
+ * would contribute 0 instead of −2 and could never "pull the attack sum toward 0", which is exactly
+ * what R132 requires of #92's total. The floor belongs where the value is finally used — on the
+ * combined total in `unitView`'s layer 2 above (R116, R132), and on the displayed attack at the end
+ * of `unitView` (§10.4 layer 5) — so it is applied once, by the reader that knows which number the
+ * rule floors, rather than baked into a reading that has more than one reader.
+ *
+ * The only other readers are the tests and `query.ts`'s re-export; R89's death snapshot reads
+ * `unitView` (`stateCheck.ts`), which floors its own attack, so nothing is left unclamped by this.
  */
 export function statsWithBuffs(state: GameState, instance: CardInstance): { attack: number; maxHealth: number } {
   const printed = faceOf(state, instance);
   return {
-    attack: Math.max(0, printed.attack + instance.buffs.attack),
+    attack: printed.attack + instance.buffs.attack,
     maxHealth: printed.health + instance.buffs.health,
   };
 }

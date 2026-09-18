@@ -111,6 +111,25 @@ const felinorFiender = def({
   },
 });
 
+/**
+ * #92 after a Fuse that unioned the `Felinor` tag onto it (R77) — the case R131 exists for. Same
+ * printed stats and the same script; only the tag list differs.
+ */
+const fusedFiender = def({
+  id: "ly-felinor-fiender-fused",
+  name: "Felinor Fiender, fused (layers fixture)",
+  tags: ["Human", "Felinor"],
+  rarity: "Legendary",
+  cost: 2,
+  base: {
+    attack: 5,
+    health: 7,
+    keywords: [{ kind: "Stack" }],
+    text: "as #92, with the Felinor tag a Fuse gave it",
+  },
+  radiant: { attack: 10, health: 14, keywords: [{ kind: "Stack" }], text: "same" },
+});
+
 /** A plain Felinor body for #92 to count. */
 const felinor = def({
   id: "ly-felinor",
@@ -136,7 +155,15 @@ function unitsAura(mod: StatMod, side: "all" | "ally" | "enemy"): AuraHook {
 
 /**
  * §10.4 layer 2 and R39: Felinor Fiender's stats are its printed ones plus the combined layer-4
- * stats of its controller's Felinors, R13's dormant Stack cards included, never below printed.
+ * stats of its controller's OTHER Felinors, R13's dormant Stack cards included, never below
+ * printed.
+ *
+ * R131: it never counts itself, "matched by instance rather than by tag" — the exclusion below is
+ * `unit.id === self.id` and not "the Fiender is a Human, so the tag filter already misses it",
+ * because a Fuse that unions in the `Felinor` tag (R77) would otherwise let it feed on its own
+ * stats. R131's second half is already in the `faceOf` + `buffs` read: a second Felinor Fiender
+ * contributes its printed and buffed stats and never its own layer-2 total, so the layer cannot
+ * recurse.
  *
  * DISCREPANCY: src/layers.ts has no layer-2 step at all — the comment at its layer-2 slot reads
  * "Layer 2 (set-stat, Felinor Fiender) arrives with M3-T4; no Core card needs it before then" —
@@ -155,6 +182,9 @@ function felinorSetStat(): AuraHook {
     let attack = 0;
     let health = 0;
     for (const unit of mine) {
+      // R131: every OTHER Felinor you control, excluded by instance so no granted tag can make it
+      // self-feed.
+      if (unit.id === self.id) continue;
       if (!defOf(state, unit.defId).tags.includes("Felinor")) continue;
       const face = faceOf(state, unit);
       attack += face.attack + unit.buffs.attack;
@@ -174,7 +204,14 @@ function both(script: Script): CardScripts {
   return { base: script, radiant: script };
 }
 
-const LAYER_DEFS: CardDef[] = [smallBody, suppressiveAura, jlockeedsWeapons, felinorFiender, felinor];
+const LAYER_DEFS: CardDef[] = [
+  smallBody,
+  suppressiveAura,
+  jlockeedsWeapons,
+  felinorFiender,
+  fusedFiender,
+  felinor,
+];
 
 const LAYER_SCRIPTS: Record<string, CardScripts> = {
   [suppressiveAura.id]: {
@@ -190,6 +227,7 @@ const LAYER_SCRIPTS: Record<string, CardScripts> = {
     },
   },
   [felinorFiender.id]: both({ aura: felinorSetStat() }),
+  [fusedFiender.id]: both({ aura: felinorSetStat() }),
 };
 
 /** A fresh game with the local defs folded in; `newGame` resets the registry, so this runs after. */
@@ -246,6 +284,26 @@ describe("§10.4 stat layers", () => {
     // "All *your* Felinors": the opponent's are not yours (§8 #92).
     put(state, felinor.id, slot("p2", "units", 1));
     expect(unitView(state, fiender)).toMatchObject({ attack: 10, maxHealth: 14 });
+  });
+
+  it("R131 layer 2 never counts itself, even once a Fuse has given it the Felinor tag", () => {
+    const state = board("layer-2-self");
+
+    // A Felinor Fiender that IS tagged Felinor: alone on the board it is its printed 5/7, so the
+    // sum excluded it by instance. A tag filter on its own would have doubled it to 10/14.
+    const fused = put(state, fusedFiender.id, slot("p1", "units", 1));
+    expect(unitView(state, fused)).toMatchObject({ attack: 5, maxHealth: 7 });
+
+    // It still counts every OTHER Felinor, the tag it now carries changing nothing about that.
+    const ally = put(state, felinor.id, slot("p1", "units", 2));
+    ally.buffs = { attack: 1, health: 1 };
+    expect(unitView(state, fused)).toMatchObject({ attack: 8, maxHealth: 11 });
+
+    // Two of them: each adds the other's printed-and-buffed stats and never its own layer-2 total,
+    // so the layer does not recurse (R131's second half, R116).
+    const second = put(state, fusedFiender.id, slot("p1", "units", 3));
+    expect(unitView(state, fused)).toMatchObject({ attack: 13, maxHealth: 18 });
+    expect(unitView(state, second)).toMatchObject({ attack: 13, maxHealth: 18 });
   });
 
   it("§10.4 layer 4 adds the instance's permanent buffs to both stats", () => {
