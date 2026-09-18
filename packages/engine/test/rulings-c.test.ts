@@ -87,6 +87,7 @@ import { fireTrapsFor, isTrapWindowEvent, runTrapWindow, trapsWatching } from ".
 import { playedIdsThisTurn } from "../src/query";
 import { createRng } from "../src/rng";
 import { settle } from "../src/triggers";
+import { HIDDEN_ID, viewFor } from "../src/viewFor";
 import { startTurn } from "../src/turn";
 import { beginWorkCascade, pushWork, runWorkItem, takeWork } from "../src/work";
 import { activeUnitsOf, cardAt, placeOnField, removeFromAnyZone } from "../src/zones";
@@ -2130,5 +2131,64 @@ describe("SPEC §11 R131–R136: layer 2, pools, grades and event windows (M3 ga
 
     expect(eventsOfType(sink.events, "attackDeclared")).toEqual([]);
     expect(victim.damage).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R150, R154: where a floor lives in a summing read, and what `trapFired` carries.
+// ---------------------------------------------------------------------------
+
+describe("SPEC §11 R150 and R154: summing reads and the trapFired payload (M3 gate)", () => {
+  it("R150 keeps a stat floor off each contributor of a summing read, leaving it on the combined total", () => {
+    const state = game("r150-contributor-floor");
+    const summer = put(state, fiender.id, slot("p1", "units", 1)); // 5/7, sums the others
+    const donor = put(state, felinor.id, slot("p1", "units", 2)); // printed 3/10
+
+    // The control: the layer-4 reading really does see permanent buffs, so the negative case below
+    // is about the floor and not about a buff that never applied.
+    donor.buffs = { attack: 4, health: 0 };
+    expect(statsWithBuffs(state, donor).attack).toBe(3 + 4);
+    expect(unitView(state, summer).attack).toBe(5 + 7);
+
+    // R150: the layer-4 reading has no per-unit floor, so a contributor with a negative buff pulls
+    // the total down rather than contributing nothing.
+    donor.buffs = { attack: -5, health: 0 };
+    expect(statsWithBuffs(state, donor).attack).toBe(3 - 5);
+
+    // The floor belongs where the value is finally used — on the combined total (R132), per stat.
+    expect(unitView(state, summer).attack).toBe(5);
+    expect(unitView(state, summer).maxHealth).toBe(7 + 10);
+
+    // And on a card's own stats, at the point of display.
+    donor.buffs = { attack: -99, health: 0 };
+    expect(unitView(state, donor).attack).toBe(0);
+    expect(unitView(state, summer).attack).toBe(5);
+  });
+
+  it("R154 carries the trap's row and lane on trapFired, with its identity redacted for the other player", () => {
+    const state = game("r154-trap-lane");
+    const trap = put(state, bareTrap.id, slot("p1", "backrow", 3));
+    const sink = sinkFor(state);
+    expect(fireTrapsFor(sink, played("p2")).fired).toEqual([trap.id]);
+
+    const fired = must(eventsOfType(sink.events, "trapFired")[0], "a trapFired event");
+    expect(fired.controller).toBe("p1");
+
+    // R154: the zone that flipped, so a client can animate the lane without being told which card
+    // it was — which is the whole point, since a face-down trap is given no instance id (R97).
+    expect(Object.keys(fired)).toContain("row");
+    expect(Object.keys(fired)).toContain("lane");
+
+    // Its identity follows §10.8's redaction: the controller reads it, the other player reads the
+    // sentinel. This half already holds, so the fixture is live and only the lane is missing.
+    const owner = viewFor(state, "p1");
+    const other = viewFor(state, "p2");
+    const seenBy = (view: ReturnType<typeof viewFor>): { instanceId: string; defId: string } => {
+      const event = view.events.find((entry) => entry.type === "trapFired");
+      if (event === undefined || event.type !== "trapFired") throw new Error("no trapFired in view");
+      return { instanceId: event.instanceId, defId: event.defId };
+    };
+    expect(seenBy(owner)).toEqual({ instanceId: trap.id, defId: trap.defId });
+    expect(seenBy(other)).toEqual({ instanceId: HIDDEN_ID, defId: HIDDEN_ID });
   });
 });

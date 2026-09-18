@@ -800,7 +800,9 @@ Cypress.Commands.add("replayCheck", (label: string) => {
 
 Cypress.Commands.add("wsPlayer", (command: WsPlayerCommand) => {
   return cy.task<WsPlayerResult>("wsPlayer", command, { timeout: timeouts.task }).should((result) => {
-    expect(result.ok, `wsPlayer ${command.action}: ${result.error ?? "ok"}`).to.eq(true);
+    // §9.3: the server's own words. The code is a label on the failure, not a rewording of it.
+    const why = result.code === undefined ? (result.error ?? "ok") : `[${result.code}] ${result.error ?? ""}`;
+    expect(result.ok, `wsPlayer ${command.action}: ${why}`).to.eq(true);
   });
 });
 
@@ -824,15 +826,15 @@ declare global {
       /** Play a hand card, building its R81 play-time choices from the UI. */
       playCard(instanceId: string, options?: PlayCardOptions): Chainable<void>;
       /** Declare an attack against a unit or a hero (SPEC §4.2). */
-      attack(attackerId: string, target: AttackTarget): Chainable<void>;
+      attack(attackerId: string, target: AttackTarget, options?: ActOptions): Chainable<void>;
       /** Answer the open prompt; `null` accepts whatever kind is open (SPEC §10.6). */
       answerPrompt(kind: PromptKind | null, answer?: PromptAnswer): Chainable<void>;
       /** Click `end-turn`, then hand the device over if the client asks for it. */
-      endTurn(options?: { handOver?: boolean }): Chainable<void>;
+      endTurn(options?: ActOptions & { handOver?: boolean }): Chainable<void>;
       handOver(): Chainable<void>;
-      switchPosition(instanceId: string): Chainable<void>;
+      switchPosition(instanceId: string, options?: ActOptions): Chainable<void>;
       offerDraw(): Chainable<void>;
-      usePower(): Chainable<void>;
+      usePower(options?: ActOptions): Chainable<void>;
       /** Every `data-animating` element has drained (BUILD M5-T4). */
       settled(): Chainable<void>;
       /** An element is currently animating this event type. */
@@ -846,6 +848,22 @@ declare global {
       instanceInHand(player: PlayerId, defId: string): Chainable<string>;
       instanceAt(player: PlayerId, row: "units" | "backrow", lane: number): Chainable<string>;
       playByName(name: string, options?: PlayCardOptions): Chainable<void>;
+      /** The instance ids in a seat's hand (setup only: assertions belong on the DOM). */
+      handIds(player: PlayerId): Chainable<string[]>;
+      /** The top card of each of a seat's unit zones, in lane order (§3.2). */
+      unitIds(player: PlayerId): Chainable<string[]>;
+      /** End turns until `turn` is the current player-turn; R82-safe (§10.1). */
+      advanceToTurn(turn: number, options?: { budget?: number }): Chainable<void>;
+      /** Remember a fixture account, so every later visit boots signed in as it (A10). */
+      signIn(account: E2EAccount): Chainable<E2EAccount>;
+      /** Forget it again, so a later visit boots signed out. */
+      signOut(): Chainable<void>;
+      /** `cy.signIn(account)` then `cy.visit(path)`, session installed before the page runs. */
+      visitAs(account: E2EAccount, path: string, options?: Partial<Cypress.VisitOptions>): Chainable<void>;
+      /** Save a fixture deck as deck `deckIndex` of an account's loadout, padded per L1/L4 (§9.4). */
+      installLoadout(account: E2EAccount, fixtureId: string, options?: { deckIndex?: number }): Chainable<void>;
+      /** Drag a pool card into a deck in the deckbuilder: the whole gesture, not one event (A11). */
+      dragCardToDeck(catalogCardId: string, deckIndex: number): Chainable<void>;
       jackioh(): Chainable<JackiOhDevHandle>;
       gameState(): Chainable<GameStateLike>;
       dispatchAction(action: ActionInput): Chainable<void>;

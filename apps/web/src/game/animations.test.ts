@@ -208,7 +208,9 @@ describe("ANIMATIONS covers every event type", () => {
     expect(extra, `animations.ts has rows for unknown event types: ${extra.join(", ")}`).toEqual([]);
 
     expect(rows).toEqual(types);
-    expect(rows).toHaveLength(40);
+    // `GAME_EVENT_TYPES` in @jackioh/shared is the source of truth; the literal is the second
+    // pair of eyes on it, so it moves only when a type is deliberately added there.
+    expect(rows).toHaveLength(41);
   });
 
   it("gives every row an animation name and a testid template", () => {

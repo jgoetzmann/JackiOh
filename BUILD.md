@@ -408,7 +408,7 @@ Acceptance: `pnpm test --filter cards` runs 109 test files; a script that lists 
 | 100 | Ceaseless Void | 2 | Cost = 100 − (drawn + played + destroyed + exiled by both players), floor 0 (R55); Cry exiles every other permanent; radiant Charge |
 | T | Rush, Sheep, Felinor, Bread Tokens | 1 | Vanish on leaving the field; Sheep counts 2 toward Tribute; Bread is X/X with no text; none in random pools |
 
-**M4 gate.** `cards/test/fuzz.test.ts`: 1,000 games per wave (seeds 1–1000) with decks drawn randomly from all implemented cards, played by `aiPolicy`, never throw, always terminate (hero death or cap), and replay to the same hash. Any card that appears in a failing seed is listed in the failure message.
+**M4 gate.** `cards/test/fuzz.test.ts`: 1,000 games per wave (seeds 1–1000) with decks drawn randomly from all implemented cards, played by `aiPolicy`, never throw, always terminate (hero death or cap), and replay to the same hash. Any card that appears in a failing seed is listed in the failure message. A fuzz game is bounded at `TURN_CAP_PLAYER_TURNS` × `AI_PLAYOUT_STEP_CAP` actions. The bound is a failure condition, not a pass condition: a game that reaches it is reported as non-terminating rather than left to hang CI, and a policy that returns no action while the game is live is reported as a stall, since R82 should have ended the turn.
 
 ### M5 — Hotseat client and animations (`apps/web`)
 
@@ -546,7 +546,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - `catalog.test.ts` passes: 100 cards, 9 tokens, rarity counts 35/37/16/7/5.
 - `missing-tests.ts` prints nothing.
 - `rulings.test.ts` covers every SPEC §11 row, R1–R154 (script `rulings-coverage.ts` lists any missing id).
-- Fuzz gate: 1,000 seeds with the full card pool, zero throws, zero replay mismatches.
+- Fuzz gate: `pnpm fuzz` runs 1,000 seeds with the full card pool and prints its own counts (seeds, throws, non-terminations, replay mismatches, endings). `pnpm test` sweeps the same file at a reduced seed count as a smoke wave; the card pool is never reduced, and any exclusion must be a named entry in `POOL_EXCLUSIONS` with a reason, printed on every run so a narrowing cannot be hidden.
 - `animations.test.ts` passes: every event type animated, reduced-motion path drains synchronously.
 - A networked room-code game between two browsers completes and records a result.
 - SPEC.md has a §11 row for every ruling the code makes; no ruling exists only in code comments.

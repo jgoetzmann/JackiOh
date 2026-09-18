@@ -163,6 +163,17 @@ async function connect(command: Extract<WsPlayerCommand, { action: "connect" }>)
     }
   });
 
+  // A refusal closes the socket (`WS_CLOSE` 4401/4403/4404 in wsServer.ts mirror the HTTP
+  // statuses), and so does the actor's `stop()`. Waking every waiter here turns what would be a
+  // 15-second timeout into the close code that caused it.
+  socket.on("close", (code: number, reason: Buffer) => {
+    const why = reason.length > 0 ? `: ${reason.toString()}` : "";
+    for (const waiter of record.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(`wsPlayer(${command.name}): the socket closed (${String(code)}${why})`));
+    }
+  });
+
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`wsPlayer(${command.name}): no open on ${url.toString()}`)), TIMEOUT_MS);
     socket.once("open", () => {

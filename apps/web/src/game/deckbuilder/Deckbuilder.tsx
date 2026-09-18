@@ -18,10 +18,12 @@ import type { CardCost, CardDef } from "@jackioh/shared";
 import type { CatalogSnapshot, Collection, LoadoutError } from "@jackioh/validator";
 
 import "./deckbuilder.css";
+import { DECK_SIZE } from "./deckSize.ts";
 import {
   DECK_NUMBERS,
   addCard,
   deckHolding,
+  draftFrom,
   issuesOf,
   poolFrom,
   removeCard,
@@ -82,9 +84,9 @@ export function formatCost(cost: CardCost | undefined): string {
 export default function Deckbuilder(props: DeckbuilderProps) {
   const { catalog, collection, save } = props;
 
-  const [draft, setDraft] = useState<Draft>(() =>
-    DECK_NUMBERS.map((deck) => [...(props.initialDecks?.[deck - 1] ?? [])]),
-  );
+  // `draftFrom` pads a short stored loadout and keeps a long one: L1 is the validator's to report,
+  // and quietly dropping a fourth deck would hide it.
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(props.initialDecks));
   const [activeDeck, setActiveDeck] = useState(DECK_NUMBERS[0] ?? 1);
   const [serverIssues, setServerIssues] = useState<readonly LoadoutError[] | null>(null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
@@ -94,6 +96,15 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   const dragged = useRef<string | null>(null);
 
   const pool = useMemo(() => poolFrom(catalog, collection), [catalog, collection]);
+
+  /** One tab and one panel per deck the draft actually has, so an L1 draft is visible, not hidden. */
+  const deckNumbers = useMemo(
+    () =>
+      draft.length <= DECK_NUMBERS.length
+        ? DECK_NUMBERS
+        : Array.from({ length: draft.length }, (_unused, index) => index + 1),
+    [draft.length],
+  );
 
   /** Any edit retires the last save's verdict: it was about a draft that no longer exists. */
   const edited = useCallback((next: Draft) => {
@@ -160,7 +171,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       <h1>JackiOh — decks</h1>
 
       <div className="db-tabs" role="tablist" aria-label="Decks">
-        {DECK_NUMBERS.map((deck) => (
+        {deckNumbers.map((deck) => (
           <button
             key={deck}
             type="button"
@@ -182,8 +193,13 @@ export default function Deckbuilder(props: DeckbuilderProps) {
             }}
           >
             {`Deck ${String(deck)}`}
-            <span className="db-count" data-testid={`deck-count-${String(deck)}`}>
-              {String(draft[deck - 1]?.length ?? 0)}
+            <span
+              className="db-count"
+              data-testid={`deck-count-${String(deck)}`}
+              data-count={String(draft[deck - 1]?.length ?? 0)}
+              data-deck-size={String(DECK_SIZE)}
+            >
+              {`${String(draft[deck - 1]?.length ?? 0)}/${String(DECK_SIZE)}`}
             </span>
           </button>
         ))}
@@ -233,7 +249,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
           })}
         </section>
 
-        {DECK_NUMBERS.map((deck) => (
+        {deckNumbers.map((deck) => (
           <section
             key={deck}
             className="db-deck"

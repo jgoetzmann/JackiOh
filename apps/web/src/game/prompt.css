@@ -2,11 +2,24 @@
    Tokens come from src/index.css. M5-T4's promptOpened / promptAnswered animations key off
    [data-prompt-kind] on .prompt, so that attribute is the contract, not these classes. */
 
-/* The scrim dims the board; it must not swallow clicks on it. BUILD M5-T2 has a target and a
-   zone pick answerable ON THE BOARD while the picker is open ("Highlighted on the board as well"),
-   and R81's zone pick is a board click by design — a full-screen overlay eating pointer events
-   would make both unreachable for a player as much as for a test. Only the modal itself takes
-   pointer events back. */
+/* The scrim dims the board; it must not swallow clicks on it. BUILD M5-T2 has a target, a tribute
+   and a hand pick answerable ON THE BOARD while the picker is open ("Highlighted on the board as
+   well"), and R81's zone pick IS a board click — a full-screen overlay eating pointer events makes
+   all of that unreachable for a player as much as for a test. So the scrim and the panel's own
+   chrome are click-through and only the picker's controls take pointer events back: a click that
+   lands on the panel's background belongs to the board underneath it. */
+.prompt-scrim,
+.prompt {
+  pointer-events: none;
+}
+
+.prompt button,
+.prompt input,
+.prompt li,
+.prompt [role="button"] {
+  pointer-events: auto;
+}
+
 .prompt-scrim {
   position: fixed;
   inset: 0;
@@ -15,11 +28,6 @@
   place-items: center;
   padding: 12px;
   background: rgb(7 9 14 / 45%);
-  pointer-events: none;
-}
-
-.prompt {
-  pointer-events: auto;
 }
 
 .prompt {
@@ -136,6 +144,19 @@
   display: flex;
   align-items: center;
   gap: var(--gap);
+}
+
+.prompt-x-input {
+  width: 6ch;
+  padding: 4px 6px;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: inherit;
+  text-align: center;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
 }
 
 .prompt-stepper-value {

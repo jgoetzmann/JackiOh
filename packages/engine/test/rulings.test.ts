@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R136, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R154, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -82,7 +82,9 @@ function sqlProofs(file: string, row: number): readonly string[] {
 /**
  * Every proof of this row in one file, in that file's own idiom for a test name:
  *   * a sibling engine test leads with the row (`it("R<n> …")`), which is this file's convention;
- *   * a vitest file elsewhere may also put it mid-title or at the end (`it("… (R112)")`);
+ *   * a vitest file elsewhere may also put it mid-title or at the end (`it("… (R112)")`), or name
+ *     it on the `describe` that heads the group of tests proving it (`describe("R143 — …")`) — the
+ *     same heading idea as the SQL scripts, one level up from the individual case;
  *   * an SQL evidence script announces it as a heading, per `sqlHeadings`.
  */
 function proofsFor(file: string, row: number): readonly string[] {
@@ -93,7 +95,7 @@ function proofsFor(file: string, row: number): readonly string[] {
   if (strict.length > 0 || !file.includes("/")) return strict;
 
   const names = new RegExp(`\\bR${row}(?![0-9])`);
-  return [...sourceOf(file).matchAll(/\bit\(\s*"([^"]*)"/g)]
+  return [...sourceOf(file).matchAll(/\b(?:it|describe)\(\s*"([^"]*)"/g)]
     .map((match) => match[1] ?? "")
     .filter((title) => names.test(title));
 }
@@ -111,10 +113,20 @@ const SERVER_CONFIG = "../../../apps/server/src/config.ts";
 const SERVER_SQL = "../../../apps/server/test/sql/03_match_lifecycle.sql";
 /** The schema-invariant checks, which prove R105 a second way (BUILD M6-T1). */
 const SERVER_SCHEMA_SQL = "../../../apps/server/test/sql/01_schema_invariants.sql";
+/** The server modules R137 and R145 to R149 fix a number or a shape in (BUILD M7). */
+const SERVER_ACTOR = "../../../apps/server/src/match/actor.ts";
+const SERVER_CLOCK = "../../../apps/server/src/match/clock.ts";
+const SERVER_WS = "../../../apps/server/src/match/wsServer.ts";
+const SERVER_ROOMS = "../../../apps/server/src/match/rooms.ts";
+const SERVER_CODES = "../../../apps/server/src/api/codes.ts";
+const SERVER_RESULTS = "../../../apps/server/src/api/results.ts";
+/** The end-to-end-mode server tests, which name R143 and R144 on their `describe`s. */
+const SERVER_E2E_TEST = "../../../apps/server/test/api/e2e.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
 const SERVER_MATCHES_SQL = "../../../apps/server/src/db/migrations/0004_matches.sql";
+const SERVER_LOADOUTS_SQL = "../../../apps/server/src/db/migrations/0003_loadouts.sql";
 
 /**
  * The literal an `export const NAME = …` declares in a server source file, as written. Read rather
@@ -126,7 +138,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R136 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
@@ -1190,6 +1202,143 @@ describe("SPEC §11 rulings R1–R136 (BUILD M3 gate, REVIEW B4)", () => {
   // the same action is not its own".
   it("R136 gives a script its own event window, not the whole action's", () => {
     provenIn(136, "rulings-c.test.ts");
+  });
+
+  // M7 owns apps/server/src/match/actor.ts. NOTE: the server suite covers this but names no test
+  // after the row, so the index asserts the scope against the actor itself.
+  it("R137 gives each seat R109's action allowance, so neither player can spend the other's", () => {
+    const source = sourceOf(SERVER_ACTOR);
+    // The window is held per seat: one array indexed by player, not one shared list.
+    expect(source).toMatch(/function floodExceeded\(player: PlayerId/);
+    expect(source).toMatch(/const recent = recentActions\[player\];/);
+    // Each seat's budget is R109's number, so the match's aggregate ceiling is twice it.
+    expect(source).toMatch(/recent\.length >= MATCH_ACTIONS_PER_SECOND/);
+    expect(serverConstant(SERVER_CONFIG, "MATCH_ACTIONS_PER_SECOND")).toBe("5");
+  });
+
+  // Proved by rulings-c.test.ts "R138 counts a cast permanent with no zone as played, resolves it,
+  // and sends it to its owner's graveyard".
+  it("R138 plays and resolves a cast permanent with no zone, then sends it to the graveyard", () => {
+    provenIn(138, "rulings-c.test.ts");
+  });
+
+  // R103's priority is rulings-c.test.ts "R103 checks once-per-turn before mana, turn and phase".
+  // Proved by rulings-c.test.ts "R139 lapses a once-per-turn limit at the turn boundary, so a later
+  // turn is told whose turn it is".
+  it("R139 lapses a once-per-turn limit at the turn boundary", () => {
+    provenIn(139, "rulings-c.test.ts");
+  });
+
+  // Proved by rulings-c.test.ts "R140 gives a zone-less Stack play the leftmost empty zone, and
+  // lifts the occupancy refusal only for a zone the play names".
+  it("R140 gives a zone-less Stack play the leftmost empty zone, lifting occupancy only when named", () => {
+    provenIn(140, "rulings-c.test.ts");
+  });
+
+  // NOTE: no server test names this row; the index asserts the two numbers that make it true.
+  it("R141 makes L5 unreachable on its own, given R111's one-copy launch grant", () => {
+    // R111 grants exactly one copy of every non-token card, and a loadout may use one copy of a
+    // card, so using more copies than are owned needs a second copy, a Token, or an id outside the
+    // catalog — which is L3, L4 or L6 first. Change either number and L5 becomes reachable alone.
+    expect(sourceOf(SERVER_COLLECTION_SQL)).toMatch(/SPEC §11 R111: the launch quantity/);
+    expect(sourceOf(SERVER_LOADOUTS_SQL)).toMatch(/L5 card % totals % copies across the loadout, only % owned/);
+  });
+
+  // R110's own proof is the SQL heading above; R142 says what the end-to-end suite may assert
+  // instead, since no client can ask for a specific room code.
+  it("R142 verifies R110 on the server, and end-to-end only through its consequence", () => {
+    // The consequence a client can see: once the match is over, both players' in-match state is
+    // cleared, so both are queue-eligible again.
+    expect(sourceOf(SERVER_SQL)).toMatch(/current_match_id is null as cleared/);
+    // And the reuse itself is proved where a caller can name a code: the server's own script.
+    provenIn(110, SERVER_SQL);
+  });
+
+  // Proved by e2e.test.ts "R143 — the optional seed".
+  it("R143 has the server mint a match's seed, with end-to-end mode the one exception", () => {
+    provenIn(143, SERVER_E2E_TEST);
+  });
+
+  // Proved by e2e.test.ts "R144 — the reseed at boot".
+  it("R144 reseeds the fixture accounts and invite codes per run, so a spec is repeatable", () => {
+    provenIn(144, SERVER_E2E_TEST);
+  });
+
+  // NOTE: no server test names this row; the index asserts the split against the redemption path.
+  it("R145 gives every code-dependent refusal the identical error, and reports account state distinctly", () => {
+    const source = sourceOf(SERVER_CODES);
+    // One message for everything that depends on the code (R107's constant-time floor makes the
+    // timing match too).
+    expect(source).toMatch(/new ApiError\("invalid_code", REDEMPTION_IDENTICAL_ERROR\)/);
+    // And distinct errors for what depends only on the caller's own account, which leaks nothing
+    // about the code space.
+    expect(source).toMatch(/new ApiError\("account_banned"/);
+    expect(source).toMatch(/new ApiError\("email_unverified"/);
+  });
+
+  // NOTE: no server test names this row; the index asserts the attribution against the result path.
+  it("R146 stamps a lifecycle result with the seat it belongs to, not with whoever was active", () => {
+    const source = sourceOf(SERVER_RESULTS);
+    expect(source).toMatch(/function scoreForSeat\(outcome: TerminalOutcome, seat: MatchSeat\)/);
+    expect(source).toMatch(/outcome\.winner === seat\.player/);
+  });
+
+  // NOTE: no server test names this row; the index asserts the guard against the clock.
+  it("R147 keeps the first deadline when a second grace starts, so a flapping socket cannot extend it", () => {
+    const source = sourceOf(SERVER_CLOCK);
+    // The guard: a grace already counting down is left alone rather than re-armed.
+    expect(source).toMatch(/startGrace: \(player: PlayerId\): void => \{[\s\S]*?if \(countdown\.timer !== null\) return;/);
+  });
+
+  // NOTE: no server test names this row; the index asserts the four codes, as R104 does its alphabet.
+  it("R148 mirrors the HTTP statuses in its close codes, with 1011 for an internal fault", () => {
+    const source = sourceOf(SERVER_WS);
+    expect(source).toMatch(/unauthorized: 4401,/);
+    expect(source).toMatch(/forbidden: 4403,/);
+    expect(source).toMatch(/notFound: 4404,/);
+    expect(source).toMatch(/internal: 1011,/);
+    // §9.1: only the close code varies, so a socket never learns which check refused it.
+    expect(source).toMatch(/private-use mirrors of the HTTP statuses/);
+  });
+
+  // NOTE: no server test names this row; the index asserts the bound against the mint.
+  it("R149 mints a room code by retrying a bounded number of times, then reports none available", () => {
+    const source = sourceOf(SERVER_ROOMS);
+    // Bounded, not an unbounded retry: a fixed count, and a refusal when it runs out.
+    expect(source).toMatch(/const CODE_ATTEMPTS = \d+;/);
+    expect(source).toMatch(/for \(let attempt = 0; attempt < CODE_ATTEMPTS; attempt \+= 1\)/);
+    expect(source).toMatch(/could not allocate a room code/);
+  });
+
+  // R132 is the rule this one generalises; R116 fixes what the hook returns.
+  // Proved by rulings-c.test.ts "R132 applies R39's floor to each stat's combined total, not per
+  // Felinor and not across the two stats".
+  it("R150 keeps a stat floor off each contributor of a summing read", () => {
+    provenIn(150, "rulings-c.test.ts");
+  });
+
+  // R43's own roll clauses are heroPower.test.ts.
+  // Proved by rulings-c.test.ts "R151 rolls a Heroic Power's power as it arrives in a hand, not only
+  // at the start of the game".
+  it("R151 rolls a Heroic Power's power as it arrives anywhere a card can be looked at", () => {
+    provenIn(151, "rulings-c.test.ts");
+  });
+
+  // Proved by rulings-c.test.ts "R152 clears the AI lockout at the end of the turn it was set for".
+  it("R152 clears the AI lockout at the end of the turn it was set for", () => {
+    provenIn(152, "rulings-c.test.ts");
+  });
+
+  // Proved by rulings-c.test.ts "R153 registers only the hooks a card's zone allows, so a hand or a
+  // graveyard answers no start- or end-of-turn hook".
+  it("R153 registers only the hooks a card's zone allows", () => {
+    provenIn(153, "rulings-c.test.ts");
+  });
+
+  // Proved by rulings-c.test.ts "R154 carries the trap's row and lane on trapFired, with its
+  // identity redacted for the other player".
+  it("R154 carries a trap's row and lane on trapFired, its identity following R97's redaction", () => {
+    provenIn(154, "rulings-c.test.ts");
   });
 });
 

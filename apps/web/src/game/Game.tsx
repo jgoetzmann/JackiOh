@@ -13,7 +13,15 @@
 // Everything else is `props.view` and `props.legal`. `onAction` goes straight out to the caller,
 // which is the only thing that talks to the engine (CLAUDE.md rule 7).
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 
 import type { ActionBody, PlayerView } from "@jackioh/shared";
 
@@ -81,8 +89,14 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
 
   // A new view arrives with the events that produced it. Plan them against the view they
   // describe, then let the runner decide when the board may show it.
+  //
+  // A LAYOUT effect, not a passive one: `data-animating` has to be on the DOM by the time the
+  // click that caused the action has returned. A passive effect runs a scheduler tick later, and
+  // in that gap the board says "nothing is animating" while still showing the previous view — so
+  // anything that treats a drained queue as "the board is up to date" (BUILD M5-T4, and
+  // `cy.settled()` in e2e/support) would read a view the engine has already moved past.
   const seen = useRef<PlayerView | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (seen.current === view) return;
     seen.current = view;
     if (view.events.length > 0) runner.enqueue(view.events, view);

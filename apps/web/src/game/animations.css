@@ -288,6 +288,25 @@
   animation-duration: calc(150ms * var(--anim-scale));
 }
 
+/* --- cardResolved: §10.5 step 7, the card has finished resolving (150 ms) ------------------ */
+
+@keyframes jk-card-resolved {
+  0% {
+    filter: brightness(1);
+  }
+  55% {
+    filter: brightness(1.45);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+[data-animating="cardResolved"] {
+  animation-name: jk-card-resolved;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
 /* --- exiled: card fades to black and shrinks (350 ms) --------------------------------- */
 
 @keyframes jk-exile-fade {

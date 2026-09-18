@@ -82,6 +82,26 @@ function signedIn(token = "e2e-token"): void {
   window.localStorage.setItem(E2E_SESSION_STORAGE_KEY, JSON.stringify({ accessToken: token }));
 }
 
+/**
+ * A lazily-imported route chunk plus a stubbed round trip can outrun testing-library's 1 s default
+ * when the whole suite runs at once. Still an assertion retried against the DOM, never a sleep.
+ */
+const SLOW = { timeout: 5_000 } as const;
+
+/**
+ * The gate has answered and the gated screen has mounted. `gate-loading` is both the gate's own
+ * holding panel and the route table's Suspense fallback, so its absence covers the lazy chunk too.
+ *
+ * Deliberately not an assertion on the screen's own markup: `/decks` and `/invite` belong to other
+ * tasks and their contents are theirs to change. What this file owns is which screen the browser
+ * ends up at, which is exactly what specs 09 and 10 assert.
+ */
+async function gateOpened(): Promise<void> {
+  await waitFor(() => {
+    expect(screen.queryByTestId("gate-loading")).toBeNull();
+  }, SLOW);
+}
+
 function at(path: string): void {
   window.history.replaceState(null, "", path);
 }
@@ -144,7 +164,7 @@ describe("the gate, as specs 09 and 10 read it", () => {
     render(<App />);
     await waitFor(() => {
       expect(pathname()).toBe("/login");
-    });
+    }, SLOW);
   });
 
   it("a token the server no longer accepts is the same as having none", async () => {
@@ -154,7 +174,7 @@ describe("the gate, as specs 09 and 10 read it", () => {
     render(<App />);
     await waitFor(() => {
       expect(pathname()).toBe("/login");
-    });
+    }, SLOW);
   });
 
   it("spec 10: a pending account visiting /decks lands on /invite", async () => {
@@ -164,9 +184,9 @@ describe("the gate, as specs 09 and 10 read it", () => {
     render(<App />);
     await waitFor(() => {
       expect(pathname()).toBe("/invite");
-    });
-    // And the code screen is what renders there (the placeholder owned by another task).
-    expect(await screen.findByRole("heading", { name: /invite code/i })).toBeInTheDocument();
+    }, SLOW);
+    // And the code screen (another task's) is what renders there.
+    await gateOpened();
   });
 
   it("spec 10: /invite is reachable by a pending account and stays put", async () => {
@@ -174,7 +194,7 @@ describe("the gate, as specs 09 and 10 read it", () => {
     serveAs("pending");
     at("/invite");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: /invite code/i })).toBeInTheDocument();
+    await gateOpened();
     expect(pathname()).toBe("/invite");
   });
 
@@ -183,7 +203,7 @@ describe("the gate, as specs 09 and 10 read it", () => {
     serveAs("active");
     at("/decks");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: /decks/i })).toBeInTheDocument();
+    await gateOpened();
     expect(pathname()).toBe("/decks");
     expect(pathname()).not.toBe("/login");
     expect(pathname()).not.toBe("/invite");
@@ -194,7 +214,7 @@ describe("the gate, as specs 09 and 10 read it", () => {
     serveAs("active");
     at("/invite");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: /invite code/i })).toBeInTheDocument();
+    await gateOpened();
     expect(pathname()).toBe("/invite");
   });
 
@@ -222,14 +242,14 @@ describe("the route table", () => {
   it("/login is ungated: it is the door the gate sends people to", async () => {
     at("/login");
     render(<App />);
-    expect(await screen.findByTestId("login-submit")).toBeInTheDocument();
+    expect(await screen.findByTestId("login-submit", undefined, SLOW)).toBeInTheDocument();
     expect(pathname()).toBe("/login");
   });
 
   it("an unknown path is a 404 panel, not a redirect", async () => {
     at("/nope");
     render(<App />);
-    expect(await screen.findByText(/no route for/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no route for/i, undefined, SLOW)).toBeInTheDocument();
     expect(pathname()).toBe("/nope");
   });
 });
@@ -265,11 +285,11 @@ describe("/match/<id>", () => {
     at("/match/m-42");
     render(<App />);
 
-    expect(await screen.findByTestId("match-connecting")).toBeInTheDocument();
+    expect(await screen.findByTestId("match-connecting", undefined, SLOW)).toBeInTheDocument();
     expect(pathname()).toBe("/match/m-42");
     await waitFor(() => {
       expect(StubSocket.opened.length).toBeGreaterThan(0);
-    });
+    }, SLOW);
     // `wsServer.ts` `tokenFrom` reads `?token=`, and the match from `?matchId=`: a browser cannot
     // put either on a handshake header.
     const url = StubSocket.opened[0] ?? "";
@@ -284,7 +304,7 @@ describe("/match/<id>", () => {
     render(<App />);
     await waitFor(() => {
       expect(pathname()).toBe("/invite");
-    });
+    }, SLOW);
     expect(StubSocket.opened).toEqual([]);
   });
 });
