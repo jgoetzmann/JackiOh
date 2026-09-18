@@ -101,6 +101,14 @@ describe("reduce (M1-T3)", () => {
     expect(blocked.error).toMatch(/not open/);
   });
 
+  // An explicit timeout, because the 5 s this inherited from vitest's default was never chosen for
+  // it and is the only thing here that measures the machine rather than the engine. Measured on the
+  // dev box: the whole file runs in 704 ms, or 1.00 s under coverage instrumentation. It still timed
+  // out at 5 s inside a Linux container running the coverage step while three other agents worked —
+  // a shared or throttled CI runner is the same environment, and `pnpm test:coverage` instruments
+  // every module this walk touches. 30 s keeps roughly a 30x margin over the measured cost while
+  // still failing an engine that has genuinely stopped terminating. No assertion below changes:
+  // the walk still probes every action legalActions offers at each of the 200 states.
   it("every action legalActions lists succeeds, over 200 random states", () => {
     const rng = createRng("legal-actions-walk");
     let states = 0;
@@ -133,7 +141,7 @@ describe("reduce (M1-T3)", () => {
 
     expect(states).toBe(200);
     expect(probes).toBeGreaterThan(200);
-  });
+  }, 30_000);
 
   it("lists no actions for a player with an open prompt that is not theirs", () => {
     const state = beginGame(newGame("prompt-actions")).state;
