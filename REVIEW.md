@@ -121,7 +121,7 @@ For each row, name the test(s) that prove it, or trace a fixture state through t
 
 ### B4 Rulings (SPEC §11)
 
-`grep -o "R[0-9]\+ " packages/engine/test/rulings.test.ts packages/cards/test/*.test.ts | sort -u` must contain every row id in SPEC §11 (R1 through R157 as of 2026-09-17). Each "decide" row (R1, R2, R4, R5, R14, R26, R39) is a named constant in `engine/src/config.ts` with the spec's value. Any ruling found in a code comment but not in §11 is MAJOR.
+`grep -o "R[0-9]\+ " packages/engine/test/rulings.test.ts packages/cards/test/*.test.ts | sort -u` must contain every row id in SPEC §11 (R1 through R158 as of 2026-09-17). Each "decide" row (R1, R2, R4, R5, R14, R26, R39) is a named constant in `engine/src/config.ts` with the spec's value. Any ruling found in a code comment but not in §11 is MAJOR.
 
 ### B5 Client and animations (SPEC §10.8, §10.10; BUILD M5)
 

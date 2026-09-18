@@ -91,6 +91,13 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
     if (at >= 0) side.hand.splice(at, 1);
   }
 
+  // The prompt is answered the moment its selection is read, and is cleared here rather than after
+  // the draw: §2.4's draw can fire a Cast on draw, which is a whole play and can ask something of
+  // its own, and a sequence deciding whether to pause must not see the question it is answering
+  // still standing. R9's order is untouched — the replacements are still drawn before the returned
+  // cards are shuffled back; only the flag moves, so no event moves with it.
+  state.pending = null;
+
   draw(sink, player, returned.length);
 
   for (const card of returned) {
@@ -105,7 +112,6 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
     });
   }
 
-  state.pending = null;
   sink.events.push({ type: "promptAnswered", player, choiceId: "mulligan" });
 
   if (!state.mulliganed.includes(player)) state.mulliganed.push(player);

@@ -1,5 +1,7 @@
 // Drawing, fatigue, the hand cap, cast-on-draw chains and the library cap
-// (SPEC §2.4, R3, R4, R58, R80), and the arrival hook of R151.
+// (SPEC §2.4, R3, R4, R58, R80), the arrival hook of R151, and — since a cast-on-draw card is a
+// whole play and a play can ask — both draw loops resuming out of `state.work` across a prompt
+// (§9.3, §10.6, R113, R117, R122).
 
 import type { PlayerId } from "@jackioh/shared";
 import { CAST_ON_DRAW_CHAIN_CAP, FATIGUE_DAMAGE, HAND_CAP, LIBRARY_CAP } from "./config";
@@ -7,7 +9,14 @@ import { defByIndex } from "./catalog";
 import { dealDamage } from "./damage";
 import { castCard, runHook, type EngineSink } from "./resolve";
 import { flagsOf, scriptOf } from "./scripts";
-import { newInstance, type CardInstance } from "./state";
+import {
+  newInstance,
+  type CardInstance,
+  type PendingChoice,
+  type Resume,
+  type WorkItem,
+} from "./state";
+import { owe, paused, registerWorkHandler } from "./work";
 import { cardAt, isUnitToken, moveToZone, slotsOf } from "./zones";
 
 /**
@@ -114,6 +123,134 @@ export function shuffleIntoLibrary(sink: EngineSink, instance: CardInstance, exi
 
 export type DrawOutcome = "drawn" | "cast" | "burned" | "fatigue" | "token";
 
+// ---------------------------------------------------------------------------
+// Drawing across a prompt (§9.3, §10.6, R113, R117, R122)
+// ---------------------------------------------------------------------------
+
+/**
+ * §2.4 has two loops, and a prompt can open in the middle of either one.
+ *
+ *   * the cast-on-draw CHAIN inside `completeDraw`: the cast is a whole play (R70), and a play can
+ *     ask — #7 Jewelosco Scarab's Discover drawn off the top, or anything Call to Chaos reaches.
+ *   * the "draw N" loop inside `draw`: N separate draws, each with its own chain (§2.4, R58), so
+ *     draw 2 with #95 Call to Chaos is two chains and the first of them can pause.
+ *
+ * Both used to walk straight on over the open prompt, drawing cards into a game state the player had
+ * not finished deciding — the same class of bug as any sequence that keeps its place in a local
+ * variable (§9.3: "mid-action choices are state, not callbacks"). So each loop gates on
+ * `work.paused` and parks what it still owes on `state.work`, which the answer's drain picks up
+ * (R113, R122). Two kinds rather than one, because they are two different remainders and each
+ * handler is then exactly its own loop:
+ *
+ *   * `DRAW_CHAIN_WORK` owes "one more draw, continuing this chain at `chain`" — one item carrying
+ *     the counter, so R58's cap still bounds the chain a pause split in half. A resumed chain counts
+ *     on from where it stopped and can never restart at zero, which is what would let a chain evade
+ *     the cap by pausing.
+ *   * `DRAW_COUNT_WORK` owes "`count` more whole draws", each starting a fresh chain at 0.
+ *
+ * R117: both are parked at the moment of the pause and never in advance. While the loop is on the
+ * stack the draws it has not made are the loop's alone, so a resolution loop running *inside* one of
+ * them — a cast's Cry can start one — can neither take nor re-run the draws it is standing in.
+ * Pre-parking the remainder is what made a played card's Cry fire twice earlier in this project.
+ *
+ * R113's order falls out of `work.pushWork` placing at `state.workCursor`: a chain that pauses parks
+ * its own remainder first and the enclosing "draw N" loop parks after it, so the interrupted chain
+ * finishes before the next whole draw begins. Nothing but plain JSON is held, so a paused draw
+ * survives `JSON.parse(JSON.stringify(state))` and replays exactly (§9.3, §10.1).
+ *
+ * The game ending parks nothing: like `traps.oweWindow` and `resolve.castCard`, there is nothing
+ * left to resume into once `state.result` is set, and R3's fatigue is the usual way a draw ends one.
+ */
+export const DRAW_CHAIN_WORK = "@drawChain";
+
+const DRAW_CHAIN_STEP = "chain";
+
+/** R58: one more draw continuing a chain, and the count it must continue from. */
+export type OwedDrawChain = { player: PlayerId; chain: number };
+
+export const DRAW_COUNT_WORK = "@drawCount";
+
+const DRAW_COUNT_STEP = "draws";
+
+/** §2.4: whole draws a "draw N" still owes, each of which starts its own chain. */
+export type OwedDrawCount = { player: PlayerId; count: number };
+
+/**
+ * Whether a draw loop must stop where it stands and park the rest. `work.paused` is the test — a
+ * prompt is open, or the game is over — with the one qualification R117 already implies: the pause a
+ * sequence owes its remainder for is the one *it* caused.
+ *
+ * That qualification is load-bearing here and nowhere else in the engine, because §2.1's mulligan is
+ * the one caller that draws underneath an open prompt: `setup.answerMulligan` draws the replacements
+ * and only then clears `state.pending`, since R9 wants the replacements drawn before the returned
+ * cards are shuffled back. A prompt that was already open when this draw began is not this draw's
+ * pause, and stopping on it would owe R9's replacement draws to an action that never makes them.
+ * The before/after comparison is the same one `resolve.applyHookResumable` makes across the effects
+ * of a single hook, for the same reason.
+ *
+ * The game ending is unconditional: `state.result` stops every sequence, and `traps.oweWindow` and
+ * `resolve.castCard` both park nothing past it, because there is nothing left to resume into.
+ */
+function stopped(sink: EngineSink, before: PendingChoice | null): boolean {
+  if (!paused(sink)) return false;
+  if (sink.state.result !== null) return true;
+  return sink.state.pending !== before;
+}
+
+/** It came back through JSON (§10.1), so nothing about the payload is assumed. */
+function playerOf(data: Record<string, unknown>): PlayerId | null {
+  const player: unknown = data.player;
+  return player === "p1" || player === "p2" ? player : null;
+}
+
+function countOf(data: Record<string, unknown>, key: string): number {
+  const value: unknown = data[key];
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+/** What a `DRAW_CHAIN_WORK` item owes, or null when it is not one: the reader for its payload. */
+export function owedDrawChainOf(resume: Resume): OwedDrawChain | null {
+  if (resume.hook !== DRAW_CHAIN_WORK) return null;
+  const player = playerOf(resume.data);
+  return player === null ? null : { player, chain: countOf(resume.data, "chain") };
+}
+
+/** What a `DRAW_COUNT_WORK` item owes, or null when it is not one. */
+export function owedDrawCountOf(resume: Resume): OwedDrawCount | null {
+  if (resume.hook !== DRAW_COUNT_WORK) return null;
+  const player = playerOf(resume.data);
+  return player === null ? null : { player, count: countOf(resume.data, "count") };
+}
+
+/**
+ * Park the rest of a chain (R113). `work.ts` owns `state.work`, so this only ever calls `owe`: the
+ * item lands at `state.workCursor`, which puts it behind anything the pausing cast parked inside it
+ * — its own Cry tail, §10.5 steps 6 and 7 — and in front of everything else still owed.
+ */
+function oweChain(sink: EngineSink, player: PlayerId, chain: number): void {
+  const resume: Resume = {
+    defId: "",
+    hook: DRAW_CHAIN_WORK,
+    step: DRAW_CHAIN_STEP,
+    radiant: false,
+    data: { player, chain },
+  };
+  owe(sink, resume);
+}
+
+/** Park the whole draws a "draw N" has not made yet (R113), behind the chain that interrupted it. */
+function oweDraws(sink: EngineSink, player: PlayerId, count: number): void {
+  if (count <= 0) return;
+  const resume: Resume = {
+    defId: "",
+    hook: DRAW_COUNT_WORK,
+    step: DRAW_COUNT_STEP,
+    radiant: false,
+    data: { player, count },
+  };
+  owe(sink, resume);
+}
+
 /**
  * §2.4's draw from the moment the card has left the library: the game draw counter, the `drawn`
  * event, R58's cast-on-draw chain and R4's hand cap.
@@ -135,7 +272,19 @@ export function completeDraw(
 
   if (flagsOf(card).castOnDraw === true && chain < CAST_ON_DRAW_CHAIN_CAP) {
     card.zone = { z: "resolving", player };
+    const before = sink.state.pending;
     castCard(sink, card);
+
+    // §9.3 and R122: the cast is a whole play and a play can ask, so the repeat of the draw belongs
+    // to the action that answers, not to this one. Drawing on here would put cards in the hand — and
+    // cast more of them — while the player is still being asked about this one. What is owed is one
+    // more draw at `chain + 1`, which is precisely the count this draw would have passed on, so R58's
+    // cap bounds the resumed chain exactly as it bounds an uninterrupted one (R113, R117).
+    if (stopped(sink, before)) {
+      if (sink.state.result === null) oweChain(sink, player, chain + 1);
+      return "cast";
+    }
+
     drawOne(sink, player, chain + 1);
     return "cast";
   }
@@ -174,8 +323,42 @@ export function drawOne(sink: EngineSink, player: PlayerId, chain = 0): DrawOutc
   return completeDraw(sink, player, card, chain);
 }
 
+/**
+ * §2.4: "Draw N is N separate draws, each with its own chain" (R58). A draw that pauses stops the
+ * rest of them, which are owed to `state.work` and made by the action that answers (R113, R122) —
+ * so the outcomes this returns are the draws that really happened in this action, and a caller that
+ * counts them reads a short list rather than a list of draws that have not happened yet.
+ */
 export function draw(sink: EngineSink, player: PlayerId, count: number): DrawOutcome[] {
+  const before = sink.state.pending;
   const out: DrawOutcome[] = [];
-  for (let i = 0; i < count; i += 1) out.push(drawOne(sink, player, 0));
+  for (let i = 0; i < count; i += 1) {
+    out.push(drawOne(sink, player, 0));
+    if (!stopped(sink, before)) continue;
+    // R117: parked here, at the pause, and never in advance. The chain that stopped has already
+    // parked its own remainder, so this lands behind it and the interrupted chain finishes first.
+    if (sink.state.result === null) oweDraws(sink, player, count - i - 1);
+    return out;
+  }
   return out;
 }
+
+/** `work.ts`'s handler for a chain a cast-on-draw prompt split: the same chain, at the same count. */
+function runOwedDrawChain(sink: EngineSink, item: WorkItem): void {
+  const owed = owedDrawChainOf(item.resume);
+  if (owed === null) return;
+  drawOne(sink, owed.player, owed.chain);
+}
+
+/** `work.ts`'s handler for the whole draws a "draw N" still owed when one of them paused. */
+function runOwedDrawCount(sink: EngineSink, item: WorkItem): void {
+  const owed = owedDrawCountOf(item.resume);
+  if (owed === null) return;
+  draw(sink, owed.player, owed.count);
+}
+
+// Registered at module scope, in the module that owns the sequence, and never from a test: a
+// handler is code, so a suite that wired it up on production's behalf would be green over a
+// production that had no wiring at all (R113).
+registerWorkHandler(DRAW_CHAIN_WORK, runOwedDrawChain);
+registerWorkHandler(DRAW_COUNT_WORK, runOwedDrawCount);

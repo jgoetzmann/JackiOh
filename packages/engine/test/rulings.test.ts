@@ -1355,6 +1355,13 @@ describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
   it("R157 counts an accountless API request against its address, in its own namespace", () => {
     provenIn(157, "../../../apps/server/test/api/rate-limit.test.ts");
   });
+
+  // Proved by draw-pause.test.ts "R158 draws nothing more while a cast-on-draw prompt is open, and
+  // owes the rest of the chain", with its cap, hand-cap, fatigue and draw-N siblings and two
+  // controls that own nothing when nothing asks.
+  it("R158 stops a draw at the prompt it opened and owes the rest, keeping R58's count", () => {
+    provenIn(158, "draw-pause.test.ts");
+  });
 });
 
 describe("SPEC §11 index completeness", () => {
