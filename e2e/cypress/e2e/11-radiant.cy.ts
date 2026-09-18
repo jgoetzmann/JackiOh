@@ -26,10 +26,11 @@
 // no fixed `cy.wait(ms)` — every wait is `cy.settled()`, `cy.expectAnimating` or a retried
 // assertion; every selector comes from `e2e/support/testids.ts`.
 //
-// Blocked today (2026-09-18), reported and not worked around:
-//   * nothing in `apps/web` registers the card catalog with the engine — it has no dependency on
-//     `@jackioh/cards` at all — so `registeredCatalog()` is empty, `/dev/hotseat` answers every
-//     deck with "not in the catalog (§9.4 L6)" and `window.__jackioh` is never exposed. Every
+// The catalog blocker this header used to name is CLOSED. The note is kept rather than deleted
+// because a stale "blocked" claim is worse than none — it invites a reader to write off a real
+// failure as known. `apps/web` now depends on `@jackioh/cards` and calls `registerAll()` in its
+// composition root, so `registeredCatalog()` is populated, `/dev/hotseat` resolves a fixture deck
+// and `window.__jackioh` is exposed. If this spec fails in `cy.seedGame` now, it is a finding.
 //     hotseat spec fails in `cy.seedGame` until that is fixed.
 //   * `packages/cards/src/scripts/094-genns-greed.ts` is down to its `gainMana` clause: neither
 //     of the two verbs its other two clauses need ("draw every 2-cost card", "exile every

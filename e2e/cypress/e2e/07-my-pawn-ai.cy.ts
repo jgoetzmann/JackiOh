@@ -37,17 +37,16 @@
 // no fixed `cy.wait(ms)` — every wait is `cy.settled()`, `cy.expectAnimating` or a retried
 // assertion; every selector comes from `e2e/support/testids.ts`.
 //
-// Blocked today (2026-09-18), reported and not worked around:
-//   * nothing in `apps/web` registers the card catalog with the engine — it has no dependency on
-//     `@jackioh/cards` at all — so `registeredCatalog()` is empty, `/dev/hotseat` answers every
-//     deck with "not in the catalog (§9.4 L6)" and `window.__jackioh` is never exposed. Every
-//     hotseat spec, this one included, fails in `cy.seedGame` until that is fixed.
-//   * `packages/cards/src/scripts/096-my-pawn.ts` has the R99 `when` predicate implemented and
-//     `run: () => []`, because `aiPlaysOutTurn` is not in `packages/engine/src/effects` and
-//     `combat.declareAttack` resolves combat on the line after it emits `attackDeclared`, so
-//     §4.2 step 4's trap window does not exist yet. `cancelAttack` does exist. Until the window
-//     and the AI verb land, the non-lethal half of this spec should pass and the lethal half
-//     should fail with the damage having landed — which is the right failure.
+// Both blockers this header used to name are now CLOSED, and the note is kept rather than deleted
+// because a stale "blocked" claim is worse than none — it invites a reader to write off a real
+// failure as known. If this spec fails now, it is a finding:
+//   * `apps/web` registers the catalog: it depends on `@jackioh/cards` and calls `registerAll()` in
+//     its composition root, so `registeredCatalog()` is populated and `/dev/hotseat` resolves a
+//     fixture deck. The "not in the catalog (§9.4 L6)" symptom is gone.
+//   * #96 My Pawn has a real body — `cancelAttack()` and `aiPlaysOutTurn()` — because `GameState`
+//     now carries `declaredAttack` and §4.2 step 4's trap window exists between the declaration and
+//     the damage of step 5 (audit finding B-1). So the lethal half of this spec should now pass
+//     too, not just the non-lethal half.
 //
 // One deliberate deviation from the support API, marked again at the line: the lethal declaration
 // is two board clicks written out instead of `cy.attack`, because `cy.attack` ends with

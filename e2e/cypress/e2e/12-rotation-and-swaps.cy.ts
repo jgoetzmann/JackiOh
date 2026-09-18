@@ -36,10 +36,11 @@
 // no fixed `cy.wait(ms)` — every wait is `cy.settled()` or a retried assertion; every selector
 // comes from `e2e/support/testids.ts`.
 //
-// Blocked today (2026-09-18), reported and not worked around: nothing in `apps/web` registers the
-// card catalog with the engine — it has no dependency on `@jackioh/cards` at all — so
-// `registeredCatalog()` is empty, `/dev/hotseat` answers every deck with "not in the catalog
-// (§9.4 L6)" and `window.__jackioh` is never exposed. Every hotseat spec fails in `cy.seedGame`
+// The catalog blocker this header used to name is CLOSED. The note is kept rather than deleted
+// because a stale "blocked" claim is worse than none — it invites a reader to write off a real
+// failure as known. `apps/web` now depends on `@jackioh/cards` and calls `registerAll()` in its
+// composition root, so `registeredCatalog()` is populated, `/dev/hotseat` resolves a fixture deck
+// and `window.__jackioh` is exposed. If this spec fails in `cy.seedGame` now, it is a finding.
 // until that is fixed. The three cards this spec steers are further along than most: `rotate`
 // (#52), `swap` (#87) and #60's `forcedAttacks` are all in the effects barrel now, and #96 is
 // only ever set face-down here, never fired.

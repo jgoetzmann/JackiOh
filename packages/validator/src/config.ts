@@ -11,4 +11,4 @@
 // Collapse this file into `import { DECK_SIZE, MAX_COPIES } from "@jackioh/engine"` once the engine
 // barrel compiles, or keep it and add `"./config": "./src/config.ts"` to the engine's export map so
 // the specifier can be `@jackioh/engine/config`.
-export { DECK_SIZE, MAX_COPIES } from "../../engine/src/config";
+export { DECK_SIZE, MAX_COPIES } from "@jackioh/engine/config";

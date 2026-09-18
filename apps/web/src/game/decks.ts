@@ -14,13 +14,17 @@
 import type { CardCost, CardDef, CardDefs } from "@jackioh/shared";
 
 /**
- * SPEC §2.6 L2 / L3, as `packages/engine/src/config.ts` states them. Duplicated rather than
- * imported because `packages/engine` does not compile yet (see `game/engine.ts`) and the client
- * must not import it; `e2e/support/config.ts` duplicates the same two numbers for the same reason.
- * Drop these the day `@jackioh/engine` typechecks and re-export the real constants.
+ * SPEC §2.6 L2 / L3. Re-exported from the engine's own `config` entry point rather than restated:
+ * BUILD §2 keeps every rules constant in `packages/engine/src/config.ts` and says nothing else
+ * spells the numbers. These used to be literals because the engine did not compile and its barrel
+ * would have dragged in modules the client excludes — both now resolved, the second by the engine's
+ * `"./config"` export, which reaches the constants without loading the barrel.
  */
-export const DECK_SIZE = 20;
-export const MAX_COPIES = 1;
+// Imported and then re-exported, not `export … from`: this module uses both constants itself
+// (`resolveDeck`, the dev decks), and a bare re-export creates no local binding.
+import { DECK_SIZE, MAX_COPIES } from "@jackioh/engine/config";
+
+export { DECK_SIZE, MAX_COPIES };
 
 export type DeckSource = {
   id: string;
