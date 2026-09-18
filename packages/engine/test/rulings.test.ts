@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R154, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R155, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -138,7 +138,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
@@ -1165,9 +1165,6 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(132, "rulings-c.test.ts");
   });
 
-  // KNOWN FAILING, and deliberately so: `subsystems/comboIndex.playedCardsThisTurn` flatMaps the raw
-  // `playedIds` list (comboIndex.ts:84), so a card played, bounced and replayed is two candidates in
-  // the pool `stepE`'s `rng.pick` draws from, where R133 weights it once.
   // Proved by rulings-c.test.ts "R133 weights a card played twice in one turn once, because the pool
   // is the set of cards played".
   it("R133 weights a card played twice in one turn once: the pool is the set of cards played", () => {
@@ -1192,10 +1189,6 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(135, "rulings-c.test.ts");
   });
 
-  // KNOWN FAILING, and deliberately so: `EffectContext` carries only the whole action's `events`
-  // list, with no record of where this script's emissions begin, so `effects/combat.ts`'s
-  // `freshlySummoned` scans every `summoned` event of the action — #60's "the tokens THIS effect
-  // list just summoned" reads a second copy's summons and a trap's as its own.
   // Proved by rulings-c.test.ts "R136 gives a script its own event window, so an earlier event in
   // the same action is not its own".
   it("R136 gives a script its own event window, not the whole action's", () => {
@@ -1333,13 +1326,22 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(153, "rulings-c.test.ts");
   });
 
-  // KNOWN FAILING, and deliberately so: `shared/src/events.ts`'s `trapFired` carries only
-  // `instanceId`, `defId` and `controller`, so the opponent's redacted view has no lane to animate
-  // the flip on. The R97 redaction half already holds, which is what the test's passing half shows.
+  // R97 carries an amendment for this row: a fired trap is consumed into a public graveyard, so the
+  // generic zone-keyed redaction would hand the opponent its identity. It is keyed to the controller.
   // Proved by rulings-c.test.ts "R154 carries the trap's row and lane on trapFired, with its
   // identity redacted for the other player".
   it("R154 carries a trap's row and lane on trapFired, its identity following R97's redaction", () => {
     provenIn(154, "rulings-c.test.ts");
+  });
+
+  // §5.1 named no step that did the flagging, so the flag was declared and written by nothing.
+  // R153's graveyard gate is the flag alone now, which is the second half of this row.
+  // Proved by rulings-c.test.ts "R155 flags a Spell that asks to return as step 7 lands it in the
+  // graveyard, and clears it that turn", "R155 makes the flag alone the graveyard's gate, so this
+  // turn's play log is not enough"; trigger-zones.test.ts "R155 the flag, not the turn log, is what
+  // lets a graveyard spell answer its return".
+  it("R155 sets the return-to-hand flag at step 7 and clears it at the end of that turn", () => {
+    provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts");
   });
 });
 
