@@ -206,6 +206,18 @@ jobs:
           E2E: "1"
         run: pnpm --dir e2e exec cypress run --browser ${{ matrix.browser }}
 
+      # BUILD M5-T1's "without layout overflow at 1280x720 and 390x844", which nothing measured
+      # until now: jsdom has no layout engine, and the 10-unit/10-backrow fixture the acceptance
+      # names cannot be played into existence from an e2e spec (no deck fixture holds more than one
+      # settable backrow card). Cypress component testing mounts that fixture in a real browser.
+      #
+      # Chrome only: the matrix would otherwise run it twice for one measurement, and Cypress 16
+      # deprecates Electron. It needs no client build, no server and no E2E=1 — the component dev
+      # server compiles apps/web/src itself, on port 5273 so it cannot collide with the preview.
+      - name: the fixture board's layout, measured in a browser
+        if: matrix.browser == 'chrome'
+        run: pnpm --dir e2e exec cypress run --component --browser chrome
+
       - name: keep the evidence when it fails
         if: failure()
         uses: actions/upload-artifact@v4
@@ -219,6 +231,7 @@ jobs:
           # (`screenshotOnRunFailure` is on, so one should always be there).
           path: |
             e2e/artifacts/screenshots
+            e2e/artifacts/component/screenshots
             ${{ runner.temp }}/client.log
             ${{ runner.temp }}/server.log
           if-no-files-found: warn

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The same viewport meta apps/web/index.html ships. It is not decoration here: BUILD M5-T1's
+      acceptance is a PIXEL claim at 390x844, and a page without `width=device-width` is laid out
+      against a 980px fallback viewport, which would make a phone-width measurement meaningless.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>JackiOh — component tests</title>
+    <style>
+      /*
+        `[data-cy-root]` stands in for `#root` in apps/web/index.html, so it carries #root's one
+        rule from src/index.css and nothing else. Nothing here may add or remove horizontal room:
+        every pixel of padding invented in this file would be a pixel the board does not have to
+        fight for in the real app, and the measurement would be a measurement of this file.
+      */
+      [data-cy-root] {
+        min-height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-cy-root></div>
+  </body>
+</html>

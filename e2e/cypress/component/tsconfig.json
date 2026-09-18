@@ -1,0 +1,20 @@
+{
+  // The component specs get a project of their own, and it is not an ornament: e2e/tsconfig.json
+  // includes `cypress/**/*.ts`, which does not match a `.tsx` file, so without this the specs would
+  // compile in the browser and be typechecked by nothing. `pnpm typecheck:component` runs it.
+  //
+  // It is also the one TypeScript project in the repo that spans both trees: a component spec
+  // imports apps/web/src directly, so the client's own sources are pulled in and checked here with
+  // the same options apps/web/tsconfig.json uses (both extend tsconfig.base.json).
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // `vite/client` is what declares `*.css` as a module (Board.tsx imports board.css) and types
+    // `import.meta.env`; `cypress` brings `cy`, `describe` and chai's `expect`.
+    "types": ["cypress", "node", "vite/client"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["**/*.cy.tsx", "../../support/component.tsx"]
+}
