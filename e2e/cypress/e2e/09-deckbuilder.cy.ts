@@ -13,14 +13,39 @@
 // from a literal. If a message here and the validator disagree, one of them is wrong — that is
 // the point of asserting the string and not the rule code.
 //
-// WHERE THEY ARE ASSERTED. §9.3 and §9.4: "the client's verdict is UX while the server's is law".
-// `PUT /api/loadout` is that law — it calls the same `@jackioh/validator` the deckbuilder calls,
-// passes its issues through untouched ("no renumbering, no recomposed sentence") and is what a
-// player's loadout is actually judged by. So each rule is driven through the endpoint. The
-// deckbuilder's own rendering of the same sentence is the other half of "shows its message" and
-// is currently unassertable: `support/testids.ts` has no deckbuilder vocabulary, and M8's house
-// rule forbids inventing one in a spec. The precise ASK list is in the hand-off report; the last
-// `it` in this file asserts the part of the screen that needs no new testid.
+// WHERE THEY ARE ASSERTED — BOTH HALVES. §9.3 and §9.4: "the client's verdict is UX while the
+// server's is law". `PUT /api/loadout` is that law — it calls the same `@jackioh/validator` the
+// deckbuilder calls, passes its issues through untouched ("no renumbering, no recomposed
+// sentence") and is what a player's loadout is actually judged by. So each of the six rules is
+// driven through the endpoint, and those assertions are the law half.
+//
+// The UX half — the sentence actually RENDERED, which is what BUILD's "shows" asks for — is
+// asserted through the deckbuilder's own testids. That was once impossible and the note here said
+// so; it is possible now. `e2e/support/testids.ts` carries the builder's vocabulary
+// (`cardPoolId`, `deckTabId`, `deckDropId`, `deckListId`, `deckCountId`, `deckCardId`,
+// `deckCardRowId`, `LOADOUT_ERRORS`, `LOADOUT_SAVE`, `LOADOUT_SAVED`, `loadoutErrorId`), it
+// mirrors `apps/web/src/game/deckbuilder/testids.ts` name for name, and `cy.dragCardToDeck` is a
+// whole dragstart/dragover/drop/dragend gesture with a real `DataTransfer`. Nothing is invented in
+// this file.
+//
+// HOW MUCH OF L1–L6 A BROWSER CAN REACH, and why the rest is not a gap this file can close. The
+// builder's draft has exactly two sources: the loadout `GET /api/loadout` returns, which the
+// server will only ever have stored if it was legal, and edits made through the UI. And the UI
+// refuses to construct five of the six failures by design:
+//   - `addCard` (`deckbuilder/loadout.ts`) refuses any card already held in ANY deck, so a draft
+//     can never reach L3's duplicate or L4's same-card-in-two-decks. That refusal is not a
+//     limitation — it is BUILD's own second clause, and it is asserted below.
+//   - `poolFrom` excludes Token-tagged cards and anything the collection does not hold, so L3's
+//     Token branch and L6's unknown id are not draggable in the first place.
+//   - The builder always renders three decks, so L1's wrong deck count cannot be typed into it.
+//   - L5 cannot be isolated at all (see below), in the UI or out of it.
+// What remains reachable by editing is L2: take a card out of a deck and it holds 19. So L2 is the
+// rule whose rendered sentence this file asserts, and it asserts it TWICE — once as the client's
+// own live verdict (`data-source="client"`) and once as the server's after a refused save
+// (`data-source="server"`) — which is §9.3's two-verdict claim shown agreeing word for word.
+// The other five sentences are rendered-message-tested where a draft can actually be handed in:
+// `apps/web/src/game/deckbuilder/Deckbuilder.test.tsx`, which mounts an arbitrary draft and
+// asserts all six against `validateLoadout`'s own output.
 //
 // L4 IS ALSO A DATABASE INVARIANT. §9.4: "a card id appears in at most one deck, also enforced by
 // a unique index on `(profile_id, card_id)`" — `loadout_card_unique`, which
@@ -41,7 +66,20 @@
 // Needs: M6-T3 (validator + loadout endpoints) and the deckbuilder UI. See e2e/README.md.
 
 import { CARD_NAMES, cardId } from "../../support/cards.ts";
-import { accounts, constants, routes, seedFor, server } from "../../support/config.ts";
+import { accounts, constants, routes, seedFor, server, timeouts } from "../../support/config.ts";
+import {
+  DECKBUILDER,
+  ILLEGAL,
+  LEGAL,
+  LOADOUT_ERRORS,
+  LOADOUT_SAVE,
+  cardPoolId,
+  deckCardId,
+  deckCardRowId,
+  deckCountId,
+  loadoutErrorId,
+  ts,
+} from "../../support/testids.ts";
 import type { FixtureDeck } from "../../support/types.ts";
 
 // ---------------------------------------------------------------------------------------------
@@ -50,6 +88,9 @@ import type { FixtureDeck } from "../../support/types.ts";
 
 /** ASK (support/commands.ts + support/config.ts): `cy.signIn(account)` and the session key. */
 const SESSION_STORAGE_KEY = "jackioh.e2e.session";
+
+/** SPEC §8 numbers 100 Core cards, and R111 grants one copy of each to an active profile. */
+const CORE_CARD_COUNT = Object.keys(CARD_NAMES).length;
 
 const DECK_SIZE = constants.DECK_SIZE;
 const MAX_COPIES = constants.MAX_COPIES;
@@ -163,6 +204,25 @@ function legalDecks(): Cypress.Chainable<Decks> {
 
 function illegalDeck(name: string): Cypress.Chainable<string[]> {
   return cy.fixture<FixtureDeck>(`decks/${name}.json`).then((deck) => [...deck.cards]);
+}
+
+/**
+ * Open `/decks` as the active fixture account and wait for the builder itself, not for the route.
+ *
+ * `DECKBUILDER` is only rendered once the three reads the screen needs have landed — until then it
+ * is `deckbuilder-loading`, or `deckbuilder-error` if one failed — so waiting for it is what makes
+ * the assertions below about a loaded draft rather than about a spinner.
+ */
+function openBuilder(): void {
+  cy.visit(routes.deckbuilder(), {
+    onBeforeLoad(win) {
+      win.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ accessToken: accounts.p1().token }),
+      );
+    },
+  });
+  cy.get(ts(DECKBUILDER), { timeout: timeouts.view }).should("exist");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -338,9 +398,8 @@ describe("09 deckbuilder — L1 to L6, and a legal save", () => {
     // the "select by text" the M8 house rule bans — and it fails if the route serves anything
     // other than a loaded deckbuilder.
     //
-    // Everything else BUILD's row asks of the DOM — each of the six sentences rendered *in* the
-    // builder, and the drag into a second deck being refused there — needs the deckbuilder
-    // testids listed in the hand-off report, and M8's house rule says a spec must not invent them.
+    // The other two things BUILD's row asks of the DOM — a rendered rule sentence, and the drag
+    // into a second deck being refused — are the two `it`s after this one.
     cy.visit(routes.deckbuilder(), {
       onBeforeLoad(win) {
         win.localStorage.setItem(
@@ -357,5 +416,109 @@ describe("09 deckbuilder — L1 to L6, and a legal save", () => {
     for (const index of [1, 21, 41]) {
       cy.contains(spec8Name(index)).should("exist");
     }
+  });
+
+  it("L2 — the builder SHOWS the validator's sentence, and the server's copy of it says the same", () => {
+    // BUILD's "shows its message", at the layer the word means. The draft starts as the legal
+    // loadout the save above stored, so the one failure a browser can steer it into is L2: take a
+    // card out of deck 1 and it holds DECK_SIZE - 1.
+    openBuilder();
+
+    const removed = cardId(1);
+    const short = DECK_SIZE - 1;
+    const sentence = `${deckLabel(1)} has ${String(short)} cards; every deck needs exactly ${String(DECK_SIZE)}.`;
+
+    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(DECK_SIZE));
+    cy.get(ts(deckCardId(1, removed))).click();
+    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(short));
+
+    // The client's own verdict, live, with no save involved (§9.3: "the client's verdict is UX").
+    // Asserted inside the errors list, so a sentence rendered anywhere else would not count.
+    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.length", 1);
+    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.text", sentence);
+    cy.get(ts(loadoutErrorId("L2"))).should("have.attr", "data-source", "client");
+    cy.get(ts(loadoutErrorId("L2"))).should("have.attr", "data-rule", "L2");
+
+    // …and the server's, which §9.4 makes law. `PUT /api/loadout` refuses the same draft and its
+    // issues replace the client's — so this is the two verdicts of §9.3 shown agreeing word for
+    // word, which is the whole reason the validator is one shared module (M6-T3).
+    cy.get(ts(LOADOUT_SAVE)).click();
+    cy.get(ts(loadoutErrorId("L2")), { timeout: timeouts.view }).should(
+      "have.attr",
+      "data-source",
+      "server",
+    );
+    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.text", sentence);
+
+    // The refused save changed nothing on the server, so the next `it` still opens a legal draft.
+    cy.request<SaveResponse>({
+      method: "GET",
+      url: api("/api/loadout"),
+      headers: bearer(accounts.p1().token),
+    })
+      .its("body.loadout.decks.0.length")
+      .should("eq", DECK_SIZE);
+  });
+
+  it("BUILD M8 — a card dragged into a second deck is refused, on screen", () => {
+    // The clause this file used to prove only as JSON. `cy.dragCardToDeck` is the real gesture:
+    // dragstart on the pool card with a `DataTransfer` built in the app's own window, dragover and
+    // drop on the deck region, dragend to let go.
+    openBuilder();
+
+    // #1 is in deck 1 of the loadout the save above stored, so dropping it into deck 2 is exactly
+    // "a card dragged into a second deck". L4 and the `loadout_card_unique` index say the same
+    // thing one and two layers down (§9.4); this is the top layer saying it first.
+    const held = cardId(1);
+    cy.get(ts(deckCardRowId(1, held))).should("exist");
+    // The pool marks it before anything is dragged: M5-T2's `data-legal="false"` vocabulary,
+    // reused here rather than a second word for the same statement.
+    cy.get(`${ts(cardPoolId(held))}${ILLEGAL}`).should("exist");
+    cy.get(ts(cardPoolId(held))).should("have.attr", "data-in-deck", "1");
+
+    cy.dragCardToDeck(held, 1); // 0-based, like the API's deckIndex: deck 2 on screen.
+
+    // Refused: deck 2 never gained it, deck 1 never lost it, and both are still DECK_SIZE.
+    cy.get(ts(deckCardRowId(2, held))).should("not.exist");
+    cy.get(ts(deckCardRowId(1, held))).should("exist");
+    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(DECK_SIZE));
+    cy.get(ts(deckCountId(2))).should("have.attr", "data-count", String(DECK_SIZE));
+    // …and the builder said so, rather than silently dropping the gesture.
+    cy.get(ts(cardPoolId(held))).should("have.attr", "data-refused", "true");
+
+    // The draft is still legal, so no rule sentence is on screen: the refusal is what kept it
+    // legal, which is the difference between refusing a drag and reporting L4 after the fact.
+    cy.get(ts(LOADOUT_ERRORS)).should("have.attr", "data-count", "0");
+    cy.get(ts(loadoutErrorId("L4"))).should("not.exist");
+
+    // THE CONTROL, and the reason the assertions above mean anything. "Refused" and "the gesture
+    // never fired" leave an identical board, so a drag that did nothing at all would satisfy every
+    // line above. Dragging a card the loadout does NOT hold, with the same command onto the same
+    // region, has to land — and then the refusal is specific to the card being held elsewhere
+    // rather than a property of `cy.dragCardToDeck`.
+    legalDecks().then((decks) => {
+      const used = new Set([...decks.a, ...decks.b, ...decks.c]);
+      const free = Array.from({ length: CORE_CARD_COUNT }, (_unused, index) => cardId(index + 1)).find(
+        (id) => !used.has(id),
+      );
+      expect(free, "a Core card the saved loadout does not hold (R111 grants all 100)").to.not.eq(
+        undefined,
+      );
+      if (free === undefined) return;
+
+      cy.get(`${ts(cardPoolId(free))}${LEGAL}`).should("exist");
+      cy.dragCardToDeck(free, 1);
+
+      cy.get(ts(deckCardRowId(2, free))).should("exist");
+      cy.get(ts(deckCountId(2))).should("have.attr", "data-count", String(DECK_SIZE + 1));
+      // …and the builder shows L2 for the deck that is now one card over, which is the same
+      // sentence from the same validator about the other end of the same rule.
+      cy.get(ts(LOADOUT_ERRORS))
+        .find(ts(loadoutErrorId("L2")))
+        .should(
+          "have.text",
+          `${deckLabel(2)} has ${String(DECK_SIZE + 1)} cards; every deck needs exactly ${String(DECK_SIZE)}.`,
+        );
+    });
   });
 });

@@ -216,9 +216,17 @@ describe("06 room code — a networked match between a browser and a Node client
 
     // --- create the room ---------------------------------------------------------------------
     // ASK (support/testids.ts + apps/web): the room screen has no testids yet, so the room is
-    // created over the endpoint §9.5 defines rather than by clicking. `seed` is BUILD M8's "every
-    // spec sets a seed"; a networked seed is minted by the server, so honouring a supplied seed
-    // under E2E=1 is an ASK (see the report). The fixture decks are written not to need one.
+    // created over the endpoint §9.5 defines rather than by clicking.
+    //
+    // `seed` is BUILD M8's "every spec sets a seed". A networked match's seed is normally minted
+    // by the server (§9.3, `deps.ids.seed()`); R143 makes it an optional field that an end-to-end
+    // server honours and every other server REFUSES with a 400 — never ignores, so a production
+    // caller cannot quietly get an unseeded match while believing it asked for one. A room is
+    // created before anyone joins, so the host's seed is held against the code until the join
+    // consumes it (`match/rooms.ts` `rememberSeed`), and `apps/server/test/match/rooms.test.ts`
+    // proves the join uses it verbatim. This comment used to say the field was ignored and that
+    // the fixture decks were therefore written not to need it; the first half is no longer true,
+    // and the second is kept because it costs nothing and is one less thing to depend on.
     cy.request<{ code: string; expiresAt: number; deckIndex: number }>({
       method: "POST",
       url: api("/api/rooms"),
