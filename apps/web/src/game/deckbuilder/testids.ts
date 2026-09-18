@@ -63,6 +63,11 @@ export function deckCardRowId(deck: number, cardId: string): string {
  */
 export const DECK_DRAG_MIME = "application/x-jackioh-card";
 
+/** The card count of deck `n`, against `DECK_SIZE` (L2). */
+export function deckCountId(deck: number): string {
+  return `deck-count-${deck}`;
+}
+
 /** The save control (§9.4: one `saveLoadout` for all three decks, never a per-deck save). */
 export const LOADOUT_SAVE = "loadout-save";
 

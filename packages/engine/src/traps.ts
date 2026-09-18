@@ -42,6 +42,7 @@ import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import type { CardInstance, GameState, Resume, WorkItem } from "./state";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
+import { slotOf } from "./zones";
 import { cardAt, moveToZone, slotsOf } from "./zones";
 
 /**
@@ -216,11 +217,16 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
   );
   if (armed.length === 0) return false;
 
+  // R154: the zone is read before the trap resolves, because firing it can move the card — a Trap
+  // reaches its owner's graveyard on consumption and would then have no slot to report.
+  const at = slotOf(sink.state, trap);
   sink.events.push({
     type: "trapFired",
     instanceId: trap.id,
     defId: trap.defId,
     controller: trap.controller,
+    row: at?.row ?? "backrow",
+    lane: at?.lane ?? 0,
   });
 
   for (const trigger of armed) {

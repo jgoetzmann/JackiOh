@@ -128,7 +128,7 @@ const SAMPLES: { [K in GameEventType]: Extract<GameEvent, { type: K }> } = {
   rotated: { type: "rotated", direction: "left" },
   swapped: { type: "swapped", what: "health" },
   locked: { type: "locked", player: "p2", row: "backrow", lane: 1 },
-  trapFired: { type: "trapFired", instanceId: "b5", defId: "core-084", controller: "p1" },
+  trapFired: { type: "trapFired", instanceId: "b5", defId: "core-084", controller: "p1", row: "backrow", lane: 3 },
   attackDeclared: { type: "attackDeclared", attackerId: "u1", targetId: "u6", forced: false },
   attackCancelled: { type: "attackCancelled", attackerId: "u1", targetId: "u6", byInstanceId: "b5" },
   manaChanged: { type: "manaChanged", player: "p1", current: 2, max: 4 },
@@ -440,16 +440,22 @@ describe("target resolution", () => {
     );
   });
 
-  it("trapFired falls back to the controller's backrow when the trap is face-down (FINDING)", () => {
+  it("trapFired animates the trap's own card, and its zone when the viewer may not identify it", () => {
     // The viewer's own face-up trap has an element.
-    expect(targetFor({ type: "trapFired", instanceId: YOUR_TRAP, defId: "core-084", controller: "p1" }, view)).toBe(
-      testid.card(YOUR_TRAP),
-    );
-    // An opponent's set trap renders as `{ faceDown: true }` with no instanceId (SPEC §10.8) and
-    // `trapFired` carries no row/lane, so no lane-accurate element can be derived.
-    expect(targetFor({ type: "trapFired", instanceId: "secret", defId: "core-084", controller: "p2" }, view)).toBe(
-      animTestid.backrow("opponent"),
-    );
+    expect(
+      targetFor(
+        { type: "trapFired", instanceId: YOUR_TRAP, defId: "core-084", controller: "p1", row: "backrow", lane: 2 },
+        view,
+      ),
+    ).toBe(testid.card(YOUR_TRAP));
+    // An opponent's set trap renders as `{ faceDown: true }` with no instanceId (SPEC §10.8, R33),
+    // so there is no `card-<instanceId>` to animate — R154's `row`/`lane` name its zone instead.
+    expect(
+      targetFor(
+        { type: "trapFired", instanceId: "secret", defId: "core-084", controller: "p2", row: "backrow", lane: 4 },
+        view,
+      ),
+    ).toBe(testid.zone("opponent", "backrow", 4));
   });
 
   it("radiantSet follows the zone in the payload", () => {

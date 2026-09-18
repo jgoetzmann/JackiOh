@@ -536,7 +536,7 @@ function PromptModal(props: {
     <div className="prompt-scrim" data-testid="prompt-scrim">
       <div
         className={`prompt prompt-${picker.chrome}`}
-        data-testid="prompt"
+        data-testid="prompt-modal"
         data-prompt-kind={picker.chrome}
         /* The board cells this prompt has blessed, so a `target` pick can be made on the board
            too (BUILD M5-T2). Derived by `highlightFor`, which reads only `legalActions` and the
@@ -582,7 +582,7 @@ function Waiting(props: { pendingFor: PlayerId }) {
     <div className="prompt-scrim" data-testid="prompt-scrim">
       <div
         className="prompt prompt-waiting"
-        data-testid="prompt"
+        data-testid="prompt-modal"
         data-prompt-waiting={WAITING_FLAG}
         role="dialog"
         aria-modal="true"

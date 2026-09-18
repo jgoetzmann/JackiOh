@@ -39,9 +39,11 @@ import {
   LOADOUT_SAVE_ERROR,
   deckCardId,
   deckCardRowId,
+  deckCountId,
   deckDropId,
   deckListId,
   deckTabId,
+  loadoutErrorId,
   poolCardId,
 } from "./testids.ts";
 
@@ -195,7 +197,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
             {`Deck ${String(deck)}`}
             <span
               className="db-count"
-              data-testid={`deck-count-${String(deck)}`}
+              data-testid={deckCountId(deck)}
               data-count={String(draft[deck - 1]?.length ?? 0)}
               data-deck-size={String(DECK_SIZE)}
             >
@@ -318,7 +320,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
         {issues.map((issue, position) => (
           <li
             key={`${issue.rule}:${String(issue.deck ?? "")}:${issue.cardId ?? ""}:${String(position)}`}
-            data-testid={`loadout-error-${issue.rule}`}
+            data-testid={loadoutErrorId(issue.rule)}
             data-rule={issue.rule}
             data-deck={issue.deck === undefined ? undefined : String(issue.deck)}
             data-card={issue.cardId}

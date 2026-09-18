@@ -45,7 +45,7 @@ function optionTestids(): string[] {
 }
 
 function kindOfModal(): string | null {
-  return screen.getByTestId("prompt").getAttribute("data-prompt-kind");
+  return screen.getByTestId("prompt-modal").getAttribute("data-prompt-kind");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
     render(<Prompt view={view} legal={[]} onAction={onAction} />);
 
     expect(kindOfModal()).toBe("target");
-    const blessed = screen.getByTestId("prompt").getAttribute("data-board-testids") ?? "";
+    const blessed = screen.getByTestId("prompt-modal").getAttribute("data-board-testids") ?? "";
     expect(blessed.split(" ")).toContain("card-e1");
     expect(blessed.split(" ")).toContain("hero-opponent");
 
@@ -357,7 +357,7 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     );
 
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByTestId("prompt")).toBeNull();
+    expect(screen.queryByTestId("prompt-modal")).toBeNull();
   });
 
   it("renders nothing with no prompt and no play in flight", () => {
@@ -405,7 +405,7 @@ describe("the seat that is only watching (§10.6, §10.8)", () => {
 
     render(<Prompt view={view} onAction={onAction} />);
 
-    expect(screen.getByTestId("prompt")).toHaveTextContent(/waiting for choice/i);
+    expect(screen.getByTestId("prompt-modal")).toHaveTextContent(/waiting for choice/i);
     expect(optionTestids()).toEqual([]);
     expect(screen.queryByTestId("prompt-submit")).toBeNull();
     expect(onAction).not.toHaveBeenCalled();

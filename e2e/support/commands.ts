@@ -29,6 +29,7 @@ import {
   cardId,
   cardPoolId,
   deckDropId,
+  deckListId,
   deckTabId,
   handCardId,
   heroId,
@@ -736,7 +737,9 @@ Cypress.Commands.add("dragCardToDeck", (catalogCardId: string, deckIndex: number
   );
   const oneBased = deckIndex + 1;
   const source = ts(cardPoolId(catalogCardId));
-  const targets = [ts(deckDropId(oneBased)), ts(deckTabId(oneBased))];
+  // The screen's drop handlers sit on the deck region and on the list inside it, and a tab is a
+  // drop target too, so any of the three ends the gesture (apps/web/src/game/deckbuilder).
+  const targets = [ts(deckDropId(oneBased)), ts(deckListId(oneBased)), ts(deckTabId(oneBased))];
 
   cy.get(source, { timeout: timeouts.view }).should("exist");
   // A builder that drops straight onto a tab needs no click first, so selecting the deck is

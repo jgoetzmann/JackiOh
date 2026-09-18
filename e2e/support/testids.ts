@@ -202,14 +202,23 @@ export const PROMPT_SCRIM = "prompt-scrim";
 
 // ---------------------------------------------------------------------------------------------
 // A11: the deckbuilder (BUILD M6-T3, SPEC §9.4). BUILD names no testid for this screen, so these
-// are a contract with whoever builds `/decks` — `cy.dragCardToDeck` is written against them and
-// they are the only names the suite will look for. `apps/web/src/routes/decks.tsx` is still the
-// placeholder, so nothing here is confirmed yet.
+// were a contract with whoever built `/decks` — and they now mirror, name for name,
+// `apps/web/src/game/deckbuilder/testids.ts`, which is the screen's own vocabulary. Keep the two
+// files identical: that file says so too.
 // ---------------------------------------------------------------------------------------------
 
-/** A11: one card in the pool a deck is built from, keyed by catalog id (`core-001`). */
+/** The screen itself, so a spec can wait for it rather than for a route. */
+export const DECKBUILDER = "deckbuilder";
+/** Rendered instead of the builder while its three reads are in flight, or when one failed. */
+export const DECKBUILDER_LOADING = "deckbuilder-loading";
+export const DECKBUILDER_ERROR = "deckbuilder-error";
+
+/** The card pool a deck is built from. */
+export const CARD_POOL = "card-pool";
+
+/** A11: one card in the pool, keyed by catalog id (`card-pool-core-001`). */
 export function cardPoolId(catalogCardId: string): string {
-  return `card-pool-${catalogCardId}`;
+  return `${CARD_POOL}-${catalogCardId}`;
 }
 
 /** A11: the tab that selects deck `oneBased` of the three L1 wants (1..DECKS_PER_LOADOUT). */
@@ -217,13 +226,28 @@ export function deckTabId(oneBased: number): string {
   return `deck-tab-${String(oneBased)}`;
 }
 
-/** A11: the drop zone of deck `oneBased`. `cy.dragCardToDeck` falls back to the tab itself. */
+/** A11: the drop region of deck `oneBased`. `cy.dragCardToDeck` falls back to the tab itself. */
 export function deckDropId(oneBased: number): string {
   return `deck-drop-${String(oneBased)}`;
 }
 
-/** A11: one card already in a deck, so a drag can be asserted to have landed. */
+/** A11: the list inside that region. A drop on it bubbles to the region, so either works. */
+export function deckListId(oneBased: number): string {
+  return `deck-list-${String(oneBased)}`;
+}
+
+/** A11: how many cards deck `oneBased` holds, for L2's "exactly DECK_SIZE". */
+export function deckCountId(oneBased: number): string {
+  return `deck-count-${String(oneBased)}`;
+}
+
+/** A11: the control for one card already in a deck, so a drag can be asserted to have landed. */
 export function deckCardId(oneBased: number, catalogCardId: string): string {
+  return `deck-card-${String(oneBased)}-${catalogCardId}`;
+}
+
+/** A11: its row. The screen renders both spellings; this is the container of `deckCardId`. */
+export function deckCardRowId(oneBased: number, catalogCardId: string): string {
   return `deck-${String(oneBased)}-card-${catalogCardId}`;
 }
 
@@ -234,3 +258,21 @@ export function deckCardId(oneBased: number, catalogCardId: string): string {
  * different thing, so it gets its own type.
  */
 export const DECK_DRAG_MIME = "application/x-jackioh-card";
+
+/** A11: §9.4's save — one `saveLoadout` for all three decks, never a per-deck save. */
+export const LOADOUT_SAVE = "loadout-save";
+/** Shown after a 200 from `PUT /api/loadout`. */
+export const LOADOUT_SAVED = "loadout-saved";
+/** The list every L1–L6 sentence is rendered into, carrying `data-count`. */
+export const LOADOUT_ERRORS = "loadout-errors";
+/** A refusal that is not a rule failure (a stale catalog, a 403, …). */
+export const LOADOUT_SAVE_ERROR = "loadout-save-error";
+
+/**
+ * A11: one marker per rule, carrying that rule's sentence and nothing else. There may be several
+ * with the same testid — the validator reports every failure — so each also carries `data-rule`
+ * and, where the validator named them, `data-deck` and `data-card`.
+ */
+export function loadoutErrorId(rule: string): string {
+  return `loadout-error-${rule}`;
+}

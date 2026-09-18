@@ -61,7 +61,20 @@ export type GameEvent =
   | { type: "rotated"; direction: "left" | "right" }
   | { type: "swapped"; what: "health" | "board" | "library" }
   | { type: "locked"; player: PlayerId; row: Row; lane: number }
-  | { type: "trapFired"; instanceId: string; defId: string; controller: PlayerId }
+  /**
+   * R154: `row` and `lane` say which zone flipped, so a client can point at it without being told
+   * which card it was. `instanceId` and `defId` follow §10.8's redaction (R97) — the controller
+   * reads them, the other player reads the sentinel — and a face-down trap is given no instance id
+   * in the view at all, so without the lane the opponent's side has nothing to animate on.
+   */
+  | {
+      type: "trapFired";
+      instanceId: string;
+      defId: string;
+      controller: PlayerId;
+      row: Row;
+      lane: number;
+    }
   | { type: "attackDeclared"; attackerId: string; targetId: string; forced: boolean }
   | { type: "attackCancelled"; attackerId: string; targetId: string; byInstanceId: string }
   | { type: "manaChanged"; player: PlayerId; current: number; max: number }

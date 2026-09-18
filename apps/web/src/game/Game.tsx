@@ -23,7 +23,7 @@ import {
   type ReactElement,
 } from "react";
 
-import type { ActionBody, PlayerView } from "@jackioh/shared";
+import type { ActionBody, GameEventType, PlayerView } from "@jackioh/shared";
 
 import Board from "./Board.tsx";
 import Prompt from "./Prompt.tsx";
@@ -31,6 +31,7 @@ import { IDLE, highlightFor, onClickTarget, onControl, type Interaction } from "
 import {
   animTestid,
   createAnimationQueue,
+  newEventsSince,
   prefersReducedMotion,
   type AnimationQueue,
 } from "./animations.ts";
@@ -65,6 +66,19 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   latest.current = view;
 
   const [animating, setAnimating] = useState(() => new Map<string, never>());
+  /**
+   * The event the runner has in flight, which is NOT the same thing as `animating.size > 0`.
+   *
+   * BUILD M5-T4 puts `data-animating="<eventType>"` on the element that animates an event, and
+   * several rows of its table resolve to an element the current view does not render at all — a
+   * destroyed card, a face-down trap the viewer may not identify (the `trapFired` finding in
+   * `animations.ts`), an event like `promptAnswered` whose target has already left the DOM. While
+   * such an entry is in flight the runner is still holding the newest view back and yet nothing
+   * carries the attribute, so "no element is animating" reads as "the board has caught up" when it
+   * has not. `animation-queue` below is that missing element: it carries the in-flight event for
+   * exactly as long as the runner has one, and it is `hidden`, so it animates nothing itself.
+   */
+  const [inFlight, setInFlight] = useState<GameEventType | undefined>(undefined);
   const queue = useRef<AnimationQueue | null>(null);
 
   if (queue.current === null) {
@@ -77,9 +91,13 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   }
   const runner = queue.current;
 
-  useEffect(() => {
+  // Also a layout effect, and declared before the one that enqueues, so the subscription is in
+  // place before the very first batch of events is planned — a passive one here would run after
+  // the layout effect below and miss the first entry's `data-animating`.
+  useLayoutEffect(() => {
     const stop = runner.subscribe(() => {
       setAnimating(runner.animating() as Map<string, never>);
+      setInFlight(runner.inFlight()?.type);
     });
     return () => {
       stop();
@@ -98,8 +116,22 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   const seen = useRef<PlayerView | null>(null);
   useLayoutEffect(() => {
     if (seen.current === view) return;
+    const previous = seen.current;
     seen.current = view;
-    if (view.events.length > 0) runner.enqueue(view.events, view);
+
+    // `view.events` is §10.8's sliding window over the whole match, not this action's delta, so
+    // only the part of it the runner has not seen is enqueued (`newEventsSince`). Two views are
+    // comparable only when they belong to the same seat: `viewFor` redacts per viewer, so after a
+    // hotseat hand-over the windows have nothing in common and replaying them would mean the
+    // arriving player watching the whole recent history. The first view of all is the same case —
+    // the board it describes has simply always been there.
+    const fresh =
+      previous === null || previous.viewer !== view.viewer
+        ? []
+        : newEventsSince(previous.events, view.events);
+
+    if (previous !== null && previous.viewer !== view.viewer) runner.drain();
+    if (fresh.length > 0) runner.enqueue(fresh, view);
     if (runner.idle()) setShown(view);
   }, [view, runner]);
 
@@ -161,6 +193,9 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
 
   return (
     <div className="game" data-testid="game" data-viewer={shown.viewer}>
+      {inFlight === undefined ? null : (
+        <span data-testid="animation-queue" data-animating={inFlight} hidden aria-hidden="true" />
+      )}
       {error != null && error !== "" ? (
         <p className="game-error" data-testid="action-error" role="alert">
           {error}

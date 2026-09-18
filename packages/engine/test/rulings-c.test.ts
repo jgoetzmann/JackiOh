@@ -31,7 +31,7 @@ import {
 } from "../src/combat";
 import { ANTI_ONESHOT_CAP, FATIGUE_DAMAGE, FUSE_COST_CAP, HERO_HEALTH } from "../src/config";
 import { dealDamage, heroDamageCap, loseHealth } from "../src/damage";
-import { drawOne } from "../src/draw";
+import { addToHand as arriveInHand, drawOne } from "../src/draw";
 import * as effects from "../src/effects";
 import {
   damage,
@@ -52,6 +52,7 @@ import { DELAYED_HOOK } from "../src/effects/delay";
 import {
   SHEEP_TOKEN_INDEX,
   declaredTargets,
+  legalZonesFor,
   legalTributeSets,
   legalTributeUnits,
   mayTributeEnemyUnits,
@@ -63,7 +64,7 @@ import {
 } from "../src/playChoices";
 import { RESUME_HOOK, answerPrompt, openPrompt, resumeSelf, runResume } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
-import { applyEffects, makeContext, type EngineSink } from "../src/resolve";
+import { applyEffects, castCard, makeContext, type EngineSink } from "../src/resolve";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts, scriptsFor } from "../src/scripts";
 import { findInstance, newInstance, type CardInstance, type GameState, type Resume } from "../src/state";
@@ -78,6 +79,7 @@ import {
   RUSH_TOKEN_INDEX,
   heroPower,
   powerCostOf,
+  powerOf,
   rollPower,
   usePower,
   usedThisTurn,
@@ -88,9 +90,10 @@ import { playedIdsThisTurn } from "../src/query";
 import { createRng } from "../src/rng";
 import { settle } from "../src/triggers";
 import { HIDDEN_ID, viewFor } from "../src/viewFor";
-import { startTurn } from "../src/turn";
+import { endTurn, startTurn } from "../src/turn";
+import { triggerHoldersWithHook } from "../src/triggers";
 import { beginWorkCascade, pushWork, runWorkItem, takeWork } from "../src/work";
-import { activeUnitsOf, cardAt, placeOnField, removeFromAnyZone } from "../src/zones";
+import { activeUnitsOf, cardAt, firstFreeZone, placeOnField, removeFromAnyZone } from "../src/zones";
 import { stacker } from "./fixtures/combat";
 import { eventsOfType, inHand, newGame, put, sinkFor, slot } from "./fixtures/harness";
 
@@ -250,6 +253,9 @@ const askOnPlay = def("ask-on-play", "Trap");
 /** R123: #22 Carnivorous Cube's shape — a `tribute` declaration with both a pick and an `amount`. */
 const cube = unit("cube", 4, 6, { cost: 0 });
 
+/** R153: one card carrying the three hooks a hand and a graveyard must not answer. */
+const zoneHooks = def("zone-hooks", "Field Spell");
+
 /** R124 and R125: #90's shape — an Anti-oneshot Armor card, whose *cap* is a ceiling, not a reduction. */
 const guard = def("guard", "Field Spell");
 
@@ -303,6 +309,7 @@ const DEFS: CardDef[] = [
   askOnPlay,
   cube,
   guard,
+  zoneHooks,
   delayedHookCard,
   delayedStepCard,
   ghostCard,
@@ -488,6 +495,12 @@ const SCRIPTS: Record<string, CardScripts> = {
   // R123: one declaration carrying both halves — a pick the script reads out of `ctx.targets`, and
   // an `amount` that is §6.3's Tribute cost.
   [guard.id]: both({ staticFlags: { antiOneshot: true } }),
+  // R153: a card with all three of the hooks whose zones the ruling narrows.
+  [zoneHooks.id]: both({
+    startOfTurn: () => [note("startOfTurn")],
+    endOfTurn: () => [note("endOfTurn")],
+    onPlayHook: () => [note("onPlayHook")],
+  }),
   // R126: the two shapes a delayed continuation may take. Both must be re-entered by one reader.
   [delayedHookCard.id]: both({ delayed: () => [note("delayed:hook")] }),
   [delayedStepCard.id]: both({ resume: { later: () => [note("delayed:step")] } }),
@@ -2190,5 +2203,199 @@ describe("SPEC §11 R150 and R154: summing reads and the trapFired payload (M3 g
     };
     expect(seenBy(owner)).toEqual({ instanceId: trap.id, defId: trap.defId });
     expect(seenBy(other)).toEqual({ instanceId: HIDDEN_ID, defId: HIDDEN_ID });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R138, R139, R140, R152: casts with no zone, lapsed limits, Stack placement, AI turns.
+// ---------------------------------------------------------------------------
+
+describe("SPEC §11 R138–R140 and R152: plays, limits and lockouts (M3 gate)", () => {
+  it("R138 counts a cast permanent with no zone as played, resolves it, and sends it to the graveyard", () => {
+    // The control first: with a free zone the same cast lands on the field, so the fixture really
+    // does cast a permanent and the row below is about the full row rather than a broken cast.
+    const roomy = game("r138-control");
+    put(roomy, logCard.id, slot("p1", "backrow", NOTE_LANE));
+    const roomySink = sinkFor(roomy);
+    // Cast it straight out of the hand: `castCard` takes it out of whatever pile holds it.
+    const lands = must(inHand(roomy, crier.id, "p1")[0], "a permanent to cast");
+    castCard(roomySink, lands);
+    expect(activeUnitsOf(roomy, "p1").map((unit) => unit.id)).toContain(lands.id);
+    expect(notes(roomy)).toEqual(["cry"]);
+
+    // Now the row: every unit zone taken, so there is nowhere for it to go.
+    const state = game("r138-no-zone");
+    put(state, logCard.id, slot("p1", "backrow", NOTE_LANE));
+    for (const lane of [1, 2, 3, 4, 5]) put(state, body.id, slot("p1", "units", lane));
+    expect(activeUnitsOf(state, "p1")).toHaveLength(5);
+
+    const sink = sinkFor(state);
+    const cast = must(inHand(state, crier.id, "p1")[0], "a permanent to cast");
+    const playedBefore = state.players.p1.turnLog.cardsPlayed;
+    castCard(sink, cast);
+
+    // A cast cannot be refused the way a play can (R70): it still counts as played...
+    expect(state.players.p1.turnLog.cardsPlayed).toBe(playedBefore + 1);
+    expect(state.players.p1.turnLog.playedIds).toContain(cast.id);
+    // ...and still resolves its script...
+    expect(notes(state)).toEqual(["cry"]);
+    // ...and is in no zone, so §10.5 step 7 sends it to its owner's graveyard.
+    expect(activeUnitsOf(state, "p1").map((unit) => unit.id)).not.toContain(cast.id);
+    expect(state.players.p1.graveyard.map((card) => card.id)).toContain(cast.id);
+    expect(state.players.p1.resolving.map((card) => card.id)).not.toContain(cast.id);
+  });
+
+  it("R139 lapses a once-per-turn limit at the turn boundary, so a later turn is told whose turn it is", () => {
+    const state = game("r139-lapse");
+    const card = put(state, heroic.id, slot("p1", "backrow", 1));
+    card.memory[POWER_KEY] = "burn"; // X 1
+    state.players.p1.mana.current = 0; // unaffordable, so R103's priority is observable
+
+    // Used this turn: R103 puts the per-turn limit ahead of mana, turn and phase.
+    const usedOn = state.turn;
+    card.memory[POWER_USED_KEY] = usedOn;
+    expect(usedThisTurn(state, card)).toBe(true);
+    expect(whyCannotActivate(state, "p1", card.id)).toBe("that power has already been used this turn");
+
+    // R139: the limit is stored as the turn it was used on, so it is spent only while the game is
+    // still on that turn. The stored value does not move — the turn does.
+    state.turn += 1;
+    state.active = "p2";
+    expect(card.memory[POWER_USED_KEY]).toBe(usedOn);
+    expect(usedThisTurn(state, card)).toBe(false);
+
+    // So the player is told whose turn it is, not that the ability is spent: the per-turn limit has
+    // already lapsed by the time the turn check could lose to it.
+    expect(whyCannotActivate(state, "p1", card.id)).toBe("it is not your turn");
+    // And on their own turn it is the mana, which is the next check R103 names.
+    state.active = "p1";
+    expect(whyCannotActivate(state, "p1", card.id)).toBe("that power costs 1, more than your mana");
+  });
+
+  it("R140 gives a zone-less Stack play the leftmost empty zone, and lifts occupancy only when named", () => {
+    const state = game("r140-stack-zone");
+    const card = must(inHand(state, stacker.id, "p1")[0], "a Stack card in hand");
+    const play = (zone?: { row: "units"; lane: number }): string | null =>
+      whyChoicesRefused(state, "p1", card, {
+        type: "play",
+        instanceId: card.id,
+        ...(zone === undefined ? {} : { zone }),
+      });
+
+    // The control: on an empty row the convenience path is fine, and a named zone is too.
+    expect(play()).toBeNull();
+    expect(play({ row: "units", lane: 3 })).toBeNull();
+
+    // Fill every unit zone. A named occupied zone is still legal — that is exactly the refusal
+    // Stack lifts (§3.2, R64).
+    const occupants = [1, 2, 3, 4, 5].map((lane) => put(state, body.id, slot("p1", "units", lane)));
+    expect(occupants).toHaveLength(5);
+    expect(play({ row: "units", lane: 2 })).toBeNull();
+    expect(legalZonesFor(state, "p1", card).map((zone) => zone.lane)).toEqual([1, 2, 3, 4, 5]);
+
+    // R140: the zone-less path still wants an EMPTY zone, so a full row refuses it even though
+    // every lane would accept a named one. The asymmetry is confined to the convenience path.
+    expect(play()).toMatch(/no free units zone/);
+
+    // And with one lane freed it takes the leftmost empty one, not the first that would accept a
+    // Stack — lane 4 here, with 1, 2, 3 and 5 still occupied.
+    const freed = must(occupants[3], "the lane-4 occupant");
+    removeFromAnyZone(state, freed);
+    freed.zone = { z: "graveyard", player: "p1" };
+    expect(play()).toBeNull();
+    // "The leftmost empty, unlocked zone" is lane 4, not lane 1: lane 1 would accept a *named*
+    // Stack play, and the convenience path deliberately does not take it.
+    expect(firstFreeZone(state, "p1", "units")).toEqual({ player: "p1", row: "units", lane: 4 });
+    expect(cardAt(state, slot("p1", "units", 1))?.defId).toBe(body.id);
+  });
+
+  it("R152 clears the AI lockout at the end of the turn it was set for", () => {
+    // `aiPlaysOutTurn` sets the lockout and then plays the turn out, so the flag is only observable
+    // mid-turn; R152 is about where it is *cleared*, which is what this sets up directly.
+    const state = game("r152-ai-turn");
+    const sink = sinkFor(state);
+    expect(state.players.p1.aiTurn).toBe(false);
+    state.players.p1.aiTurn = true; // the lockout `aiPlaysOutTurn` sets on the active player
+    expect(state.active).toBe("p1");
+    const lockedOn = state.turn;
+
+    // §8's "until end of turn": the end of THIS turn clears it, not that player's next turn start —
+    // otherwise a player stays locked out of a turn that is no longer the one the effect took.
+    endTurn(sink);
+    expect(state.players.p1.aiTurn).toBe(false);
+
+    // And it was cleared by the end of the turn it was set for, not by p1 reaching another turn:
+    // it is p2's turn now, and p1 has not started one since.
+    expect(state.active).toBe("p2");
+    expect(state.turn).toBeGreaterThan(lockedOn);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R151, R153: when a power rolls, and which hooks a zone answers.
+// ---------------------------------------------------------------------------
+
+describe("SPEC §11 R151 and R153: arrivals and zone-gated hooks (M3 gate)", () => {
+  it("R151 rolls a Heroic Power's power as it arrives in a hand, not only at the start of the game", () => {
+    const state = game("r151-arrival");
+    const sink = sinkFor(state);
+
+    // A copy that reached a hand some other way than the opening draw: returned from a graveyard.
+    // The premise, and the bug R151 closes — it carries no power, so it would cost 0 for ever.
+    const card = newInstance(state, heroic.id, "p1", { z: "graveyard", player: "p1" });
+    state.players.p1.graveyard.push(card);
+    expect(card.memory[POWER_KEY]).toBeUndefined();
+    expect(powerOf(card)).toBeNull();
+    expect(powerCostOf(card)).toBe(0);
+
+    // It arrives somewhere a card can be looked at.
+    expect(arriveInHand(sink, card)).toBe("hand");
+
+    // R151: it rolls on arrival, so it has a power and its X again (R43, R78).
+    const rolled = card.memory[POWER_KEY];
+    expect(typeof rolled).toBe("string");
+    expect(HERO_POWER_NAMES).toContain(rolled);
+    expect(powerCostOf(card)).toBeGreaterThan(0);
+
+    // And the roll is idempotent: a card that already has one keeps it when it arrives again.
+    const kept = must(powerOf(card), "the rolled power");
+    state.players.p1.hand = state.players.p1.hand.filter((entry) => entry.id !== card.id);
+    expect(arriveInHand(sink, card)).toBe("hand");
+    expect(powerOf(card)).toBe(kept);
+  });
+
+  it("R153 registers only the hooks a card's zone allows, so a hand or a graveyard answers no start- or end-of-turn hook", () => {
+    const state = game("r153-zone-hooks");
+
+    // The control: on the field the card IS a holder for all three hooks, so the enumerator is live
+    // and the negatives below are about the zone rather than about a hook that never registered.
+    const onField = put(state, zoneHooks.id, slot("p1", "backrow", 1));
+    const holders = (hook: "startOfTurn" | "endOfTurn" | "onPlayHook"): string[] =>
+      triggerHoldersWithHook(state, hook).map((holder) => holder.card.id);
+    expect(holders("startOfTurn")).toEqual([onField.id]);
+    expect(holders("endOfTurn")).toEqual([onField.id]);
+    expect(holders("onPlayHook")).toEqual([onField.id]);
+
+    // In a hand a card answers only its `handTriggers` (#89 Corpse Eater). A Field Spell held in
+    // hand must not summon its token every turn, and a Gifted Program in hand must not make a play
+    // Radiant — which is what an unfiltered enumeration lets both of them do.
+    const held = must(inHand(state, zoneHooks.id, "p1")[0], "a copy in hand");
+    expect(holders("startOfTurn")).not.toContain(held.id);
+    expect(holders("endOfTurn")).not.toContain(held.id);
+    expect(holders("onPlayHook")).not.toContain(held.id);
+
+    // In a graveyard only the end-of-turn return of a spell that flagged itself when it was played
+    // (#23, #24, #31) — so an unflagged card there answers nothing at all.
+    const buried = newInstance(state, zoneHooks.id, "p1", { z: "graveyard", player: "p1" });
+    state.players.p1.graveyard.push(buried);
+    expect(buried.returnToHandAtEndOfTurn).not.toBe(true);
+    expect(holders("startOfTurn")).not.toContain(buried.id);
+    expect(holders("onPlayHook")).not.toContain(buried.id);
+    expect(holders("endOfTurn")).not.toContain(buried.id);
+
+    // The field copy is still the one holder for each, so nothing above was achieved by emptying
+    // the enumeration.
+    expect(holders("startOfTurn")).toEqual([onField.id]);
+    expect(holders("onPlayHook")).toEqual([onField.id]);
   });
 });

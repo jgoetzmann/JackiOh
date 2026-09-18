@@ -371,15 +371,18 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     testid: "zone-<side>-<row>-<lane>",
     target: (e, view) => zoneTestid(view, e.player, e.row, e.lane),
   },
-  // Backrow card flips face-up, holds, then dissolves (or stays, for a Field Trap). An opponent's
-  // face-down trap has no `instanceId` in the view and the event carries no lane, so the
-  // controller's backrow region stands in — see the FINDING note at the foot of this file.
+  // Backrow card flips face-up, holds, then dissolves (or stays, for a Field Trap). R154 gives the
+  // event its `row` and `lane`, so the zone the trap stands in is the element even on the seat that
+  // may not identify the card: an opponent's face-down trap has no `instanceId` in the view (§10.8,
+  // R33) and so no `card-<instanceId>` to animate, but its zone is always on screen. The card
+  // itself is preferred when the viewer can see it, which is the "trap name visible during the
+  // hold" the BUILD M5-T4 acceptance asks for.
   trapFired: {
     animation: "jk-trap-flip",
     durationMs: 700,
     testid: "card-<instanceId>",
     target: (e, view) =>
-      instanceOrPile(view, e.instanceId, animTestid.backrow(sideOf(view, e.controller))),
+      locateInstance(view, e.instanceId) ?? zoneTestid(view, e.controller, e.row, e.lane),
   },
   // Attacker lunges toward the target and back.
   attackDeclared: {
@@ -606,6 +609,39 @@ export type AnimationQueueOptions = {
 };
 
 const EMPTY_ANIMATING: AnimatingMap = new Map<string, GameEventType>();
+
+/** Two events are the same occurrence when every field of them is. Order-stable by construction. */
+function sameEvent(a: GameEvent | undefined, b: GameEvent | undefined): boolean {
+  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * The events in `next` that the runner has not been given yet.
+ *
+ * SPEC §10.8 gives a view "the last N events" (`VIEW_EVENT_LIMIT`, 32, in
+ * `packages/engine/src/viewFor.ts`) — a sliding WINDOW over the whole match, not the delta one
+ * action produced. Handing the whole window to the runner on every view would re-animate
+ * everything it has already played: thirty-odd entries per click, a queue that never drains, and a
+ * board that never catches up to the newest view. The window only ever moves forward by whole
+ * actions, so the events the two views share are the longest suffix of `prev` that is also a
+ * prefix of `next`, and everything after it is new.
+ *
+ * No rule lives here: it is bookkeeping over an array the engine handed over verbatim. When the
+ * two windows have nothing in common — a reload, or more than N events since the last view — the
+ * whole of `next` is new, which is the honest answer and the one that animates too much rather
+ * than too little.
+ */
+export function newEventsSince(prev: readonly GameEvent[], next: readonly GameEvent[]): GameEvent[] {
+  if (prev.length === 0 || next.length === 0) return [...next];
+  const most = Math.min(prev.length, next.length);
+  for (let overlap = most; overlap > 0; overlap -= 1) {
+    const from = prev.length - overlap;
+    let matches = true;
+    for (let i = 0; i < overlap && matches; i += 1) matches = sameEvent(prev[from + i], next[i]);
+    if (matches) return next.slice(overlap);
+  }
+  return [...next];
+}
 
 export function createAnimationQueue(options: AnimationQueueOptions = {}): AnimationQueue {
   const schedule =

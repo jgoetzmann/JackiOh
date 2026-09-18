@@ -2,9 +2,14 @@
 // (BUILD M3-T2). Three parts, read in the order the §10.3 diagram reads:
 //
 //  1. The registry — which cards can answer right now, keyed by hook and by the zone each card
-//     sits in: units and the backrow register `script.triggers`, a card in hand registers
-//     `script.handTriggers` (#89 Corpse Eater) and a card in a graveyard answers hooks only, which
-//     is how the `returnToHandAtEndOfTurn` spells of §5.1 come back at the end of the turn (R68).
+//     sits in. R153 is the whole of that second key: a card registers only the triggers its zone
+//     allows. On the field or in the backrow it answers `script.triggers` plus its `startOfTurn`,
+//     `endOfTurn`, `aura`, `setStat` and `onPlayHook` hooks; in a hand only `script.handTriggers`
+//     (#89 Corpse Eater); in a graveyard only the end-of-turn return of a `returnToHandAtEndOfTurn`
+//     spell of §5.1, which is how #23, #24 and #31 come back at the end of the turn (R68); and in a
+//     library, in exile, in the resolving zone or dormant under a Stack, nothing at all (§3.2, R13).
+//     `aura` and `setStat` are not queued here at all — `layers.ts` reads them off the field
+//     directly — but they are field-only for the same reason the hooks are.
 //  2. The two queues in state. `state.dispatch` is §10.3's frontier: every event emitted but not
 //     yet offered to the traps and the registry, so an interrupted dispatch owes the rest in state
 //     rather than on the sink that dies with the action (§9.3). `state.triggerQueue` holds what the
@@ -36,8 +41,10 @@
 // review's B-2 and B-3 found.
 
 import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
+import { PLAYER_IDS } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import { applyResumable, runHookResumable } from "./prompts";
+import { wasPlayedThisTurn } from "./query";
 import type { EngineSink, HookName } from "./resolve";
 import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
@@ -106,6 +113,49 @@ function registeredTriggers(script: Script, zone: TriggerZone): readonly Trigger
   return script.triggers ?? NO_TRIGGERS;
 }
 
+/** The one hook a graveyard card can still answer (R153): §5.1's end-of-turn return, nothing else. */
+const GRAVEYARD_HOOK: HookName = "endOfTurn";
+
+/**
+ * §5.1 and R68: a spell whose text is "End of turn: add this back to your hand" is flagged
+ * `returnToHandAtEndOfTurn` when it is played and answers its `endOfTurn` hook from the graveyard on
+ * that turn alone (#23 Reoccurring Dream, #24 Efficiency Dividend, #31 KY's Math Equation).
+ *
+ * No effect verb sets that flag yet — the three cards gate themselves on the turn log instead (see
+ * their scripts, and the report) — so the registry reads both and takes either as the flag. Both
+ * logs are read because a card's owner and its controller can differ and each of the three names a
+ * different one. The `Spell` test is what keeps the log from speaking for anything else: a Unit with
+ * an `endOfTurn` hook (#13 Jlockeed Shredder-10) that was played and died on the same turn is in the
+ * graveyard and in the log, and it must not shred from there.
+ *
+ * Everything else in a graveyard registers nothing: a spell left over from an earlier turn, and a
+ * copy that arrived by being discarded or milled and was never played at all (R153).
+ */
+function flaggedForReturn(state: GameState, card: CardInstance): boolean {
+  if (card.returnToHandAtEndOfTurn === true) return true;
+  if (defOf(state, card.defId).type !== "Spell") return false;
+  return PLAYER_IDS.some((player) => wasPlayedThisTurn(state, player, card));
+}
+
+/**
+ * R153: whether a holder's zone lets it register this hook at all. A card registers only the
+ * triggers its zone allows — on the field or in the backrow its `triggers` plus every hook it
+ * carries; in a hand only its `handTriggers`, so no hook; in a graveyard only the end-of-turn return
+ * above. A library, exile or resolving card and a card dormant under a Stack never reach here:
+ * `triggerHoldersOf` and `triggerHolderFor` give them no holder at all (§3.2, R13).
+ *
+ * Without this a Field Spell fired its `startOfTurn` from a HAND (#58 Rush Token Farm summoning a
+ * Rush Token onto a board it was never on) and #64 Gifted Program made a play Radiant from a hand —
+ * neither an error, both a different game.
+ */
+function zoneRegistersHook(state: GameState, holder: TriggerHolder, hook: HookName): boolean {
+  if (holder.zone === "hand") return false;
+  if (holder.zone === "graveyard") {
+    return hook === GRAVEYARD_HOOK && flaggedForReturn(state, holder.card);
+  }
+  return true;
+}
+
 function holderOf(
   state: GameState,
   card: CardInstance,
@@ -172,10 +222,14 @@ export function triggerHoldersForEvent(state: GameState, type: GameEventType): T
 }
 
 /**
- * The registry keyed by hook: every card carrying that hook, in R68's order. `only` narrows it to
- * one controller, which is what start-of-turn and end-of-turn hooks need — they fire on their own
- * controller's turn alone (§6.2). Unlike `turn.ts`'s field-and-backrow order this reaches the hand
- * and the graveyard too, so the `returnToHandAtEndOfTurn` spells are found (R68).
+ * The registry keyed by hook: every card whose zone lets it carry that hook, in R68's order. `only`
+ * narrows it to one controller, which is what start-of-turn and end-of-turn hooks need — they fire
+ * on their own controller's turn alone (§6.2).
+ *
+ * R153 is the filter. This walk reaches the graveyard, which is how the `returnToHandAtEndOfTurn`
+ * spells are found (R68) — but carrying a hook is not the same as being allowed to answer it, so a
+ * card in a hand answers none and a card in a graveyard answers only that one return. Reading the
+ * hook off the script alone was the bug: it let a Field Spell in a hand act on the board.
  */
 export function triggerHoldersWithHook(
   state: GameState,
@@ -183,7 +237,9 @@ export function triggerHoldersWithHook(
   only?: PlayerId,
 ): TriggerHolder[] {
   const holders = only === undefined ? cardsInTriggerOrder(state) : triggerHoldersOf(state, only);
-  return holders.filter((holder) => holder.script[hook] !== undefined);
+  return holders.filter(
+    (holder) => holder.script[hook] !== undefined && zoneRegistersHook(state, holder, hook),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -400,6 +456,9 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
     // A hook entry: §6.2's start-of-turn and end-of-turn triggers, queued in R68's order.
     const hook = TRIGGER_HOOKS.find((name) => name === entry.hook);
     if (hook === undefined || holder.script[hook] === undefined) return;
+    // R153, and the same re-reading as a trigger above: a card the queue caught on the field and
+    // that is in a hand or a graveyard by the time its entry pops no longer registers this hook.
+    if (!zoneRegistersHook(sink.state, holder, hook)) return;
     runHookResumable(sink, card, hook, { controller: holder.controller });
     return;
   }

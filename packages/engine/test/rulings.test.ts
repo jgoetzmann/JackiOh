@@ -1155,9 +1155,8 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(131, "rulings-c.test.ts");
   });
 
-  // KNOWN FAILING, and deliberately so: `layers.statsWithBuffs` floors each Felinor's attack at 0
-  // before the sum (layers.ts:133), so a Felinor carrying a negative buff contributes 0 and cannot
-  // "pull the attack sum toward 0" as R132 requires. The floor belongs to the combined total alone.
+  // R150 generalised this row and closed the gap it used to name: the summing read no longer
+  // floors each contributor, so the floor is the combined total's alone.
   // R39's own clause is rulings-a.test.ts "R39 gives Felinor Fiender printed plus the sum of your
   // Felinors, never below printed".
   // Proved by rulings-c.test.ts "R132 applies R39's floor to each stat's combined total, not per
@@ -1181,10 +1180,9 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(134, "rulings-c.test.ts");
   });
 
-  // KNOWN FAILING, and deliberately so: #94's draw and exile clauses are blocked on two verbs the
-  // effects library does not have — one that draws a named card out of a library and one that walks
-  // library, then hand, then graveyard by cost — so R135's order has no home yet. The per-card half
-  // does hold on the verbs that ship. R26's own clause is rulings-a.test.ts "R26 reads Genn's Greed
+  // The two verbs this row needed — one that draws a named card out of a library and one that walks
+  // library, then hand, then graveyard by cost — have since landed in the effects barrel.
+  // R26's own clause is rulings-a.test.ts "R26 reads Genn's Greed
   // as 'exile all odd-cost cards'"; 094-genns-greed.test.ts is already written as the card should
   // behave and fails for the same reason.
   // Proved by rulings-c.test.ts "R135 exiles each card on its own, and needs a verb that walks
@@ -1335,6 +1333,9 @@ describe("SPEC §11 rulings R1–R154 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(153, "rulings-c.test.ts");
   });
 
+  // KNOWN FAILING, and deliberately so: `shared/src/events.ts`'s `trapFired` carries only
+  // `instanceId`, `defId` and `controller`, so the opponent's redacted view has no lane to animate
+  // the flip on. The R97 redaction half already holds, which is what the test's passing half shows.
   // Proved by rulings-c.test.ts "R154 carries the trap's row and lane on trapFired, with its
   // identity redacted for the other player".
   it("R154 carries a trap's row and lane on trapFired, its identity following R97's redaction", () => {

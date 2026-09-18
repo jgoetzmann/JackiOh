@@ -10,6 +10,15 @@ import { describe, expect, it } from "vitest";
 import type { PlayerId } from "@jackioh/shared";
 import { scenario, type Scenario } from "./_harness";
 
+/**
+ * A turn anchor (§2.5, R82): #10 Rapid Replenish is a 0-cost Spell, so holding one keeps at least
+ * one legal action other than ending the turn, conceding and offering a draw on a side whose units
+ * have all spent their exertion. It is never played; it only stops `reduce` from auto-ending the
+ * turn underneath an assertion. It is a Spell rather than a unit so it never joins the board a test
+ * is counting, and so a def-id reference to the attacker stays unambiguous.
+ */
+const ANCHOR = "core-010";
+
 /** The keyword kinds §10.4 computes for the unit in `lane`, sorted so the set is order-free. */
 function keywordKinds(g: Scenario, player: PlayerId, lane: number): string[] {
   const unit = g.view(player).you.units[lane - 1];
@@ -74,7 +83,15 @@ describe("#56 Jilliax — base", () => {
 
   it("§4.4 step 8 Lifesteal heals its controller's hero by the amount dealt (R63)", () => {
     const g = scenario({
-      p1: { field: [{ def: "core-056", lane: 1 }], health: 20 },
+      // R82/§2.5 TURN ANCHOR: the attack below spends Jilliax's only exertion and kills the only
+      // enemy unit, so without a card in hand p1's remaining legal actions would be ending the
+      // turn, conceding and offering a draw — `reduce` would auto-end the turn underneath the
+      // assertion, p2 would take a turn and both heroes would take fatigue off an empty library
+      // (the tell is `turnAutoEnded` followed by `damage amount: 1, sourceId: null`). #10 Rapid
+      // Replenish is a 0-cost Spell and therefore always an affordable play, so it holds the turn
+      // open without putting a second body on the board — which matters here, because the attacker
+      // is named by def id.
+      p1: { field: [{ def: "core-056", lane: 1 }], hand: [ANCHOR], health: 20 },
       p2: { field: [{ def: "core-008", lane: 1 }] },
     });
 
