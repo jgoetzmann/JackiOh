@@ -1,0 +1,337 @@
+/**
+ * Matchmaking (BUILD M7-T3, SPEC §9.5).
+ *
+ * §9.5, in full, is what this file implements: "Enqueue asserts the account is active and not in
+ * a match, validates the loadout, freezes the chosen deck into the ticket and returns the ticket
+ * id. Pairing runs on enqueue plus a sweeper every few seconds; the window widens ±50 rating
+ * every 10 s from ±100 and is uncapped after 60 s; both tickets are claimed in one atomic
+ * statement. The client shows the queue population instead of an endless spinner."
+ *
+ * Three pieces, in that order: the three endpoints, one pairing sweep (`tryPair`), and the
+ * sweeper that reschedules it (`startMatchmaker`).
+ *
+ * Two invariants carry the weight:
+ *
+ *  - **The deck is frozen at enqueue.** §9.4: "Decks are frozen into the queue ticket." Nothing
+ *    below re-reads `loadouts` after the ticket exists, so a loadout edited while queued cannot
+ *    change the match that ticket becomes (M7-T3's second acceptance item).
+ *  - **Both tickets are claimed in one atomic statement**, `tickets.claimPair`. A match is
+ *    created *only* after that statement returns true, so two matchers racing over the same
+ *    ticket cannot pair it twice (M7-T3's race test). Losing the race is not an error: it means
+ *    someone else already found that player a game.
+ *
+ * The rating window is `ratingWindow` from `src/config.ts`, imported rather than re-derived, so
+ * "±100 widening ±50 every 10 s, uncapped after 60 s" is written down exactly once.
+ */
+
+import { ratingWindow } from "../config";
+import { initialClocks } from "../match/clock";
+import { callerProfile } from "./collection";
+import { ApiError, badRequest, ok, route, type Route } from "./http";
+import { deckFor, validateStoredLoadout } from "./loadouts";
+import type { MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
+
+/** Unit conversion, not configuration: `ratingWindow` speaks seconds, tickets are stamped in ms. */
+const MS_PER_SECOND = 1000;
+
+// ---------------------------------------------------------------------------
+// Enqueue
+// ---------------------------------------------------------------------------
+
+function deckIndexOf(body: Readonly<Record<string, unknown>>): number {
+  const value = body["deckIndex"];
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw badRequest('"deckIndex" must be a whole number');
+  }
+  // The range belongs to the loadout, not to this endpoint: `deckFor` rejects an index the
+  // player's own loadout does not have (§9.4 L1 fixes how many decks that is).
+  return value;
+}
+
+/**
+ * §9.5's enqueue. The order of the checks is the order §9.5 writes them, and it matters: a player
+ * already in a match or already queued is told so before their loadout is validated, so a stale
+ * client gets the useful error rather than a loadout complaint.
+ */
+async function enqueue(
+  deps: ServerDeps,
+  profile: Profile,
+  deckIndex: number,
+): Promise<Ticket> {
+  // §9.5: "asserts the account is active and not in a match". `auth: "active"` did the first half
+  // (§9.4's gate, in `createRouter`); this is the second.
+  if (profile.inMatchId !== null) {
+    throw new ApiError("already_in_match", "finish your current match first");
+  }
+  const open = await deps.store.tickets.openForProfile(profile.id);
+  if (open !== null) {
+    throw new ApiError("already_queued", "you are already in the queue", { ticketId: open.id });
+  }
+
+  // §9.4: "checked by one validator module shared by client and server, at save and again at
+  // queue". The queue-time re-check is `validateStoredLoadout`, which also rejects a stale
+  // catalog version, and `deckFor` picks the deck being frozen.
+  const loadout = await validateStoredLoadout(deps, profile.id, deps.catalog.version);
+  const deck = deckFor(loadout, deckIndex);
+
+  const ticket: Ticket = {
+    id: deps.ids.uuid(),
+    profileId: profile.id,
+    rating: profile.rating,
+    // §9.4, §9.5: frozen. `deckFor` already copied it; this is the copy that lands in the ticket
+    // and, later, in the match — the stored loadout is never read again.
+    deck,
+    catalogVersion: loadout.catalogVersion,
+    enqueuedAt: deps.timers.now(),
+    status: "open",
+    matchId: null,
+  };
+
+  try {
+    await deps.store.tickets.insert(ticket);
+  } catch (error) {
+    // `tickets_profile_queued_key` (migration 0004) is the race-proof half of "not already
+    // queued": two simultaneous enqueues both pass the read above and one loses here.
+    const existing = await deps.store.tickets.openForProfile(profile.id);
+    if (existing !== null) {
+      throw new ApiError("already_queued", "you are already in the queue", {
+        ticketId: existing.id,
+      });
+    }
+    throw error;
+  }
+
+  deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, deckIndex });
+  return ticket;
+}
+
+// ---------------------------------------------------------------------------
+// Pairing
+// ---------------------------------------------------------------------------
+
+/** §9.5's widening window, read for one ticket at one instant. */
+function windowFor(ticket: Ticket, now: number): number {
+  const waitedSeconds = Math.max(0, now - ticket.enqueuedAt) / MS_PER_SECOND;
+  return ratingWindow(waitedSeconds);
+}
+
+/**
+ * §9.5: the gap has to sit inside *both* windows, so the player who has waited longer cannot drag
+ * a freshly queued opponent into a match their own window would refuse.
+ */
+function qualifies(a: Ticket, b: Ticket, now: number): boolean {
+  if (a.profileId === b.profileId) return false;
+  const gap = Math.abs(a.rating - b.rating);
+  return gap <= windowFor(a, now) && gap <= windowFor(b, now);
+}
+
+/**
+ * Creates the paired match. Called only with two tickets this process has already claimed, which
+ * is what makes it safe to write: the claim is the mutual exclusion.
+ *
+ * The match row is written here rather than inside `matches.start` because a `MatchRow` needs the
+ * two frozen decks, the catalog version and the initial clocks, and `StartMatchInput` carries
+ * none of the last two. The actor takes it from there.
+ */
+async function startPairedMatch(
+  deps: ServerDeps,
+  a: Ticket,
+  b: Ticket,
+  matchId: string,
+  now: number,
+): Promise<void> {
+  const seats: [MatchSeat, MatchSeat] = [
+    { profileId: a.profileId, player: "p1", deck: a.deck },
+    { profileId: b.profileId, player: "p2", deck: b.deck },
+  ];
+  const seed = deps.ids.seed();
+
+  await deps.store.tx(async (t) => {
+    await t.matches.create({
+      id: matchId,
+      seed,
+      players: [a.profileId, b.profileId],
+      // §9.4, §9.5: the decks the tickets froze, not the current loadouts.
+      decks: [a.deck, b.deck],
+      catalogVersion: deps.catalog.version,
+      status: "live",
+      createdAt: now,
+      finishedAt: null,
+      clocks: initialClocks(now, deps.config),
+    });
+    // §9.5: in-match state is set here and cleared by `results.ts` at every ending.
+    await t.profiles.setInMatch(a.profileId, matchId);
+    await t.profiles.setInMatch(b.profileId, matchId);
+  });
+
+  await deps.matches.start({ matchId, seed, catalogVersion: deps.catalog.version, seats });
+  deps.log.info("queue.paired", {
+    matchId,
+    tickets: [a.id, b.id],
+    ratings: [a.rating, b.rating],
+  });
+}
+
+/**
+ * One pairing sweep. Oldest ticket first, and for each of them the oldest qualifying opponent, so
+ * the pair that has waited longest is made first.
+ *
+ * NOT IN SPEC: §9.5 fixes the window but not which qualifying opponent to pick inside it. Oldest
+ * first (rather than closest rating) is chosen because the window is already the rating rule and
+ * wait time is the thing a queued player can see going up.
+ *
+ * @returns how many matches this sweep made.
+ */
+export async function tryPair(deps: ServerDeps): Promise<number> {
+  const now = deps.timers.now();
+  const open = [...(await deps.store.tickets.listOpen())].sort(
+    (x, y) => x.enqueuedAt - y.enqueuedAt || (x.id < y.id ? -1 : 1),
+  );
+  if (open.length < 2) return 0;
+
+  // §9.5's "not in a match" holds at pairing too, not only at enqueue: a ticket left open while
+  // its owner joined a room match must not become a second match for them. One read for the whole
+  // sweep, and `taken` covers the pairs this sweep makes as it goes.
+  const busy = new Set(
+    (await deps.store.profiles.getMany(open.map((ticket) => ticket.profileId)))
+      .filter((profile) => profile.inMatchId !== null)
+      .map((profile) => profile.id),
+  );
+  const taken = new Set<string>(
+    open.filter((ticket) => busy.has(ticket.profileId)).map((ticket) => ticket.id),
+  );
+  let made = 0;
+
+  for (const a of open) {
+    if (taken.has(a.id)) continue;
+    for (const b of open) {
+      if (b.id === a.id || taken.has(b.id)) continue;
+      if (!qualifies(a, b, now)) continue;
+
+      const matchId = deps.ids.uuid();
+      // §9.5: "both tickets are claimed in one atomic statement". Everything before this line is
+      // a guess; only a `true` here gives this process the right to create a match.
+      const won = await deps.store.tickets.claimPair(a.id, b.id, matchId, now);
+      if (!won) {
+        // Another matcher got one of them. Never create a match for a ticket we did not claim:
+        // find out which one is gone and either try another opponent or drop this ticket.
+        const still = await deps.store.tickets.get(a.id);
+        if (still === null || still.status !== "open") {
+          taken.add(a.id);
+          break;
+        }
+        taken.add(b.id);
+        continue;
+      }
+
+      taken.add(a.id);
+      taken.add(b.id);
+      await startPairedMatch(deps, a, b, matchId, now);
+      made += 1;
+      break;
+    }
+  }
+
+  return made;
+}
+
+/**
+ * §9.5: "Pairing runs on enqueue plus a sweeper every few seconds" (R108: every 3 s, as
+ * `limits.queueSweepMs`). Rescheduled through `deps.timers.after` rather than `setInterval` so it
+ * is the same port the clocks use and a test drives it with a manual timer.
+ */
+export function startMatchmaker(deps: ServerDeps): { stop: () => void } {
+  let timer: Timer | null = null;
+  let stopped = false;
+
+  const arm = (): void => {
+    if (stopped) return;
+    timer = deps.timers.after(deps.limits.queueSweepMs, () => {
+      timer = null;
+      void sweep();
+    });
+  };
+
+  const sweep = async (): Promise<void> => {
+    try {
+      await tryPair(deps);
+    } catch (error) {
+      // A failed sweep must not kill the sweeper: the next one may well succeed.
+      deps.log.warn("matchmaker.sweep_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    arm();
+  };
+
+  arm();
+  return {
+    stop: () => {
+      stopped = true;
+      timer?.cancel();
+      timer = null;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+export function createQueueRoutes(): Route[] {
+  return [
+    /**
+     * §9.5's enqueue. `auth: "active"` is §9.4's gate ("A pending account ... nothing else: no
+     * collection, loadout, queue or match"), so a pending account gets 403 here without this
+     * handler saying anything about it.
+     *
+     * Pairing is attempted inline ("Pairing runs on enqueue plus a sweeper"), which is why the
+     * response reports the ticket's status: a player who paired immediately learns it from the
+     * same round trip instead of waiting for a sweep.
+     */
+    route("POST", "/api/queue", "active", async (req, deps) => {
+      const profile = callerProfile(req);
+      const ticket = await enqueue(deps, profile, deckIndexOf(req.body));
+      await tryPair(deps);
+      const current = await deps.store.tickets.get(ticket.id);
+      return ok({
+        ticketId: ticket.id,
+        status: current?.status ?? ticket.status,
+        matchId: current?.matchId ?? null,
+        population: await deps.store.tickets.countOpen(),
+      });
+    }),
+
+    /**
+     * Leaving the queue. Idempotent: a client that cancels twice, or whose ticket was paired a
+     * moment earlier, gets `cancelled: false` rather than an error it cannot act on.
+     *
+     * NOT IN SPEC: §9.5 describes enqueue and pairing and never says how a player leaves. Cancel
+     * is the only reading that keeps "not already queued" satisfiable without waiting for a
+     * pairing, and it is what `tickets.status = 'cancelled'` exists for in migration 0004.
+     */
+    route("DELETE", "/api/queue", "active", async (req, deps) => {
+      const profile = callerProfile(req);
+      const ticket = await deps.store.tickets.openForProfile(profile.id);
+      if (ticket === null) return ok({ cancelled: false });
+      await deps.store.tickets.cancel(ticket.id, deps.timers.now());
+      deps.log.info("queue.cancelled", { profileId: profile.id, ticketId: ticket.id });
+      return ok({ cancelled: true, ticketId: ticket.id });
+    }),
+
+    /**
+     * §9.5: "The client shows the queue population instead of an endless spinner."
+     *
+     * `auth: "user"` rather than `"active"` or `"none"`. The count is one aggregate about the
+     * server, not about any profile: it names nobody, and §9.4's "no queue" for a pending account
+     * is about joining the queue and being matched, which `POST /api/queue` still refuses. Making
+     * it `"none"` would hand an anonymous caller a free live-traffic feed, and requiring a token
+     * costs the lobby nothing — it has one either way, since a player reaches this screen signed
+     * in. If a later review reads §9.4's gate as covering even the count, this becomes `"active"`
+     * and nothing else changes.
+     */
+    route("GET", "/api/queue/population", "user", async (_req, deps) =>
+      ok({ population: await deps.store.tickets.countOpen() }),
+    ),
+  ];
+}

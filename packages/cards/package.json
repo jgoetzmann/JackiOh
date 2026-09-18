@@ -1,0 +1,17 @@
+{
+  "name": "@jackioh/cards",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen": "pnpm exec tsx scripts/gen-registry.ts",
+    "missing-tests": "pnpm exec tsx scripts/missing-tests.ts"
+  },
+  "dependencies": {
+    "@jackioh/engine": "workspace:*",
+    "@jackioh/shared": "workspace:*"
+  }
+}

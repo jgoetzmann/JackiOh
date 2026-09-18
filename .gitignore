@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.log
+.DS_Store
+e2e/cypress/screenshots/
+e2e/cypress/videos/
+
+# Secrets. `apps/server/.env` holds SUPABASE_SECRET_KEY (bypasses every RLS policy) and
+# CODE_PEPPER (the invite-code HMAC pepper), so it must never be committed. The example file
+# carries placeholders only and is checked in on purpose.
+.env
+.env.*
+!.env.example
+
+# Test-runner caches and local scratch.
+.vitest/
+*.tmp.*

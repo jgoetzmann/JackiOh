@@ -1,0 +1,27 @@
+{
+  "id": "09-deckbuilder-c",
+  "spec": "09-deckbuilder.cy.ts",
+  "description": "Deck 3 of the legal loadout spec 09 saves. SPEC §8 cards #41-#60, disjoint from 09-deckbuilder-a and 09-deckbuilder-b (L4). See 09-deckbuilder-a for why the contents are arbitrary. Spec 09 also mutates a copy of this deck in memory to build its L4 case: one card of deck 1 replaces one card here, which puts that id in two decks of one loadout.",
+  "cards": [
+    "core-041",
+    "core-042",
+    "core-043",
+    "core-044",
+    "core-045",
+    "core-046",
+    "core-047",
+    "core-048",
+    "core-049",
+    "core-050",
+    "core-051",
+    "core-052",
+    "core-053",
+    "core-054",
+    "core-055",
+    "core-056",
+    "core-057",
+    "core-058",
+    "core-059",
+    "core-060"
+  ]
+}

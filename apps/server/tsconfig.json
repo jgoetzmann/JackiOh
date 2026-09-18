@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The server is the impure half of the repo: it reads the clock, opens sockets and talks to
+    // Postgres. tsconfig.base.json ships `types: []` for the pure packages (SPEC §9.3), so the
+    // server opts Node's globals back in.
+    "types": ["node"]
+  },
+  "include": ["src", "test", "vitest.config.ts"],
+  "exclude": [
+    // `src/match/engine.real.ts` is the only static import of `@jackioh/engine`, and
+    // `packages/engine` does not compile yet: `index.ts` re-exports `./combat`, `./playChoices`,
+    // `./prompts`, `./triggers`, `./traps` and `./viewFor`, none of which exist (M3 is in
+    // flight). Including this file would drag those errors into the server's typecheck. Delete
+    // this entry — and the dynamic import in `src/match/engine.ts` — the day `pnpm exec tsc -p
+    // packages/engine/tsconfig.json` is green. Nothing else in `src` imports the engine.
+    "src/match/engine.real.ts"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@jackioh/validator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jackioh/engine": "workspace:*",
+    "@jackioh/shared": "workspace:*"
+  }
+}

@@ -1,0 +1,2594 @@
+{
+  "core-001": {
+    "id": "core-001",
+    "index": "1",
+    "name": "Big D-fender",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 0,
+      "health": 8,
+      "keywords": [],
+      "text": "Aura: your units in Defense Position have +2 Armor"
+    },
+    "radiant": {
+      "attack": 0,
+      "health": 16,
+      "keywords": [],
+      "text": "+4 Armor"
+    }
+  },
+  "core-002": {
+    "id": "core-002",
+    "index": "2",
+    "name": "Bigot",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 6,
+      "health": 1,
+      "keywords": [],
+      "text": "Cry: destroy target enemy non-Human unit"
+    },
+    "radiant": {
+      "attack": 12,
+      "health": 2,
+      "keywords": [],
+      "text": "Cry: destroy all enemy non-Human units"
+    }
+  },
+  "core-003": {
+    "id": "core-003",
+    "index": "3",
+    "name": "Right-house defender",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [
+        {
+          "kind": "Divine Shield"
+        },
+        {
+          "kind": "Reborn"
+        }
+      ],
+      "text": "Divine Shield, Reborn"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [
+        {
+          "kind": "Divine Shield"
+        },
+        {
+          "kind": "Reborn"
+        }
+      ],
+      "text": "Divine Shield, Reborn; Death: summon a base Right-house defender"
+    }
+  },
+  "core-004": {
+    "id": "core-004",
+    "index": "4",
+    "name": "Gary the Gambler",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Cry: flip 5 coins; +1 attack per heads, +1 max health per tails"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [],
+      "text": "7 coins; +2 per heads, +2 per tails"
+    }
+  },
+  "core-005": {
+    "id": "core-005",
+    "index": "5",
+    "name": "Stockpile",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Draw 2; heal your hero 2"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Draw 5; heal 5"
+    }
+  },
+  "core-006": {
+    "id": "core-006",
+    "index": "6",
+    "name": "Mana Well",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Start of turn: gain 1 mana"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Gain 2"
+    }
+  },
+  "core-007": {
+    "id": "core-007",
+    "index": "7",
+    "name": "Jewelosco Scarab",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Cry: Discover a 2-cost card"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [],
+      "text": "Cry: Discover a 3-cost card; it costs 1 less"
+    }
+  },
+  "core-008": {
+    "id": "core-008",
+    "index": "8",
+    "name": "Mr. Vanilla",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 3,
+      "health": 3,
+      "keywords": [
+        {
+          "kind": "Immutable"
+        }
+      ],
+      "text": "Immutable"
+    },
+    "radiant": {
+      "attack": 7,
+      "health": 7,
+      "keywords": [
+        {
+          "kind": "Immutable"
+        }
+      ],
+      "text": "Immutable"
+    }
+  },
+  "core-009": {
+    "id": "core-009",
+    "index": "9",
+    "name": "Moths to the Flame",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 1,
+      "health": 14,
+      "keywords": [],
+      "text": "Start of turn: every enemy unit attacks this"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 28,
+      "keywords": [
+        {
+          "kind": "Armor",
+          "n": 1
+        }
+      ],
+      "text": "Armor 1; same"
+    }
+  },
+  "core-010": {
+    "id": "core-010",
+    "index": "10",
+    "name": "Rapid Replenish",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Combo 3: draw 3; otherwise nothing"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Combo 3: draw 6"
+    }
+  },
+  "core-011": {
+    "id": "core-011",
+    "index": "11",
+    "name": "Tempo Timmy",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 3,
+      "health": 3,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "First Strike"
+        }
+      ],
+      "text": "Rush, First Strike"
+    },
+    "radiant": {
+      "attack": 6,
+      "health": 6,
+      "keywords": [
+        {
+          "kind": "Charge"
+        },
+        {
+          "kind": "First Strike"
+        }
+      ],
+      "text": "Charge, First Strike"
+    }
+  },
+  "core-012": {
+    "id": "core-012",
+    "index": "12",
+    "name": "Duplicating Felinors",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Felinor"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 3,
+      "health": 4,
+      "keywords": [],
+      "text": "Cry: summon a copy of this unit"
+    },
+    "radiant": {
+      "attack": 5,
+      "health": 9,
+      "keywords": [],
+      "text": "Same"
+    }
+  },
+  "core-013": {
+    "id": "core-013",
+    "index": "13",
+    "name": "Jlockeed Shredder-10",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 8,
+      "health": 10,
+      "keywords": [],
+      "text": "End of turn: deal 2 damage to each enemy unit and the enemy hero"
+    },
+    "radiant": {
+      "attack": 16,
+      "health": 20,
+      "keywords": [],
+      "text": "5 damage"
+    }
+  },
+  "core-014": {
+    "id": "core-014",
+    "index": "14",
+    "name": "Jlockeed's Weapons",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "keywords": [],
+      "text": "Aura: your units have +4 attack, Rush, First Strike"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "+10 attack"
+    }
+  },
+  "core-015": {
+    "id": "core-015",
+    "index": "15",
+    "name": "Me and Mr Token",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Cry: summon a Rush Token"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [],
+      "text": "Cry: summon 3 Rush Tokens"
+    }
+  },
+  "core-016": {
+    "id": "core-016",
+    "index": "16",
+    "name": "Hit Job",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Destroy target unit"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Destroy target unit and the units adjacent to it on its side"
+    }
+  },
+  "core-017": {
+    "id": "core-017",
+    "index": "17",
+    "name": "Flood",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Bounce all units on both sides"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Choose one: bounce all units, bounce all enemy units, destroy all enemy units; then draw 1"
+    }
+  },
+  "core-018": {
+    "id": "core-018",
+    "index": "18",
+    "name": "Bread and Butter",
+    "set": "Core",
+    "type": "Field Trap",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "When any player ends a turn with unspent mana: summon a Bread Token X/X for the trap's controller, X = that player's unspent mana"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "X = 3 × unspent"
+    }
+  },
+  "core-019": {
+    "id": "core-019",
+    "index": "19",
+    "name": "Midrange Menace",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 9,
+      "health": 9,
+      "keywords": [
+        {
+          "kind": "Taunt"
+        }
+      ],
+      "text": "Taunt; End of turn: heal to full"
+    },
+    "radiant": {
+      "attack": 18,
+      "health": 18,
+      "keywords": [
+        {
+          "kind": "Taunt"
+        },
+        {
+          "kind": "Immutable"
+        }
+      ],
+      "text": "Taunt, Immutable; same"
+    }
+  },
+  "core-020": {
+    "id": "core-020",
+    "index": "20",
+    "name": "Pointmaster",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 7,
+      "health": 2,
+      "keywords": [
+        {
+          "kind": "First Strike"
+        }
+      ],
+      "text": "First Strike"
+    },
+    "radiant": {
+      "attack": 14,
+      "health": 4,
+      "keywords": [
+        {
+          "kind": "First Strike"
+        },
+        {
+          "kind": "Divine Shield"
+        }
+      ],
+      "text": "First Strike, Divine Shield"
+    }
+  },
+  "core-021": {
+    "id": "core-021",
+    "index": "21",
+    "name": "Hinder",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Cast on draw: the opponent's next mana refresh is 1 lower"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 lower"
+    }
+  },
+  "core-022": {
+    "id": "core-022",
+    "index": "22",
+    "name": "Carnivorous Cube",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 4,
+      "health": 6,
+      "keywords": [],
+      "text": "Cry: Tribute one of your other permanents and remember it. Death: summon 2 copies of the remembered card"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 12,
+      "keywords": [],
+      "text": "Death: fill your board with copies"
+    }
+  },
+  "core-023": {
+    "id": "core-023",
+    "index": "23",
+    "name": "Reoccurring Dream",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "30% chance a random card in your hand becomes Radiant. End of turn: returns from the GY to your hand"
+    },
+    "radiant": {
+      "keywords": [
+        {
+          "kind": "Lucky",
+          "n": 1
+        }
+      ],
+      "text": "Lucky 1 (two rolls, keep the success) at 40%"
+    }
+  },
+  "core-024": {
+    "id": "core-024",
+    "index": "24",
+    "name": "Efficiency Dividend",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": "X",
+    "base": {
+      "keywords": [],
+      "text": "Choose one: deal X damage to a target; heal a target 2X; gain floor(X/2) mana next turn. End of turn: returns to hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Uses X+1"
+    }
+  },
+  "core-025": {
+    "id": "core-025",
+    "index": "25",
+    "name": "4-mana 7/7",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "attack": 7,
+      "health": 7,
+      "keywords": [
+        {
+          "kind": "Armor",
+          "n": 7
+        }
+      ],
+      "text": "Armor 7"
+    },
+    "radiant": {
+      "attack": 7,
+      "health": 7,
+      "keywords": [
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Indestructible"
+    }
+  },
+  "core-026": {
+    "id": "core-026",
+    "index": "26",
+    "name": "Glowy Jelly Bean",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Choose a card in your hand; it becomes Radiant"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Choose 2"
+    }
+  },
+  "core-027": {
+    "id": "core-027",
+    "index": "27",
+    "name": "Blood Ridden Glowy Jelly Bean",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Cast on draw: a random card in your hand becomes Radiant; you lose 5 health"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 random cards"
+    }
+  },
+  "core-028": {
+    "id": "core-028",
+    "index": "28",
+    "name": "Knockoff Temu Glowy Jelly Bean",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "2 random cards among your library, hand and field become Radiant"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "5"
+    }
+  },
+  "core-029": {
+    "id": "core-029",
+    "index": "29",
+    "name": "GIGA Glowy Jelly Bean",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 6,
+    "base": {
+      "keywords": [],
+      "text": "Every card in your hand becomes Radiant"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Hand and all your permanents"
+    }
+  },
+  "core-030": {
+    "id": "core-030",
+    "index": "30",
+    "name": "Archivist",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 4,
+      "health": 5,
+      "keywords": [],
+      "text": "Cry: choose one: draw the highest-cost card in your library, or the lowest"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 10,
+      "keywords": [],
+      "text": "Cry: draw both"
+    }
+  },
+  "core-031": {
+    "id": "core-031",
+    "index": "31",
+    "name": "KY's Math Equation",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "KY"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Deal Fib(cost+1) damage to a target. End of turn: return to hand with cost +1"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Fib(cost+2)"
+    }
+  },
+  "core-032": {
+    "id": "core-032",
+    "index": "32",
+    "name": "Prem Panther",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 5,
+      "health": 4,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush; whenever this destroys a unit, draw 2"
+    },
+    "radiant": {
+      "attack": 10,
+      "health": 8,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "Cleave"
+        }
+      ],
+      "text": "Rush, Cleave; same"
+    }
+  },
+  "core-033": {
+    "id": "core-033",
+    "index": "33",
+    "name": "Unstable Clone Machine",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "After you play a card, shuffle 3 copies of it into your library"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "One of the 3 is Radiant"
+    }
+  },
+  "core-034": {
+    "id": "core-034",
+    "index": "34",
+    "name": "Collateral Damage",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Exile target permanent and a random card from the opponent's library"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Also the permanents adjacent to the target in its row"
+    }
+  },
+  "core-035": {
+    "id": "core-035",
+    "index": "35",
+    "name": "Lunar Eclipse",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Deal 3 damage to a target; the next Spell you play this turn costs 1 less"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "6 damage; 2 less"
+    }
+  },
+  "core-036": {
+    "id": "core-036",
+    "index": "36",
+    "name": "Magic Jammed",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Destroy target backrow card; Lock its zone"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Steal target backrow card; Lock its original zone"
+    }
+  },
+  "core-037": {
+    "id": "core-037",
+    "index": "37",
+    "name": "Gravedigger",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 4,
+      "health": 5,
+      "keywords": [],
+      "text": "Start of turn: add a random card from your GY to your hand"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 10,
+      "keywords": [],
+      "text": "Discover one from your GY; it costs 1 less"
+    }
+  },
+  "core-038": {
+    "id": "core-038",
+    "index": "38",
+    "name": "Quickstriker",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Your cards gain \"Combo X: deal X damage to the enemy hero\", X = cards you played earlier this turn"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Your cards gain \"Combo X: deal X damage to the enemy hero\", X = cards you played earlier this turn"
+    }
+  },
+  "core-039": {
+    "id": "core-039",
+    "index": "39",
+    "name": "Recycling Initiative",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Exile this on play. End of turn: add a copy of every other card you played this turn to your hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Copies cost 1 less"
+    }
+  },
+  "core-040": {
+    "id": "core-040",
+    "index": "40",
+    "name": "Echoes of the Forgotten",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Start of your turn: deal damage to the enemy hero equal to the cards in your exile; then exile the bottom card of your library"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "+3 damage"
+    }
+  },
+  "core-041": {
+    "id": "core-041",
+    "index": "41",
+    "name": "Sheepish",
+    "set": "Core",
+    "type": "Trap",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "When the opponent plays a Unit: Transform it into a Sheep Token"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Also add a Lava Golem costing 0 to your hand"
+    }
+  },
+  "core-042": {
+    "id": "core-042",
+    "index": "42",
+    "name": "Eugenics",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Exile 8 random cards from your library; each remaining library card has a 30% chance to become Radiant"
+    },
+    "radiant": {
+      "keywords": [
+        {
+          "kind": "Lucky",
+          "n": 1
+        }
+      ],
+      "text": "Lucky 1 at 40%"
+    }
+  },
+  "core-043": {
+    "id": "core-043",
+    "index": "43",
+    "name": "Big Felinor",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Felinor"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 3,
+      "health": 10,
+      "keywords": [],
+      "text": "Cry: destroy all non-Felinor units on both sides"
+    },
+    "radiant": {
+      "attack": 6,
+      "health": 20,
+      "keywords": [],
+      "text": "Enemy non-Felinor units only"
+    }
+  },
+  "core-044": {
+    "id": "core-044",
+    "index": "44",
+    "name": "True Strike",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Deal 4 damage to a target, ignoring Armor; exile this"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "9"
+    }
+  },
+  "core-045": {
+    "id": "core-045",
+    "index": "45",
+    "name": "Deft Duelist",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 4,
+      "health": 3,
+      "keywords": [
+        {
+          "kind": "Charge"
+        }
+      ],
+      "text": "Charge; may attack and switch position in the same turn"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 6,
+      "keywords": [
+        {
+          "kind": "Charge"
+        },
+        {
+          "kind": "Armor",
+          "n": 1
+        }
+      ],
+      "text": "Charge, Armor 1; same"
+    }
+  },
+  "core-046": {
+    "id": "core-046",
+    "index": "46",
+    "name": "Suppressive Aura",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": {
+      "base": 2,
+      "embiggen": 4
+    },
+    "base": {
+      "keywords": [],
+      "text": "Aura: all units −2/−2 (paid 4: −5/−5)"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Aura: enemy units −4/−4 (paid 4: −10/−10)"
+    }
+  },
+  "core-047": {
+    "id": "core-047",
+    "index": "47",
+    "name": "Fig of Life",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "Fruit"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Heal a target 20"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "50"
+    }
+  },
+  "core-048": {
+    "id": "core-048",
+    "index": "48",
+    "name": "5pek Controller",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Switch the position of every unit"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Choose: all enemy units, or all units"
+    }
+  },
+  "core-049": {
+    "id": "core-049",
+    "index": "49",
+    "name": "Snom Bunny Mind Control",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Steal target enemy permanent"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "It also becomes Radiant"
+    }
+  },
+  "core-050": {
+    "id": "core-050",
+    "index": "50",
+    "name": "Kpop Fanatic",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Cry: choose an enemy permanent; at the start of your next turn, steal it"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [
+        {
+          "kind": "Divine Shield"
+        }
+      ],
+      "text": "Divine Shield; same"
+    }
+  },
+  "core-051": {
+    "id": "core-051",
+    "index": "51",
+    "name": "KY's Private Tutor",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "KY"
+    ],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Choose a type (Spell, Unit, Field Spell, Trap), then a cost bracket (0–1, 2, 3, 4+), offering only options with a match in your library; reveal 3 random matching library cards; choose one to hand. No match at all → add a KY's Empty Notebook"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Echo (resolves a second time)"
+    }
+  },
+  "core-051-1": {
+    "id": "core-051-1",
+    "index": "51.1",
+    "name": "KY's Empty Notebook",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "KY",
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Draw 1"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Draw 2"
+    }
+  },
+  "core-052": {
+    "id": "core-052",
+    "index": "52",
+    "name": "Silly Silas",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 4,
+      "health": 4,
+      "keywords": [],
+      "text": "Cry: choose left or right; rotate every card on the field one step around its ring (3.1); cards crossing sides change control"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 8,
+      "keywords": [],
+      "text": "Cards that would move to the opponent are bounced to their owner's hand costing 0 instead"
+    }
+  },
+  "core-053": {
+    "id": "core-053",
+    "index": "53",
+    "name": "Reno",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 4,
+      "health": 6,
+      "keywords": [],
+      "text": "Cry: if your hero is below 30, set it to 30"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 12,
+      "keywords": [],
+      "text": "60"
+    }
+  },
+  "core-054": {
+    "id": "core-054",
+    "index": "54",
+    "name": "Straaza",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "attack": 8,
+      "health": 8,
+      "keywords": [],
+      "text": "Cry: add 2 random Units costing 3 or 4 to your hand; they cost 1"
+    },
+    "radiant": {
+      "attack": 16,
+      "health": 16,
+      "keywords": [],
+      "text": "They cost 0"
+    }
+  },
+  "core-055": {
+    "id": "core-055",
+    "index": "55",
+    "name": "Lava Golem",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "attack": 10,
+      "health": 5,
+      "keywords": [
+        {
+          "kind": "Armor",
+          "n": 3
+        },
+        {
+          "kind": "Taunt"
+        }
+      ],
+      "text": "Tribute 3, Armor 3, Taunt; may tribute enemy units"
+    },
+    "radiant": {
+      "attack": 20,
+      "health": 10,
+      "keywords": [
+        {
+          "kind": "Armor",
+          "n": 3
+        },
+        {
+          "kind": "Taunt"
+        },
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Plus Indestructible"
+    }
+  },
+  "core-056": {
+    "id": "core-056",
+    "index": "56",
+    "name": "Jilliax",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 3,
+      "health": 2,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "Taunt"
+        },
+        {
+          "kind": "Lifesteal"
+        },
+        {
+          "kind": "Divine Shield"
+        }
+      ],
+      "text": "Rush, Taunt, Lifesteal, Divine Shield"
+    },
+    "radiant": {
+      "attack": 6,
+      "health": 4,
+      "keywords": [
+        {
+          "kind": "Charge"
+        },
+        {
+          "kind": "Taunt"
+        },
+        {
+          "kind": "Lifesteal"
+        },
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Charge, Taunt, Lifesteal, Indestructible"
+    }
+  },
+  "core-057": {
+    "id": "core-057",
+    "index": "57",
+    "name": "Conjure KY",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "KY"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Add 3 random KY cards to your hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 random plus 2 random Radiant KY cards"
+    }
+  },
+  "core-058": {
+    "id": "core-058",
+    "index": "58",
+    "name": "Rush Token Farm",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Start of turn: summon a Rush Token"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Aura: your Rush Tokens +3/+3; same"
+    }
+  },
+  "core-059": {
+    "id": "core-059",
+    "index": "59",
+    "name": "Unbiased Immigration",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": {
+      "base": 2,
+      "embiggen": 4
+    },
+    "base": {
+      "keywords": [],
+      "text": "Start of turn: add a random card to your hand (paid 4: it costs 0)"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "A random Radiant card (paid 4: it costs 0)"
+    }
+  },
+  "core-060": {
+    "id": "core-060",
+    "index": "60",
+    "name": "Bear Honeypot",
+    "set": "Core",
+    "type": "Trap",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "When the opponent plays a card costing 1 or less: summon 2 Rush Tokens; if it was a Unit, they attack it"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Any card; fill your board with Rush Tokens; same"
+    }
+  },
+  "core-061": {
+    "id": "core-061",
+    "index": "61",
+    "name": "Prejudiced Postdoc",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 2,
+      "health": 4,
+      "keywords": [],
+      "text": "Cry: choose a Human unit on the field; summon a Vanilla copy"
+    },
+    "radiant": {
+      "attack": 4,
+      "health": 8,
+      "keywords": [],
+      "text": "Any unit"
+    }
+  },
+  "core-062": {
+    "id": "core-062",
+    "index": "62",
+    "name": "Friend of Felinors",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Fill your board with Felinor Tokens"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Then your units get +2/+2"
+    }
+  },
+  "core-063": {
+    "id": "core-063",
+    "index": "63",
+    "name": "Plastic Surgery",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Target unit gets +3/+3 and 1 random keyword"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "+6/+6 and 2 random keywords"
+    }
+  },
+  "core-064": {
+    "id": "core-064",
+    "index": "64",
+    "name": "Gifted Program",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "The first card costing 1 or less you play each turn becomes Radiant as it is played"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 or less"
+    }
+  },
+  "core-065": {
+    "id": "core-065",
+    "index": "65",
+    "name": "Masochism Mask",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [
+      "Quickdraw"
+    ],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Start of turn: choose one: exile the bottom card of your library, lose 3 health, or summon a Spikey Pillow"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Choose twice from: nothing, exile bottom, lose 3, summon Spikey Pillow"
+    }
+  },
+  "core-065-1": {
+    "id": "core-065-1",
+    "index": "65.1",
+    "name": "Spikey Pillow",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "attack": 0,
+      "health": 2,
+      "keywords": [],
+      "text": "Cannot be in Defense Position. Aura: your units have −2 attack"
+    },
+    "radiant": {
+      "attack": 0,
+      "health": 4,
+      "keywords": [],
+      "text": "Aura: your non-Spikey-Pillow units have −2 attack"
+    }
+  },
+  "core-066": {
+    "id": "core-066",
+    "index": "66",
+    "name": "The Rock",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Common",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Tribute 1, Indestructible"
+    },
+    "radiant": {
+      "attack": 20,
+      "health": 20,
+      "keywords": [
+        {
+          "kind": "Indestructible"
+        },
+        {
+          "kind": "Immutable"
+        }
+      ],
+      "text": "Plus Immutable"
+    }
+  },
+  "core-067": {
+    "id": "core-067",
+    "index": "67",
+    "name": "Zoomerbin Oomen",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 2,
+      "keywords": [],
+      "text": "Cry: summon a random 1-cost Trap face-down into your backrow zone in this lane"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 4,
+      "keywords": [],
+      "text": "Any random Trap"
+    }
+  },
+  "core-068": {
+    "id": "core-068",
+    "index": "68",
+    "name": "Twisted Sourcerer",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 5,
+      "health": 5,
+      "keywords": [],
+      "text": "Cry: deal 4 damage to a target, 8 if your hero is below 10"
+    },
+    "radiant": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [],
+      "text": "6, or 12"
+    }
+  },
+  "core-069": {
+    "id": "core-069",
+    "index": "69",
+    "name": "Call to Arms",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Recruit 3 Units costing 1 or less"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 or less"
+    }
+  },
+  "core-070": {
+    "id": "core-070",
+    "index": "70",
+    "name": "Spiteful Stab",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Common",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Deal 2 damage to a target, +1 per full 5 health your hero is below 30, +1 per card in your exile"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "4 base, per full 3 health"
+    }
+  },
+  "core-071": {
+    "id": "core-071",
+    "index": "71",
+    "name": "Intern Stimmy",
+    "set": "Core",
+    "type": "Field Trap",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "At the end of any turn, if your library has more cards than the opponent's: Recruit a Unit costing 1 or less"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2 or less"
+    }
+  },
+  "core-072": {
+    "id": "core-072",
+    "index": "72",
+    "name": "Reminisce",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Discover a card from your GY; it costs 1 less; exile this"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "It costs 0"
+    }
+  },
+  "core-073": {
+    "id": "core-073",
+    "index": "73",
+    "name": "Anti-oneshot Armor",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Your hero can't take more than 5 damage in one instance. Cry: draw 1"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Cap 3"
+    }
+  },
+  "core-074": {
+    "id": "core-074",
+    "index": "74",
+    "name": "Adaptive UI",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": "X",
+    "base": {
+      "keywords": [],
+      "text": "Deal X damage to a target, heal your hero X, draw X, summon an X/X Rush Token"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "2X damage, heal 3X, draw 2X, a 3X/3X token"
+    }
+  },
+  "core-075": {
+    "id": "core-075",
+    "index": "75",
+    "name": "Infinite Reserves",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Draws from an empty library give you a Rush Token card instead of fatigue"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Cry: draw 3; same"
+    }
+  },
+  "core-076": {
+    "id": "core-076",
+    "index": "76",
+    "name": "Field of Dreams",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Replace your hand with the same number of Reminisce; exile this"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Radiant Reminisce"
+    }
+  },
+  "core-077": {
+    "id": "core-077",
+    "index": "77",
+    "name": "Professor Curvature",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 4,
+      "health": 5,
+      "keywords": [],
+      "text": "Cry: during your next turn, cards whose cost is 4 cost 1 less"
+    },
+    "radiant": {
+      "attack": 8,
+      "health": 10,
+      "keywords": [],
+      "text": "2 less"
+    }
+  },
+  "core-078": {
+    "id": "core-078",
+    "index": "78",
+    "name": "/fullsend",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "keywords": [],
+      "text": "Gain 4 mana; this turn your cards cost 1 less and gain \"Combo: draw 1\"; at end of turn, exile your hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Cost 2 less"
+    }
+  },
+  "core-079": {
+    "id": "core-079",
+    "index": "79",
+    "name": "Twinspell",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "The next Spell you play gains Echo +1"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Echo +2"
+    }
+  },
+  "core-080": {
+    "id": "core-080",
+    "index": "80",
+    "name": "Zao Gao",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords"
+    }
+  },
+  "core-081": {
+    "id": "core-081",
+    "index": "81",
+    "name": "Radiant Saintess",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [],
+      "text": "Cry and Death: all your units become Radiant"
+    },
+    "radiant": {
+      "attack": 4,
+      "health": 4,
+      "keywords": [
+        {
+          "kind": "Reborn"
+        }
+      ],
+      "text": "Reborn; same"
+    }
+  },
+  "core-082": {
+    "id": "core-082",
+    "index": "82",
+    "name": "KY's Trial",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "KY"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Discover among 3 distinct random numbers 1–100; add the Radiant Core card with that index to your hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "It costs 0"
+    }
+  },
+  "core-083": {
+    "id": "core-083",
+    "index": "83",
+    "name": "Transmogulate",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Replace every card in your library, board, GY and exile with a random Legendary"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Random Radiant Legendaries"
+    }
+  },
+  "core-084": {
+    "id": "core-084",
+    "index": "84",
+    "name": "Going Long",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [
+      "Quickdraw"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": {
+      "base": 2,
+      "embiggen": 4
+    },
+    "base": {
+      "keywords": [],
+      "text": "Your hero has Armor 2 (paid 4: 5)"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Armor 4 (paid 4: 10)"
+    }
+  },
+  "core-085": {
+    "id": "core-085",
+    "index": "85",
+    "name": "Unlicensed Experimentation",
+    "set": "Core",
+    "type": "Trap",
+    "tags": [],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "When the opponent plays a permanent whose type matches one you control: Fuse it onto a random permanent of yours of that type"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Onto every such permanent"
+    }
+  },
+  "core-086": {
+    "id": "core-086",
+    "index": "86",
+    "name": "\"Miss\" Mrow",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Felinor"
+    ],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [
+        {
+          "kind": "Can't attack"
+        }
+      ],
+      "text": "Can't attack. Death: steal all enemy units"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [],
+      "text": "Can attack; same"
+    }
+  },
+  "core-087": {
+    "id": "core-087",
+    "index": "87",
+    "name": "Pocket Chaos",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Choose one: swap hero health, swap boards (every zone, lane-preserving), or swap libraries with the opponent; then add a Pocket Chaos to the opponent's hand; exile this"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "You may skip adding it"
+    }
+  },
+  "core-088": {
+    "id": "core-088",
+    "index": "88",
+    "name": "Twisting Nether",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Destroy all permanents"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Choose: all enemy permanents, or all"
+    }
+  },
+  "core-089": {
+    "id": "core-089",
+    "index": "89",
+    "name": "Corpse Eater",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "attack": 2,
+      "health": 2,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush. While in your hand: whenever a unit on either side dies, this gains its attack and max health"
+    },
+    "radiant": {
+      "attack": 6,
+      "health": 6,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "Divine Shield"
+        }
+      ],
+      "text": "Rush, Divine Shield; gains double"
+    }
+  },
+  "core-090": {
+    "id": "core-090",
+    "index": "90",
+    "name": "CN-Viral Injection",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "CN"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Shuffle a CN-Virus into the opponent's library"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "A Radiant CN-Virus"
+    }
+  },
+  "core-090-1": {
+    "id": "core-090-1",
+    "index": "90.1",
+    "name": "CN-Virus",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "CN",
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "Cast on draw: take 1 damage; shuffle 2 copies of this into your library"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "3 copies"
+    }
+  },
+  "core-091": {
+    "id": "core-091",
+    "index": "91",
+    "name": "Fed Fauci",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Rare",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 1,
+      "health": 6,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush. Whenever this takes damage, +1 Plague Token. Start of turn: +1 mana per Plague Token"
+    },
+    "radiant": {
+      "attack": 2,
+      "health": 12,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush; +2 mana per token"
+    }
+  },
+  "core-092": {
+    "id": "core-092",
+    "index": "92",
+    "name": "Felinor Fiender",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Human"
+    ],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "attack": 5,
+      "health": 7,
+      "keywords": [
+        {
+          "kind": "Stack"
+        }
+      ],
+      "text": "Stack. Stats = printed plus the combined stats of all your Felinors, including ones under a Stack"
+    },
+    "radiant": {
+      "attack": 10,
+      "health": 14,
+      "keywords": [
+        {
+          "kind": "Stack"
+        },
+        {
+          "kind": "Charge"
+        }
+      ],
+      "text": "Stack, Charge; same"
+    }
+  },
+  "core-093": {
+    "id": "core-093",
+    "index": "93",
+    "name": "Combo-Index",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 2,
+    "base": {
+      "keywords": [],
+      "text": "Grade counter, starts at E (E,D,C,B,A,S = 1–6). End of turn: if cards played this turn ≥ grade, grade +1 and run every step from E up to the new grade. E: add a copy of a random card played this turn to your hand. D: 2 different random hand cards cost 1 less. C: opponent exiles a random hand card. B: a random hand card becomes Radiant. A: 8 damage to the enemy hero with Lifesteal. S: run E–A again"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Start of turn: add a Combo-Fodder to your hand; same"
+    }
+  },
+  "core-093-1": {
+    "id": "core-093-1",
+    "index": "93.1",
+    "name": "Combo-Fodder",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 0,
+    "base": {
+      "keywords": [
+        {
+          "kind": "Lifesteal"
+        }
+      ],
+      "text": "Deal 2 damage to a target, Lifesteal"
+    },
+    "radiant": {
+      "keywords": [
+        {
+          "kind": "Lifesteal"
+        }
+      ],
+      "text": "Deal 2 damage to a target, Lifesteal"
+    }
+  },
+  "core-094": {
+    "id": "core-094",
+    "index": "94",
+    "name": "Genn's Greed",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Epic",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "keywords": [],
+      "text": "Draw every 2-cost card from your library; exile every odd-cost card in your library, hand and GY (X-cost cards exempt); gain 2 mana"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Gain 6"
+    }
+  },
+  "core-095": {
+    "id": "core-095",
+    "index": "95",
+    "name": "Call to Chaos (Core Edition)",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "Call to Chaos"
+    ],
+    "rarity": "Legendary",
+    "token": false,
+    "cost": 4,
+    "base": {
+      "keywords": [],
+      "text": "One random effect: summon 3 random 3-cost Units; heal your hero 30; draw your whole library and gain 4 mana; add 3 random cards to hand costing 0; your hand becomes Radiant; summon five 5/5 Rush Tokens; every card in your hand and library costs 2 less; summon a Chaos Golem; summon 5 random Field Spells or Traps (Field Traps included, traps face-down) into your backrow; cast a random Call to Chaos"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Two random effects: \"cast a random Call to Chaos\" plus one drawn from the other 9"
+    }
+  },
+  "core-095-1": {
+    "id": "core-095-1",
+    "index": "95.1",
+    "name": "Chaos Golem",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 4,
+    "base": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "Lifesteal"
+        },
+        {
+          "kind": "Divine Shield"
+        },
+        {
+          "kind": "First Strike"
+        }
+      ],
+      "text": "Rush, Lifesteal, Divine Shield, First Strike"
+    },
+    "radiant": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [
+        {
+          "kind": "Rush"
+        },
+        {
+          "kind": "Lifesteal"
+        },
+        {
+          "kind": "Divine Shield"
+        },
+        {
+          "kind": "First Strike"
+        }
+      ],
+      "text": "Rush, Lifesteal, Divine Shield, First Strike"
+    }
+  },
+  "core-096": {
+    "id": "core-096",
+    "index": "96",
+    "name": "My Pawn",
+    "set": "Core",
+    "type": "Trap",
+    "tags": [],
+    "rarity": "Mythic",
+    "token": false,
+    "cost": 1,
+    "base": {
+      "keywords": [],
+      "text": "When the opponent declares an attack that would be lethal to your hero: cancel it, and an AI plays the rest of their turn with random legal actions"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "When the opponent declares an attack that would be lethal to your hero: cancel it, and an AI plays the rest of their turn with random legal actions"
+    }
+  },
+  "core-097": {
+    "id": "core-097",
+    "index": "97",
+    "name": "Zephyrs",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Mythic",
+    "token": false,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Discover the \"perfect\" card from the Core set; exile this"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "A perfect Radiant card"
+    }
+  },
+  "core-098": {
+    "id": "core-098",
+    "index": "98",
+    "name": "Heroic Power",
+    "set": "Core",
+    "type": "Field Spell",
+    "tags": [
+      "Quickdraw"
+    ],
+    "rarity": "Mythic",
+    "token": false,
+    "cost": "X",
+    "base": {
+      "keywords": [
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Indestructible. Start of game: gain one of 7 random powers, each \"Once per turn, spend X\": (3) Recruit a permanent; (1) lose 2 health, draw 1; (1) deal 1 damage to a target; (1) deal 2 damage to each opposing hero; (2) summon a Rush Token; (1) summon a Felinor Token; (2) Discover a Unit. Playing it costs the power's X and activates it once"
+    },
+    "radiant": {
+      "keywords": [
+        {
+          "kind": "Indestructible"
+        }
+      ],
+      "text": "Powers become: Recruit and make it Radiant; lose 2, draw 2; deal 2; 4 to each opposing hero; two Rush Tokens; two Felinor Tokens; Discover a Radiant Unit"
+    }
+  },
+  "core-099": {
+    "id": "core-099",
+    "index": "99",
+    "name": "Craft a Card",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [],
+    "rarity": "Mythic",
+    "token": false,
+    "cost": 3,
+    "base": {
+      "keywords": [],
+      "text": "Discover a Unit, then Discover another; Fuse them; the result costs 0 and goes to your hand"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Three Discovers"
+    }
+  },
+  "core-100": {
+    "id": "core-100",
+    "index": "100",
+    "name": "Ceaseless Void",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [],
+    "rarity": "Mythic",
+    "token": false,
+    "cost": 100,
+    "base": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [],
+      "text": "Cry: exile all other permanents on both sides. Costs 1 less per card drawn, played, destroyed or exiled this game by either player"
+    },
+    "radiant": {
+      "attack": 10,
+      "health": 10,
+      "keywords": [
+        {
+          "kind": "Charge"
+        }
+      ],
+      "text": "Plus Charge"
+    }
+  },
+  "core-t-rush": {
+    "id": "core-t-rush",
+    "index": "T-rush",
+    "name": "Rush Token",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "attack": 3,
+      "health": 3,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush."
+    },
+    "radiant": {
+      "attack": 3,
+      "health": 3,
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush."
+    }
+  },
+  "core-t-sheep": {
+    "id": "core-t-sheep",
+    "index": "T-sheep",
+    "name": "Sheep Token",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Worth 2 Tributes while on the field."
+    },
+    "radiant": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": "Worth 2 Tributes while on the field."
+    }
+  },
+  "core-t-felinor": {
+    "id": "core-t-felinor",
+    "index": "T-felinor",
+    "name": "Felinor Token",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Felinor",
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 1,
+    "base": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": ""
+    },
+    "radiant": {
+      "attack": 1,
+      "health": 1,
+      "keywords": [],
+      "text": ""
+    }
+  },
+  "core-t-bread": {
+    "id": "core-t-bread",
+    "index": "T-bread",
+    "name": "Bread Token",
+    "set": "Core",
+    "type": "Unit",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 0,
+    "base": {
+      "attack": 0,
+      "health": 0,
+      "keywords": [],
+      "text": ""
+    },
+    "radiant": {
+      "attack": 0,
+      "health": 0,
+      "keywords": [],
+      "text": ""
+    }
+  }
+}

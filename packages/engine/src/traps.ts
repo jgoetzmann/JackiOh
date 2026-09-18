@@ -1,0 +1,370 @@
+// Trap matching and immediate resolution (SPEC §5.1, §10.3, §2.2's end-of-turn window; BUILD M3-T2).
+//
+// §10.3: "Traps are checked before other triggers because they are responses (the end-of-turn trap
+// window of §2.2 is the one scheduled exception, R62); a trap that fires during the opponent's turn
+// resolves to completion (including forced attacks and prompts for the trap's owner) before the
+// opponent's action continues."
+//
+// This module owns four things and nothing else:
+//   1. matching  — which backrow traps watch a given event (`trapsWatching`), in R68 order;
+//   2. firing    — emit `trapFired`, run the trigger to completion, run the state check
+//                  (`fireTrapsFor`, `runTrapWindow`);
+//   3. consuming — a Trap goes to its owner's graveyard, a Field Trap stays and is face-up (R33)
+//                  (`consumeTrap`);
+//   4. owing     — a window a prompt interrupted parks the traps that have not seen the event yet
+//                  on `state.work`, so the answer finishes the window (`TRAP_WINDOW_WORK`, R113).
+//
+// The *when* is the caller's: `triggers.ts` offers every freshly emitted event to `fireTrapsFor`
+// before it queues any ordinary trigger, and `turn.ts` calls `runTrapWindow` at R62's scheduled
+// point — after the end-of-turn triggers and before the end-of-turn delayed effects. R17's two
+// moments are likewise the play pipeline's (§10.5): Sheepish fires on the `summoned`/`cardPlayed`
+// pair emitted at step 4, before the Cry of step 5; Bear Honeypot, Unstable Clone Machine and
+// Unlicensed Experimentation fire on `cardResolved`, which step 7 emits once per play or cast after
+// the Cry and every Echo repeat, and whose `permanent` flag is R61's "played permanents only".
+// `cardResolved` needs no list here — a trigger that names an event type is matched on it — but it
+// does need R119: a trap is a played card too, so `trapsWatching` never offers a trap the arrival
+// event that names the trap itself. And it travels the immediate path alone: R100 keeps the
+// scheduled window's events to the window, and `cardResolved` is not one of them.
+//
+// A window is a sequence that can span a prompt, so it is resumable through `state.work` and
+// through nothing else (§9.3, R113). Neither of the two dispatch paths may ever *drop* an event it
+// has not finished delivering: the immediate one owes the rest of its traps as `triggers.ts`'s
+// front-of-queue `OWED_TO_TRAPS` entry, and the scheduled window owes its remainder here as a
+// `TRAP_WINDOW_WORK` item — the event plus the ids of the traps still to be offered it, all plain
+// JSON. A bare `if (state.pending !== null) return;` would be the bug and not the fix: it strands
+// the rest of the window with no way back, which is worse than firing late.
+
+import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
+import { defOf } from "./catalog";
+import { applyEffects, makeContext, type EngineSink } from "./resolve";
+import type { TriggerDef } from "./script";
+import { scriptOf } from "./scripts";
+import { stateCheck } from "./stateCheck";
+import type { CardInstance, GameState, Resume, WorkItem } from "./state";
+import { owe, paused as isPaused, registerWorkHandler } from "./work";
+import { cardAt, moveToZone, slotsOf } from "./zones";
+
+/**
+ * A trap trigger, and the two rows that settle what firing means.
+ *
+ * R99: a trap fires when its trigger's `on` matches the event **and** its `when` predicate admits
+ * it. The predicate is kept out of the effect list on purpose, because R61 makes `run` returning
+ * `[]` mean "fired, consumed, did nothing" — so a trap whose condition simply was not met cannot
+ * say so through `run` and would be spent by an event it should ignore. A condition that must leave
+ * the trap armed (Bear Honeypot's "costing 1 or less", My Pawn's "would be lethal", Sheepish's
+ * own-side summon, Unlicensed Experimentation's "whose type matches one you control") therefore
+ * belongs in `when`, never in `run`. A trigger that declares no predicate answers every event it
+ * names, whichever side caused it (R99), and with the predicate satisfied an empty effect list
+ * still spends the trap (R61).
+ *
+ * `when` is declared on `script.ts`'s `TriggerDef` now, so this alias adds nothing to it: reading
+ * the predicate below is the declared contract, not a structural workaround. The name stays because
+ * the card files annotate their trap triggers with it (#18, #41, #60, #71, #85, #96).
+ */
+export type TrapTrigger = TriggerDef;
+
+/** One trap and the triggers of its own script that this event woke. */
+export type TrapMatch = {
+  trap: CardInstance;
+  triggers: TrapTrigger[];
+};
+
+/** What a dispatch did: the traps that fired, and whether a prompt paused the rest (§10.3). */
+export type TrapDispatch = {
+  /** Instance ids, in the order they resolved. */
+  fired: string[];
+  /** A prompt (or the end of the game) stopped the dispatch before it finished. */
+  paused: boolean;
+};
+
+/**
+ * A dispatch as the module reads it internally: `owed` names the traps the pause stopped it from
+ * offering the event to at all, which is what a resume needs and what neither caller may guess by
+ * subtracting `fired` — a trap whose `when` declined has seen the event and is not owed it again.
+ */
+type TrapRun = TrapDispatch & { owed: string[] };
+
+/**
+ * R113: the `resume.hook` of the one work item this module parks — the rest of an end-of-turn trap
+ * window. It is an engine sequence, not a card's, so the name is one no `Script` can hold, and
+ * `runOwedWindow` below is registered for it: `work.runWorkItem` throws on a hook nothing knows,
+ * and a window that cannot be resumed is exactly the lost sequence that rule exists to prevent.
+ */
+export const TRAP_WINDOW_WORK = "@trapWindow";
+
+/** The window has one step, named so a reader of `state.work` can see what is owed. */
+const TRAP_WINDOW_STEP = "window";
+
+/** What a parked window carries: the event it is delivering, and who has not seen it yet. */
+export type OwedWindow = {
+  event: GameEvent;
+  /** Instance ids of the traps the window still has to offer the event to, in R68 order. */
+  owed: string[];
+};
+
+/**
+ * R100: the events the *scheduled* end-of-turn window owns. An event the window is scheduled to
+ * deliver is not also offered to the immediate check, so Bread and Butter and Intern Stimmy fire
+ * once per turn end, in the window, on both sides — and not a second time as ordinary responses.
+ * This list is the whole of that withholding, and R62's end-of-turn order depends on it.
+ */
+export const TRAP_WINDOW_EVENTS: readonly GameEventType[] = ["turnEnded"];
+
+export function isTrapWindowEvent(event: GameEvent): boolean {
+  return TRAP_WINDOW_EVENTS.includes(event.type);
+}
+
+/** §5.1: a Field Trap is a Trap that stays after firing, so both are "a Trap" (R61). */
+export function isTrapType(state: GameState, instance: CardInstance): boolean {
+  const type = defOf(state, instance.defId).type;
+  return type === "Trap" || type === "Field Trap";
+}
+
+export function isFieldTrap(state: GameState, instance: CardInstance): boolean {
+  return defOf(state, instance.defId).type === "Field Trap";
+}
+
+function isOnField(instance: CardInstance): boolean {
+  return instance.zone.z === "field";
+}
+
+/**
+ * Every trap on the field, in R68 order: the active player's cards first, then the opponent's, each
+ * side's backrow by lane 1–5. Traps only ever occupy backrow zones (§5.1), so the unit lanes of
+ * R68's order hold none.
+ */
+export function trapsInOrder(state: GameState): CardInstance[] {
+  const sides: PlayerId[] = state.active === "p1" ? ["p1", "p2"] : ["p2", "p1"];
+  return sides.flatMap((player) =>
+    slotsOf(player, "backrow").flatMap((ref) => {
+      const card = cardAt(state, ref);
+      return card !== null && isTrapType(state, card) ? [card] : [];
+    }),
+  );
+}
+
+function trapTriggersOf(trap: CardInstance): TrapTrigger[] {
+  return scriptOf(trap).triggers ?? [];
+}
+
+/**
+ * R119: the events that say a card arrived. A card does not answer the play that put it onto the
+ * field — "it was not yet in play when that play began" — so a trap is never offered the
+ * `cardPlayed`, `summoned` or `cardResolved` event that names the trap itself. R17's two moments are
+ * both in this list, which is why the rule belongs here and not in each card's predicate: Sheepish
+ * answers step 4's `summoned`/`cardPlayed` pair, and Bear Honeypot, Unstable Clone Machine and
+ * Unlicensed Experimentation answer step 7's `cardResolved` — and a Trap or Field Trap is itself a
+ * card someone plays, so without this a trap watching either moment answers its own arrival.
+ */
+const ARRIVAL_EVENTS: readonly GameEventType[] = ["cardPlayed", "summoned", "cardResolved"];
+
+function isOwnArrival(trap: CardInstance, event: GameEvent): boolean {
+  if (!ARRIVAL_EVENTS.includes(event.type)) return false;
+  const about: unknown = (event as { instanceId?: unknown }).instanceId;
+  return about === trap.id;
+}
+
+/**
+ * The traps this event woke, matched by the event type each trigger names. This is matching only:
+ * a `when` predicate needs an `EffectContext`, so it is evaluated when the trap fires.
+ *
+ * Any event type a trigger names is matched, `cardResolved` included — R17's "after the card
+ * resolves", which §10.5 step 7 emits once per play or cast. It reaches the traps through the
+ * immediate path (`fireTrapsFor`), never the scheduled one: R100 keeps the two disjoint, and only
+ * `TRAP_WINDOW_EVENTS` belongs to the window.
+ */
+export function trapsWatching(state: GameState, event: GameEvent): TrapMatch[] {
+  return trapsInOrder(state).flatMap((trap) => {
+    if (isOwnArrival(trap, event)) return [];
+    const triggers = trapTriggersOf(trap).filter((trigger) => trigger.on.includes(event.type));
+    return triggers.length === 0 ? [] : [{ trap, triggers }];
+  });
+}
+
+/**
+ * §3.2: "backrow cards go to the owner's graveyard when their effect ends (traps after firing
+ * unless Field Trap)". R33: a Field Trap that has fired is face-up to both players from then on.
+ * R61 makes this unconditional: a trap that fired is consumed whether or not its effects achieved
+ * anything, so the caller never asks what the effect list managed to do.
+ */
+export function consumeTrap(sink: EngineSink, instance: CardInstance): void {
+  instance.faceUp = true;
+  if (isFieldTrap(sink.state, instance)) return;
+
+  const moved = moveToZone(sink.state, instance, "graveyard");
+  if (moved !== "moved") return;
+  sink.events.push({
+    type: "enteredGraveyard",
+    instanceId: instance.id,
+    defId: instance.defId,
+    owner: instance.owner,
+  });
+}
+
+/**
+ * Fire one trap: emit `trapFired`, run every trigger of its that this event woke, run the state
+ * check so the trap has resolved to completion, then consume it. The trap is consumed whatever its
+ * effects achieved — an Immutable Sheepish target or a Fuse with no legal target still spends it
+ * (R17, R61). Returns false when no trigger's `when` admitted the event, which leaves the trap
+ * armed and face-down (R99) — the one outcome that is not a firing.
+ */
+export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): boolean {
+  const trap = match.trap;
+  const ctx = makeContext(sink, trap, { controller: trap.controller });
+  const armed = match.triggers.filter(
+    (trigger) => trigger.when === undefined || trigger.when({ ...ctx, event }),
+  );
+  if (armed.length === 0) return false;
+
+  sink.events.push({
+    type: "trapFired",
+    instanceId: trap.id,
+    defId: trap.defId,
+    controller: trap.controller,
+  });
+
+  for (const trigger of armed) {
+    applyEffects(trigger.run({ ...ctx, event }), ctx);
+  }
+
+  // R52: everything the trap did belongs to the trap's controller, whoever caused the event.
+  consumeTrap(sink, trap);
+  stateCheck(sink);
+  return true;
+}
+
+function dispatch(sink: EngineSink, event: GameEvent, matches: readonly TrapMatch[]): TrapRun {
+  const fired: string[] = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    if (match === undefined) continue;
+    // §9.3: a prompt is state, so the rest of the dispatch waits for the answer action — and the
+    // traps from here on have not seen the event, which is precisely what is owed (R113).
+    if (isPaused(sink)) {
+      return { fired, paused: true, owed: matches.slice(index).map((rest) => rest.trap.id) };
+    }
+    // A trap the previous one destroyed, bounced or fused away never fires (R61).
+    if (!isOnField(match.trap)) continue;
+    if (fireTrap(sink, match, event)) fired.push(match.trap.id);
+  }
+  return { fired, paused: isPaused(sink), owed: [] };
+}
+
+/**
+ * §10.3: offer one freshly emitted event to the traps, before any ordinary trigger is queued. The
+ * whole trap resolves inside this call — forced attacks included (R53) — so the action that emitted
+ * the event continues only afterwards. A prompt for the trap's owner stops the dispatch instead:
+ * the answer action resumes it, which is what "pauses the opponent's action" means (BUILD M3-T2).
+ *
+ * R62's window events are withheld: `runTrapWindow` fires those at their scheduled point.
+ */
+export function fireTrapsFor(sink: EngineSink, event: GameEvent): TrapDispatch {
+  if (isTrapWindowEvent(event)) return { fired: [], paused: false };
+  if (isPaused(sink)) return { fired: [], paused: true };
+  // The remainder of an immediate dispatch is `triggers.ts`'s to park: a trap is a response, so it
+  // is owed in front of the trigger queue (`OWED_TO_TRAPS`), not behind the interrupted sequence.
+  const run = dispatch(sink, event, trapsWatching(sink.state, event));
+  return { fired: run.fired, paused: run.paused };
+}
+
+// ---------------------------------------------------------------------------
+// The end-of-turn window, and the remainder it owes (§2.2, R62, R100, R113)
+// ---------------------------------------------------------------------------
+
+/** The event a parked window captured, read back defensively: it came through JSON (§10.1). */
+function windowEventOf(data: Record<string, unknown>): GameEvent | null {
+  const captured: unknown = data.event;
+  if (typeof captured !== "object" || captured === null) return null;
+  const type: unknown = (captured as { type?: unknown }).type;
+  return typeof type === "string" ? (captured as GameEvent) : null;
+}
+
+function owedTrapsOf(data: Record<string, unknown>): string[] {
+  const owed: unknown = data.owed;
+  return Array.isArray(owed) ? owed.filter((id): id is string => typeof id === "string") : [];
+}
+
+/** What a `TRAP_WINDOW_WORK` item owes, or null when it is not one: the reader for its payload. */
+export function owedWindowOf(resume: Resume): OwedWindow | null {
+  if (resume.hook !== TRAP_WINDOW_WORK) return null;
+  const event = windowEventOf(resume.data);
+  return event === null ? null : { event, owed: owedTrapsOf(resume.data) };
+}
+
+/**
+ * Park the rest of the window (R113). `work.ts` owns `state.work`, so this only ever calls `owe`:
+ * the item lands at `state.workCursor`, which puts it behind anything a trap's own effects parked
+ * inside it (innermost first) and — when a resumption parks again — in front of everything else
+ * still owed. Nothing is held but plain JSON, so the paused window survives a round trip.
+ *
+ * R117: this is called at the moment the window pauses and never in advance. While `dispatch` is on
+ * the stack the traps it has not reached are the dispatch's alone, so a `settle` running inside one
+ * of them — a trap's own effects can start one — cannot take the traps the window is standing in.
+ */
+function oweWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]): void {
+  if (owed.length === 0) return;
+  const resume: Resume = {
+    defId: "",
+    hook: TRAP_WINDOW_WORK,
+    step: TRAP_WINDOW_STEP,
+    radiant: false,
+    data: { event, owed: [...owed] },
+  };
+  owe(sink, resume);
+}
+
+/**
+ * §2.2 and R62: the end-of-turn trap window. It runs after the end-of-turn triggers and before the
+ * end-of-turn delayed effects, and it fires on both sides in R68 order — the ending player's traps
+ * first — which is what makes Bread and Butter's token go to the trap's controller whichever player
+ * ended the turn with unspent mana (R52).
+ *
+ * A trap that prompts its controller stops the window where it stands and the rest of it is owed in
+ * state, so the answer action delivers the event to the traps that have not seen it — a Field Trap
+ * that already fired is not among them, since it fired rather than being passed over (R62, R100).
+ * The game ending stops the window for good: there is nothing left to resume into.
+ */
+export function runTrapWindow(sink: EngineSink, event: GameEvent): TrapDispatch {
+  if (sink.state.result !== null) return { fired: [], paused: true };
+  const matches = trapsWatching(sink.state, event);
+
+  // A prompt already open when the window opens means the window has delivered nothing at all:
+  // every matched trap is owed the event. Returning without parking would lose the whole window.
+  if (sink.state.pending !== null) {
+    oweWindow(sink, event, matches.map((match) => match.trap.id));
+    return { fired: [], paused: true };
+  }
+
+  const run = dispatch(sink, event, matches);
+  if (sink.state.result === null) oweWindow(sink, event, run.owed);
+  return { fired: run.fired, paused: run.paused };
+}
+
+/**
+ * Finish a window a prompt interrupted: offer the event to the traps that were owed it, in the
+ * order the window had, and park again if one of those prompts too. The board is re-read only to
+ * drop a trap that has left the field since — destroyed, bounced or fused away — which never fires
+ * (R61); the owed list is what keeps a trap that already fired from firing twice, which a Field
+ * Trap would otherwise do, since firing leaves it on the field (§5.1, R33, R100).
+ */
+function resumeWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]): void {
+  const watching = trapsWatching(sink.state, event);
+  // The order is the owed list's, not a fresh scan's: R68's sides are read off `state.active`, and
+  // the window's order was fixed when it opened (R62 — the ending player's traps, then the
+  // opponent's). The board is re-read only to drop what has left the field since (R61).
+  const matches = owed.flatMap((id) => {
+    const match = watching.find((candidate) => candidate.trap.id === id);
+    return match === undefined ? [] : [match];
+  });
+  const run = dispatch(sink, event, matches);
+  if (sink.state.result === null) oweWindow(sink, event, run.owed);
+}
+
+/** `work.ts`'s handler for a parked window: the same window, continued where it stopped (R113). */
+function runOwedWindow(sink: EngineSink, item: WorkItem): void {
+  const parked = owedWindowOf(item.resume);
+  if (parked === null) return;
+  resumeWindow(sink, parked.event, parked.owed);
+}
+
+registerWorkHandler(TRAP_WINDOW_WORK, runOwedWindow);

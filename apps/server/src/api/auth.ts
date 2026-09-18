@@ -1,0 +1,582 @@
+/**
+ * Managed auth (SPEC §9.4: "Managed auth provider" for email and password) over Supabase Auth,
+ * plus the endpoints the invite gate needs.
+ *
+ * Topology, per SPEC §9.2: the browser has its own HTTPS arrow to the auth provider, separate
+ * from its arrow to the API functions. The browser signs up and signs in against Supabase Auth
+ * directly with the *publishable* key; this server's job is to **verify** the bearer token that
+ * comes back, so `verifyAccessToken` is the load-bearing method here. `signUp` /
+ * `signInWithPassword` stay on the `AuthProvider` port (it requires them, and BUILD M8's fixture
+ * accounts use them) but they are a secondary path that needs a publishable key configured
+ * explicitly; without one they fail with a 503 that says where sign-in actually happens. They are
+ * never run with the secret key: a service-role sign-up bypasses the provider's own rate limits
+ * and its email-confirmation behaviour, which is exactly what §9.4's invite gate relies on.
+ *
+ * SPEC §9.4 lets a pending account "log in, verify its email and see the code screen, and nothing
+ * else", so `/api/auth/me` is declared `auth: "user"` rather than `"active"`: it is the code
+ * screen's only read. The gate itself lives in `http.ts` (`assertActive`), never here.
+ *
+ * Security notes (the Supabase security checklist, and §9.8's "Invite code brute force" row,
+ * whose mitigation list includes "verified email"):
+ *
+ *  - `emailVerified` NEVER comes from the access token's `user_metadata`. In Supabase that claim
+ *    is *user-editable* (`raw_user_meta_data` is writable through `auth.updateUser`), so trusting
+ *    a self-set `user_metadata.email_verified` would walk straight past §9.4 step 1's "verified
+ *    email" requirement and hand a scripted attacker unlimited invite-code attempts. It is read
+ *    from the authoritative auth server instead — `email_confirmed_at`, which only GoTrue writes.
+ *  - `AuthUser.appMetadata` is filled from the `app_metadata` claim only (provider-controlled).
+ *  - the secret key stays inside this closure: it is never returned, never logged, and never put
+ *    into a response body. Nothing in this file logs a token or a key either.
+ *  - Supabase caveat worth naming: deleting a user does not invalidate tokens already issued.
+ *    The admin lookup below turns an explicit "no such user" into a failed verification, and
+ *    `profiles.status` (§9.4) remains the only authority on what an account may do.
+ */
+
+import { createClient } from "@supabase/supabase-js";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { ApiError, ok, route, str, type Route } from "./http";
+import {
+  systemTimers,
+  type AuthProvider,
+  type AuthSession,
+  type AuthUser,
+  type ServerDeps,
+} from "./ports";
+
+// ---------------------------------------------------------------------------
+// Tunables SPEC does not pin down
+// ---------------------------------------------------------------------------
+
+// NOT IN SPEC: SPEC §9.4 requires a verified email at redemption but says nothing about how the
+// server learns of it. Asking the auth server on every request would put a round trip in front of
+// every authenticated call, so a *confirmed* email is remembered for this long per user id. Only
+// the positive answer is cached: confirmation is the direction that does not go backwards in
+// normal use, and never caching the negative means an account that has just clicked its
+// confirmation link sees the code screen unlock immediately instead of after a cache window.
+const EMAIL_CONFIRMED_CACHE_TTL_MS = 30_000;
+
+/** Supabase issues project JWTs with this audience for a signed-in user. */
+const AUTHENTICATED_AUDIENCE = "authenticated";
+
+// NOT IN SPEC: the client-facing wording for a provider rejection. Deliberately identical for
+// "no such account", "wrong password" and "already registered" so neither endpoint becomes an
+// account-enumeration oracle (§9.8's spirit; §9.4 does not write the strings).
+const SIGN_UP_FAILED_MESSAGE = "Could not create that account.";
+const SIGN_IN_FAILED_MESSAGE = "That email and password do not match an account.";
+
+// NOT IN SPEC: what to say when the password path is not configured on this server (§9.2 puts
+// sign-in in the browser, against Supabase Auth, so this is the normal deployment).
+const PASSWORD_PATH_DISABLED_MESSAGE =
+  "This server does not broker passwords: sign up and sign in against Supabase Auth from the client.";
+
+// ---------------------------------------------------------------------------
+// The slice of the provider's shapes this file reads
+// ---------------------------------------------------------------------------
+
+/**
+ * GoTrue's user object, narrowed to the fields §9.4 needs. `user_metadata` is deliberately absent:
+ * it is user-editable, so this file has no way to read it by accident.
+ */
+export type AuthApiUser = {
+  id: string;
+  email?: string | null;
+  /** The auth server's own verification timestamp; null/absent until the link is clicked. */
+  email_confirmed_at?: string | null;
+  /** Provider-controlled claims (`app_metadata`), safe for authorization. */
+  app_metadata?: Record<string, unknown>;
+};
+
+export type AuthApiSession = {
+  access_token: string;
+  refresh_token?: string | null;
+  /** Epoch *seconds* (GoTrue's unit), converted on the way into `AuthSession`. */
+  expires_at?: number | null;
+};
+
+export type AuthApiResult = {
+  user: AuthApiUser | null;
+  session: AuthApiSession | null;
+  error: { message: string } | null;
+};
+
+/**
+ * The password half of the provider (publishable key only). Absent when this server has no
+ * publishable key configured, which is the expected deployment.
+ *
+ * NOT IN SPEC: an injectable seam rather than a direct `createClient` call inside each method.
+ * `@supabase/supabase-js` builds its own transport, so without this seam these paths could only
+ * be exercised against a live project.
+ */
+export type PasswordAuthClient = {
+  signUp: (email: string, password: string) => Promise<AuthApiResult>;
+  signInWithPassword: (email: string, password: string) => Promise<AuthApiResult>;
+};
+
+/** What an admin lookup of a user can say. */
+export type AdminLookup =
+  | { kind: "ok"; user: AuthApiUser }
+  /** The auth server has no such user any more (deleted); the token must not be honoured. */
+  | { kind: "missing" }
+  /** Nobody answered. The identity stands, but the email counts as unverified (fail closed). */
+  | { kind: "unavailable" };
+
+/** The admin half (secret key only): §9.4 step 1's authoritative `email_confirmed_at`. */
+export type AdminAuthClient = {
+  getUserById: (userId: string) => Promise<AdminLookup>;
+};
+
+export type SupabaseAuthClients = {
+  password: PasswordAuthClient | null;
+  admin: AdminAuthClient | null;
+};
+
+export type SupabaseAuthClientInput = {
+  url: string;
+  secretKey: string;
+  publishableKey?: string | undefined;
+  fetchImpl?: typeof fetch | undefined;
+};
+
+export type SupabaseAuthInput = {
+  /** `ServerEnv.SUPABASE_URL`, e.g. `https://<ref>.supabase.co`. */
+  url: string;
+  /** `ServerEnv.SUPABASE_SECRET_KEY`. Server-only; bypasses RLS; never leaves this module. */
+  secretKey: string;
+  /**
+   * `VITE_SUPABASE_PUBLISHABLE_KEY`'s value, only if this deployment wants the server-side
+   * password path at all (BUILD M8's fixture accounts). Omitted in a normal deployment.
+   */
+  publishableKey?: string;
+  /** `ServerEnv.SUPABASE_JWKS_URL`; defaults to the project's own well-known endpoint. */
+  jwksUrl?: string;
+  /** `ServerEnv.SUPABASE_JWT_SECRET`: the legacy HS256 shared secret, if the project still signs with one. */
+  jwtSecret?: string;
+  fetchImpl?: typeof fetch;
+  /** NOT IN SPEC: test seam; see `PasswordAuthClient`. */
+  clientFactory?: (input: SupabaseAuthClientInput) => SupabaseAuthClients;
+  /**
+   * NOT IN SPEC: test seam for the JWKS. Production leaves it unset and gets
+   * `createRemoteJWKSet` against `jwksUrl`; jose 5 offers no way to hand that a custom fetch, so
+   * a test injects a local key set instead.
+   */
+  keySet?: JWTVerifyGetKey;
+  /** NOT IN SPEC: the clock behind `EMAIL_CONFIRMED_CACHE_TTL_MS`; defaults to the host clock. */
+  now?: () => number;
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+/** §9.4 step 1's "verified email", as the auth server states it. */
+function isEmailConfirmed(user: AuthApiUser): boolean {
+  const at = user.email_confirmed_at;
+  return typeof at === "string" && at.length > 0;
+}
+
+function asAuthApiUser(value: unknown): AuthApiUser | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const id = record["id"];
+  if (typeof id !== "string" || id.length === 0) return null;
+  const email = record["email"];
+  const confirmedAt = record["email_confirmed_at"];
+  return {
+    id,
+    email: typeof email === "string" ? email : null,
+    email_confirmed_at: typeof confirmedAt === "string" ? confirmedAt : null,
+    app_metadata: asRecord(record["app_metadata"]),
+  };
+}
+
+function toAuthUser(user: AuthApiUser): AuthUser {
+  return {
+    userId: user.id,
+    email: user.email ?? null,
+    // Authoritative, not `user_metadata` — see the file header.
+    emailVerified: isEmailConfirmed(user),
+    appMetadata: user.app_metadata ?? {},
+  };
+}
+
+function toSession(session: AuthApiSession, user: AuthApiUser): AuthSession {
+  return {
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token ?? null,
+    // NOT IN SPEC: `AuthSession.expiresAt` carries no unit in ports.ts. Epoch milliseconds, to
+    // match `Timers.now()`; GoTrue's `expires_at` is epoch seconds.
+    expiresAt:
+      typeof session.expires_at === "number" ? Math.round(session.expires_at * 1000) : null,
+    user: toAuthUser(user),
+  };
+}
+
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/u, "");
+}
+
+// ---------------------------------------------------------------------------
+// The real Supabase clients, adapted onto the two narrow interfaces above
+// ---------------------------------------------------------------------------
+
+export function createRealClients(input: SupabaseAuthClientInput): SupabaseAuthClients {
+  // No session is persisted and nothing is refreshed in the background: this process holds no
+  // user session of its own.
+  const options = {
+    auth: { persistSession: false, autoRefreshToken: false },
+    ...(input.fetchImpl === undefined ? {} : { global: { fetch: input.fetchImpl } }),
+  };
+
+  type RawResult = {
+    data: { user: AuthApiUser | null; session: AuthApiSession | null };
+    error: { message: string } | null;
+  };
+  const adapt = (result: RawResult): AuthApiResult => ({
+    user: result.data.user ?? null,
+    session: result.data.session ?? null,
+    error: result.error,
+  });
+
+  const password: PasswordAuthClient | null =
+    input.publishableKey === undefined
+      ? null
+      : (() => {
+          const client = createClient(input.url, input.publishableKey, options);
+          return {
+            signUp: async (email, password_) =>
+              adapt((await client.auth.signUp({ email, password: password_ })) as unknown as RawResult),
+            signInWithPassword: async (email, password_) =>
+              adapt(
+                (await client.auth.signInWithPassword({
+                  email,
+                  password: password_,
+                })) as unknown as RawResult,
+              ),
+          };
+        })();
+
+  const adminClient = createClient(input.url, input.secretKey, options);
+  const admin: AdminAuthClient = {
+    getUserById: async (userId) => {
+      let result: Awaited<ReturnType<typeof adminClient.auth.admin.getUserById>>;
+      try {
+        result = await adminClient.auth.admin.getUserById(userId);
+      } catch {
+        return { kind: "unavailable" };
+      }
+      if (result.error !== null) {
+        // 404 is the auth server stating the user does not exist; anything else is a fault.
+        return (result.error as { status?: number }).status === 404
+          ? { kind: "missing" }
+          : { kind: "unavailable" };
+      }
+      const user = asAuthApiUser(result.data.user);
+      return user === null ? { kind: "missing" } : { kind: "ok", user };
+    },
+  };
+
+  return { password, admin };
+}
+
+// ---------------------------------------------------------------------------
+// The provider
+// ---------------------------------------------------------------------------
+
+type LocalClaims = { sub: string; email: string | null; appMetadata: Record<string, unknown> };
+
+export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
+  const baseUrl = trimTrailingSlash(input.url);
+  const authBase = `${baseUrl}/auth/v1`;
+  const jwksUrl = input.jwksUrl ?? `${authBase}/.well-known/jwks.json`;
+  const doFetch: typeof fetch = input.fetchImpl ?? ((...args) => fetch(...args));
+  const now = input.now ?? systemTimers.now;
+  const buildClients = input.clientFactory ?? createRealClients;
+
+  let clients: SupabaseAuthClients | null = null;
+  const lazyClients = (): SupabaseAuthClients => {
+    clients ??= buildClients({
+      url: baseUrl,
+      secretKey: input.secretKey,
+      publishableKey: input.publishableKey,
+      fetchImpl: input.fetchImpl,
+    });
+    return clients;
+  };
+
+  // Built on first use so constructing the provider does no I/O.
+  let keySet: JWTVerifyGetKey | null = input.keySet ?? null;
+  const keys = (): JWTVerifyGetKey => {
+    keySet ??= createRemoteJWKSet(new URL(jwksUrl));
+    return keySet;
+  };
+
+  // env.ts calls the shared secret "discouraged": a leaked one lets an attacker mint any `sub`.
+  // It is only tried when the JWKS path has already failed, and only if configured.
+  const hsKey = input.jwtSecret === undefined ? null : new TextEncoder().encode(input.jwtSecret);
+
+  /** userId -> when its *confirmed* email was last read from the auth server. */
+  const confirmed = new Map<string, { at: number; email: string | null }>();
+
+  const verifyOptions = { issuer: authBase, audience: AUTHENTICATED_AUDIENCE };
+
+  const claimsFrom = (payload: JWTPayload): LocalClaims | null => {
+    const sub = payload.sub;
+    if (typeof sub !== "string" || sub.length === 0) return null;
+    const email = payload["email"];
+    return {
+      sub,
+      email: typeof email === "string" ? email : null,
+      // `app_metadata` only. `user_metadata` is user-editable and is never read.
+      appMetadata: asRecord(payload["app_metadata"]),
+    };
+  };
+
+  // Both verifiers swallow their error: it covers a forged or expired token, a project that
+  // signs symmetrically (the JWKS then publishes no matching key and jose throws) and a JWKS
+  // that could not be fetched. The caller falls through to the next tier.
+  const verifyAgainstJwks = async (token: string): Promise<LocalClaims | null> => {
+    try {
+      const { payload } = await jwtVerify(token, keys(), verifyOptions);
+      return claimsFrom(payload);
+    } catch {
+      return null;
+    }
+  };
+
+  const verifyAgainstSecret = async (
+    token: string,
+    key: Uint8Array,
+  ): Promise<LocalClaims | null> => {
+    try {
+      const { payload } = await jwtVerify(token, key, verifyOptions);
+      return claimsFrom(payload);
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Last-resort verification for a project that is still signing with a symmetric secret this
+   * server has not been given: ask the auth server itself. The `apikey` header is the publishable
+   * key when one is configured, otherwise the secret key — both are Supabase's own credentials
+   * and neither is ever echoed back to a caller.
+   */
+  const fetchUserByToken = async (token: string): Promise<AdminLookup> => {
+    let response: Response;
+    try {
+      response = await doFetch(`${authBase}/user`, {
+        method: "GET",
+        headers: {
+          apikey: input.publishableKey ?? input.secretKey,
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+        },
+      });
+    } catch {
+      return { kind: "unavailable" };
+    }
+    if (response.status === 401 || response.status === 403) return { kind: "missing" };
+    if (!response.ok) return { kind: "unavailable" };
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return { kind: "unavailable" };
+    }
+    const user = asAuthApiUser(body);
+    return user === null ? { kind: "unavailable" } : { kind: "ok", user };
+  };
+
+  /** §9.4 step 1's input, taken from the auth server rather than from the token. */
+  const authoritativeUser = async (userId: string): Promise<AdminLookup> => {
+    const cached = confirmed.get(userId);
+    if (cached !== undefined && now() - cached.at < EMAIL_CONFIRMED_CACHE_TTL_MS) {
+      return {
+        kind: "ok",
+        user: {
+          id: userId,
+          email: cached.email,
+          // Only confirmed emails are cached, so a hit means confirmed. The timestamp's value is
+          // never shown to anyone; `isEmailConfirmed` only asks whether it is set.
+          email_confirmed_at: new Date(cached.at).toISOString(),
+        },
+      };
+    }
+
+    const admin = lazyClients().admin;
+    if (admin === null) return { kind: "unavailable" };
+    const lookup = await admin.getUserById(userId).catch(
+      (): AdminLookup => ({ kind: "unavailable" }),
+    );
+    if (lookup.kind === "ok" && isEmailConfirmed(lookup.user)) {
+      confirmed.set(userId, { at: now(), email: lookup.user.email ?? null });
+    }
+    return lookup;
+  };
+
+  const requirePasswordClient = (): PasswordAuthClient => {
+    const password = lazyClients().password;
+    if (password === null) throw new ApiError("unavailable", PASSWORD_PATH_DISABLED_MESSAGE);
+    return password;
+  };
+
+  return {
+    verifyAccessToken: async (token) => {
+      if (token.length === 0) return null;
+
+      // Tier 1: the project's published asymmetric keys, its issuer and the `authenticated`
+      // audience — no round trip, which is why §9.2's browser-to-auth arrow can stay separate.
+      let claims = await verifyAgainstJwks(token);
+      // Tier 2: the legacy HS256 shared secret, when the deployment has one.
+      if (claims === null && hsKey !== null) claims = await verifyAgainstSecret(token, hsKey);
+
+      if (claims !== null) {
+        const lookup = await authoritativeUser(claims.sub);
+        // The auth server says this user no longer exists: not currently valid.
+        if (lookup.kind === "missing") return null;
+        if (lookup.kind === "unavailable") {
+          // Fail closed on the security-relevant field: the signature proved who this is, but
+          // nothing proved the email is confirmed, so §9.4 step 1 must not pass.
+          return {
+            userId: claims.sub,
+            email: claims.email,
+            emailVerified: false,
+            appMetadata: claims.appMetadata,
+          };
+        }
+        const authoritative = toAuthUser(lookup.user);
+        return {
+          userId: claims.sub,
+          email: authoritative.email ?? claims.email,
+          emailVerified: authoritative.emailVerified,
+          // From the verified token's provider-controlled claim, not from the lookup.
+          appMetadata: claims.appMetadata,
+        };
+      }
+
+      // Tier 3: unverifiable locally — ask the auth server, which is the authority either way.
+      const lookup = await fetchUserByToken(token);
+      if (lookup.kind !== "ok") return null;
+      return toAuthUser(lookup.user);
+    },
+
+    signUp: async (email, password) => {
+      const result = await requirePasswordClient().signUp(email, password);
+      if (result.error !== null || result.user === null) {
+        throw new ApiError("unauthorized", SIGN_UP_FAILED_MESSAGE);
+      }
+      // §9.4: "A pending account can log in, verify its email and see the code screen." When the
+      // project requires confirmation, GoTrue returns a user with no session; when confirmation
+      // is disabled it returns a session and an already-set `email_confirmed_at`. Requiring both
+      // means an unconfirmed account never leaves here holding an active session.
+      if (result.session === null || !isEmailConfirmed(result.user)) {
+        return { pendingEmailVerification: true, userId: result.user.id };
+      }
+      return toSession(result.session, result.user);
+    },
+
+    signInWithPassword: async (email, password) => {
+      const result = await requirePasswordClient().signInWithPassword(email, password);
+      if (result.error !== null || result.user === null || result.session === null) {
+        throw new ApiError("unauthorized", SIGN_IN_FAILED_MESSAGE);
+      }
+      return toSession(result.session, result.user);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+/**
+ * Anything the provider throws becomes a 401 rather than a 500: a rejected sign-in is an expected
+ * outcome, not a server fault, and the provider's own wording never reaches the client (it would
+ * distinguish "no such account" from "wrong password"). An `ApiError` the provider raised itself
+ * (the 503 for a server with no publishable key) is passed through unchanged.
+ */
+async function callProvider<T>(
+  deps: ServerDeps,
+  event: string,
+  message: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    // Tokens and keys are never part of these arguments, so nothing secret is logged.
+    deps.log.warn(event, { reason: error instanceof Error ? error.message : String(error) });
+    throw new ApiError("unauthorized", message);
+  }
+}
+
+function sessionBody(session: AuthSession): Record<string, unknown> {
+  return {
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    expiresAt: session.expiresAt,
+  };
+}
+
+export function createAuthRoutes(): Route[] {
+  return [
+    // §9.2 puts sign-up in the browser, against Supabase Auth. This route is the optional
+    // server-side equivalent for a deployment that configures a publishable key (BUILD M8's
+    // fixture accounts); otherwise it answers 503 with `PASSWORD_PATH_DISABLED_MESSAGE`.
+    route("POST", "/api/auth/signup", "none", async (req, deps) => {
+      const email = str(req.body, "email");
+      const password = str(req.body, "password");
+      const result = await callProvider(deps, "auth.signup_rejected", SIGN_UP_FAILED_MESSAGE, () =>
+        deps.auth.signUp(email, password),
+      );
+
+      if ("pendingEmailVerification" in result) {
+        // §9.4: the account exists and is pending; it verifies its email, then sees the code
+        // screen. No session is handed out until the provider says the email is confirmed.
+        return ok({ pendingEmailVerification: true, userId: result.userId, session: null });
+      }
+      return ok({
+        pendingEmailVerification: false,
+        userId: result.user.userId,
+        session: sessionBody(result),
+      });
+    }),
+
+    route("POST", "/api/auth/signin", "none", async (req, deps) => {
+      const email = str(req.body, "email");
+      const password = str(req.body, "password");
+      const session = await callProvider(
+        deps,
+        "auth.signin_rejected",
+        SIGN_IN_FAILED_MESSAGE,
+        () => deps.auth.signInWithPassword(email, password),
+      );
+      return ok({
+        userId: session.user.userId,
+        emailVerified: session.user.emailVerified,
+        session: sessionBody(session),
+      });
+    }),
+
+    // §9.4: declared `user`, not `active`, because this *is* the code screen's read — a pending
+    // account must be able to see that it needs a code. Every other authenticated endpoint is
+    // `active` and 403s for the same caller (BUILD M6-T1).
+    route("GET", "/api/auth/me", "user", async (req) => {
+      const { profile, user } = req;
+      if (profile === null || user === null) throw new ApiError("unauthorized", "sign in first");
+      return ok({
+        profile: { id: profile.id, status: profile.status, rating: profile.rating },
+        // §9.4: "Redeeming an invite code flips pending to active", so only a pending account is
+        // shown the code screen. A banned account is not offered a way out of it.
+        needsInviteCode: profile.status === "pending",
+        emailVerified: user.emailVerified,
+      });
+    }),
+  ];
+}

@@ -1,0 +1,26 @@
+{
+  "id": "09-illegal-l2-short",
+  "spec": "09-deckbuilder.cy.ts",
+  "description": "Breaks L2 and nothing else: 19 cards where DECK_SIZE is 20. Distinct, non-Token, all in the catalog and all owned once, so the only message the validator can produce for this deck is L2. Nineteen is the count a deckbuilder reaches by deleting one card, which is why L2 pluralises its count.",
+  "cards": [
+    "core-001",
+    "core-002",
+    "core-003",
+    "core-004",
+    "core-005",
+    "core-006",
+    "core-007",
+    "core-008",
+    "core-009",
+    "core-010",
+    "core-011",
+    "core-012",
+    "core-013",
+    "core-014",
+    "core-015",
+    "core-016",
+    "core-017",
+    "core-018",
+    "core-019"
+  ]
+}

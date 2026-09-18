@@ -1,0 +1,31 @@
+{
+  "name": "jackioh",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "pnpm --filter @jackioh/web build",
+    "dev": "pnpm --filter @jackioh/web dev",
+    "fuzz": "vitest run --project cards fuzz",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "pnpm --filter @jackioh/e2e test:e2e",
+    "typecheck": "pnpm --filter @jackioh/cards run gen && tsc -p tsconfig.json && tsc -p packages/engine/tsconfig.json && tsc -p packages/cards/tsconfig.json && tsc -p packages/validator/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "validate:catalog": "tsx packages/cards/scripts/validate-catalog.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.5",
+    "@vitest/coverage-v8": "5.0.1",
+    "eslint": "10.10.0",
+    "fast-check": "4.10.1",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,98 @@
+// Mana refresh, temporary mana and the cost calculation (SPEC §2.3, §6.3 Cost, R65).
+
+import type { GameEvent } from "@jackioh/shared";
+import { MAX_MANA } from "./config";
+import { defOf } from "./catalog";
+import { scriptOf } from "./scripts";
+import type { CardInstance, GameState, PlayerModifier, PlayerState } from "./state";
+
+/** §2.3: max mana is min(turns started, 4) plus modifiers, floored at 0. */
+export function maxManaFor(side: PlayerState): number {
+  const base = Math.min(side.turnsStarted, MAX_MANA);
+  return Math.max(0, base + side.mana.permMod + side.mana.nextTurnMod);
+}
+
+/** Start of turn: refresh to max, then clear the one-shot modifier (Hinder). */
+export function refreshMana(side: PlayerState): void {
+  const max = maxManaFor(side);
+  side.mana.max = max;
+  side.mana.current = max;
+  side.mana.nextTurnMod = 0;
+}
+
+/** Temporary mana may take current above max (§2.3). */
+export function gainMana(side: PlayerState, amount: number): void {
+  side.mana.current = Math.max(0, side.mana.current + amount);
+}
+
+export function spendMana(side: PlayerState, amount: number): void {
+  side.mana.current = Math.max(0, side.mana.current - amount);
+}
+
+export function manaEvent(player: "p1" | "p2", side: PlayerState): GameEvent {
+  return { type: "manaChanged", player, current: side.mana.current, max: side.mana.max };
+}
+
+/** The printed cost as it stands: X uses the chosen X, an embiggen card the chosen price (R65). */
+export function printedCost(state: GameState, instance: CardInstance): number {
+  const script = scriptOf(instance);
+  if (script.cost !== undefined) return Math.max(0, script.cost({ state, instance }));
+
+  const cost = defOf(state, instance.defId).cost;
+  if (cost === "X") return Math.max(0, instance.x ?? 0);
+  if (typeof cost === "number") return cost;
+  return instance.embiggened === true ? cost.embiggen : cost.base;
+}
+
+export function isXCost(state: GameState, instance: CardInstance): boolean {
+  return defOf(state, instance.defId).cost === "X";
+}
+
+/**
+ * R48: a modifier that covers a player's *next* turn does nothing on the turn it was created on,
+ * and nothing on the opponent's turn in between either — #77's text is "during **your** next turn",
+ * so it is live only once that player is the active one on a later turn. `expireModifiers` ends it
+ * at the cleanup of that player's next turn, which is why this is a separate question from expiry.
+ */
+export function modifierIsLive(state: GameState, mod: PlayerModifier): boolean {
+  if (mod.expiry.until !== "nextTurnOf") return true;
+  return state.turn > mod.expiry.fromTurn && state.active === mod.expiry.player;
+}
+
+/**
+ * R65: start from costOverride or the printed cost, add the instance's costMod, add the player's
+ * discounts, then Professor Curvature if the result is 4, and floor at 0. An X-cost card costs
+ * exactly X and ignores modifiers, unless an override makes it free.
+ */
+export function effectiveCost(state: GameState, instance: CardInstance): number {
+  const side = state.players[instance.controller];
+  const override = instance.costOverride;
+
+  // R65: X-cost cards cost exactly X and ignore modifiers, but an override makes one free.
+  if (isXCost(state, instance)) {
+    return override !== undefined ? 0 : printedCost(state, instance);
+  }
+
+  let cost = (override ?? printedCost(state, instance)) + instance.costMod;
+  const type = defOf(state, instance.defId).type;
+
+  for (const mod of side.mods) {
+    if (mod.kind !== "costDiscount") continue;
+    if (!modifierIsLive(state, mod)) continue;
+    if (mod.onlyType !== undefined && mod.onlyType !== type) continue;
+    if (mod.onlyCurrentCost !== undefined) continue; // Curvature is applied below.
+    cost -= mod.amount;
+  }
+
+  for (const mod of side.mods) {
+    if (mod.kind !== "costDiscount" || mod.onlyCurrentCost === undefined) continue;
+    if (!modifierIsLive(state, mod)) continue;
+    if (cost === mod.onlyCurrentCost) cost -= mod.amount;
+  }
+
+  return Math.max(0, cost);
+}
+
+export function canAfford(state: GameState, instance: CardInstance): boolean {
+  return effectiveCost(state, instance) <= state.players[instance.controller].mana.current;
+}

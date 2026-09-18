@@ -1,0 +1,27 @@
+{
+  "id": "12-rotation-b",
+  "spec": "12-rotation-and-swaps.cy.ts",
+  "description": "Player 2's deck. It owes the spec two things: one unit on the far side of the centre line, so the rotation has a card that crosses into seat 1's lanes and changes control (R14), and one face-down trap of its own, so R33 can be read from both directions - the trap seat 1 owns stops being readable when the board swap hands it to seat 2, and this one starts being readable when the same swap hands it to seat 1. #60 Bear Honeypot is that trap: it fires only \"when the opponent plays a card costing 1 or less\", and after seat 1's 1-cost My Pawn is already set the spec never plays a card that cheap again (units cost 2, Silly Silas 3, Pocket Chaos 2), so it stays face-down and unfired through both halves. The same six plain 2-cost units as seat 1 (#1, #20, #45, #56, #32, #91) give seat 2 a unit to place with no Cry and no prompt. The other thirteen cards are inert in hand, are never played, and exist so seat 2 always has an affordable card and R82 does not auto-end a turn the spec means to end by clicking. Nothing here can bounce, destroy or lock anything on either board while the spec is building it.",
+  "cards": [
+    "core-060",
+    "core-001",
+    "core-020",
+    "core-032",
+    "core-045",
+    "core-056",
+    "core-091",
+    "core-005",
+    "core-006",
+    "core-013",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-047",
+    "core-053",
+    "core-066",
+    "core-070",
+    "core-072",
+    "core-073",
+    "core-011"
+  ]
+}

@@ -1,0 +1,171 @@
+// T-felinor Felinor Token (SPEC §7; §3.2, §5.1, R11, R64, R74). BUILD M4-T4's token row: "Vanish on
+// leaving the field; … none in random pools".
+//
+// §7 gives this token NO radiant form, so both `describe`s below prove the same behaviour, once on
+// each face, and the data block proves the faces are one face (`def.radiant` equals `def.base`).
+//
+// The token's whole point beyond its 1/1 is the Felinor TAG, so the tag is proved twice: as catalog
+// data, and through #43 Big Felinor, whose "destroy all non-Felinor units" has to spare it (the same
+// tag is what #92 Felinor Fiender's `setStat` counts, R39).
+
+import { describe, expect, it } from "vitest";
+import {
+  defOf,
+  findInstance,
+  isUnitToken,
+  keywordsOf,
+  moveToZone,
+  query,
+  type CardInstance,
+} from "@jackioh/engine";
+import { base, def, radiant } from "../src/scripts/t-felinor";
+import { scenario } from "./_harness";
+
+const SEED = "t-felinor";
+const LANES = [1, 2, 3, 4, 5];
+
+describe("T-felinor Felinor Token (SPEC §7)", () => {
+  describe("card data (§7)", () => {
+    it("§7 prints a 1-cost Unit/Felinor Token with 1/1, no keywords and no text", () => {
+      expect(def.index).toBe("T-felinor");
+      expect(def.cost).toBe(1);
+      expect(def.type).toBe("Unit");
+      expect(def.token).toBe(true);
+      expect(def.tags).toContain("Felinor");
+      expect(def.tags).toContain("Token");
+      expect(def.base.attack).toBe(1);
+      expect(def.base.health).toBe(1);
+      expect(def.base.keywords).toEqual([]);
+      expect(def.base.text).toBe("");
+    });
+
+    it("§7 gives the Felinor Token no radiant form, so def.radiant equals def.base (BUILD M4-T1)", () => {
+      expect(def.radiant).toEqual(def.base);
+    });
+
+    it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
+      expect(base).toEqual({});
+      expect(radiant).toBe(base);
+    });
+  });
+
+  describe("base", () => {
+    it("§7 and R64 #62 fills every empty unit zone with 1/1 Felinor Tokens", () => {
+      const s = scenario({ seed: SEED, p1: { hand: ["core-062"] } });
+
+      s.play("core-062");
+
+      for (const lane of LANES) {
+        const token = s.unit("p1", lane);
+        expect(token?.defId, `lane ${lane} should hold a Felinor Token`).toBe(def.id);
+        s.expectStats(token as CardInstance, { attack: 1, health: 1, maxHealth: 1 });
+        expect(keywordsOf(s.state, token as CardInstance)).toEqual([]);
+      }
+    });
+
+    it("§7 the Felinor Token carries the Felinor tag, so #43's non-Felinor sweep spares it", () => {
+      const s = scenario({
+        seed: SEED,
+        p1: { hand: ["core-043"], field: ["core-t-felinor", "core-025"] },
+        p2: { field: ["core-025"] },
+      });
+      const token = s.unit("p1", 1) as CardInstance;
+      const ally = s.unit("p1", 2) as CardInstance;
+      const enemy = s.unit("p2", 1) as CardInstance;
+      expect(defOf(s.state, token.defId).tags).toContain("Felinor");
+
+      // Base #43: "Cry: destroy all non-Felinor units on both sides".
+      s.play("core-043");
+
+      s.expectInZone(token, "field");
+      s.expectStats(token, { attack: 1, health: 1, maxHealth: 1 });
+      s.expectInZone(ally, "graveyard");
+      s.expectInZone(enemy, "graveyard");
+      s.expectInZone("core-043", "field");
+    });
+
+    it("R11 a Felinor Token that dies in combat ceases to exist and never reaches a graveyard", () => {
+      const s = scenario({ seed: SEED, p1: { field: ["core-t-felinor"] }, p2: { field: ["core-025"] } });
+      const token = s.unit("p1", 1) as CardInstance;
+      expect(isUnitToken(s.state, token)).toBe(true);
+
+      s.attack(token, s.unit("p2", 1) as CardInstance);
+
+      s.expectEvents("destroyed");
+      s.expectInZone(token, "gone");
+      // R11: "nothing can reach it again" — the engine's own lookup no longer finds it. (The
+      // instance this test holds is a pre-`reduce` snapshot, so its own `zone` is stale; the
+      // `gone` tag is asserted below, where `moveToZone` mutates the live instance in place.)
+      expect(findInstance(s.state, token.id)).toBeUndefined();
+      expect(s.pile("p1", "graveyard")).toEqual([]);
+      expect(s.pile("p1", "exile")).toEqual([]);
+    });
+
+    it('R11 and §3.2 "Bounce all units clears them": a bounced Felinor Token reaches no hand', () => {
+      const s = scenario({ seed: SEED, p1: { field: ["core-t-felinor"] } });
+      const token = s.unit("p1", 1) as CardInstance;
+
+      // Called directly so this test holds the instance the engine mutates (`reduce` clones).
+      expect(moveToZone(s.state, token, "hand")).toBe("vanished");
+
+      s.expectInZone(token, "gone");
+      expect(token.zone.z).toBe("gone");
+      expect(s.hand("p1")).toEqual([]);
+      expect(s.unit("p1", 1)).toBeNull();
+    });
+
+    it("R11 a unit token never enters a graveyard or exile, so a fixture may not put one there", () => {
+      expect(() => scenario({ seed: SEED, p1: { graveyard: ["core-t-felinor"] } })).toThrow(/unit token/);
+      expect(() => scenario({ seed: SEED, p1: { exile: ["core-t-felinor"] } })).toThrow(/unit token/);
+    });
+
+    it("§5.1 and §7 a Felinor pool never offers the token unless it also asks for tokens", () => {
+      const ids = (defs: { id: string }[]): string[] => defs.map((entry) => entry.id);
+
+      expect(ids(query({ tags: ["Felinor"] }))).not.toContain(def.id);
+      expect(ids(query({ type: "Unit" }))).not.toContain(def.id);
+      expect(ids(query({ tags: ["Felinor", "Token"] }))).toContain(def.id);
+      expect(ids(query({ token: true }))).toContain(def.id);
+      expect(ids(query({ index: "T-felinor" }))).toEqual([def.id]);
+    });
+  });
+
+  // §7's "Radiant form" column reads "none", so every case above holds for a radiant instance too:
+  // R74 sets the flag, and the flag selects the same face and the same (empty) Script.
+  describe("radiant (§7: none — the radiant face is the base face)", () => {
+    it("R74 a radiant Felinor Token is still a 1/1 with no keywords and the Felinor tag", () => {
+      const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-felinor", radiant: true }] } });
+      const token = s.unit("p1", 1) as CardInstance;
+
+      expect(token.radiant).toBe(true);
+      s.expectStats(token, { attack: 1, health: 1, maxHealth: 1 });
+      expect(keywordsOf(s.state, token)).toEqual([]);
+      expect(defOf(s.state, token.defId).tags).toContain("Felinor");
+    });
+
+    it("§7 a radiant Felinor Token is spared by #43's non-Felinor sweep exactly as the base face is", () => {
+      const s = scenario({
+        seed: SEED,
+        p1: { hand: ["core-043"], field: [{ def: "core-t-felinor", radiant: true }, { def: "core-025" }] },
+      });
+      const token = s.unit("p1", 1) as CardInstance;
+      const ally = s.unit("p1", 2) as CardInstance;
+
+      s.play("core-043");
+
+      s.expectInZone(token, "field");
+      s.expectInZone(ally, "graveyard");
+    });
+
+    it("R11 a radiant Felinor Token that leaves the field ceases to exist just as the base face does", () => {
+      const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-felinor", radiant: true }] } });
+      const token = s.unit("p1", 1) as CardInstance;
+
+      expect(moveToZone(s.state, token, "exile")).toBe("vanished");
+
+      s.expectInZone(token, "gone");
+      expect(token.zone.z).toBe("gone");
+      expect(s.pile("p1", "exile")).toEqual([]);
+    });
+  });
+});

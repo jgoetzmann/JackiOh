@@ -1,0 +1,27 @@
+{
+  "id": "11-radiant-a",
+  "spec": "11-radiant.cy.ts",
+  "description": "Player 1's deck: the radiant deck. It carries the three cards BUILD's row names plus one that makes the second of them deterministic. #26 Glowy Jelly Bean (3, \"Choose a card in your hand; it becomes Radiant\") is the hand converter, and its pick is a declared `hand` target that travels in the play action (R81). #8 Mr. Vanilla (1, 3/3 -> 7/7, Immutable) is the field unit: it is cheap enough to stand on lane 1 from the first turn, its two forms differ in both numbers so a swap cannot be mistaken for a no-op, and it has no Cry, no keywords that touch the damage pipeline and no buff of its own, so 7/7 minus the damage it is carrying is the only arithmetic in the assertion (5.2: \"the base-stat layer swaps immediately, damage taken and buffs are kept\"). #28 Knockoff Temu Glowy Jelly Bean (2) is the field converter, and it picks uniformly over the NON-RADIANT cards of the union of your library, hand and field (R60), so the only way a spec can assert which card it converts is to leave exactly one candidate. #94 Genn's Greed (4, \"Draw every 2-cost card from your library; exile every odd-cost card in your library, hand and GY (X-cost cards exempt); gain 2 mana\") is how that happens, and it is why every other card here has an odd cost: Genn's Greed is the only 4-cost card, #28 is the only 2-cost card and there is no 0-cost and no X-cost card (#24, #74, #98 excluded, since an X card is exempt from the exile and would survive in the library as a second candidate), so the moment Genn's Greed resolves the library is empty, the hand holds nothing but the Knockoff Temu it just drew, and the +2 mana pays for it on the same turn. When Knockoff Temu then resolves it is in the resolving zone rather than the hand (10.1, 10.5 step 4), Mr. Vanilla is the one non-Radiant card the union holds, and the conversion lands on it whatever the seed says. The other sixteen cards are inert while they sit in a hand - no Cast-on-draw (#21, #27), no Quickdraw (#65, #84, #98), no \"while in your hand\" trigger (#89) - and are there only to be exiled: ten cost 1 and six cost 3.",
+  "cards": [
+    "core-008",
+    "core-026",
+    "core-028",
+    "core-094",
+    "core-003",
+    "core-004",
+    "core-005",
+    "core-011",
+    "core-015",
+    "core-031",
+    "core-035",
+    "core-041",
+    "core-044",
+    "core-050",
+    "core-006",
+    "core-013",
+    "core-019",
+    "core-047",
+    "core-053",
+    "core-070"
+  ]
+}

@@ -1,0 +1,269 @@
+/**
+ * BUILD M7-T2: "one integration test per reason".
+ *
+ * §2.5's six live endings each get a test — `hero-death`, `concede`, `draw-accepted`, `turn-cap`,
+ * `disconnect`, `match-ceiling` — and each one drives the scripted engine to produce the outcome
+ * rather than hand-writing it, so the reason strings under test are the ones `reduce` really
+ * emits. Then the two things §9.5 asks of the writer itself: it is idempotent, and the reaper
+ * resolves anything past the ceiling.
+ */
+
+import { describe, expect, it } from "vitest";
+import type { Action, ActionInput, PlayerId } from "@jackioh/shared";
+import { createRecordResult, reapStuckMatches } from "../../src/api/results";
+import { initialClocks, matchCeilingAt } from "../../src/match/clock";
+import { eloUpdate } from "../../src/config";
+import type { MatchSeat, ResultRow } from "../../src/api/ports";
+import type { TerminalOutcome } from "../../src/match/contracts";
+import { createTestDeps, type TestDeps } from "../fakes/deps";
+import { createFakeEngine, fakeDeck } from "../fakes/engine";
+
+const MINUTE = 60 * 1000;
+const MATCH_ID = "match-1";
+const A = "profile-a";
+const B = "profile-b";
+
+const seats: readonly [MatchSeat, MatchSeat] = [
+  { profileId: A, player: "p1", deck: fakeDeck(["test-lethal"]) },
+  { profileId: B, player: "p2", deck: fakeDeck() },
+];
+
+/**
+ * Runs the scripted engine (`test/fakes/engine.ts`) to a terminal state and hands back the
+ * outcome and turn count the actor would pass to `recordResult`.
+ */
+function play(inputs: readonly ActionInput[]): { outcome: TerminalOutcome; turns: number } {
+  const engine = createFakeEngine();
+  let state = engine.beginGame(
+    engine.createGame({ seed: "seed-1", decks: [[...seats[0].deck], [...seats[1].deck]] }),
+  ).state;
+  let n = 0;
+  for (const input of inputs) {
+    n += 1;
+    const action = { ...input, nonce: `nonce-${String(n)}` } as Action;
+    const result = engine.reduce(state, action);
+    if (result.error !== undefined) throw new Error(`${input.type}: ${result.error}`);
+    state = result.state;
+  }
+  const snapshot = engine.snapshot(state);
+  if (snapshot.result === null) throw new Error("the scripted game did not end");
+  return { outcome: snapshot.result, turns: snapshot.turn };
+}
+
+/** Thirty player-turns ends the match in a draw (§2.5, `FAKE_TURN_CAP`). */
+function toTheTurnCap(): ActionInput[] {
+  return Array.from({ length: 30 }, (_, i) => ({
+    type: "endTurn" as const,
+    playerId: (i % 2 === 0 ? "p1" : "p2") as PlayerId,
+  }));
+}
+
+async function scenario(
+  options: { ratings?: [number, number]; startedOffsetMs?: number } = {},
+): Promise<TestDeps> {
+  const deps = createTestDeps();
+  const [ratingA, ratingB] = options.ratings ?? [1000, 1000];
+  deps.store.seedProfile({ id: A, rating: ratingA, inMatchId: MATCH_ID });
+  deps.store.seedProfile({ id: B, rating: ratingB, inMatchId: MATCH_ID });
+  const startedAt = deps.timers.now() - (options.startedOffsetMs ?? 0);
+  await deps.store.matches.create({
+    id: MATCH_ID,
+    seed: "seed-1",
+    players: [A, B],
+    decks: [[...seats[0].deck], [...seats[1].deck]],
+    catalogVersion: deps.catalog.version,
+    status: "live",
+    createdAt: startedAt,
+    finishedAt: null,
+    clocks: initialClocks(startedAt, deps.config),
+  });
+  await deps.matches.start({
+    matchId: MATCH_ID,
+    seed: "seed-1",
+    catalogVersion: deps.catalog.version,
+    seats: [seats[0], seats[1]],
+  });
+  return deps;
+}
+
+async function record(deps: TestDeps, inputs: readonly ActionInput[]): Promise<ResultRow> {
+  const { outcome, turns } = play(inputs);
+  return createRecordResult(deps)({
+    matchId: MATCH_ID,
+    seats,
+    outcome,
+    turns,
+    at: deps.timers.now(),
+  });
+}
+
+/** §9.5: "Every ending records a result and clears both players' in-match state." */
+async function expectOneEnding(
+  deps: TestDeps,
+  expected: { winner: string | null; reason: string; ratingAfter: [number, number] },
+): Promise<void> {
+  expect(deps.store.tables.results).toHaveLength(1);
+  const row = deps.store.tables.results[0];
+  expect(row?.matchId).toBe(MATCH_ID);
+  expect(row?.players).toEqual([A, B]);
+  expect(row?.winnerProfileId).toBe(expected.winner);
+  expect(row?.reason).toBe(expected.reason);
+  expect(row?.ratingAfter).toEqual(expected.ratingAfter);
+
+  const [profileA, profileB] = [await deps.store.profiles.getById(A), await deps.store.profiles.getById(B)];
+  expect([profileA?.rating, profileB?.rating]).toEqual(expected.ratingAfter);
+  // Both, for every reason — M7-T1's "both can queue again".
+  expect(profileA?.inMatchId).toBeNull();
+  expect(profileB?.inMatchId).toBeNull();
+
+  const match = await deps.store.matches.get(MATCH_ID);
+  expect(match?.status).toBe("finished");
+}
+
+describe("results (M7-T2)", () => {
+  // K = 32 from 1000 against an equally rated opponent: the expected score is 0.5, so the winner
+  // takes 16 and the loser gives 16 (R79).
+  const WIN = 1016;
+  const LOSS = 984;
+
+  it("hero-death: the winner is rated up and the loser down", async () => {
+    const deps = await scenario();
+    const row = await record(deps, [{ type: "play", instanceId: "p1-h0", playerId: "p1" }]);
+    expect(row.reason).toBe("hero-death");
+    expect(row.turns).toBe(1);
+    expect(row.ratingBefore).toEqual([1000, 1000]);
+    await expectOneEnding(deps, { winner: A, reason: "hero-death", ratingAfter: [WIN, LOSS] });
+  });
+
+  it("concede: the conceding player loses (§2.5)", async () => {
+    const deps = await scenario();
+    await record(deps, [{ type: "concede", playerId: "p2" }]);
+    await expectOneEnding(deps, { winner: A, reason: "concede", ratingAfter: [WIN, LOSS] });
+  });
+
+  it("draw-accepted: a draw moves both ratings toward each other", async () => {
+    const deps = await scenario({ ratings: [1200, 1000] });
+    const row = await record(deps, [
+      { type: "offerDraw", playerId: "p1" },
+      { type: "answerDraw", accept: true, playerId: "p2" },
+    ]);
+    const expected = eloUpdate(1200, 1000, 0.5);
+    expect(row.ratingBefore).toEqual([1200, 1000]);
+    // The favourite gives points away on a draw; the underdog takes them.
+    expect(expected.a).toBeLessThan(1200);
+    expect(expected.b).toBeGreaterThan(1000);
+    await expectOneEnding(deps, {
+      winner: null,
+      reason: "draw-accepted",
+      ratingAfter: [expected.a, expected.b],
+    });
+  });
+
+  it("turn-cap: the 30th player-turn is a draw", async () => {
+    const deps = await scenario();
+    const row = await record(deps, toTheTurnCap());
+    expect(row.turns).toBeGreaterThan(30);
+    await expectOneEnding(deps, {
+      winner: null,
+      reason: "turn-cap",
+      ratingAfter: [1000, 1000],
+    });
+  });
+
+  it("disconnect: the disconnected player loses (§9.5)", async () => {
+    const deps = await scenario();
+    await record(deps, [{ type: "disconnectExpired", player: "p1", playerId: "p1" }]);
+    await expectOneEnding(deps, { winner: B, reason: "disconnect", ratingAfter: [LOSS, WIN] });
+  });
+
+  it("match-ceiling: an actor-resolved ceiling is a draw with the ordinary Elo move (R112)", async () => {
+    const deps = await scenario({ ratings: [1200, 1000] });
+    const row = await record(deps, [{ type: "ceilingReached", playerId: "p1" }]);
+    const expected = eloUpdate(1200, 1000, 0.5);
+    expect(row.turns).toBe(1);
+    await expectOneEnding(deps, {
+      winner: null,
+      reason: "match-ceiling",
+      ratingAfter: [expected.a, expected.b],
+    });
+  });
+
+  it("writes one row and rates once when it is called twice for the same match (§9.5)", async () => {
+    const deps = await scenario();
+    const first = await record(deps, [{ type: "concede", playerId: "p2" }]);
+    const again = await createRecordResult(deps)({
+      matchId: MATCH_ID,
+      seats,
+      // Even a different outcome cannot rewrite history: the row already written is returned.
+      outcome: { winner: "p2", reason: "hero-death" },
+      turns: 99,
+      at: deps.timers.now() + 1,
+    });
+    expect(again).toEqual(first);
+    await expectOneEnding(deps, { winner: A, reason: "concede", ratingAfter: [WIN, LOSS] });
+  });
+
+  it("clears a stray open queue ticket so both players can queue again (§9.5)", async () => {
+    const deps = await scenario();
+    await deps.store.tickets.insert({
+      id: "ticket-a",
+      profileId: A,
+      rating: 1000,
+      deck: [...seats[0].deck],
+      catalogVersion: deps.catalog.version,
+      enqueuedAt: deps.timers.now(),
+      status: "open",
+      matchId: null,
+    });
+    await record(deps, [{ type: "concede", playerId: "p2" }]);
+    expect(await deps.store.tickets.openForProfile(A)).toBeNull();
+  });
+
+  describe("the reaper (§9.5, R112)", () => {
+    it("resolves a match past its ceiling as a draw and leaves both ratings unchanged (R112)", async () => {
+      const deps = await scenario({ ratings: [1200, 1000], startedOffsetMs: 61 * MINUTE });
+      const startedAt = deps.timers.now() - 61 * MINUTE;
+      expect(matchCeilingAt(startedAt, deps.config)).toBeLessThan(deps.timers.now());
+
+      expect(await reapStuckMatches(deps)).toEqual([MATCH_ID]);
+
+      const row = deps.store.tables.results[0];
+      // R112: "records `turns = 0` and leaves both ratings unchanged".
+      expect(row?.turns).toBe(0);
+      expect(row?.ratingBefore).toEqual([1200, 1000]);
+      await expectOneEnding(deps, {
+        winner: null,
+        reason: "match-ceiling",
+        ratingAfter: [1200, 1000],
+      });
+      // The in-memory actor is dropped; the log stays.
+      expect(deps.matches.has(MATCH_ID)).toBe(false);
+    });
+
+    it("leaves a match that has not reached its ceiling alone", async () => {
+      const deps = await scenario();
+      expect(await reapStuckMatches(deps)).toEqual([]);
+      expect(deps.store.tables.results).toHaveLength(0);
+      expect(deps.matches.has(MATCH_ID)).toBe(true);
+    });
+
+    it("is a no-op once the actor has already recorded the ending", async () => {
+      const deps = await scenario({ startedOffsetMs: 61 * MINUTE });
+      await record(deps, [{ type: "concede", playerId: "p2" }]);
+      expect(await reapStuckMatches(deps)).toEqual([]);
+      await expectOneEnding(deps, { winner: A, reason: "concede", ratingAfter: [WIN, LOSS] });
+    });
+
+    it("keeps its own row when an actor reports the same match afterwards", async () => {
+      const deps = await scenario({ ratings: [1200, 1000], startedOffsetMs: 61 * MINUTE });
+      await reapStuckMatches(deps);
+      const late = await record(deps, [{ type: "concede", playerId: "p2" }]);
+      expect(late.reason).toBe("match-ceiling");
+      await expectOneEnding(deps, {
+        winner: null,
+        reason: "match-ceiling",
+        ratingAfter: [1200, 1000],
+      });
+    });
+  });
+});

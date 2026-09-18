@@ -1,0 +1,1739 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Board > renders the full board from a PlayerView 1`] = `
+<div
+  class="board"
+  data-active="you"
+  data-phase="main"
+  data-testid="board"
+  data-turn="3"
+  data-viewer="p1"
+>
+  <div
+    class="seat seat-opponent"
+    data-player="p2"
+    data-side="opponent"
+  >
+    <div
+      aria-disabled="true"
+      aria-label="Opponent hero"
+      class="hero hero-opponent"
+      data-legal="false"
+      data-side="opponent"
+      data-testid="hero-opponent"
+    >
+      <span
+        class="hero-seat"
+      >
+        Opponent
+      </span>
+      <span
+        class="hero-health"
+        data-health="30"
+        title="Health"
+      >
+        30
+      </span>
+    </div>
+    <span
+      class="mana"
+      data-current="0"
+      data-max="3"
+      data-testid="mana-opponent"
+      title="Mana 0/3"
+    >
+      <span
+        class="crystals"
+      >
+        <span
+          class="mana-crystal crystal"
+          data-filled="false"
+        />
+        <span
+          class="mana-crystal crystal"
+          data-filled="false"
+        />
+        <span
+          class="mana-crystal crystal"
+          data-filled="false"
+        />
+      </span>
+      <span
+        class="mana-text"
+      >
+        0
+        /
+        3
+      </span>
+    </span>
+    <span
+      class="piles"
+    >
+      <span
+        class="pile"
+        data-fatigue="0"
+        data-testid="library-opponent"
+        title="Library"
+      >
+        <span
+          class="pile-label"
+        >
+          Library
+        </span>
+        <span
+          class="pile-n"
+          data-testid="library-count-opponent"
+        >
+          9
+        </span>
+      </span>
+      <span
+        class="pile"
+        data-testid="graveyard-opponent"
+        title="Graveyard"
+      >
+        <span
+          class="pile-label"
+        >
+          Graveyard
+        </span>
+        <span
+          class="pile-n"
+          data-testid="graveyard-count-opponent"
+        >
+          1
+        </span>
+      </span>
+      <span
+        class="pile"
+        data-testid="exile-opponent"
+        title="Exile"
+      >
+        <span
+          class="pile-label"
+        >
+          Exile
+        </span>
+        <span
+          class="pile-n"
+          data-testid="exile-count-opponent"
+        >
+          0
+        </span>
+      </span>
+    </span>
+  </div>
+  <div
+    aria-label="opponent hand"
+    class="hand hand-opponent"
+    data-side="opponent"
+    data-testid="hand-opponent"
+  >
+    <span
+      class="pile"
+    >
+      <span
+        class="pile-label"
+      >
+        Hand
+      </span>
+      <span
+        class="pile-n"
+        data-testid="hand-count-opponent"
+      >
+        6
+      </span>
+    </span>
+    <div
+      class="hand-cards"
+    >
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+      <div
+        aria-label="Face-down card"
+        class="card card-back card-hand"
+        data-face-down="true"
+      >
+        <span
+          aria-hidden="true"
+          class="card-back-mark"
+        />
+      </div>
+    </div>
+  </div>
+  <div
+    aria-label="Field"
+    class="field"
+  >
+    <div
+      class="lane"
+      data-lane="1"
+    >
+      <div
+        aria-disabled="true"
+        aria-label="opponent backrow lane 1"
+        class="zone zone-backrow"
+        data-lane="1"
+        data-legal="false"
+        data-row="backrow"
+        data-side="opponent"
+        data-testid="zone-opponent-backrow-1"
+      >
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="opponent units lane 1"
+        class="zone zone-units"
+        data-lane="1"
+        data-legal="false"
+        data-row="units"
+        data-side="opponent"
+        data-testid="zone-opponent-units-1"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p2"
+          data-def-id="core-008"
+          data-legal="false"
+          data-owner="p2"
+          data-position="ATK"
+          data-testid="card-u6"
+          title="core-008"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-008
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="4"
+            >
+              4
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="4"
+              data-max-health="4"
+            >
+              4
+              /
+              4
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="keywords"
+          >
+            <span
+              class="keyword"
+              data-keyword="Divine Shield"
+              title="Divine Shield"
+            >
+              DS
+            </span>
+          </span>
+          <span
+            aria-label="Divine Shield"
+            class="shield-icon"
+            data-icon="shield"
+          />
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u6"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you units lane 1"
+        class="zone zone-units"
+        data-lane="1"
+        data-legal="false"
+        data-row="units"
+        data-side="you"
+        data-testid="zone-you-units-1"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p1"
+          data-def-id="core-004"
+          data-legal="false"
+          data-owner="p1"
+          data-position="ATK"
+          data-testid="card-u1"
+          title="core-004"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-004
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="2"
+            >
+              2
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="1"
+              data-max-health="3"
+            >
+              1
+              /
+              3
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="keywords"
+          >
+            <span
+              class="keyword"
+              data-keyword="Taunt"
+              title="Taunt"
+            >
+              TA
+            </span>
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u1"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you backrow lane 1"
+        class="zone zone-backrow"
+        data-lane="1"
+        data-legal="false"
+        data-row="backrow"
+        data-side="you"
+        data-testid="zone-you-backrow-1"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-spell card-backrow"
+          data-controller="p1"
+          data-def-id="core-020"
+          data-legal="false"
+          data-owner="p1"
+          data-testid="card-b18"
+          title="core-020"
+        >
+          <span
+            class="cost-gem"
+            data-cost="1"
+          >
+            1
+          </span>
+          <span
+            class="card-name"
+          >
+            core-020
+          </span>
+          <span
+            class="card-type"
+          >
+            Field Spell
+          </span>
+        </div>
+      </div>
+    </div>
+    <div
+      class="lane"
+      data-lane="2"
+    >
+      <div
+        aria-disabled="true"
+        aria-label="opponent backrow lane 2"
+        class="zone zone-backrow"
+        data-lane="2"
+        data-legal="false"
+        data-row="backrow"
+        data-side="opponent"
+        data-testid="zone-opponent-backrow-2"
+      >
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="opponent units lane 2"
+        class="zone zone-units zone-locked"
+        data-lane="2"
+        data-legal="false"
+        data-locked="true"
+        data-row="units"
+        data-side="opponent"
+        data-testid="zone-opponent-units-2"
+      >
+        <span
+          aria-label="Locked zone"
+          class="lock-icon"
+          title="Locked zone"
+        />
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p2"
+          data-def-id="core-013"
+          data-legal="false"
+          data-owner="p2"
+          data-position="DEF"
+          data-testid="card-u7"
+          style="transform: rotate(90deg) scale(0.72);"
+          title="core-013"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-013
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="3"
+            >
+              3
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="2"
+              data-max-health="5"
+            >
+              2
+              /
+              5
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            DEF
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u7"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you units lane 2"
+        class="zone zone-units"
+        data-lane="2"
+        data-legal="false"
+        data-row="units"
+        data-side="you"
+        data-testid="zone-you-units-2"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit radiant"
+          data-can-act="true"
+          data-controller="p1"
+          data-def-id="core-011"
+          data-legal="false"
+          data-owner="p1"
+          data-position="ATK"
+          data-radiant="true"
+          data-testid="card-u2"
+          title="core-011"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-011
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="7"
+            >
+              7
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="7"
+              data-max-health="7"
+            >
+              7
+              /
+              7
+            </span>
+            <span
+              class="stat stat-armor"
+              data-armor="2"
+            >
+              2
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="keywords"
+          >
+            <span
+              class="keyword"
+              data-keyword="Taunt"
+              title="Taunt"
+            >
+              TA
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Rush"
+              title="Rush"
+            >
+              RU
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Charge"
+              title="Charge"
+            >
+              CH
+            </span>
+            <span
+              class="keyword"
+              data-keyword="First Strike"
+              title="First Strike"
+            >
+              FS
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Poisonous"
+              title="Poisonous"
+            >
+              PO
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Lifesteal"
+              title="Lifesteal"
+            >
+              LS
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Reborn"
+              title="Reborn"
+            >
+              RB
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Divine Shield"
+              title="Divine Shield"
+            >
+              DS
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Trample"
+              title="Trample"
+            >
+              TR
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Cleave"
+              title="Cleave"
+            >
+              CL
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Indestructible"
+              title="Indestructible"
+            >
+              ND
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Immutable"
+              title="Immutable"
+            >
+              IM
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Stack"
+              title="Stack"
+            >
+              ST
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Can't attack"
+              title="Can't attack"
+            >
+              NA
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Armor"
+              data-n="2"
+              title="Armor 2"
+            >
+              AR
+               2
+            </span>
+            <span
+              class="keyword"
+              data-keyword="Lucky"
+              data-n="3"
+              title="Lucky 3"
+            >
+              LK
+               3
+            </span>
+          </span>
+          <span
+            aria-label="Divine Shield"
+            class="shield-icon"
+            data-icon="shield"
+          />
+          <span
+            class="counter counter-plague"
+            data-counter="plague"
+            title="Plague counters"
+          >
+            2
+          </span>
+          <span
+            class="counter counter-grade"
+            data-counter="grade"
+            title="Grade counters"
+          >
+            3
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u2"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you backrow lane 2"
+        class="zone zone-backrow"
+        data-lane="2"
+        data-legal="false"
+        data-row="backrow"
+        data-side="you"
+        data-testid="zone-you-backrow-2"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-spell card-backrow"
+          data-controller="p1"
+          data-def-id="core-061"
+          data-legal="false"
+          data-owner="p1"
+          data-testid="card-b19"
+          title="core-061"
+        >
+          <span
+            class="cost-gem"
+            data-cost="1"
+          >
+            1
+          </span>
+          <span
+            class="card-name"
+          >
+            core-061
+          </span>
+          <span
+            class="card-type"
+          >
+            Field Trap
+          </span>
+          <span
+            class="counter counter-grade"
+            data-counter="grade"
+            title="Grade counters"
+          >
+            2
+          </span>
+        </div>
+      </div>
+    </div>
+    <div
+      class="lane"
+      data-lane="3"
+    >
+      <div
+        aria-disabled="true"
+        aria-label="opponent backrow lane 3"
+        class="zone zone-backrow"
+        data-lane="3"
+        data-legal="false"
+        data-row="backrow"
+        data-side="opponent"
+        data-testid="zone-opponent-backrow-3"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-spell card-backrow"
+          data-controller="p2"
+          data-def-id="core-031"
+          data-legal="false"
+          data-owner="p2"
+          data-testid="card-b22"
+          title="core-031"
+        >
+          <span
+            class="cost-gem"
+            data-cost="1"
+          >
+            1
+          </span>
+          <span
+            class="card-name"
+          >
+            core-031
+          </span>
+          <span
+            class="card-type"
+          >
+            Field Spell
+          </span>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="opponent units lane 3"
+        class="zone zone-units"
+        data-lane="3"
+        data-legal="false"
+        data-row="units"
+        data-side="opponent"
+        data-testid="zone-opponent-units-3"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit radiant"
+          data-can-act="true"
+          data-controller="p2"
+          data-def-id="core-022"
+          data-legal="false"
+          data-owner="p2"
+          data-position="ATK"
+          data-radiant="true"
+          data-testid="card-u8"
+          title="core-022"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-022
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="6"
+            >
+              6
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="2"
+              data-max-health="2"
+            >
+              2
+              /
+              2
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="counter counter-plague"
+            data-counter="plague"
+            title="Plague counters"
+          >
+            1
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u8"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you units lane 3"
+        class="zone zone-units"
+        data-lane="3"
+        data-legal="false"
+        data-row="units"
+        data-side="you"
+        data-testid="zone-you-units-3"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p1"
+          data-def-id="core-017"
+          data-legal="false"
+          data-owner="p1"
+          data-position="DEF"
+          data-testid="card-u3"
+          style="transform: rotate(90deg) scale(0.72);"
+          title="core-017"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-017
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="1"
+            >
+              1
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="6"
+              data-max-health="6"
+            >
+              6
+              /
+              6
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            DEF
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u3"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you backrow lane 3"
+        class="zone zone-backrow zone-locked"
+        data-lane="3"
+        data-legal="false"
+        data-locked="true"
+        data-row="backrow"
+        data-side="you"
+        data-testid="zone-you-backrow-3"
+      >
+        <span
+          aria-label="Locked zone"
+          class="lock-icon"
+          title="Locked zone"
+        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="lane"
+      data-lane="4"
+    >
+      <div
+        aria-disabled="true"
+        aria-label="opponent backrow lane 4"
+        class="zone zone-backrow"
+        data-lane="4"
+        data-legal="false"
+        data-row="backrow"
+        data-side="opponent"
+        data-testid="zone-opponent-backrow-4"
+      >
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="opponent units lane 4"
+        class="zone zone-units"
+        data-lane="4"
+        data-legal="false"
+        data-row="units"
+        data-side="opponent"
+        data-testid="zone-opponent-units-4"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p2"
+          data-def-id="core-040"
+          data-legal="false"
+          data-owner="p2"
+          data-position="ATK"
+          data-testid="card-u9"
+          title="core-040"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-040
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="1"
+            >
+              1
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="1"
+              data-max-health="1"
+            >
+              1
+              /
+              1
+            </span>
+            <span
+              class="stat stat-armor"
+              data-armor="1"
+            >
+              1
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u9"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you units lane 4"
+        class="zone zone-units"
+        data-lane="4"
+        data-legal="false"
+        data-row="units"
+        data-side="you"
+        data-testid="zone-you-units-4"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p1"
+          data-def-id="core-034"
+          data-legal="false"
+          data-owner="p1"
+          data-position="ATK"
+          data-testid="card-u4"
+          title="core-034"
+        >
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-034
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="5"
+            >
+              5
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="4"
+              data-max-health="5"
+            >
+              4
+              /
+              5
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="keywords"
+          >
+            <span
+              class="keyword"
+              data-keyword="Stack"
+              title="Stack"
+            >
+              ST
+            </span>
+          </span>
+          <span
+            class="buried-badge"
+            data-buried="3"
+            title="Cards buried under this pile"
+          >
+            3
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u4"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you backrow lane 4"
+        class="zone zone-backrow"
+        data-lane="4"
+        data-legal="false"
+        data-row="backrow"
+        data-side="you"
+        data-testid="zone-you-backrow-4"
+      >
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="lane"
+      data-lane="5"
+    >
+      <div
+        aria-disabled="true"
+        aria-label="opponent backrow lane 5"
+        class="zone zone-backrow"
+        data-lane="5"
+        data-legal="false"
+        data-row="backrow"
+        data-side="opponent"
+        data-testid="zone-opponent-backrow-5"
+      />
+      <div
+        aria-disabled="true"
+        aria-label="opponent units lane 5"
+        class="zone zone-units"
+        data-lane="5"
+        data-legal="false"
+        data-row="units"
+        data-side="opponent"
+        data-testid="zone-opponent-units-5"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="true"
+          data-controller="p2"
+          data-def-id="core-100"
+          data-legal="false"
+          data-owner="p2"
+          data-position="ATK"
+          data-testid="card-u10"
+          title="core-100"
+        >
+          <span
+            class="cost-gem"
+            data-cost="0"
+          >
+            0
+          </span>
+          <span
+            class="card-name"
+          >
+            core-100
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="10"
+            >
+              10
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="10"
+              data-max-health="10"
+            >
+              10
+              /
+              10
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <span
+            class="keywords"
+          >
+            <span
+              class="keyword"
+              data-keyword="Trample"
+              title="Trample"
+            >
+              TR
+            </span>
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u10"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you units lane 5"
+        class="zone zone-units"
+        data-lane="5"
+        data-legal="false"
+        data-row="units"
+        data-side="you"
+        data-testid="zone-you-units-5"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-unit"
+          data-can-act="false"
+          data-controller="p1"
+          data-def-id="core-051"
+          data-legal="false"
+          data-owner="p1"
+          data-position="ATK"
+          data-testid="card-u5"
+          title="core-051"
+        >
+          <span
+            class="cost-gem"
+            data-cost="0"
+          >
+            0
+          </span>
+          <span
+            class="card-name"
+          >
+            core-051
+          </span>
+          <span
+            class="stats"
+          >
+            <span
+              class="stat stat-attack"
+              data-attack="0"
+            >
+              0
+            </span>
+            <span
+              class="stat stat-health"
+              data-health="1"
+              data-max-health="1"
+            >
+              1
+              /
+              1
+            </span>
+          </span>
+          <span
+            class="position-tag"
+          >
+            ATK
+          </span>
+          <button
+            aria-disabled="true"
+            class="switch-button"
+            data-legal="false"
+            data-testid="switch-u5"
+            disabled=""
+            title="Switch position"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+      </div>
+      <div
+        aria-disabled="true"
+        aria-label="you backrow lane 5"
+        class="zone zone-backrow"
+        data-lane="5"
+        data-legal="false"
+        data-row="backrow"
+        data-side="you"
+        data-testid="zone-you-backrow-5"
+      >
+        <div
+          aria-disabled="true"
+          class="card card-spell radiant card-backrow"
+          data-controller="p1"
+          data-def-id="core-084"
+          data-legal="false"
+          data-owner="p1"
+          data-radiant="true"
+          data-testid="card-b20"
+          title="core-084"
+        >
+          <span
+            class="cost-gem"
+            data-cost="1"
+          >
+            1
+          </span>
+          <span
+            class="card-name"
+          >
+            core-084
+          </span>
+          <span
+            class="card-type"
+          >
+            Trap
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    class="seat seat-you"
+    data-player="p1"
+    data-side="you"
+  >
+    <div
+      aria-disabled="true"
+      aria-label="Your hero"
+      class="hero hero-you"
+      data-legal="false"
+      data-side="you"
+      data-testid="hero-you"
+    >
+      <span
+        class="hero-seat"
+      >
+        You
+      </span>
+      <span
+        class="hero-health"
+        data-health="21"
+        title="Health"
+      >
+        21
+      </span>
+      <span
+        class="hero-armor"
+        data-armor="3"
+        title="Hero armor"
+      >
+        3
+      </span>
+      <button
+        aria-disabled="true"
+        class="power-button"
+        data-instance-id="power-1"
+        data-legal="false"
+        data-testid="power"
+        data-used="false"
+        data-x="2"
+        disabled=""
+        title="Heroic Power (X 2)"
+        type="button"
+      >
+        Heroic Power
+        <span
+          class="power-x"
+        >
+          2
+        </span>
+      </button>
+    </div>
+    <span
+      class="mana"
+      data-current="2"
+      data-max="4"
+      data-testid="mana-you"
+      title="Mana 2/4"
+    >
+      <span
+        class="crystals"
+      >
+        <span
+          class="mana-crystal crystal"
+          data-filled="true"
+        />
+        <span
+          class="mana-crystal crystal"
+          data-filled="true"
+        />
+        <span
+          class="mana-crystal crystal"
+          data-filled="false"
+        />
+        <span
+          class="mana-crystal crystal"
+          data-filled="false"
+        />
+      </span>
+      <span
+        class="mana-text"
+      >
+        2
+        /
+        4
+      </span>
+    </span>
+    <span
+      class="piles"
+    >
+      <span
+        class="pile"
+        data-fatigue="0"
+        data-testid="library-you"
+        title="Library"
+      >
+        <span
+          class="pile-label"
+        >
+          Library
+        </span>
+        <span
+          class="pile-n"
+          data-testid="library-count-you"
+        >
+          12
+        </span>
+      </span>
+      <span
+        class="pile"
+        data-testid="graveyard-you"
+        title="Graveyard"
+      >
+        <span
+          class="pile-label"
+        >
+          Graveyard
+        </span>
+        <span
+          class="pile-n"
+          data-testid="graveyard-count-you"
+        >
+          2
+        </span>
+      </span>
+      <span
+        class="pile"
+        data-testid="exile-you"
+        title="Exile"
+      >
+        <span
+          class="pile-label"
+        >
+          Exile
+        </span>
+        <span
+          class="pile-n"
+          data-testid="exile-count-you"
+        >
+          1
+        </span>
+      </span>
+    </span>
+  </div>
+  <div
+    aria-label="you hand"
+    class="hand hand-you"
+    data-side="you"
+    data-testid="hand-you"
+  >
+    <span
+      class="pile"
+    >
+      <span
+        class="pile-label"
+      >
+        Hand
+      </span>
+      <span
+        class="pile-n"
+        data-testid="hand-count-you"
+      >
+        4
+      </span>
+    </span>
+    <div
+      class="hand-cards"
+    >
+      <div
+        aria-disabled="true"
+        class="card card-spell card-hand"
+        data-def-id="core-002"
+        data-legal="false"
+        data-testid="hand-card-c11"
+        title="core-002"
+      >
+        <span
+          class="cost-gem"
+          data-cost="1"
+        >
+          1
+        </span>
+        <span
+          class="card-name"
+        >
+          core-002
+        </span>
+      </div>
+      <div
+        aria-disabled="true"
+        class="card card-spell radiant card-hand"
+        data-def-id="core-019"
+        data-legal="false"
+        data-radiant="true"
+        data-testid="hand-card-c12"
+        title="core-019"
+      >
+        <span
+          class="cost-gem"
+          data-cost="3"
+        >
+          3
+        </span>
+        <span
+          class="card-name"
+        >
+          core-019
+        </span>
+      </div>
+      <div
+        aria-disabled="true"
+        class="card card-spell card-hand"
+        data-def-id="core-055"
+        data-legal="false"
+        data-testid="hand-card-c13"
+        title="core-055"
+      >
+        <span
+          class="cost-gem"
+          data-cost="0"
+        >
+          0
+        </span>
+        <span
+          class="card-name"
+        >
+          core-055
+        </span>
+      </div>
+      <div
+        aria-disabled="true"
+        class="card card-spell card-hand"
+        data-def-id="core-077"
+        data-legal="false"
+        data-testid="hand-card-c14"
+        title="core-077"
+      >
+        <span
+          class="cost-gem"
+          data-cost="6"
+        >
+          6
+        </span>
+        <span
+          class="card-name"
+        >
+          core-077
+        </span>
+      </div>
+    </div>
+  </div>
+  <div
+    aria-label="Controls"
+    class="control-bar"
+  >
+    <button
+      aria-disabled="true"
+      class="control control-end-turn"
+      data-legal="false"
+      data-testid="end-turn"
+      disabled=""
+      type="button"
+    >
+      End turn
+    </button>
+    <button
+      aria-disabled="true"
+      class="control control-offer-draw"
+      data-legal="false"
+      data-testid="offer-draw"
+      disabled=""
+      type="button"
+    >
+      Offer draw
+    </button>
+    <button
+      aria-disabled="true"
+      class="control control-concede"
+      data-legal="false"
+      data-testid="concede"
+      disabled=""
+      type="button"
+    >
+      Concede
+    </button>
+  </div>
+  <ol
+    aria-label="Game log"
+    class="log"
+    data-testid="log"
+  />
+</div>
+`;

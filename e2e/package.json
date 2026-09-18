@@ -1,0 +1,23 @@
+{
+  "name": "@jackioh/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BUILD M8: the twelve Cypress end-to-end specs. Runs against apps/web in E2E=1 mode.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "check:fixtures": "node scripts/check-fixtures.mjs",
+    "test:e2e": "cypress run",
+    "test:e2e:chrome": "cypress run --browser chrome",
+    "test:e2e:electron": "cypress run --browser electron",
+    "open": "cypress open",
+    "verify": "cypress verify"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.5",
+    "@types/ws": "8.18.1",
+    "cypress": "16.1.0",
+    "typescript": "6.0.3",
+    "ws": "8.19.0"
+  }
+}

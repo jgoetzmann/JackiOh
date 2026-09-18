@@ -1,0 +1,27 @@
+{
+  "id": "01-aggro-b",
+  "spec": "01-hotseat-full-game.cy.ts",
+  "description": "Player 2's aggro deck for the full seeded game: the same rule as 01-aggro-a - every card is choice-free at play time and opens no PendingChoice - with a different twenty so the two seats are not mirror images and the recorded log exercises both sides' scripts. #1 Big D-fender and #19 Midrange Menace are the defensive anchors, #89 Corpse Eater grows in hand off both sides' deaths, #64 Gifted Program and #81 Radiant Saintess put the Radiant layer into the log, and #75 Infinite Reserves keeps a long game out of fatigue so a draw at the turn cap is reached by the cap and not by a fatigue race.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-032",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-058",
+    "core-064",
+    "core-075",
+    "core-081",
+    "core-089",
+    "core-091",
+    "core-092"
+  ]
+}

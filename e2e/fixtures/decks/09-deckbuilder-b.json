@@ -1,0 +1,27 @@
+{
+  "id": "09-deckbuilder-b",
+  "spec": "09-deckbuilder.cy.ts",
+  "description": "Deck 2 of the legal loadout spec 09 saves. SPEC §8 cards #21-#40, disjoint from 09-deckbuilder-a and 09-deckbuilder-c (L4). See 09-deckbuilder-a for why the contents are arbitrary.",
+  "cards": [
+    "core-021",
+    "core-022",
+    "core-023",
+    "core-024",
+    "core-025",
+    "core-026",
+    "core-027",
+    "core-028",
+    "core-029",
+    "core-030",
+    "core-031",
+    "core-032",
+    "core-033",
+    "core-034",
+    "core-035",
+    "core-036",
+    "core-037",
+    "core-038",
+    "core-039",
+    "core-040"
+  ]
+}

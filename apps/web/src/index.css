@@ -1,0 +1,101 @@
+/* Base reset and the design tokens the board and the prompts share.
+   Layout rules live next to their components: game/board.css, game/prompt.css. */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #10121a;
+  --bg-raised: #1a1d28;
+  --bg-sunken: #0b0d13;
+  --line: #2c3142;
+  --line-bright: #454d66;
+  --text: #e8eaf2;
+  --text-dim: #9aa1b8;
+
+  --you: #3d7bd4;
+  --opponent: #c0453f;
+  --legal: #4ec98a;
+  --selected: #f0c04a;
+  --radiant: #ffd24a;
+  --plague: #8b5cf6;
+  --grade: #38bdf8;
+  --mana: #3d7bd4;
+  --locked: #6b7280;
+
+  --card-w: 82px;
+  --card-h: 112px;
+  --gap: 6px;
+  --radius: 7px;
+
+  /* M5-T4 collapses every duration to 0 under prefers-reduced-motion. */
+  --anim-scale: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --anim-scale: 0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button[aria-disabled="true"],
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.app-shell {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.app-shell h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.notice {
+  border: 1px solid var(--opponent);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  max-width: 60ch;
+}
+
+.notice code {
+  color: var(--text-dim);
+}

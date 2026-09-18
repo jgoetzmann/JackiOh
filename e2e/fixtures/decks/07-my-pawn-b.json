@@ -1,0 +1,27 @@
+{
+  "id": "07-my-pawn-b",
+  "spec": "07-my-pawn-ai.cy.ts",
+  "description": "Player 2's deck, built around #96 My Pawn (1 mana, Trap): \"When the opponent declares an attack that would be lethal to your hero: cancel it, and an AI plays the rest of their turn with random legal actions\" (§8.5). The spec sets it on the first player-2 turn it is in hand and then never plays anything else, so the other 19 cards only have to keep the lethal arithmetic of R44 honest and the turn legal. They therefore contain nothing that changes the projection: no Armor for the hero (#84 Going Long and #1 Big D-fender's aura are excluded, and #73 Anti-oneshot Armor is excluded so the cap never lowers the projected damage), nothing that heals or raises the hero's health (#53 Reno, #47 Fig of Life excluded), no second Trap or Field Trap (#18, #41, #60, #71, #85 excluded) so My Pawn is the only backrow card that can fire, no Cast-on-draw (#21, #27 excluded) and no Quickdraw (#65, #84, #98 excluded) so nothing resolves out of the hand on its own. Player 2 also never summons a unit, which keeps the hero the only legal attack target (no Taunt check, §4.2 step 3) and leaves the board clear for the AI turn.",
+  "cards": [
+    "core-096",
+    "core-002",
+    "core-004",
+    "core-007",
+    "core-011",
+    "core-012",
+    "core-015",
+    "core-016",
+    "core-017",
+    "core-022",
+    "core-026",
+    "core-028",
+    "core-032",
+    "core-036",
+    "core-042",
+    "core-043",
+    "core-049",
+    "core-056",
+    "core-061",
+    "core-062"
+  ]
+}

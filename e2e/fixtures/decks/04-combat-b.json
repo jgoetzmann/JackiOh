@@ -1,0 +1,27 @@
+{
+  "id": "04-combat-b",
+  "spec": "04-combat.cy.ts",
+  "description": "Player 2's deck for the combat spec. #56 Jilliax (3/2; Rush, Taunt, Lifesteal, Divine Shield) is the whole far side of the scenario: its Taunt makes every other enemy target illegal (§4.2 step 3), its Divine Shield negates the first damage instance whatever the amount (§4.4 step 1), and its Lifesteal heals player 2's hero by exactly what it dealt (§4.4 step 8). #8 Mr. Vanilla is the second body: the non-Taunt unit that must NOT be highlighted while Jilliax is on the board, and the attacker that runs into player 1's Defense-Position unit. Nothing else in the deck grants a keyword, an Armor or a cost change, so every number the spec asserts comes from the printed stats and the pipeline.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-028",
+    "core-029",
+    "core-032",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-062",
+    "core-073",
+    "core-077",
+    "core-081"
+  ]
+}

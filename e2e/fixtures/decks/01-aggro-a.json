@@ -1,0 +1,27 @@
+{
+  "id": "01-aggro-a",
+  "spec": "01-hotseat-full-game.cy.ts",
+  "description": "Player 1's aggro deck for the full seeded game. Twenty cheap-to-cast cards that ask NOTHING at play time beyond the zone a permanent goes into: no card here declares a target, a mode, a direction, an X, an embiggen price or a Tribute (R81), and none of them opens a PendingChoice while it resolves (no Discover, no chained step, no chosen discard). That is what lets the spec drive a whole game through the board with only two pickers ever appearing - the opening mulligan and the zone grid - so a completed game is a statement about the hotseat loop and the replay hash rather than about prompt plumbing. The curve is aggro on purpose (thirteen cards at 1 or 2 mana, nothing above 4) so the hero race ends inside the 30 player-turn cap on most seeds: #11 Tempo Timmy, #32 Prem Panther, #45 Deft Duelist and #56 Jilliax can attack the turn they land (Rush or Charge), #20 Pointmaster and #25 4-mana 7/7 hit hard, #15 Me and Mr Token and #62 Friend of Felinors widen the board for free, and #19 Midrange Menace and #73 Anti-oneshot Armor are the only brakes.",
+  "cards": [
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-032",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-058",
+    "core-062",
+    "core-073",
+    "core-077",
+    "core-081",
+    "core-091",
+    "core-092"
+  ]
+}

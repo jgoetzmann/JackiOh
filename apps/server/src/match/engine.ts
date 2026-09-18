@@ -1,0 +1,135 @@
+/**
+ * The one seam between the server and `packages/engine` (SPEC §9.3, CLAUDE.md rule 7).
+ *
+ * The engine is pure and server-agnostic: it never reads a clock, opens a socket or touches
+ * Postgres. This port is how the actor reaches it — `createGame` / `beginGame` / `reduce` to
+ * advance the match, `legalActions` for the AI policy and the client's greying-out, `viewFor` for
+ * the only thing a socket is allowed to carry (§10.8), and `fold` to rebuild a crashed actor from
+ * `(seed, decks, log)` (§9.5).
+ *
+ * `EngineState` is opaque: it holds both hands and both libraries, so nothing outside this port
+ * inspects it. Everything the rest of the server needs about the state comes back through
+ * `viewFor` (per player) or `snapshot` (public bookkeeping the clock and the results writer need).
+ *
+ * The real binding lives in `engine.real.ts`, loaded lazily, mirroring `apps/web/src/game`.
+ */
+
+import type {
+  Action,
+  ActionBody,
+  CardDefs,
+  GameEvent,
+  GameOverReason,
+  PlayerId,
+  PlayerView,
+} from "@jackioh/shared";
+
+declare const engineStateBrand: unique symbol;
+
+export type EngineState = { readonly [engineStateBrand]: never };
+
+export type ReduceResult = { state: EngineState; events: GameEvent[]; error?: string };
+
+export type CreateGameArgs = {
+  seed: string;
+  /** Two decks of card ids in library order; the engine shuffles them with the match rng. */
+  decks: [string[], string[]];
+  catalog?: CardDefs;
+};
+
+export type FoldArgs = {
+  seed: string;
+  decks: [string[], string[]];
+  log: readonly Action[];
+  catalog?: CardDefs;
+};
+
+/**
+ * The public bookkeeping the clock (`match/clock.ts`) and the results writer (`api/results.ts`)
+ * need. Nothing here is hidden information: both clients already see all of it.
+ */
+export type MatchSnapshot = {
+  /** Player-turn counter (§2.5). */
+  turn: number;
+  active: PlayerId;
+  /** Who owes the open prompt an answer, or null (§10.6). */
+  pendingFor: PlayerId | null;
+  phase: "setup" | "mulligan" | "start" | "main" | "end" | "over";
+  result: { winner: PlayerId | "draw"; reason: GameOverReason } | null;
+};
+
+export type EnginePort = {
+  createGame: (args: CreateGameArgs) => EngineState;
+  beginGame: (state: EngineState) => ReduceResult;
+  reduce: (state: EngineState, action: Action) => ReduceResult;
+  legalActions: (state: EngineState, player: PlayerId) => ActionBody[];
+  /** SPEC §10.8: the only window a player gets onto the match. */
+  viewFor: (state: EngineState, player: PlayerId) => PlayerView;
+  /** §9.5: a crashed actor rebuilds its state by folding `(seed, log)`. */
+  fold: (args: FoldArgs) => { state: EngineState; errors: { nonce: string; error: string }[] };
+  hashState: (state: EngineState) => string;
+  snapshot: (state: EngineState) => MatchSnapshot;
+};
+
+/** The exports `engine.real.ts` needs from `@jackioh/engine`, for the missing-export report. */
+export const REQUIRED_ENGINE_EXPORTS = [
+  "createGame",
+  "beginGame",
+  "reduce",
+  "legalActions",
+  "viewFor",
+  "fold",
+  "hashState",
+] as const;
+
+export class EngineUnavailableError extends Error {
+  readonly missing: readonly string[];
+
+  constructor(missing: readonly string[], cause?: unknown) {
+    super(
+      missing.length > 0
+        ? `@jackioh/engine is missing: ${missing.join(", ")}. No match can run until the engine exports them.`
+        : `@jackioh/engine could not be loaded: ${String(cause)}`,
+    );
+    this.name = "EngineUnavailableError";
+    this.missing = missing;
+  }
+}
+
+let injected: EnginePort | null = null;
+let loading: Promise<EnginePort> | null = null;
+
+/** Tests install a scripted port instead of the real engine. */
+export function setEnginePort(port: EnginePort | null): void {
+  injected = port;
+  loading = null;
+}
+
+export function injectedEnginePort(): EnginePort | null {
+  return injected;
+}
+
+/**
+ * `engine.real.ts` is excluded from `apps/server/tsconfig.json` because
+ * `packages/engine/src/index.ts` re-exports six modules that do not exist yet (`combat`,
+ * `playChoices`, `prompts`, `triggers`, `traps`, `viewFor`) — M3 is in flight. The specifier is
+ * held in a variable so no bundler follows it. When `pnpm exec tsc -p
+ * packages/engine/tsconfig.json` is green, drop the `exclude` entry and make this a static
+ * `import { enginePort } from "./engine.real.ts"`.
+ */
+export function loadEnginePort(): Promise<EnginePort> {
+  if (injected !== null) return Promise.resolve(injected);
+  if (loading !== null) return loading;
+  const specifier = "./engine.real.ts";
+  loading = import(specifier)
+    .then((mod: { enginePort?: () => EnginePort }) => {
+      if (typeof mod.enginePort !== "function") throw new EngineUnavailableError(["enginePort"]);
+      return mod.enginePort();
+    })
+    .catch((cause: unknown) => {
+      loading = null;
+      if (cause instanceof EngineUnavailableError) throw cause;
+      throw new EngineUnavailableError([], cause);
+    });
+  return loading;
+}

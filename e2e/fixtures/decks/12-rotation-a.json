@@ -1,0 +1,27 @@
+{
+  "id": "12-rotation-a",
+  "spec": "12-rotation-and-swaps.cy.ts",
+  "description": "Player 1's deck: it drives both halves of the spec. #52 Silly Silas (3, \"Cry: choose left or right; rotate every card on the field one step around its ring\") is the rotation, and its direction is a declared `direction` pick that travels in the play action's modes (R81). #87 Pocket Chaos (2) is the swap, and \"swap boards\" is one of the three options of its declared mode. #96 My Pawn (1, Trap) is the face-down backrow card R33 is asserted on, chosen because it is the one Core trap that cannot fire in this spec: its trigger needs an attack declaration that would be lethal, and nobody attacks here. Six plain 2-cost units give the spec something to put in lanes without opening a prompt or changing the board when they land - #1 Big D-fender, #20 Pointmaster, #45 Deft Duelist, #56 Jilliax, #32 Prem Panther and #91 Fed Fauci all have keywords, auras or combat triggers and no Cry at all, so a unit play is one card click and one zone click and nothing else happens. The remaining eleven cards are inert while they sit in a hand (no Cast-on-draw, no Quickdraw, no hand trigger) and are never played; they are here so that seat 1 always has an affordable card while the spec ends turns waiting for Silas and Pocket Chaos to be drawn, which keeps R82 from auto-ending a turn the spec means to end by clicking. Nothing in the deck bounces, destroys, transforms or locks a zone, so the board the spec builds is still standing when the rotation reads it (a Locked destination would bounce a card instead of rotating it, R14) - #17 Flood and #88 Twisting Nether are held in hand and never cast.",
+  "cards": [
+    "core-052",
+    "core-087",
+    "core-096",
+    "core-001",
+    "core-020",
+    "core-032",
+    "core-045",
+    "core-056",
+    "core-091",
+    "core-006",
+    "core-013",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-047",
+    "core-053",
+    "core-066",
+    "core-070",
+    "core-073"
+  ]
+}

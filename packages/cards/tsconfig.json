@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // `scripts/` is tooling, not part of the pure card surface, and reads the filesystem.
+    "types": ["node"]
+  },
+  "include": ["src", "test", "scripts"]
+}

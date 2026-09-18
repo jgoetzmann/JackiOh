@@ -1,0 +1,27 @@
+{
+  "id": "08-do-nothing-a",
+  "spec": "08-turn-cap-draw.cy.ts",
+  "description": "Player 1's do-nothing deck for the turn cap. Two things have to be true of it and nothing else: no card can resolve unless the spec plays it, and no card can take a hero to 0, so the only way the game can end is R2's cap (30 player-turns, 15 each, then a draw). Nothing resolves from a hand or a library here: no Cast-on-draw (#21, #27 excluded, and #90's CN-Virus is a Token that no deck may hold), no Quickdraw (#65, #84, #98 excluded, so the opening hands are the plain 3 and 4 of setup step 2), no \"while in your hand\" trigger (#89 excluded) and no start-of-game roll (#98 again). Every one of the twenty costs 3 or more, which is what lets R82 do the work BUILD's row expects: max mana is min(turns started, 4) (SPEC 2.3), so on each player's first two turns nothing in hand is affordable, their only legal actions are ending the turn, conceding and offering a draw, and the engine ends the turn itself with `turnAutoEnded`. From the third turn on a 3-cost card is affordable again and the turn has to be ended by hand, which is why the spec ends turns in a loop instead of asserting that all thirty auto-end: only #29 GIGA Glowy Jelly Bean (cost 6, uncastable without a mana gain), #100 Ceaseless Void (cost 100 minus the game's draw/play/destroy/exile counters, which two do-nothing decks never push below 4), #55 Lava Golem (Tribute 3) and #66 The Rock (Tribute 1) can never be played at all, and a 20-card deck cannot be built out of four cards. Neither library runs out either: 17 cards behind a 3-card opening hand against 15 draws, so fatigue never fires and nobody loses health.",
+  "cards": [
+    "core-006",
+    "core-013",
+    "core-014",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-026",
+    "core-029",
+    "core-034",
+    "core-038",
+    "core-043",
+    "core-047",
+    "core-049",
+    "core-052",
+    "core-053",
+    "core-054",
+    "core-055",
+    "core-066",
+    "core-100"
+  ]
+}

@@ -1,0 +1,894 @@
+/* The M5-T4 animation keyframes: one block per distinct animation named in the BUILD table.
+ *
+ * The board writes `data-animating="<eventType>"` on the element the table's `target` resolved
+ * (see animations.ts); every selector here hangs off that attribute, so no component has to plumb
+ * a class through for a motion to play. Durations are the BUILD table's, scaled by `--anim-scale`
+ * (declared in src/index.css, 0 under prefers-reduced-motion), and the media block at the foot
+ * zeroes every duration outright so the collapse holds even where `calc()` is ignored.
+ */
+
+:root {
+  /* Sign of the attackDeclared lunge: -1 lunges up the board (the viewer's own attacker),
+     1 lunges down. Whoever renders the attacker sets `--lunge-dir: 1` on an opponent's unit. */
+  --lunge-dir: -1;
+  /* The lunge distance. BUILD's acceptance is "attacker translates >= 20 px toward target". */
+  --lunge-distance: 26px;
+}
+
+[data-animating] {
+  /* Nothing mid-animation is clickable: the click would race the view swap behind it. */
+  pointer-events: none;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+  will-change: transform, opacity;
+}
+
+/* --- cardPlayed: card lifts from hand and lands in the zone (400 ms) --------------------- */
+
+@keyframes jk-card-played {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateY(-24px) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-40px) scale(0.86);
+    opacity: 0;
+  }
+}
+
+[data-animating="cardPlayed"] {
+  animation-name: jk-card-played;
+  animation-duration: calc(400ms * var(--anim-scale));
+  z-index: 40;
+}
+
+/* --- summoned: card scales in at the zone (250 ms) -------------------------------------- */
+
+@keyframes jk-summon-scale {
+  0% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+[data-animating="summoned"] {
+  animation-name: jk-summon-scale;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- attackDeclared: attacker lunges toward the target and back (350 ms) ---------------- */
+
+@keyframes jk-lunge {
+  0% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(calc(var(--lunge-distance) * var(--lunge-dir)));
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+[data-animating="attackDeclared"] {
+  animation-name: jk-lunge;
+  animation-duration: calc(350ms * var(--anim-scale));
+  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+  z-index: 30;
+}
+
+/* --- attackCancelled: attacker snaps back (350 ms) -------------------------------------- */
+
+@keyframes jk-snap-back {
+  0% {
+    transform: translateY(calc(var(--lunge-distance) * var(--lunge-dir)));
+  }
+  60% {
+    transform: translateY(4px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+[data-animating="attackCancelled"] {
+  animation-name: jk-snap-back;
+  animation-duration: calc(350ms * var(--anim-scale));
+}
+
+[data-animating="attackCancelled"] .cancel-tag {
+  animation-name: jk-fade-in;
+  animation-duration: calc(350ms * var(--anim-scale));
+}
+
+/* --- damage: target shakes, red number pops (300 ms) ----------------------------------- */
+
+@keyframes jk-damage-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-5px) rotate(-1.5deg);
+  }
+  35% {
+    transform: translateX(5px) rotate(1.5deg);
+  }
+  55% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+[data-animating="damage"] {
+  animation-name: jk-damage-shake;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* The floating numbers the BUILD table names by class. The component renders the element with
+   the amount as its text; the motion lives here. */
+
+@keyframes jk-number-pop {
+  0% {
+    transform: translateY(6px) scale(0.7);
+    opacity: 0;
+  }
+  30% {
+    transform: translateY(-4px) scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-22px) scale(1);
+    opacity: 0;
+  }
+}
+
+.damage-pop,
+.heal-pop,
+.loss-pop {
+  position: absolute;
+  inset-inline-start: 50%;
+  top: 30%;
+  translate: -50% 0;
+  font-weight: 700;
+  font-size: 20px;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+  animation-name: jk-number-pop;
+  animation-fill-mode: both;
+  animation-timing-function: ease-out;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+.damage-pop {
+  color: #ff5a4f;
+}
+
+.heal-pop {
+  color: #4ec98a;
+}
+
+.loss-pop {
+  color: var(--plague);
+}
+
+/* --- healed: green number pops (300 ms) ------------------------------------------------ */
+
+@keyframes jk-heal-pop {
+  0% {
+    box-shadow: 0 0 0 0 rgb(78 201 138 / 0%);
+  }
+  40% {
+    box-shadow: 0 0 12px 4px rgb(78 201 138 / 55%);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(78 201 138 / 0%);
+  }
+}
+
+[data-animating="healed"] {
+  animation-name: jk-heal-pop;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* --- healthLost: purple number pops on the hero, no shake (300 ms) --------------------- */
+
+@keyframes jk-loss-pop {
+  0% {
+    box-shadow: 0 0 0 0 rgb(139 92 246 / 0%);
+  }
+  40% {
+    box-shadow: 0 0 14px 5px rgb(139 92 246 / 55%);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(139 92 246 / 0%);
+  }
+}
+
+[data-animating="healthLost"] {
+  animation-name: jk-loss-pop;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* --- divineShieldLost: shield shatter (250 ms) ----------------------------------------- */
+
+@keyframes jk-shield-shatter {
+  0% {
+    filter: brightness(2.2);
+    transform: scale(1);
+  }
+  40% {
+    filter: brightness(1.6);
+    transform: scale(1.08);
+  }
+  100% {
+    filter: none;
+    transform: scale(1);
+  }
+}
+
+[data-animating="divineShieldLost"] {
+  animation-name: jk-shield-shatter;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- destroyed: card dissolves, then slides to the GY count (350 ms) ------------------- */
+
+@keyframes jk-dissolve {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: none;
+  }
+  60% {
+    opacity: 0.45;
+    transform: scale(0.92) rotate(-3deg);
+    filter: grayscale(80%);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7) rotate(-6deg);
+    filter: grayscale(100%);
+  }
+}
+
+[data-animating="destroyed"] {
+  animation-name: jk-dissolve;
+  animation-duration: calc(350ms * var(--anim-scale));
+}
+
+/* --- enteredGraveyard: GY pile pulses (150 ms) ---------------------------------------- */
+
+@keyframes jk-pile-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+[data-animating="enteredGraveyard"] {
+  animation-name: jk-pile-pulse;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+/* --- exiled: card fades to black and shrinks (350 ms) --------------------------------- */
+
+@keyframes jk-exile-fade {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.55);
+    filter: brightness(0);
+  }
+}
+
+[data-animating="exiled"] {
+  animation-name: jk-exile-fade;
+  animation-duration: calc(350ms * var(--anim-scale));
+}
+
+/* --- bounced: card flies to its owner's hand (350 ms) --------------------------------- */
+
+@keyframes jk-bounce-to-hand {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(52px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+[data-animating="bounced"] {
+  animation-name: jk-bounce-to-hand;
+  animation-duration: calc(350ms * var(--anim-scale));
+  z-index: 35;
+}
+
+/* --- burned: card flips face-up above the hand and burns away (400 ms) ---------------- */
+
+@keyframes jk-burn-away {
+  0% {
+    transform: rotateY(180deg) translateY(-30px);
+    opacity: 0;
+    filter: none;
+  }
+  25% {
+    transform: rotateY(0deg) translateY(-30px);
+    opacity: 1;
+    filter: none;
+  }
+  60% {
+    filter: sepia(70%) saturate(3) brightness(1.4);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateY(0deg) translateY(-20px) scale(0.8);
+    filter: sepia(100%) saturate(4) brightness(0.4);
+    opacity: 0;
+  }
+}
+
+[data-animating="burned"] {
+  animation-name: jk-burn-away;
+  animation-duration: calc(400ms * var(--anim-scale));
+}
+
+/* --- discarded: card drops from hand to GY (300 ms) ----------------------------------- */
+
+@keyframes jk-discard-drop {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(46px) rotate(9deg);
+    opacity: 0;
+  }
+}
+
+[data-animating="discarded"] {
+  animation-name: jk-discard-drop;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* --- drawn: card slides from the library to the hand (250 ms) ------------------------- */
+
+@keyframes jk-draw-slide {
+  0% {
+    transform: translateX(0) scale(1);
+  }
+  50% {
+    transform: translateX(-10px) scale(1.1);
+  }
+  100% {
+    transform: translateX(0) scale(1);
+  }
+}
+
+[data-animating="drawn"] {
+  animation-name: jk-draw-slide;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- addedToHand: card appears at the hand edge (250 ms) ------------------------------ */
+
+@keyframes jk-hand-edge {
+  0% {
+    transform: translateY(20px) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+[data-animating="addedToHand"] {
+  animation-name: jk-hand-edge;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- shuffledIn: card flies into the library, library pulses (300 ms) ----------------- */
+
+@keyframes jk-shuffle-in {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  45% {
+    transform: scale(1.16) rotate(-4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+[data-animating="shuffledIn"] {
+  animation-name: jk-shuffle-in;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* --- buffed: stat numbers flash and tick (250 ms) ------------------------------------- */
+
+@keyframes jk-stat-tick {
+  0%,
+  100% {
+    filter: none;
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.7);
+    transform: scale(1.06);
+  }
+}
+
+[data-animating="buffed"] {
+  animation-name: jk-stat-tick;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- keywordGranted: keyword icon pops in (200 ms) ------------------------------------ */
+
+@keyframes jk-icon-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+[data-animating="keywordGranted"] .keyword-icon:last-child,
+[data-animating="keywordGranted"] {
+  animation-name: jk-icon-pop;
+  animation-duration: calc(200ms * var(--anim-scale));
+}
+
+/* --- counterChanged: counter badge ticks (200 ms) ------------------------------------- */
+
+@keyframes jk-badge-tick {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+
+[data-animating="counterChanged"] {
+  animation-name: jk-badge-tick;
+  animation-duration: calc(200ms * var(--anim-scale));
+}
+
+/* --- costChanged: cost gem flashes and ticks (200 ms) --------------------------------- */
+
+@keyframes jk-gem-tick {
+  0%,
+  100% {
+    filter: none;
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(2);
+    transform: scale(1.22);
+  }
+}
+
+[data-animating="costChanged"] {
+  animation-name: jk-gem-tick;
+  animation-duration: calc(200ms * var(--anim-scale));
+}
+
+/* --- modifierChanged: player modifier badge appears or fades (200 ms) ----------------- */
+
+@keyframes jk-badge-fade {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+[data-animating="modifierChanged"] {
+  animation-name: jk-badge-fade;
+  animation-duration: calc(200ms * var(--anim-scale));
+}
+
+/* --- radiantSet: gold glow pulse, stats swap (400 ms) -------------------------------- */
+
+@keyframes jk-radiant-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 210 74 / 0%);
+    filter: none;
+  }
+  45% {
+    box-shadow: 0 0 22px 8px rgb(255 210 74 / 85%);
+    filter: brightness(1.5);
+  }
+  100% {
+    box-shadow: 0 0 8px 2px rgb(255 210 74 / 45%);
+    filter: none;
+  }
+}
+
+[data-animating="radiantSet"] {
+  animation-name: jk-radiant-pulse;
+  animation-duration: calc(400ms * var(--anim-scale));
+}
+
+/* --- transformed: card spins and shows its new face (400 ms) ------------------------- */
+
+@keyframes jk-spin-face {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(90deg);
+  }
+  100% {
+    transform: rotateY(0deg);
+  }
+}
+
+[data-animating="transformed"] {
+  animation-name: jk-spin-face;
+  animation-duration: calc(400ms * var(--anim-scale));
+  backface-visibility: hidden;
+}
+
+/* --- fused: two cards merge into one (500 ms) ---------------------------------------- */
+
+@keyframes jk-fuse-merge {
+  0% {
+    transform: scale(1) translateX(0);
+    filter: none;
+  }
+  55% {
+    transform: scale(1.14) translateX(0);
+    filter: brightness(1.8);
+  }
+  100% {
+    transform: scale(1) translateX(0);
+    filter: none;
+  }
+}
+
+[data-animating="fused"] {
+  animation-name: jk-fuse-merge;
+  animation-duration: calc(500ms * var(--anim-scale));
+}
+
+/* --- positionSwitched: rotate 90 deg / back (250 ms) --------------------------------- */
+
+@keyframes jk-rotate-def {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(90deg);
+  }
+}
+
+[data-animating="positionSwitched"] {
+  animation-name: jk-rotate-def;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- controlChanged: card slides across the centre line (450 ms) --------------------- */
+
+@keyframes jk-cross-centre {
+  0% {
+    transform: translateY(calc(-1 * (var(--card-h, 112px) + 2 * var(--gap, 6px))));
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+[data-animating="controlChanged"] {
+  animation-name: jk-cross-centre;
+  animation-duration: calc(450ms * var(--anim-scale));
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 45;
+}
+
+/* --- rotated: all cards slide one lane (500 ms) -------------------------------------- */
+
+@keyframes jk-lane-slide {
+  0% {
+    transform: translateX(calc(-1 * (var(--card-w, 82px) + var(--gap, 6px))));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+[data-animating="rotated"] {
+  animation-name: jk-lane-slide;
+  animation-duration: calc(500ms * var(--anim-scale));
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- swapped: the swapped values cross the centre line together (500 ms) ------------- */
+
+@keyframes jk-swap-cross {
+  0%,
+  100% {
+    transform: perspective(900px) rotateX(0deg);
+  }
+  50% {
+    transform: perspective(900px) rotateX(6deg);
+  }
+}
+
+[data-animating="swapped"] {
+  animation-name: jk-swap-cross;
+  animation-duration: calc(500ms * var(--anim-scale));
+}
+
+/* --- locked: chain icon closes over the zone (250 ms) -------------------------------- */
+
+@keyframes jk-chain-close {
+  0% {
+    box-shadow: inset 0 0 0 0 var(--locked, #6b7280);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: inset 0 0 0 3px var(--locked, #6b7280);
+    opacity: 0.8;
+  }
+}
+
+[data-animating="locked"] {
+  animation-name: jk-chain-close;
+  animation-duration: calc(250ms * var(--anim-scale));
+}
+
+/* --- trapFired: backrow card flips face-up, holds, then dissolves (700 ms) ----------- */
+
+@keyframes jk-trap-flip {
+  0% {
+    transform: rotateY(180deg) scale(1);
+    opacity: 1;
+  }
+  20% {
+    transform: rotateY(0deg) scale(1.06);
+    opacity: 1;
+  }
+  /* The hold: BUILD wants the trap's name readable through the middle of the motion. */
+  75% {
+    transform: rotateY(0deg) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateY(0deg) scale(0.9);
+    opacity: 0.15;
+  }
+}
+
+[data-animating="trapFired"] {
+  animation-name: jk-trap-flip;
+  animation-duration: calc(700ms * var(--anim-scale));
+  z-index: 50;
+}
+
+/* A Field Trap stays on the board after it fires (§3.3), so it keeps the flip and drops the
+   dissolve. The component marks it with `data-field-trap="true"`. */
+[data-animating="trapFired"][data-field-trap="true"] {
+  animation-name: jk-trap-flip-hold;
+}
+
+@keyframes jk-trap-flip-hold {
+  0% {
+    transform: rotateY(180deg) scale(1);
+  }
+  20% {
+    transform: rotateY(0deg) scale(1.06);
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+  }
+}
+
+/* --- manaChanged: crystals fill/empty (150 ms) --------------------------------------- */
+
+@keyframes jk-crystal-fill {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: brightness(1.8);
+  }
+}
+
+[data-animating="manaChanged"] {
+  animation-name: jk-crystal-fill;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+/* --- turnStarted / turnAutoEnded: the turn banner (600 ms) --------------------------- */
+
+@keyframes jk-banner {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  18% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+[data-animating="turnStarted"],
+[data-animating="turnAutoEnded"] {
+  animation-name: jk-banner;
+  animation-duration: calc(600ms * var(--anim-scale));
+}
+
+/* --- turnEnded: end-turn button greys out (150 ms) ----------------------------------- */
+
+@keyframes jk-grey-out {
+  0% {
+    filter: none;
+    opacity: 1;
+  }
+  100% {
+    filter: grayscale(100%);
+    opacity: 0.45;
+  }
+}
+
+[data-animating="turnEnded"] {
+  animation-name: jk-grey-out;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+/* --- promptOpened / promptAnswered: the modal fades (150 ms each) -------------------- */
+
+@keyframes jk-fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes jk-fade-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+[data-animating="promptOpened"] {
+  animation-name: jk-fade-in;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+[data-animating="promptAnswered"] {
+  animation-name: jk-fade-out;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+/* --- drawOffered / drawAnswered: the offer toast (150 ms / 300 ms) ------------------- */
+
+@keyframes jk-toast-in {
+  0% {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes jk-toast-resolve {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+[data-animating="drawOffered"] {
+  animation-name: jk-toast-in;
+  animation-duration: calc(150ms * var(--anim-scale));
+}
+
+[data-animating="drawAnswered"] {
+  animation-name: jk-toast-resolve;
+  animation-duration: calc(300ms * var(--anim-scale));
+}
+
+/* --- gameOver: result overlay (BUILD duration "—", so 0 ms) -------------------------- */
+
+@keyframes jk-result-overlay {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* The overlay is terminal: nothing waits on it, so the queue gives it no time and this block
+   never sees a `data-animating="gameOver"`. It is attached to the overlay's own testid instead,
+   so the result still fades in without the runner holding the stream open. */
+[data-testid="result-overlay"] {
+  animation-name: jk-result-overlay;
+  animation-duration: calc(220ms * var(--anim-scale));
+  animation-fill-mode: both;
+}
+
+/* --- prefers-reduced-motion: every duration collapses to 0 (BUILD M5-T4) ------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  [data-animating],
+  [data-testid="result-overlay"],
+  .damage-pop,
+  .heal-pop,
+  .loss-pop {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "09-illegal-l3-duplicate",
+  "spec": "09-deckbuilder.cy.ts",
+  "description": "Breaks L3 (at most MAX_COPIES = 1 of a card per deck): 20 cards, of which core-001 appears twice. It necessarily breaks L5 too - a launch-grant profile owns exactly one copy of every non-Token card (R111), so two copies across the loadout is one more than is owned - and the spec asserts both messages rather than pretending L3 can be provoked alone with MAX_COPIES = 1.",
+  "cards": [
+    "core-001",
+    "core-001",
+    "core-002",
+    "core-003",
+    "core-004",
+    "core-005",
+    "core-006",
+    "core-007",
+    "core-008",
+    "core-009",
+    "core-010",
+    "core-011",
+    "core-012",
+    "core-013",
+    "core-014",
+    "core-015",
+    "core-016",
+    "core-017",
+    "core-018",
+    "core-019"
+  ]
+}

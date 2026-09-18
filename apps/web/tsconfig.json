@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts", "vitest.config.ts"],
+  "exclude": [
+    // `src/game/engine.real.ts` is the only static import of `@jackioh/engine`, and
+    // `packages/engine` does not compile yet: `index.ts` re-exports `./combat`, `./playChoices`,
+    // `./prompts`, `./triggers`, `./traps` and `./viewFor`, none of which exist (M3 is in flight).
+    // Including this file would drag those errors into the client's typecheck. Delete this entry
+    // — and the `@vite-ignore` in `src/game/engine.ts` — the day `pnpm exec tsc -p
+    // packages/engine/tsconfig.json` is green. Nothing else in `src` imports the engine.
+    "src/game/engine.real.ts"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "03-sheepish-b",
+  "spec": "03-trap-opponent-turn.cy.ts",
+  "description": "Player 2's deck for the Sheepish spec: #41 Sheepish and nineteen cards the spec never plays. Sheepish is the only Trap in either deck, so the face-down card in player 2's backrow can only be that one and the trap that fires on player 1's turn is unambiguous. Nothing else here is a Trap, a Field Trap, a Cast-on-draw card or a Quickdraw card, and every card is choice-free at play time, so player 2's turns are a bare set-and-pass.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-032",
+    "core-041",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-062",
+    "core-073",
+    "core-075",
+    "core-077",
+    "core-081"
+  ]
+}

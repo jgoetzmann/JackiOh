@@ -1,0 +1,210 @@
+// The whole client in one component: board (M5-T1), pickers (M5-T2), animation runner (M5-T4).
+//
+// It holds exactly three pieces of state, and none of them is a rule:
+//
+//  - `interaction` — the play or attack the player is halfway through building. `actions.ts` is
+//    the only thing that advances it, and it advances it by filtering the `legal` array the
+//    engine handed us. Nothing here asks whether a card is affordable or a target is reachable.
+//  - `queue` — the animation runner. BUILD M5-T4 says the view updates after the animation for an
+//    event completes, so the view this component renders is the one the events were planned
+//    against; it swaps to the newest view when the queue settles.
+//  - `shown` — that held-back view.
+//
+// Everything else is `props.view` and `props.legal`. `onAction` goes straight out to the caller,
+// which is the only thing that talks to the engine (CLAUDE.md rule 7).
+
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+
+import type { ActionBody, PlayerView } from "@jackioh/shared";
+
+import Board from "./Board.tsx";
+import Prompt from "./Prompt.tsx";
+import { IDLE, highlightFor, onClickTarget, onControl, type Interaction } from "./actions.ts";
+import {
+  animTestid,
+  createAnimationQueue,
+  prefersReducedMotion,
+  type AnimationQueue,
+} from "./animations.ts";
+import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
+import "./animations.css";
+
+/**
+ * The `turnStarted` / `turnAutoEnded` banner. `Board` deliberately does not render it — one
+ * `turn-banner` in the tree, and the shell owns it (M5-T4, `e2e/support/testids.ts` BANNER).
+ */
+function bannerText(view: PlayerView, lastType: string | undefined): string | null {
+  if (lastType === "turnAutoEnded") return "No moves left — turn ended";
+  if (view.phase === "mulligan") return "Mulligan";
+  return view.active === view.viewer ? "Your turn" : "Opponent's turn";
+}
+
+export type GameProps = {
+  view: PlayerView;
+  legal: readonly ActionBody[];
+  onAction: (body: ActionBody) => void;
+  /** The engine's refusal for the last action, if any. `PlayerView` has no error channel. */
+  error?: string | null;
+};
+
+export default function Game({ view, legal, onAction, error }: GameProps): ReactElement {
+  const [interaction, setInteraction] = useState<Interaction>(IDLE);
+
+  // The view the DOM is showing: the newest one once the queue has settled, an older one while
+  // an event is still animating over it (BUILD M5-T4).
+  const [shown, setShown] = useState<PlayerView>(view);
+  const latest = useRef<PlayerView>(view);
+  latest.current = view;
+
+  const [animating, setAnimating] = useState(() => new Map<string, never>());
+  const queue = useRef<AnimationQueue | null>(null);
+
+  if (queue.current === null) {
+    queue.current = createAnimationQueue({
+      reducedMotion: prefersReducedMotion(),
+      onSettled: () => {
+        setShown(latest.current);
+      },
+    });
+  }
+  const runner = queue.current;
+
+  useEffect(() => {
+    const stop = runner.subscribe(() => {
+      setAnimating(runner.animating() as Map<string, never>);
+    });
+    return () => {
+      stop();
+      runner.reset();
+    };
+  }, [runner]);
+
+  // A new view arrives with the events that produced it. Plan them against the view they
+  // describe, then let the runner decide when the board may show it.
+  const seen = useRef<PlayerView | null>(null);
+  useEffect(() => {
+    if (seen.current === view) return;
+    seen.current = view;
+    if (view.events.length > 0) runner.enqueue(view.events, view);
+    if (runner.idle()) setShown(view);
+  }, [view, runner]);
+
+  // A seat hand-over or a game over must not sit behind a queue of animations.
+  const settleNow = useCallback(() => {
+    runner.drain();
+    setShown(latest.current);
+  }, [runner]);
+
+  useEffect(() => {
+    if (view.result !== null) settleNow();
+  }, [view.result, settleNow]);
+
+  const dispatch = useCallback(
+    (body: ActionBody) => {
+      setInteraction(IDLE);
+      onAction(body);
+    },
+    [onAction],
+  );
+
+  const handleClick = useCallback(
+    (target: ClickTarget) => {
+      const next = onClickTarget(shown, legal, interaction, target);
+      setInteraction(next.interaction);
+      if (next.action !== undefined) onAction(next.action);
+    },
+    [shown, legal, interaction, onAction],
+  );
+
+  const handleControl = useCallback(
+    (control: BoardControl) => {
+      const body = onControl(legal, control);
+      // No matching legal action means the control was greyed out; a click on it does nothing.
+      if (body !== undefined) dispatch(body);
+    },
+    [legal, dispatch],
+  );
+
+  const highlight = useMemo(() => highlightFor(shown, legal, interaction), [shown, legal, interaction]);
+
+  const lastTurnEvent = [...shown.events].reverse().find((e) => e.type === "turnStarted" || e.type === "turnAutoEnded");
+  const banner = bannerText(shown, lastTurnEvent?.type);
+
+  // BUILD M5-T4 `drawOffered` / `drawAnswered`: a toast on the seat that owes the answer. It can
+  // only be driven off the event stream, because `SideView` carries no draw-offer state — see the
+  // finding in apps/web/README.md. A reload therefore loses the toast (spec 05).
+  const drawEvent = [...shown.events].reverse().find((e) => e.type === "drawOffered" || e.type === "drawAnswered");
+  const drawToast =
+    drawEvent === undefined
+      ? null
+      : drawEvent.type === "drawAnswered"
+        ? drawEvent.accept
+          ? "Draw accepted"
+          : "Draw declined"
+        : drawEvent.player === shown.viewer
+          ? null // The offerer sees nothing; the toast belongs to the seat that must answer.
+          : "Your opponent offers a draw";
+
+  return (
+    <div className="game" data-testid="game" data-viewer={shown.viewer}>
+      {error != null && error !== "" ? (
+        <p className="game-error" data-testid="action-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {banner !== null ? (
+        <div
+          className="turn-banner"
+          data-testid={testid.banner}
+          data-animating={animating.get(testid.banner)}
+          role="status"
+        >
+          {banner}
+        </div>
+      ) : null}
+
+      {drawToast !== null ? (
+        <div
+          className="draw-toast"
+          data-testid={animTestid.drawToast}
+          data-animating={animating.get(animTestid.drawToast)}
+          role="status"
+        >
+          {drawToast}
+        </div>
+      ) : null}
+
+      <Board
+        view={shown}
+        highlight={highlight}
+        animating={animating}
+        onClick={handleClick}
+        onControl={handleControl}
+      />
+
+      <Prompt
+        view={shown}
+        interaction={interaction}
+        legal={legal}
+        onAction={dispatch}
+        onInteraction={setInteraction}
+        onCancel={() => setInteraction(IDLE)}
+      />
+
+      {shown.result !== null ? (
+        <div
+          className="result-overlay"
+          data-testid={testid.result}
+          data-animating={animating.get(testid.result)}
+          role="status"
+        >
+          <strong>
+            {shown.result.winner === "draw" ? "Draw" : shown.result.winner === shown.viewer ? "Win" : "Loss"}
+          </strong>
+          <span>{shown.result.reason}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}

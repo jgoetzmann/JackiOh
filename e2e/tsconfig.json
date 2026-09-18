@@ -1,0 +1,15 @@
+{
+  // e2e is deliberately self-contained: it type-checks without packages/* or apps/* being
+  // buildable, because M8 is written before the client and server are finished. The only place
+  // that touches engine source is support/tasks/replay-runner.ts, which runs under tsx from the
+  // repo root and is excluded from this project.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["cypress", "node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["cypress.config.ts", "support/**/*.ts", "cypress/**/*.ts"],
+  "exclude": ["support/tasks/replay-runner.ts", "node_modules"]
+}

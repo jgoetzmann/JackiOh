@@ -1,0 +1,193 @@
+/* The choice pickers (BUILD M5-T2, SPEC §10.6). One modal, ten pickers.
+   Tokens come from src/index.css. M5-T4's promptOpened / promptAnswered animations key off
+   [data-prompt-kind] on .prompt, so that attribute is the contract, not these classes. */
+
+.prompt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgb(7 9 14 / 72%);
+}
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, 100%);
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line-bright);
+  border-radius: calc(var(--radius) * 1.6);
+  background: var(--bg-raised);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 55%);
+}
+
+.prompt-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.prompt-count,
+.prompt-sub {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* --- option shapes ------------------------------------------------------------------------- */
+
+.prompt-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: var(--card-w);
+  min-height: var(--card-h);
+  padding: 6px;
+  text-align: left;
+  background: var(--bg-sunken);
+}
+
+.prompt-card-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prompt-card-text {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prompt-list button {
+  width: 100%;
+  text-align: left;
+}
+
+.prompt-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.prompt-zones {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.prompt-zone-row {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.prompt-direction {
+  display: flex;
+  gap: var(--gap);
+}
+
+.prompt-arrow {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  cursor: pointer;
+  user-select: none;
+  font-size: 18px;
+}
+
+.prompt-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.prompt-stepper-value {
+  min-width: 3ch;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+}
+
+.prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.prompt-toggle {
+  display: flex;
+  gap: 0;
+}
+
+.prompt-toggle button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.prompt-toggle button:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-width: 0;
+}
+
+/* --- state -------------------------------------------------------------------------------- */
+
+.prompt [aria-pressed="true"],
+.prompt-arrow[aria-pressed="true"] {
+  border-color: var(--selected);
+  box-shadow: inset 0 0 0 1px var(--selected);
+}
+
+.prompt-actions {
+  display: flex;
+  gap: var(--gap);
+  margin-top: 2px;
+}
+
+.prompt-board-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+@media (width <= 480px) {
+  .prompt {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .prompt-zones {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

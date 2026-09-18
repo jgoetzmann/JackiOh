@@ -1,0 +1,7 @@
+# e2e/ is deliberately its own pnpm root: the root workspace globs only `packages/*` and `apps/*`,
+# and the suite needs Cypress without adding a heavyweight dependency to every other package.
+# `pnpm install` inside e2e/ therefore just works, and Cypress is allowed to run its postinstall,
+# which fetches the browser binary.
+packages: []
+allowBuilds:
+  cypress: true

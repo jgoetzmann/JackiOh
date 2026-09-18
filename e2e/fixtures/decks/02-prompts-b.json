@@ -1,0 +1,27 @@
+{
+  "id": "02-prompts-b",
+  "spec": "02-prompts.cy.ts",
+  "description": "Player 2's deck for spec 02: twenty cards the spec never plays. Its whole job is to hand the turn straight back without opening a prompt on the far seat, because a picker belonging to player 2 would be a second modal in a spec that asserts each picker is rendered once. So there is no Cast-on-draw card (#21, #27, #90 and the CN-Virus token would resolve off player 2's own draw), no Quickdraw card (#65, #84, #98 start in the opening hand and #65 and #98 would then offer an activation), no Trap (a trap could fire on player 1's turn and interrupt the play under test) and no card that reads or answers anything while it sits in hand. Every card here is choice-free at play time as well, so an accidental play could not open a picker either.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-032",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-062",
+    "core-073",
+    "core-075",
+    "core-077",
+    "core-081",
+    "core-091"
+  ]
+}

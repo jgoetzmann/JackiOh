@@ -1,0 +1,27 @@
+{
+  "id": "08-do-nothing-b",
+  "spec": "08-turn-cap-draw.cy.ts",
+  "description": "Player 2's do-nothing deck, built to the same two rules as 08-do-nothing-a: nothing resolves unless the spec plays it, and nothing can reduce a hero's health, so the game can only end at R2's cap. The card list is different from seat 1's so the spec is not asserting a mirror of one shuffle, but the constraints are identical: every cost is 3 or more (R82 auto-ends each of this seat's first two turns, since max mana is 1 then 2), no Cast-on-draw (#21, #27), no Quickdraw (#65, #84, #98), no hand trigger (#89), no X-cost card (#24, #74, #98 - an X card is always playable at X = 0 and would keep the turn open from turn one), and no embiggen card (#46, #59, #84 pay their base 2 and would be affordable too early). Seat 2 opens on 4 cards (setup step 2), so its library is 16 against 15 draws: the last draw of the cap still comes off a non-empty library and no fatigue damage is dealt.",
+  "cards": [
+    "core-006",
+    "core-013",
+    "core-014",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-026",
+    "core-029",
+    "core-034",
+    "core-038",
+    "core-043",
+    "core-070",
+    "core-076",
+    "core-078",
+    "core-088",
+    "core-094",
+    "core-095",
+    "core-099",
+    "core-100"
+  ]
+}

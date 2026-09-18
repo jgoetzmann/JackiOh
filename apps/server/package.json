@@ -1,0 +1,30 @@
+{
+  "name": "@jackioh/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed-catalog": "tsx src/db/seed-catalog.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@jackioh/cards": "workspace:*",
+    "@jackioh/engine": "workspace:*",
+    "@jackioh/shared": "workspace:*",
+    "@jackioh/validator": "workspace:*",
+    "@supabase/supabase-js": "^2.45.0",
+    "hono": "^4.6.0",
+    "jose": "^5.9.0",
+    "pg": "^8.13.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.0"
+  }
+}

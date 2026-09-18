@@ -1,0 +1,27 @@
+{
+  "id": "11-radiant-b",
+  "spec": "11-radiant.cy.ts",
+  "description": "Player 2's deck. Seat 2 exists in this spec for one reason: to put a known, small amount of damage on seat 1's Mr. Vanilla so that the radiant flip has damage to keep. #31 KY's Math Equation does it in one card and one mana: \"Deal Fib(cost+1) damage to a target\" at its printed cost of 1 is Fib(2) = 1 (R25's table is 0,1,1,2,3,5,8,13,21,34,55,89), so a 3/3 Mr. Vanilla goes to 2/3 and cannot die, and after the flip the same one point of damage has to read as 6/7 on a 7/7 body. The damage goes through the pipeline of 4.4 with nothing in its way: Mr. Vanilla is in Attack Position (no Defense +1 Armor), has no printed Armor, no Divine Shield and no Indestructible, and Immutable blocks Vanilla, Transform and Fuse-onto rather than damage. The spell returns to seat 2's hand at end of turn with cost +1, which the spec ignores: it casts it once. The other nineteen cards are inert while they sit in a hand (no Cast-on-draw, no Quickdraw, no hand trigger, no start-of-game roll), are never played, and are only there so that seat 2 always has an affordable card and R82 never auto-ends a turn the spec means to end by clicking.",
+  "cards": [
+    "core-031",
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-009",
+    "core-010",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-030",
+    "core-047",
+    "core-048",
+    "core-053",
+    "core-066",
+    "core-072",
+    "core-073",
+    "core-077",
+    "core-079",
+    "core-086"
+  ]
+}

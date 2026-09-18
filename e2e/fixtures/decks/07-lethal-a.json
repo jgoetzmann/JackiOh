@@ -1,0 +1,27 @@
+{
+  "id": "07-lethal-a",
+  "spec": "07-my-pawn-ai.cy.ts",
+  "description": "Player 1's deck: it has to reach a single lethal attack declaration against a hero at 30 (R44: lethal is projected damage after Armor and the anti-oneshot cap >= health), and then hand a turn to My Pawn's AI without that AI being able to finish the kill. Three cards are the grinders, and the spec plays exactly one of them: #19 Midrange Menace (3 mana, 9/9), #20 Pointmaster (2 mana, 7/2) and #25 4-mana 7/7 (4 mana, 7/7). None of the twenty cards has Rush or Charge, so a unit the AI plays on the cancelled turn is summoning-sick and cannot attack (§4.1), and the declarer's own exertion is already spent by the declaration (§4.2 step 4: \"the exertion is not given back, so the attack is gone either way (R44)\"). Nothing here deals damage to a hero: no damage spell (#31, #35, #44, #70, #24, #74 excluded), no Cry damage (#68 excluded), no end-of-turn or start-of-turn hero damage (#13, #40, #93 excluded), no Quickstriker (#38 excluded), no Cast-on-draw (#21, #27 excluded), no Quickdraw (#65, #84, #98 excluded). Nothing generates a card from outside the deck either - #30 Archivist draws from this library and #72 Reminisce discovers from this graveyard, and every random-pool card (#54, #57, #59, #82, #95, #97, #99) is excluded - so the AI's random legal actions can only ever be plays of these twenty harmless cards, and no random keyword roll (#63, #80 excluded) can grant Charge. #1 Big D-fender (0 attack) and #86 \"Miss\" Mrow (\"Can't attack\") are here as units that can never declare an attack.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-006",
+    "core-008",
+    "core-009",
+    "core-010",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-030",
+    "core-034",
+    "core-047",
+    "core-048",
+    "core-053",
+    "core-072",
+    "core-073",
+    "core-077",
+    "core-079",
+    "core-086"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "06-room-a",
+  "spec": "06-room-code.cy.ts",
+  "description": "Seat 1 (the browser player) of the room-code match. The browser only ends turns and then offers a draw, so no card here is ever played; what the deck has to guarantee is that seat 1 always has some other legal action, because R82 auto-ends a turn whose only legal actions are ending it, conceding and offering a draw - and on such a turn the offer is not even legal, which would kill the spec's ending. Six of the twenty cards cost 0 or 1 (#5, #10, #48, #72, #3, #8) and eleven cost 2, so the opening three plus one draw per turn always leaves something affordable. Everything is inert in hand: no Cast-on-draw (#21, #27 excluded), no Quickdraw (#65, #84, #98 excluded - a Quickdraw card would change the opening hand size and is seat 2's job in this spec), no \"while in your hand\" trigger (#89 excluded). Nothing damages a hero, so the match cannot end before the draw the spec offers.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-009",
+    "core-010",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-030",
+    "core-047",
+    "core-048",
+    "core-053",
+    "core-056",
+    "core-066",
+    "core-072",
+    "core-073",
+    "core-077",
+    "core-079",
+    "core-086"
+  ]
+}

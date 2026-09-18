@@ -1,0 +1,27 @@
+{
+  "id": "06-room-b",
+  "spec": "06-room-code.cy.ts",
+  "description": "Seat 2 of the room-code match, driven by the Node WebSocket client. The spec has to prove that an action the Node player sends round-trips into the browser's DOM, so seat 2 needs one card it is certain to hold: #84 Going Long is tagged Quickdraw (SPEC §6.2: \"Starts in your opening hand instead of a draw\"), so it is in seat 2's opening hand for every seed. It is a Field Spell, which §10.8 makes public in the backrow (\"traps show as unknown, Field Spells are public\"), so the browser renders it by instance id under zone-opponent-backrow-1 - a face-down trap would not be visible and could not be asserted. Its base price is 2 (\"2 embiggen 4\"), which seat 2 can pay on its second turn (player-turn 4; §2.3), and the Node player sends embiggen:false so no play-time picker is involved (R81). Its only effect is Armor 2 on its own hero, so it cannot damage, heal or end the match. The other 19 cards are inert in hand for the same reasons as 06-room-a: no Cast-on-draw (#21, #27 excluded), no second Quickdraw, no hand trigger (#89 excluded).",
+  "cards": [
+    "core-084",
+    "core-002",
+    "core-004",
+    "core-007",
+    "core-011",
+    "core-012",
+    "core-015",
+    "core-016",
+    "core-017",
+    "core-022",
+    "core-026",
+    "core-028",
+    "core-032",
+    "core-034",
+    "core-036",
+    "core-042",
+    "core-043",
+    "core-045",
+    "core-049",
+    "core-061"
+  ]
+}

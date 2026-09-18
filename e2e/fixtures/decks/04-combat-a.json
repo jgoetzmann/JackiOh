@@ -1,0 +1,27 @@
+{
+  "id": "04-combat-a",
+  "spec": "04-combat.cy.ts",
+  "description": "Player 1's deck for the combat spec. Three cards carry it: #11 Tempo Timmy (3/3, First Strike) is the attacker whose strike lands in §4.3 step 1, #20 Pointmaster (7/2, First Strike) is the attacker whose step-1 strike kills outright so the defender deals nothing back, and #8 Mr. Vanilla (3/3, no text) is the unit switched to Defense Position - vanilla on purpose, so the Taunt and the Armor 1 it gains can only have come from the position (§4.1). None of the three declares a play-time choice, so a combat assertion is never mixed up with a picker. The rest is choice-free filler; #1 Big D-fender is deliberately the only Armor aura in the deck and is never played, so the Armor in the pipeline arithmetic is exactly the Defense Position's +1.",
+  "cards": [
+    "core-001",
+    "core-003",
+    "core-005",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-019",
+    "core-020",
+    "core-025",
+    "core-028",
+    "core-032",
+    "core-045",
+    "core-053",
+    "core-056",
+    "core-062",
+    "core-073",
+    "core-077",
+    "core-081",
+    "core-091"
+  ]
+}

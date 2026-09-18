@@ -1,0 +1,27 @@
+{
+  "id": "02-prompts-a",
+  "spec": "02-prompts.cy.ts",
+  "description": "The deck BUILD M8 names for spec 02, card for card: #7 Jewelosco Scarab (discover), #16 Hit Job (target), #17 Flood (mode, on its radiant face), #30 Archivist (mode, the second source), #26 Glowy Jelly Bean (hand - and the card that makes Flood radiant), #67 Zoomerbin Oomen (zone), #55 Lava Golem (tribute), #52 Silly Silas (direction), #24 Efficiency Dividend (x) and #46 Suppressive Aura (embiggen); the opening mulligan is the tenth picker and needs no card. The other ten are the bodies those pickers need: #15 Me and Mr Token is two units for one mana, #3, #8, #11, #20, #25, #45 and #91 are cheap units that fill the board so Lava Golem's Tribute 3 has more than one minimal paying set (R101, R123) and Hit Job has a unit to destroy, and #5 Stockpile and #10 Rapid Replenish are the only two cards here that ask nothing at all.",
+  "cards": [
+    "core-003",
+    "core-005",
+    "core-007",
+    "core-008",
+    "core-010",
+    "core-011",
+    "core-015",
+    "core-016",
+    "core-017",
+    "core-020",
+    "core-024",
+    "core-025",
+    "core-026",
+    "core-030",
+    "core-045",
+    "core-046",
+    "core-052",
+    "core-055",
+    "core-067",
+    "core-091"
+  ]
+}

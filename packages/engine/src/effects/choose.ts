@@ -1,0 +1,328 @@
+// Effects that ask the controller something: Choose one, a target, a card in hand, and Discover
+// (SPEC §6.3, §10.6). Each opens a prompt and hands the answer to a named resume step.
+
+import type { CardDef, CardType, PlayerId, Selection } from "@jackioh/shared";
+import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
+import { defOf, query, queryCost, type CatalogQueryArgs } from "../catalog";
+import { openPrompt, resumeSelf } from "../prompts";
+import type { Effect, EffectContext } from "../script";
+import type { CardInstance } from "../state";
+import { activeUnitsOf, cardAt, slotsOf } from "../zones";
+import { playerOf, type PlayerSpec } from "./targets";
+
+/** Which cards a `target` prompt may offer. */
+export type TargetScope = {
+  side?: "ally" | "enemy" | "any";
+  of?: ("unit" | "hero" | "backrow")[];
+  type?: CardType | CardType[];
+  excludeSelf?: boolean;
+};
+
+function sidesOf(ctx: EffectContext, side: TargetScope["side"]): PlayerId[] {
+  if (side === "ally") return [ctx.controller];
+  if (side === "enemy") return [opponentOf(ctx.controller)];
+  return [...PLAYER_IDS];
+}
+
+/** Every card and hero a scope allows, in a deterministic order (active side first, lane order). */
+export function targetsInScope(ctx: EffectContext, scope: TargetScope = {}): Selection[] {
+  const kinds = scope.of ?? ["unit"];
+  const out: Selection[] = [];
+
+  for (const player of sidesOf(ctx, scope.side)) {
+    if (kinds.includes("unit")) {
+      for (const unit of activeUnitsOf(ctx.state, player)) {
+        if (scope.excludeSelf === true && unit.id === ctx.self?.id) continue;
+        out.push({ pick: "instance", instanceId: unit.id });
+      }
+    }
+    if (kinds.includes("backrow")) {
+      for (const ref of slotsOf(player, "backrow")) {
+        const card = cardAt(ctx.state, ref);
+        if (card === null) continue;
+        if (scope.excludeSelf === true && card.id === ctx.self?.id) continue;
+        out.push({ pick: "instance", instanceId: card.id });
+      }
+    }
+    if (kinds.includes("hero")) out.push({ pick: "hero", player });
+  }
+
+  return out;
+}
+
+/**
+ * §10.6: an answered prompt's selection arrives in `ctx.targets`, so a Discover's pick — a `mode`
+ * option carrying a def id — is read from there. Play-time modes (R81) arrive in `ctx.modes`, and a
+ * resume step may be reached either way, so both are offered in order.
+ */
+export function chosenOptions(ctx: EffectContext): string[] {
+  const picked = ctx.targets.flatMap((selection) =>
+    selection.pick === "mode" ? [selection.option] : [],
+  );
+  return [...picked, ...ctx.modes];
+}
+
+function label(ctx: EffectContext, selection: Selection): string {
+  if (selection.pick === "hero") return `${selection.player}'s hero`;
+  if (selection.pick === "instance") {
+    const card = findOnBoard(ctx, selection.instanceId);
+    return card === null ? selection.instanceId : defOf(ctx.state, card.defId).name;
+  }
+  if (selection.pick === "mode") return selection.option;
+  return "nothing";
+}
+
+function findOnBoard(ctx: EffectContext, instanceId: string): CardInstance | null {
+  for (const player of PLAYER_IDS) {
+    const side = ctx.state.players[player];
+    const found = [
+      ...side.hand,
+      ...side.graveyard,
+      ...side.units.flatMap((pile) => pile ?? []),
+      ...side.backrow.flatMap((card) => (card === null ? [] : [card])),
+    ].find((card) => card.id === instanceId);
+    if (found !== undefined) return found;
+  }
+  return null;
+}
+
+/** §6.3 Choose one: a mode prompt whose answer resumes the script at `step`. */
+export function chooseMode(args: {
+  options: string[];
+  step: string;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "chooseMode",
+    apply(ctx): void {
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "mode",
+        prompt: args.prompt ?? "Choose one",
+        options: args.options.map((option) => ({
+          key: `mode:${option}`,
+          label: option,
+          selection: { pick: "mode", option },
+        })),
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
+
+/** A target prompt (§10.6). With no legal target the effect fizzles and the card still resolves. */
+export function chooseTarget(args: {
+  step: string;
+  scope?: TargetScope;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "chooseTarget",
+    apply(ctx): void {
+      const options = targetsInScope(ctx, args.scope);
+      if (options.length === 0) return;
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "target",
+        prompt: args.prompt ?? "Choose a target",
+        options: options.map((selection) => ({
+          key: `${selection.pick}:${label(ctx, selection)}`,
+          label: label(ctx, selection),
+          selection,
+        })),
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
+
+/** A pick from your own hand (#26, #80). */
+export function chooseFromHand(args: {
+  step: string;
+  count?: number;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "chooseFromHand",
+    apply(ctx): void {
+      const hand = ctx.state.players[ctx.controller].hand;
+      if (hand.length === 0) return;
+      const count = Math.min(args.count ?? 1, hand.length);
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "hand",
+        prompt: args.prompt ?? "Choose a card in your hand",
+        options: hand.map((card) => ({
+          key: `instance:${card.id}`,
+          label: defOf(ctx.state, card.defId).name,
+          selection: { pick: "instance", instanceId: card.id },
+        })),
+        min: count,
+        max: count,
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
+
+/**
+ * §6.3 Discover: choose 1 of 3, drawn without replacement from the stated pool and shown only to
+ * the chooser. The options are definitions, so the resume step decides what to do with the pick.
+ */
+export function discoverFromCatalog(args: {
+  step: string;
+  query?: CatalogQueryArgs;
+  count?: number;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "discoverFromCatalog",
+    apply(ctx): void {
+      const self = ctx.self;
+      const excludeIndex = self === null ? undefined : defOf(ctx.state, self.defId).index;
+      const pool = query({
+        ...(args.query ?? {}),
+        // §5.1: a random pool never offers the card that generated it.
+        ...(excludeIndex === undefined ? {} : { excludeIndex }),
+      });
+      if (pool.length === 0) return;
+
+      const offered = ctx.rng.shuffle(pool).slice(0, args.count ?? 3);
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "discover",
+        prompt: args.prompt ?? "Discover a card",
+        options: offered.map((def) => ({
+          key: `mode:${def.id}`,
+          label: def.name,
+          selection: { pick: "mode", option: def.id },
+        })),
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
+
+/**
+ * Which library cards a `discoverFromLibrary` may reveal. It is not a `CatalogQueryArgs`: the pool
+ * is a pile of instances rather than the catalog, so only the filters #51 KY's Private Tutor names
+ * are here, and a card that needs tags or rarity out of a library should widen this rather than be
+ * routed through `catalog.query`, which would offer cards the library does not hold.
+ */
+export type LibraryFilter = {
+  type?: CardType | CardType[];
+  costRange?: { min?: number; max?: number };
+};
+
+/**
+ * #51's engine cell: "Field Trap counts as Trap". A `type` filter matches the field exactly, so
+ * asking for "Trap" has to name both fields or #18 Bread and Butter and #71 Intern Stimmy silently
+ * vanish from the pool. The reverse does not hold: asking for "Field Trap" means Field Traps only.
+ */
+const TRAP_TYPES: readonly CardType[] = ["Trap", "Field Trap"];
+
+function filterTypes(filter: LibraryFilter): CardType[] | undefined {
+  const asked =
+    filter.type === undefined ? [] : Array.isArray(filter.type) ? filter.type : [filter.type];
+  if (asked.length === 0) return undefined;
+  return asked.flatMap((type) => (type === "Trap" ? [...TRAP_TYPES] : [type]));
+}
+
+/** R65: a card in a library is out of play, so `queryCost` reads X as 0 and embiggen at its base. */
+function matchesFilter(def: CardDef, filter: LibraryFilter): boolean {
+  const types = filterTypes(filter);
+  if (types !== undefined && !types.includes(def.type)) return false;
+
+  const cost = queryCost(def);
+  const range = filter.costRange;
+  if (range?.min !== undefined && cost < range.min) return false;
+  if (range?.max !== undefined && cost > range.max) return false;
+  return true;
+}
+
+/**
+ * §6.3's Discover row is explicit that this is the same primitive with the library as the pool:
+ * "'Reveal N matching cards, then choose one' (KY's Private Tutor) is this same primitive with the
+ * library as the pool: the revealed cards are that prompt's options, so only the chooser ever sees
+ * them (§10.8)". So this is `discoverFromGraveyard` over a filtered library: `count` options drawn
+ * without replacement with `ctx.rng.shuffle`, so the revealed cards are always different (R60).
+ *
+ * §10.8 is what makes revealing safe: "a card revealed out of a library is revealed only as an
+ * option of the prompt that reveals it: the chooser sees it in full, the opponent sees only that a
+ * prompt is open, and the rest of the library stays hidden from both." Nothing is copied out of
+ * `state.pending.options`, so `viewFor` has one place to hide. The prompt therefore goes to
+ * `ctx.controller` — the chooser — even when `player` names the other side's library as the pool.
+ *
+ * The options are real library INSTANCES, not definitions, which is the whole difference from
+ * `discoverFromCatalog`: the resume step moves the pick with `addToHand({ instance: { of: "chosen" }
+ * })` rather than creating a copy and leaving the revealed card in the library.
+ *
+ * No match at all opens no prompt: the effect fizzles and the card still resolves (§6.3), which is
+ * the branch #51 answers with its Empty Notebook.
+ */
+export function discoverFromLibrary(args: {
+  step: string;
+  count?: number;
+  player?: PlayerSpec;
+  filter?: LibraryFilter;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "discoverFromLibrary",
+    apply(ctx): void {
+      const player = playerOf(ctx, args.player ?? "self");
+      const filter = args.filter ?? {};
+      const pool = ctx.state.players[player].library.filter((card) =>
+        matchesFilter(defOf(ctx.state, card.defId), filter),
+      );
+      if (pool.length === 0) return;
+
+      const offered = ctx.rng.shuffle(pool).slice(0, args.count ?? 3);
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "discover",
+        prompt: args.prompt ?? "Choose one of the revealed cards",
+        options: offered.map((card) => ({
+          key: `instance:${card.id}`,
+          label: defOf(ctx.state, card.defId).name,
+          selection: { pick: "instance", instanceId: card.id },
+        })),
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
+
+/** R50: Discover from the actual graveyard, so spell tokens there are eligible. */
+export function discoverFromGraveyard(args: {
+  step: string;
+  count?: number;
+  prompt?: string;
+  data?: Record<string, unknown>;
+}): Effect {
+  return {
+    kind: "discoverFromGraveyard",
+    apply(ctx): void {
+      const graveyard = ctx.state.players[ctx.controller].graveyard;
+      if (graveyard.length === 0) return;
+
+      const offered = ctx.rng.shuffle(graveyard).slice(0, args.count ?? 3);
+      openPrompt(ctx, {
+        player: ctx.controller,
+        kind: "discover",
+        prompt: args.prompt ?? "Discover a card from your graveyard",
+        options: offered.map((card) => ({
+          key: `instance:${card.id}`,
+          label: defOf(ctx.state, card.defId).name,
+          selection: { pick: "instance", instanceId: card.id },
+        })),
+        resume: resumeSelf(ctx, args.step, args.data ?? {}),
+      });
+    },
+  };
+}
