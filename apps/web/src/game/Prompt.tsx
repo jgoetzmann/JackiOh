@@ -261,7 +261,11 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
       };
     case "target": {
       const byKey = new Map(need.selections.map((selection) => [selectionKey(selection), selection]));
-      const inHand = false && isHandPick(need, view); // TEMP EXPERIMENT
+      // R81: a declared `target` pick whose selections are all hand cards is rendered with the hand
+      // chrome, so the player sees the pick where the cards are. (This was left short-circuited to
+      // `false` by an abandoned experiment, which made the branch below dead and the hand picker
+      // unreachable — e2e spec 02 asserts it for the hand kind.)
+      const inHand = isHandPick(need, view);
       return {
         ...common,
         chrome: inHand ? "hand" : "target",

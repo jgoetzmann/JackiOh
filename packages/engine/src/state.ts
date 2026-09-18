@@ -155,6 +155,32 @@ export type QueuedTrigger = {
   resume: Resume;
 };
 
+/**
+ * §4.2 step 4 and R44: the attack whose trap window is open — the moment between a declaration,
+ * which has already spent the attacker's exertion, and the damage of step 5. `src/combat.ts` opens
+ * it, a trap that fires inside it closes it with `effects/combat.cancelAttack` (§6.3 "Cancel an
+ * attack"), and step 5 reads it back to find out whether there is still a combat to resolve.
+ *
+ * Ids and flags only, like the rest of §10.1: no instances and no closures, so the field survives
+ * `cloneState`'s JSON round trip. That is not decoration here — My Pawn's window hands the rest of
+ * the turn to the AI policy, which drives `reduce`, which clones, so by the time step 5 runs every
+ * `CardInstance` the declaration was built from is a different object and only the ids still name
+ * the same cards.
+ */
+export type DeclaredAttack = {
+  /**
+   * This declaration, told apart from one opened inside its own window (R44's AI turn takes
+   * actions of its own). Deterministic, from `nextSeq`, so a replay mints the same ids.
+   */
+  id: string;
+  /** The attacker's instance id. */
+  attackerId: string;
+  /** §4.2 step 2's two possibilities: an enemy unit's instance id, or `hero-<player>`. */
+  targetId: string;
+  /** Set by `cancelAttack` inside the window, so step 5 resolves no combat (§6.3, R44). */
+  cancelled: boolean;
+};
+
 export type TurnLog = {
   playedIds: string[];
   cardsPlayed: number;
@@ -193,6 +219,8 @@ export type GameState = {
   players: Record<PlayerId, PlayerState>;
   pending: PendingChoice | null;
   triggerQueue: QueuedTrigger[];
+  /** The attack whose trap window is open, between declaration and damage (§4.2 step 4, R44). */
+  declaredAttack: DeclaredAttack | null;
   /** Paused sequences waiting to continue, in order (§9.3, §10.6). */
   work: WorkItem[];
   /**
@@ -327,6 +355,7 @@ export function createGame(options: CreateGameOptions): GameState {
     players: { p1: createPlayerState(), p2: createPlayerState() },
     pending: null,
     triggerQueue: [],
+    declaredAttack: null,
     work: [],
     workCursor: 0,
     echoQueue: [],

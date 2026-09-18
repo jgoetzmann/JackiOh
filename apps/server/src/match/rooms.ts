@@ -17,6 +17,7 @@
 
 import { normalizeCode, isWellFormedCode } from "../api/crypto";
 import { ApiError, ok, route, type ApiRequest, type Route } from "../api/http";
+import { seedOverrideOf } from "../api/queue";
 import { ROOM_CODE_LENGTH } from "../config";
 import type { Room, ServerDeps, StoredLoadout } from "../api/ports";
 
@@ -51,8 +52,54 @@ function loadLoadoutsModule(): Promise<LoadoutsModule> {
   return cachedLoadouts;
 }
 
-/** NOT IN SPEC: how many collisions a 30-bit code space is allowed before we give up. */
+/** NOT IN SPEC: how many collisions a 30-bit code space is allowed before we give up (R149). */
 const CODE_ATTEMPTS = 8;
+
+// ---------------------------------------------------------------------------
+// R143 — the end-to-end mode's optional seed, for the room half
+// ---------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R143: "In end-to-end mode the room and queue endpoints accept an optional seed and use
+ * it verbatim so a networked spec can be seeded, and outside that mode the field is rejected."
+ *
+ * A room's match is not created until someone joins, so the seed the *host* supplied to
+ * `POST /api/rooms` has to be held between the two calls. `room code -> seed`, exactly as
+ * `api/queue.ts` holds `ticket id -> seed`, and for the same reasons written out there: `Room`
+ * (ports.ts) carries no seed, and adding one would put a test-mode field into the shape `src/db/**`
+ * persists. `seedOverrideOf` — the same function the queue uses — has already refused the field
+ * outside end-to-end mode by the time anything is written here, so a production process keeps this
+ * map permanently empty.
+ */
+const e2eSeedByRoom = new Map<string, { seed: string; expiresAt: number }>();
+
+/** Exported for the R143 tests; nothing in `src/` calls it. */
+export function e2eRoomSeedCount(): number {
+  return e2eSeedByRoom.size;
+}
+
+/**
+ * A room that is never joined has no claim to clear it, unlike a ticket, which is always paired or
+ * cancelled. So every remembered seed carries its room's expiry and the stale ones are dropped as
+ * new rooms are made: a long-running end-to-end server cannot accumulate them.
+ */
+function rememberSeed(code: string, seed: string, expiresAt: number, now: number): void {
+  for (const [candidate, held] of e2eSeedByRoom) {
+    if (held.expiresAt <= now) e2eSeedByRoom.delete(candidate);
+  }
+  e2eSeedByRoom.set(code, { seed, expiresAt });
+}
+
+/**
+ * The seed for this room, consumed. The host's seed wins over a seed the joiner sent: the room was
+ * created first, which is the same "whoever asked first" tie-break `queue.ts` uses between two
+ * seeded tickets.
+ */
+function takeSeedForRoom(code: string, joinerSeed: string | null): string | null {
+  const held = e2eSeedByRoom.get(code) ?? null;
+  e2eSeedByRoom.delete(code);
+  return held?.seed ?? joinerSeed;
+}
 
 function deckIndexOf(body: ApiRequest["body"]): number {
   const value = body.deckIndex;
@@ -105,6 +152,10 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
     const profileId = profileOf(req);
     assertNotInMatch(req);
     const deckIndex = deckIndexOf(req.body);
+    // R143: an optional `seed`, accepted only by an end-to-end test server and rejected — never
+    // ignored — anywhere else. Read before any work is done, so a production caller that sends one
+    // gets the 400 without a room being made.
+    const seed = seedOverrideOf(deps, req.body);
 
     const { validateStoredLoadout, deckFor } = await loadLoadouts();
     const loadout = await validateStoredLoadout(deps, profileId, deps.catalog.version);
@@ -129,6 +180,9 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
         matchId: null,
       });
       if (!created) continue;
+      // R143, after the create won: a seed remembered for a room that does not exist would never be
+      // consumed and never dropped (`queue.ts` waits for its insert for the same reason).
+      if (seed !== null) rememberSeed(code, seed, expiresAt, now);
       deps.log.info("room.created", { code, hostProfileId: profileId });
       return ok({ code, expiresAt, deckIndex });
     }
@@ -142,6 +196,9 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
     const profileId = profileOf(req);
     assertNotInMatch(req);
     const deckIndex = deckIndexOf(req.body);
+    // R143 again: both room endpoints accept the field in end-to-end mode and both refuse it
+    // outside one. A spec that seeds the join rather than the create still gets its seed.
+    const joinerSeed = seedOverrideOf(deps, req.body);
 
     const typed = req.params.code ?? "";
     const room = await joinableRoom(deps, typed);
@@ -163,7 +220,8 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
 
     await deps.matches.start({
       matchId,
-      seed: deps.ids.seed(),
+      // R143: the server mints the seed, unless an end-to-end room asked for one.
+      seed: takeSeedForRoom(claimed.code, joinerSeed) ?? deps.ids.seed(),
       catalogVersion: deps.catalog.version,
       seats: [
         { profileId: claimed.hostProfileId, player: "p1", deck: [...claimed.hostDeck] },

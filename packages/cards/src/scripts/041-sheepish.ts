@@ -57,8 +57,8 @@ function sheepish(lavaGolem: boolean): TrapTrigger {
       if (event.type !== "cardPlayed") return [];
       // Named by the event, not by a TargetSpec: nobody chose this unit, the play produced it.
       const effects: Effect[] = [transform({ instanceId: event.instanceId, defId: SHEEP_TOKEN })];
-      // A clause of its own, so it still lands when Immutable refused the Transform (R17, R23);
-      // see the proposed R91 in the agent report.
+      // R120: §8's conventions make an "Also" clause independent, so it still lands when an
+      // Immutable target refused the Transform (R17, R23) and the trap is still consumed (R61).
       if (lavaGolem) effects.push(addToHand({ defId: LAVA_GOLEM, costOverride: 0 }));
       return effects;
     },

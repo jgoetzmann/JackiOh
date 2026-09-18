@@ -11,9 +11,21 @@ import { describe, expect, it } from "vitest";
 import { createCodesRoutes, mintInviteCode } from "../../src/api/codes";
 import { createRouter, ok, route, type Router } from "../../src/api/http";
 import { systemTimers, type ApiLimits, type Ids, type ProfileStatus } from "../../src/api/ports";
-import { CODE_ALPHABET, INVITE_CODE_LENGTH, REDEMPTION_IDENTICAL_ERROR } from "../../src/config";
+import {
+  CODE_ALPHABET,
+  INVITE_CODE_LENGTH,
+  REDEMPTION_IDENTICAL_ERROR,
+  REDEMPTION_RESPONSE_FLOOR_MS,
+} from "../../src/config";
 import { formatCode } from "../../src/api/crypto";
-import { createTestDeps, jsonRequest, readJson, testLimits, type TestDeps } from "../fakes/deps";
+import {
+  createTestDeps,
+  createVirtualTimers,
+  jsonRequest,
+  readJson,
+  testLimits,
+  type TestDeps,
+} from "../fakes/deps";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -86,7 +98,9 @@ type ErrorBody = { error: { code: string; message: string; details?: unknown } }
 // Step 1 — "reject unless the account is pending with a verified email"
 // ---------------------------------------------------------------------------
 
-describe("§9.4 step 1: pending account with a verified email", () => {
+// R145: everything here depends on the caller's own account rather than on the code, so each one
+// is reported distinctly — it leaks nothing about the code space.
+describe("§9.4 step 1: pending account with a verified email (R145)", () => {
   it("rejects a profile that is not pending, and never logs the attempt", async () => {
     const deps = codeDeps();
     const router = createRouter(createCodesRoutes(), deps);
@@ -410,7 +424,7 @@ describe("§9.4 step 6: claiming the code", () => {
 // "Missing, expired and exhausted codes return an identical error"
 // ---------------------------------------------------------------------------
 
-describe("§9.4: identical error for missing, expired and exhausted", () => {
+describe("R145 — the identical error for every code-dependent refusal (§9.4)", () => {
   it("returns byte-identical bodies and identical status codes", async () => {
     const deps = codeDeps();
     const router = createRouter(createCodesRoutes(), deps);
@@ -437,6 +451,129 @@ describe("§9.4: identical error for missing, expired and exhausted", () => {
     expect(bodies[0]).toBe(
       JSON.stringify({ error: { code: "invalid_code", message: REDEMPTION_IDENTICAL_ERROR } }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUILD M6-T1: "timing test shows the three failure responses within 5 ms of each other over 50
+// samples" — §9.4's "identical time", delivered by R107's floor.
+// ---------------------------------------------------------------------------
+
+/** BUILD M6-T1's acceptance bound, as it writes it. */
+const TIMING_SAMPLES = 50;
+const TIMING_SPREAD_MS = 5;
+
+/**
+ * The cost model this test *injects*, so the padding has something real to hide.
+ *
+ * `STORE_CALL_MS` is a round trip to Postgres and `ROW_FETCH_MS` the extra cost of a lookup that
+ * found its row — an index miss answers from the index alone, a hit goes on to the heap. That is
+ * the asymmetry §9.4 is about: a missing code does strictly less work than an expired or exhausted
+ * one, and without a floor the difference is readable from outside. The numbers are the test's own,
+ * not the server's; what is asserted below is that they stop being observable, whatever they are.
+ */
+const STORE_CALL_MS = 3;
+const ROW_FETCH_MS = 11;
+
+type TimedDeps = { deps: TestDeps; workSinceLast: () => number };
+
+/**
+ * `codeDeps()` on the virtual clock, with every store call charged.
+ *
+ * Nothing here waits on the wall clock: `createVirtualTimers` advances only when work is charged or
+ * a scheduled sleep comes due, so the measurement is exact and identical on a loaded CI box and on
+ * an idle laptop. That is the whole reason this test can be trusted — a flaky security test is
+ * worse than none.
+ */
+function timingDeps(): TimedDeps {
+  const timers = createVirtualTimers();
+  const deps = createTestDeps({
+    timers,
+    ids: alphabetIds(),
+    limits: testLimits({
+      // The production floor, which costs a virtual clock nothing to sit through.
+      redeemConstantMs: REDEMPTION_RESPONSE_FLOOR_MS,
+      // 150 deliberate failures would otherwise trip §9.4's breaker part-way through and turn the
+      // remaining samples into 503s, which are a different branch than the three under test.
+      breakerFailureThreshold: TIMING_SAMPLES * 3 + 1,
+    }),
+  });
+
+  let work = 0;
+  const charge = (ms: number): void => {
+    work += ms;
+    timers.charge(ms);
+  };
+
+  deps.store.onCall = () => charge(STORE_CALL_MS);
+  const findByHash = deps.store.codes.findByHash;
+  deps.store.codes.findByHash = async (codeHash) => {
+    const row = await findByHash(codeHash);
+    if (row !== null) charge(ROW_FETCH_MS);
+    return row;
+  };
+
+  return {
+    deps,
+    workSinceLast: () => {
+      const total = work;
+      work = 0;
+      return total;
+    },
+  };
+}
+
+describe("R107 — the constant-time failure floor (BUILD M6-T1)", () => {
+  it("R107 answers missing, expired and exhausted within 5 ms of each other over 50 samples", async () => {
+    const { deps, workSinceLast } = timingDeps();
+    const router = createRouter(createCodesRoutes(), deps);
+
+    const expiredCode = await mintInviteCode(deps, { expiresAt: deps.timers.now() - 1_000 });
+    const usedCode = await mintInviteCode(deps, { maxUses: 1 });
+    const consumer = seedCaller(deps, "timing-consumer");
+    expect((await redeem(router, consumer.token, usedCode.formatted)).status).toBe(200);
+
+    const kinds = [
+      { name: "missing", code: UNMINTED_CODE },
+      { name: "expired", code: expiredCode.formatted },
+      { name: "exhausted", code: usedCode.formatted },
+    ] as const;
+
+    const elapsed: Record<string, number[]> = { missing: [], expired: [], exhausted: [] };
+    const work: Record<string, number[]> = { missing: [], expired: [], exhausted: [] };
+
+    // Interleaved, and a fresh profile and address per sample: §9.4's per-profile (5/h) and per-IP
+    // (20/h) limits would otherwise start refusing part-way through, at step 2 or 3 instead of at
+    // step 5, and those are not the branches this measures.
+    for (let sample = 0; sample < TIMING_SAMPLES; sample += 1) {
+      for (const kind of kinds) {
+        const caller = seedCaller(deps, `timing-${kind.name}-${String(sample)}`);
+        const ip = `198.51.100.${String(sample)}/${kind.name}`;
+        workSinceLast();
+
+        const startedAt = deps.timers.now();
+        const response = await redeem(router, caller.token, kind.code, ip);
+        elapsed[kind.name]?.push(deps.timers.now() - startedAt);
+        work[kind.name]?.push(workSinceLast());
+
+        // All three really are the refusal under test, not some other rejection.
+        expect(response.status).toBe(400);
+      }
+    }
+
+    const all = kinds.flatMap((kind) => elapsed[kind.name] ?? []);
+    expect(all).toHaveLength(TIMING_SAMPLES * 3);
+
+    // BUILD M6-T1: "the three failure responses within 5 ms of each other over 50 samples".
+    expect(Math.max(...all) - Math.min(...all)).toBeLessThanOrEqual(TIMING_SPREAD_MS);
+    // R107: and the floor is a floor — no branch is quicker than the budget it is padded to.
+    expect(Math.min(...all)).toBeGreaterThanOrEqual(REDEMPTION_RESPONSE_FLOOR_MS);
+
+    // The assertion above would pass on a code path that happened to be uniform, which would make
+    // it a test of nothing. The work really was lopsided; the padding is what flattened it.
+    const workPerKind = kinds.map((kind) => work[kind.name]?.[0] ?? 0);
+    expect(Math.max(...workPerKind) - Math.min(...workPerKind)).toBeGreaterThan(TIMING_SPREAD_MS);
+    expect(Math.max(...workPerKind)).toBeLessThan(REDEMPTION_RESPONSE_FLOOR_MS);
   });
 });
 

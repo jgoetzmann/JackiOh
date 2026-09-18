@@ -110,12 +110,24 @@ export function injectedEnginePort(): EnginePort | null {
 }
 
 /**
- * `engine.real.ts` is excluded from `apps/server/tsconfig.json` because
- * `packages/engine/src/index.ts` re-exports six modules that do not exist yet (`combat`,
- * `playChoices`, `prompts`, `triggers`, `traps`, `viewFor`) — M3 is in flight. The specifier is
- * held in a variable so no bundler follows it. When `pnpm exec tsc -p
- * packages/engine/tsconfig.json` is green, drop the `exclude` entry and make this a static
- * `import { enginePort } from "./engine.real.ts"`.
+ * `engine.real.ts` used to be excluded from `apps/server/tsconfig.json` as well, because
+ * `packages/engine` did not compile. It does now (`tsc -p packages/engine/tsconfig.json` exits 0)
+ * and the exclusion is gone, so the file is typechecked with the rest of `src`.
+ *
+ * The **import stays dynamic**, and the specifier stays in a variable so no bundler follows it.
+ * Two things depend on that, both of which a static import would take away:
+ *
+ *  - `EngineUnavailableError`'s "could not be loaded" branch below. A static import fails while
+ *    *this* module is being evaluated, which every module in `src/match` and every server test
+ *    pulls in — so an engine that cannot load would become an unattributed module-graph failure
+ *    instead of one named error saying which exports are missing.
+ *  - `setEnginePort`. A test (or a degraded runtime) that installs its own port never reaches the
+ *    real engine at all: `injected !== null` short-circuits before the import. Statically, every
+ *    process that touches this file would load `@jackioh/engine` and, through `engine.real.ts`,
+ *    `packages/cards`' 109 card scripts, whether or not a match is ever played.
+ *
+ * So the day to make this static is the day the server stops wanting to run without an engine,
+ * which is not a typecheck question.
  */
 export function loadEnginePort(): Promise<EnginePort> {
   if (injected !== null) return Promise.resolve(injected);

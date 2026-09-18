@@ -19,7 +19,7 @@
 import { opponentOf } from "@jackioh/shared";
 import { forceAttacksOn, type AttackTarget } from "../combat";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, type CardInstance, type GameState } from "../state";
+import { findInstance, type CardInstance } from "../state";
 import { playOutTurn } from "../subsystems/aiPolicy";
 import { activeUnitsOf } from "../zones";
 import { playerOf, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
@@ -127,35 +127,20 @@ export function forcedAttacks(args: { attackers: ForcedAttackerFilter; target: F
 }
 
 /**
- * The attack §4.2 step 4's trap window is opened on. `GameState` does not carry this field yet —
- * see the gap note on `cancelAttack` — so it is read structurally through this narrow local type
- * rather than asserted into existence: the assertion below only adds an optional property to
- * `GameState`, introduces no `any` and no non-null assertion, and the `undefined` branch is the
- * only answer the engine gives today.
- */
-type DeclaredAttack = { attackerId: string; targetId: string; cancelled?: boolean };
-type WithDeclaredAttack = { declaredAttack?: DeclaredAttack };
-
-function openDeclaredAttack(state: GameState): DeclaredAttack | null {
-  return (state as GameState & WithDeclaredAttack).declaredAttack ?? null;
-}
-
-/**
  * §6.3 Cancel an attack and R44: inside §4.2 step 4's trap window, mark the open `declaredAttack`
  * cancelled so no combat resolves, and emit `attackCancelled` in its place. The attacker's
  * exertion was spent on the declaration, so the attack is gone either way — which is why nothing
  * here gives it back. The event names the card that cancelled, so a call with no `self` (nothing
  * for `byInstanceId` to be) fizzles silently rather than inventing a source.
  *
- * ENGINE GAP, and the reason the test for this verb is a known failure rather than a passing
- * tautology: `GameState` has no `declaredAttack` field, and `combat.declareAttack` calls
- * `resolveCombat` on the line after it pushes `attackDeclared`, so §4.2 step 4's window does not
- * exist — a trap sees the event only once the resolution loop dispatches it, which is after the
- * damage. The fix is three lines outside this file's ownership: add
- * `declaredAttack?: { attackerId, targetId, cancelled? }` to `GameState` (`src/state.ts`), and in
- * `declareAttack` (`src/combat.ts`) set it, hand `attackDeclared` to the traps with
- * `traps.fireTrapsFor(sink, event)`, then resolve combat only while `cancelled !== true` and clear
- * the field afterwards. Until then this verb is correct and inert.
+ * Marking the record is the whole of the verb: `combat.declareAttack` reads it back when the window
+ * closes and skips step 5 (`resolveDeclaredAttack`). The window is the only moment there is
+ * anything to mark — §6.3 says so, "call off an attack already declared, before any damage" — so
+ * outside one this fizzles, which is also what keeps a trap that fires on some later dispatch of
+ * the same declaration from cancelling a combat that has already happened.
+ *
+ * R121: a forced attack opens no window and writes no `declaredAttack`, so this can never cancel
+ * one. That is the rule, not an omission (see `combat.forceAttack`).
  */
 export function cancelAttack(): Effect {
   return {
@@ -163,8 +148,8 @@ export function cancelAttack(): Effect {
     apply(ctx): void {
       const self = ctx.self;
       if (self === null) return;
-      const open = openDeclaredAttack(ctx.state);
-      if (open === null || open.cancelled === true) return;
+      const open = ctx.state.declaredAttack;
+      if (open === null || open.cancelled) return;
 
       open.cancelled = true;
       ctx.events.push({
@@ -180,8 +165,9 @@ export function cancelAttack(): Effect {
 /**
  * R44 and R84: "an AI plays the rest of their turn with random legal actions" (#96 My Pawn). Two
  * steps, both somebody else's code. `aiTurn` on that player's `PlayerState` is the lockout R44
- * describes — the client refuses to act while it is set, and only `turn.ts` clears it, at that
- * player's next turn start — and the turn itself goes to `playOutTurn`, whose uniform draw over
+ * describes — the client refuses to act while it is set, and `turn.cleanup` clears it at the end of
+ * the turn it was set for (R152; `startTurn` keeps a backstop clear) — and the turn itself goes to
+ * `playOutTurn`, whose uniform draw over
  * `legalActions` minus `AI_SKIPPED_ACTIONS` IS §10.7's policy, `concede`, `offerDraw` and
  * `answerDraw` included out. Nothing here re-implements the policy or decides an action.
  *

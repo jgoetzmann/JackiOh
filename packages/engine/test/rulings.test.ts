@@ -1343,6 +1343,18 @@ describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
   it("R155 sets the return-to-hand flag at step 7 and clears it at the end of that turn", () => {
     provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts");
   });
+
+  // Proved by death-pause.test.ts "R156 owes step 3 in full rather than firing a Death hook into an
+  // open prompt", with its control "the same death fires at once with no prompt open".
+  it("R156 owes §4.5 step 3 in full when the check begins with a prompt already open", () => {
+    provenIn(156, "death-pause.test.ts");
+  });
+
+  // Proved by apps/server rate-limit.test.ts "R157 keys a request that names no account on its
+  // address, and keeps those apart too".
+  it("R157 counts an accountless API request against its address, in its own namespace", () => {
+    provenIn(157, "../../../apps/server/test/api/rate-limit.test.ts");
+  });
 });
 
 describe("SPEC §11 index completeness", () => {

@@ -47,8 +47,15 @@ const MS_PER_SECOND = 1000;
  *
  * Rejected, not ignored: a client that sends a seed against a production server is told its
  * request was not understood, rather than silently getting a match it did not ask for.
+ *
+ * Exported because R143 names *two* endpoints, and `match/rooms.ts` is the other one: the room
+ * endpoints read the field through this same function rather than through a second copy of the
+ * rule, so "accepted in end-to-end mode, rejected everywhere else" is decided in one place.
  */
-function seedOverrideOf(deps: ServerDeps, body: Readonly<Record<string, unknown>>): string | null {
+export function seedOverrideOf(
+  deps: ServerDeps,
+  body: Readonly<Record<string, unknown>>,
+): string | null {
   const value = body["seed"];
   if (value === undefined) return null;
   if (deps.e2e !== true) {

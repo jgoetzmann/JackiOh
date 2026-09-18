@@ -446,9 +446,10 @@ describe("M6-T4 the match actor", () => {
   // §9.8: per-match flood limit
   // -------------------------------------------------------------------------
 
-  it("rejects the overflow of the per-match action rate limit", async () => {
-    const { actor, p1, deps } = await harness();
+  it("R137 rejects the overflow of a seat's action budget without touching the opponent's", async () => {
+    const { actor, p1, p2, deps } = await harness();
     p1.clear();
+    p2.clear();
 
     for (let i = 0; i <= MATCH_ACTIONS_PER_SECOND; i += 1) {
       await send(actor, p1, `flood-${String(i)}`, { type: "offerDraw" });
@@ -463,6 +464,13 @@ describe("M6-T4 the match actor", () => {
     expect(deps.store.tables.matchActions).toHaveLength(MATCH_ACTIONS_PER_SECOND);
     // §9.8: reject the overflow, do not drop the socket.
     expect(p1.isOpen).toBe(true);
+
+    // R137: one shared per-match counter would refuse the *victim* here, which is the abuse the
+    // ruling is about. Each seat holds its own window, so the opponent's click still lands while
+    // p1 is over budget — and the match's aggregate ceiling is twice R109's number, not once.
+    await send(actor, p2, "opponent-click", { type: "offerDraw" });
+    expect(errors(p2)).toEqual([]);
+    expect(acks(p2).at(-1)?.nonce).toBe("opponent-click");
 
     // A second later the budget is back.
     deps.timers.advance(1000);
@@ -499,7 +507,7 @@ describe("M6-T4 the match actor", () => {
     expect(deps.store.tables.matches[0]?.clocks.graceDeadline.p1).toBeNull();
   });
 
-  it("dispatches every clock expiry as a logged server action (R79)", async () => {
+  it("dispatches every clock expiry as a logged server action (R79), each stamped per R146", async () => {
     const { actor, p1, p2, deps, clocks, recordResult } = await harness();
     const clock = clocks.clock();
 
@@ -525,6 +533,9 @@ describe("M6-T4 the match actor", () => {
     clock.expire({ kind: "grace", player: "p1" });
     await actor.idle();
     row = deps.store.tables.matchActions.at(-1);
+    // R146: p2 is the active player by now, and the loss is still p1's — the result is stamped
+    // with the seat it belongs to, never with whoever happened to be active.
+    expect(actor.snapshot().active).toBe("p2");
     expect(row?.action).toMatchObject({ type: "disconnectExpired", player: "p1" });
     expect(actor.snapshot().result).toEqual({ winner: "p2", reason: "disconnect" });
     expect(recordResult).toHaveBeenCalledTimes(1);
@@ -536,12 +547,18 @@ describe("M6-T4 the match actor", () => {
     expect(deps.store.tables.matchActions.map((entry) => entry.seq)).toEqual([1, 2, 3, 4]);
   });
 
-  it("ends the match in a draw when the ceiling expires (R79)", async () => {
+  it("ends the match in a draw when the ceiling expires (R79), stamped with the active seat (R146)", async () => {
     const { actor, clocks, deps, recordResult } = await harness();
+    const active = actor.snapshot().active;
     clocks.clock().expire({ kind: "ceiling" });
     await actor.idle();
 
-    expect(deps.store.tables.matchActions.at(-1)?.action).toMatchObject({ type: "ceilingReached" });
+    // R146: the ceiling belongs to neither player, so it is stamped with the active seat as a
+    // convention — the log never has to guess whose action this was when it is folded back.
+    expect(deps.store.tables.matchActions.at(-1)?.action).toMatchObject({
+      type: "ceilingReached",
+      playerId: active,
+    });
     expect(actor.snapshot().result).toEqual({ winner: "draw", reason: "match-ceiling" });
     expect(recordResult).toHaveBeenCalledTimes(1);
   });
@@ -635,7 +652,7 @@ describe("the ws adapter", () => {
     expect(closed).toBe(true);
   });
 
-  it("refuses a socket that is not in the match it asked for", async () => {
+  it("R148 refuses a socket that is not in the match it asked for, mirroring the HTTP status", async () => {
     const deps = createTestDeps();
     const token = deps.auth.addUser({ userId: "user-1", email: "a@example.test" });
     deps.store.seedProfile({ id: "profile-1", userId: "user-1", status: "active", inMatchId: "other" });
@@ -657,6 +674,14 @@ describe("the ws adapter", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- as above
     await handler(anonymous as any, { url: "/match", headers: {} });
     expect(anonymous.closes.at(-1)?.code).toBe(WS_CLOSE.unauthorized);
+
+    // R148: 4401 and 4403 are the private-use mirrors of 401 and 403, and only the close code
+    // varies — §9.1: a socket learns that it may not have this match, never which check said so.
+    expect(WS_CLOSE.unauthorized).toBe(4401);
+    expect(WS_CLOSE.forbidden).toBe(4403);
+    for (const ws of [refused, anonymous]) {
+      expect(ws.sent.at(-1)).toContain('"code":"forbidden"');
+    }
 
     const accepted = fakeWs();
     deps.store.tables.profiles[0] = {

@@ -87,4 +87,49 @@ describe("loadout validator binding (§9.4: one module, shared)", () => {
     });
     expect(issues.map((issue) => issue.rule)).toContain("L5");
   });
+
+  it("R141 makes L5 unreachable on its own, given R111's launch grant of one copy of each", async () => {
+    const catalog = await loadCatalog();
+    const legal = catalog.cardIds.filter((id) => !catalog.isToken(id)).slice(0, 60);
+    // R111's launch grant, exactly: one copy of every non-token card, which is what every active
+    // profile owns. The test above owns *nothing*, which R111 makes impossible — so L5 on its own
+    // is only reachable there, never in a real collection.
+    const owned = new Map(catalog.cardIds.filter((id) => !catalog.isToken(id)).map((id) => [id, 1] as const));
+    const token = catalog.cardIds.find((id) => catalog.isToken(id)) ?? "";
+    const decks = (first: readonly string[]): string[][] => [
+      [...first],
+      legal.slice(20, 40),
+      legal.slice(40, 60),
+    ];
+
+    const ways = [
+      // A second copy of a card: L3 (MAX_COPIES) is broken before L5 can be.
+      { name: "a repeated card", decks: decks([...legal.slice(0, 19), legal[0] ?? ""]) },
+      // The same card in two decks: L4.
+      { name: "a card in two decks", decks: [legal.slice(0, 20), [legal[0] ?? "", ...legal.slice(21, 40)], legal.slice(40, 60)] },
+      // A Token, and an id the catalog does not have: L3 and L6.
+      { name: "a token", decks: decks([...legal.slice(0, 19), token]) },
+      { name: "an unknown id", decks: decks([...legal.slice(0, 19), "core-does-not-exist"]) },
+    ];
+
+    let sawL5 = false;
+    for (const way of ways) {
+      const rules = sharedLoadoutValidator({
+        decks: way.decks,
+        catalogVersion: catalog.version,
+        catalog,
+        owned,
+      }).map((issue) => issue.rule);
+
+      expect(rules, `${way.name} should be refused`).not.toEqual([]);
+      // The ruling itself: whenever L5 fires against an R111 collection, the rule that made it
+      // reachable fired too. Change R111's quantity or MAX_COPIES and this is the test that goes red.
+      if (rules.includes("L5")) {
+        sawL5 = true;
+        expect(rules.filter((rule) => rule !== "L5"), `${way.name}: L5 was the only rule`).not.toEqual([]);
+      }
+    }
+    // Otherwise the loop above would prove the claim by never reaching L5 at all.
+    expect(sawL5, "no case reached L5, so this proves nothing").toBe(true);
+  });
 });

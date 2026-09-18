@@ -9,7 +9,9 @@
 // any damage. Trap window: My Pawn checks whether the hit would be lethal and, if so, cancels the
 // attack; the exertion is not given back, so the attack is gone either way (R44)". The event that
 // opens that window is `attackDeclared`, which `combat.declareAttack` emits after spending the
-// exertion and before `resolveCombat`, so this trigger watches exactly that one event.
+// exertion and hands to `traps.runTrapWindow` before it resolves any combat, so this trigger
+// watches exactly that one event. R100 keeps the window's delivery to the window: the declaration
+// is not offered to §10.3's immediate check as well, so this trap answers one swing once.
 //
 // ARMING (R61, `traps.ts`). "`run` returning `[]` is a trap that fired for nothing — it can never
 // mean 'this event was not mine'", so every condition that must leave My Pawn face-down and armed
@@ -28,62 +30,37 @@
 // state check. The card's condition is "when the OPPONENT DECLARES an attack", and a forced attack
 // is declared by the effect that compels it — usually the defender's own card, on the defender's
 // own turn, where "an AI plays the rest of THEIR turn" names nobody. `forced` is on the event for
-// exactly this kind of distinction, so the predicate reads it. See the proposed R91 in the report.
+// exactly this kind of distinction, so the predicate reads it (R121). `combat.forceAttack` opens no
+// window at all for the same reason, so there is nothing for this trap to cancel there either.
 //
-// BUILDING THE `AttackTarget`. The event carries ids only (`attackerId`, `targetId`), and
-// `combat.targetIdOf`'s `hero-<player>` spelling is private to that module. §4.2 step 2 leaves only
-// two possibilities — an enemy unit or the enemy hero — so a `targetId` that is not an instance is
-// the attacker's opponent's hero, named from the attacker instead of by parsing the string. See the
-// report: the clean fix is `attackTargetOf(state, targetId)` exported from `combat.ts`, or a
-// `target: { kind, id }` field on the event.
+// BUILDING THE `AttackTarget`. The event carries ids only (`attackerId`, `targetId`), and the
+// `hero-<player>` spelling is `combat.ts`'s. So the reverse of it is `combat.attackTargetOf`, which
+// that module now exports for exactly this: §4.2 step 5 reads a paused declaration back through it
+// too, so the card and the engine agree on what an id means by sharing one reader rather than by
+// each parsing the string.
 //
-// BLOCKED (§8.5 #96 "cancel it, and an AI plays the rest of their turn with random legal actions"):
-// two effects are missing from `packages/engine/src/effects`, and one piece of engine plumbing is
-// missing behind them. Reported, not worked around — a card file cannot cancel combat or drive the
-// reducer itself (CLAUDE.md rules 4 and 5).
+// THE BODY (§8.5 #96 "cancel it, and an AI plays the rest of their turn with random legal actions")
+// is the two verbs of `packages/engine/src/effects/combat.ts`, in the row's order. Neither is
+// implemented here: a card file cannot cancel combat or drive the reducer itself (CLAUDE.md rules 4
+// and 5). `cancelAttack` marks the open `state.declaredAttack` cancelled, so §4.2 step 5 resolves
+// no combat and `attackCancelled` is emitted in its place; `aiPlaysOutTurn` sets the `aiTurn`
+// lockout on the attacking player and hands the rest of their turn to §10.7's policy through
+// `subsystems/aiPolicy.playOutTurn` (R84: never `concede`, `offerDraw` or `answerDraw`; R152: the
+// lockout ends at the cleanup of the turn it took).
 //
-//   // packages/engine/src/effects/combat.ts (new), re-exported from effects/index.ts
-//
-//   /** §6.3 "Cancel an attack", §4.2 step 4, R44: mark the open `declaredAttack` cancelled so no
-//    *  combat resolves, and emit `attackCancelled` (already in the event union) in its place. */
-//   export function cancelAttack(): Effect;
-//
-//   /** R44 and R84: set `aiTurn` on that player's PlayerState — which locks their client out
-//    *  until end of turn, and which only `turn.ts` currently clears — then hand the rest of the
-//    *  turn to `subsystems/aiPolicy.playOutTurn(sink, player)`, whose uniform draw over
-//    *  `legalActions` minus `AI_SKIPPED_ACTIONS` is §10.7's policy (R84: never `concede`,
-//    *  `offerDraw` or `answerDraw`). */
-//   export function aiPlaysOutTurn(args?: { player?: PlayerSpec }): Effect;
-//
-// The plumbing behind `cancelAttack`: `GameState` has no `declaredAttack` field (§10.1 requires
-// one) and `combat.declareAttack` calls `resolveCombat` on the line after it pushes
-// `attackDeclared`, so the trap window of §4.2 step 4 does not exist yet — the trap only sees the
-// event once the resolution loop dispatches it, which is after the damage. `declareAttack` has to
-// open the window (set `state.declaredAttack`, dispatch the event to the traps via
-// `traps.fireTrapsFor`, and resolve combat only if it was not cancelled) before any `cancelAttack`
-// can do anything. `run` returns `[]` until then — neither verb is imported, because one
-// unresolvable import in `src/scripts/` takes down `_generated.ts` and with it all 109 cards.
-//
-// Everything above `run` is complete and compiles today: the trigger, and the `when` predicate that
-// is the whole of "would be lethal to your hero".
+// ORDER MATTERS, and it is the row's own. `cancelAttack` first, because `aiPlaysOutTurn` drives
+// `reduce`, which clones the state, and the AI's own actions can open and close declarations of
+// their own — the attack this trap answers has to be cancelled while it is still the open one.
+// `aiPlaysOutTurn` last for a second reason `effects/combat.ts` spells out: the playout replaces
+// every instance in the state, so no effect after it may hold a `CardInstance` read before it.
 
-import type { CardInstance, GameState, Script, TrapTrigger } from "@jackioh/engine";
-import { findInstance, subsystems, type AttackTarget } from "@jackioh/engine";
+import type { Script, TrapTrigger } from "@jackioh/engine";
+import { attackTargetOf, findInstance, subsystems } from "@jackioh/engine";
+import { aiPlaysOutTurn, cancelAttack } from "@jackioh/engine/effects";
 import { opponentOf } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-096");
-
-/**
- * §4.2 step 2's two possibilities, from the id the event carries. An instance id names the unit
- * that was declared on; anything else is the only other legal target, the attacker's opponent's
- * hero, so the card never depends on how `combat.ts` spells a hero id.
- */
-function attackTargetOf(state: GameState, targetId: string, attacker: CardInstance): AttackTarget {
-  const unit = findInstance(state, targetId);
-  if (unit !== undefined) return { kind: "unit", instance: unit };
-  return { kind: "hero", player: opponentOf(attacker.controller) };
-}
 
 /**
  * "When the opponent declares an attack that would be lethal to your hero". Every clause that must
@@ -104,18 +81,17 @@ const myPawn: TrapTrigger = {
     // "the opponent declares": a trap never answers its own controller's attack.
     if (attacker.controller !== opponentOf(ctx.controller)) return false;
 
-    const target = attackTargetOf(ctx.state, event.targetId, attacker);
+    const target = attackTargetOf(ctx.state, event.targetId);
+    if (target === null) return false;
     // R44 counts Trample excess from an attack on a unit, so the hero at risk is the projection's,
     // not the declared target: "lethal to YOUR hero" is that hero being this trap's controller.
     if (subsystems.defendingHero(target) !== ctx.controller) return false;
 
     return subsystems.isLethal(ctx.state, attacker, target);
   },
-  // See the BLOCKED note in the header. With both verbs in the effects barrel this is the row's
-  // two clauses in its order, `player: "enemy"` being the attacker's side relative to the trap's
-  // controller, which the predicate above has already established:
-  //   return [cancelAttack(), aiPlaysOutTurn({ player: "enemy" })]
-  run: () => [],
+  // §8.5's two clauses in its order. `player: "enemy"` is the attacker's side relative to the
+  // trap's controller, which the predicate above has already established.
+  run: () => [cancelAttack(), aiPlaysOutTurn({ player: "enemy" })],
 };
 
 export const base: Script = { triggers: [myPawn] };

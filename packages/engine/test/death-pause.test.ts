@@ -449,3 +449,54 @@ describe("a prompt inside a cast's Cry (§10.5, R70, R113, R122)", () => {
     expect(inGraveyard(state, card)).toBe(true);
   });
 });
+
+describe("a state check that begins while a prompt is already open (§4.5, R113, R117, R156)", () => {
+  it("R156 owes step 3 in full rather than firing a Death hook into an open prompt", () => {
+    const state = playing("deaths-prompt-already-open");
+    const dying = doomed(state, quietUnit.id, "p1", 1);
+
+    // Something else asked first — a trap, an earlier card, the play that killed this one. R156's
+    // case is the board settling while that question is still unanswered.
+    const events: GameEvent[] = [];
+    const sink = sinkFor(state, events);
+    openPrompt(sink, {
+      player: "p1",
+      kind: "target",
+      prompt: "an earlier question, still unanswered",
+      options: [{ key: "none", label: "nothing", selection: { pick: "none" } }],
+      resume: { defId: "", hook: "resume", step: "none", radiant: false, data: {} },
+    });
+    expect(state.pending).not.toBeNull();
+
+    stateCheck(sink);
+
+    // Steps 1 and 2 still run: those are the board settling, not a choice. The card really moved.
+    expect(inGraveyard(state, dying)).toBe(true);
+    expect(eventsOfType(events, "destroyed").map((event) => event.instanceId)).toEqual([dying.id]);
+
+    // Step 3 fired nothing. Without R156 the hook runs into the open prompt and whatever it asks is
+    // discarded in silence, because `openPrompt` will not overwrite a question already standing.
+    expect(notes(state)).toEqual([]);
+
+    // The whole of step 3 is owed instead, in R68's order, as plain data (§9.3).
+    const parked = only(owedWork(state, DEATHS_WORK));
+    expect(owedDeathsOf(parked.resume)?.owed.map((card) => card.id)).toEqual([dying.id]);
+    expect(JSON.parse(JSON.stringify(parked))).toEqual(parked);
+
+    // The prompt that was standing is untouched: the pass waited for it rather than stepping on it.
+    expect(state.pending?.prompt).toBe("an earlier question, still unanswered");
+  });
+
+  it("the same death fires at once with no prompt open, so the case above is about the prompt", () => {
+    const state = playing("deaths-no-prompt-open");
+    const dying = doomed(state, quietUnit.id, "p1", 1);
+
+    const events: GameEvent[] = [];
+    stateCheck(sinkFor(state, events));
+
+    expect(state.pending).toBeNull();
+    expect(notes(state)).toEqual(["quiet:before", "quiet:tail:3"]);
+    expect(inGraveyard(state, dying)).toBe(true);
+    expect(owedWork(state, DEATHS_WORK)).toEqual([]);
+  });
+});

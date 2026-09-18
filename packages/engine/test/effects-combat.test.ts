@@ -7,16 +7,19 @@
 // `EffectContext`, and the one verb the engine cannot service yet is a marked failing test rather
 // than a tautology.
 
-import type { CardDef, GameEvent, PlayerId, Selection } from "@jackioh/shared";
+import type { Action, CardDef, GameEvent, PlayerId, Selection } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { registerCatalog, registeredCatalog } from "../src/catalog";
-import { declareAttack } from "../src/combat";
+import { declareAttack, forceAttack } from "../src/combat";
 import { aiPlaysOutTurn, cancelAttack, forcedAttacks, forcedAttacksOn } from "../src/effects/combat";
 import { summon } from "../src/effects/summon";
 import { openPrompt } from "../src/prompts";
+import { reduce } from "../src/reduce";
 import { makeContext } from "../src/resolve";
-import type { Effect } from "../src/script";
-import type { CardInstance, GameState, PromptOption, Resume } from "../src/state";
+import type { CardScripts, Effect } from "../src/script";
+import { registerScripts, registeredScripts } from "../src/scripts";
+import { cloneState, type CardInstance, type GameState, type PromptOption, type Resume } from "../src/state";
+import { settle } from "../src/triggers";
 import { cardAt } from "../src/zones";
 import { bigBody, plain, taunter } from "./fixtures/combat";
 import { eventsOfType, inHand, newGame, put, sinkFor, slot } from "./fixtures/harness";
@@ -49,17 +52,87 @@ const ambush = defOfKind("ambush", "942", "Trap", {
   base: { keywords: [], text: "trap" },
   radiant: { keywords: [], text: "trap" },
 });
+/**
+ * A Field Trap that answers every declaration and does nothing with it (R61's "fired, consumed,
+ * did nothing"). It is a FIELD Trap on purpose: §5.1 leaves one on the field after it fires, so a
+ * second offer of the same declaration would fire it a second time, which is what R100 forbids and
+ * what the `attackDeclared` event reaching both the window and §10.3's immediate check would do.
+ */
+const watcher = defOfKind("watcher", "943", "Field Trap", {
+  base: { keywords: [], text: "field trap" },
+  radiant: { keywords: [], text: "field trap" },
+});
+/** A Trap whose whole body is §6.3's Cancel an attack, the way #96 My Pawn's first clause is. */
+const canceller = defOfKind("canceller", "944", "Trap", {
+  base: { keywords: [], text: "trap" },
+  radiant: { keywords: [], text: "trap" },
+});
+/** A Trap that asks its controller something inside the window, so the window has to pause. */
+const asker = defOfKind("asker", "945", "Trap", {
+  base: { keywords: [], text: "trap" },
+  radiant: { keywords: [], text: "trap" },
+});
+/** A Trap shaped like #96 itself: cancel the declaration, then hand the turn to the AI policy. */
+const pawn = defOfKind("pawn", "946", "Trap", {
+  base: { keywords: [], text: "trap" },
+  radiant: { keywords: [], text: "trap" },
+});
+/** A Field Trap that answers every `manaChanged`, so a second dispatch of one is countable. */
+const meter = defOfKind("meter", "947", "Field Trap", {
+  base: { keywords: [], text: "field trap" },
+  radiant: { keywords: [], text: "field trap" },
+});
 
 /** §8 #9's body, from the shared combat fixtures: 1/14, so three forced attacks do not kill it. */
 const MOTHS = "cb-moths";
 /** §7's shared Rush Token: 3/3 Rush, which is what #60 summons and compels. */
 const RUSH_TOKEN = "fx-token-rush";
 
-const DEFS: CardDef[] = [frail, ambush];
+const DEFS: CardDef[] = [frail, ambush, watcher, canceller, asker, pawn, meter];
+
+/** A resume nothing can service: answering the prompt just clears it (§10.6). */
+const inertResume: Resume = { defId: "fc-no-script", hook: "resume", step: "none", radiant: false, data: {} };
+
+function modeOptions(options: string[]): PromptOption[] {
+  return options.map((option) => ({ key: `mode:${option}`, label: option, selection: { pick: "mode", option } }));
+}
+
+/** An effect that opens a prompt for the resolving controller and nothing else (§9.3, §10.6). */
+const ask: Effect = {
+  kind: "fc:ask",
+  apply(ctx): void {
+    openPrompt(ctx, {
+      player: ctx.controller,
+      kind: "mode",
+      prompt: "the window pauses here",
+      options: modeOptions(["a", "b"]),
+      resume: inertResume,
+    });
+  },
+};
+
+/**
+ * The trap scripts the window tests need. Each watches `attackDeclared` with no `when`, so it
+ * answers every declaration it is offered (R99) — which is what makes a second offer visible.
+ */
+function trapScript(on: GameEvent["type"], run: () => Effect[]): CardScripts {
+  const script = { triggers: [{ id: `fc-${on}`, on: [on], run }] };
+  return { base: script, radiant: script };
+}
+
+const SCRIPTS: Record<string, CardScripts> = {
+  [watcher.id]: trapScript("attackDeclared", () => []),
+  [canceller.id]: trapScript("attackDeclared", () => [cancelAttack()]),
+  [asker.id]: trapScript("attackDeclared", () => [ask]),
+  // #96's own body, in its order (§8.5): cancel, then hand the rest of the turn to §10.7's policy.
+  [pawn.id]: trapScript("attackDeclared", () => [cancelAttack(), aiPlaysOutTurn({ player: "enemy" })]),
+  [meter.id]: trapScript("manaChanged", () => []),
+};
 
 function game(seed = "effects-combat"): GameState {
   const state = newGame(seed);
   registerCatalog({ ...registeredCatalog(), ...Object.fromEntries(DEFS.map((def) => [def.id, def])) });
+  registerScripts({ ...registeredScripts(), ...SCRIPTS });
   state.turn = 5;
   state.phase = "main";
   return state;
@@ -252,13 +325,6 @@ function busyBoard(seed: string): GameState {
   return state;
 }
 
-/** A resume nothing can service: answering the prompt just clears it (§10.6). */
-const inertResume: Resume = { defId: "fc-no-script", hook: "resume", step: "none", radiant: false, data: {} };
-
-function modeOptions(options: string[]): PromptOption[] {
-  return options.map((option) => ({ key: `mode:${option}`, label: option, selection: { pick: "mode", option } }));
-}
-
 describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
   it("R44 sets aiTurn on the named player and takes no action while another player's prompt is open", () => {
     const state = busyBoard("ai-flag");
@@ -302,6 +368,54 @@ describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
     expect(state.players.p1.aiTurn).toBe(false);
   });
 
+  // ###################################################################################
+  // KNOWN FAILING TEST — it names a real engine gap and must stay until the gap is shut.
+  //
+  // `subsystems/aiPolicy.playOutTurn` drives a NESTED `reduce` per action of the playout, and each
+  // of those settles its own events to completion (§10.3). It then pushes those finished events
+  // onto the CALLER's event list (`aiPolicy.ts`, `sink.events.push(...result.events)`), and the
+  // caller's own resolution loop copies everything on that list into `state.dispatch` and offers it
+  // to the traps and the trigger queue a second time (`triggers.collectEvents`, keyed on
+  // `sink.dispatched`). So every trap and trigger watching an event an AI turn emitted answers it
+  // twice. Below: one `manaChanged`, two firings of the Field Trap that watches it.
+  //
+  // It is not §4.2 step 4's window: the window withholds its own `attackDeclared` from the frontier
+  // (R100), and the same board with a trap that only cancels fires everything once. It is the
+  // playout's hand-over, and #96 My Pawn is simply its first live caller.
+  //
+  // WHY IT IS NOT FIXED HERE. The frontier cursor is a copy position on the SINK, and an effect
+  // never has the sink: `resolve.makeContext` hands a script a fresh `EffectContext` that shares
+  // `state`, `events` and `rng` but not the sink object, so neither `aiPlaysOutTurn` nor
+  // `playOutTurn` can mark what it appended as already dispatched. And a cursor cannot express it
+  // anyway — the playout's events land in the MIDDLE of the window's own (`trapFired`,
+  // `attackCancelled`, then the playout, then `enteredGraveyard`), and a monotonic cursor can only
+  // skip a prefix. The fix belongs in one of three files this agent does not own:
+  //   * `src/triggers.ts`  — give the frontier a per-event "already dispatched" mark instead of a
+  //                          cursor, which is the only shape that covers a middle range; or
+  //   * `src/resolve.ts`   — carry the sink on the `EffectContext` so an effect can mark its own
+  //                          contribution; or
+  //   * `src/subsystems/aiPolicy.ts` — stop pushing a nested reducer's events onto the caller's
+  //                          list, which costs the client the AI turn's animations (BUILD M5-T4).
+  // ###################################################################################
+  it.fails(
+    "§10.3 an AI turn's events are dispatched once, not again by the caller's own loop [KNOWN GAP: aiPolicy.playOutTurn pushes a nested reduce's settled events onto the caller's sink — see the block comment above]",
+    () => {
+      const { state, attacker, backrow } = swing("ai-redispatch", [pawn.id, meter.id]);
+      state.players.p2.mana = { current: 4, max: 4, nextTurnMod: 0, permMod: 0 };
+      const field = backrow[1] as CardInstance;
+
+      const result = reduce(state, attackAction(attacker.id, "hero-p1", "n1"));
+      expect(result.error).toBeUndefined();
+
+      const manaChanges = eventsOfType(result.events, "manaChanged").length;
+      const answered = eventsOfType(result.events, "trapFired").filter(
+        (event) => event.instanceId === field.id,
+      ).length;
+      expect(manaChanges).toBeGreaterThan(0);
+      expect(answered).toBe(manaChanges);
+    },
+  );
+
   it("R44 is deterministic from the seed: the same board plays out the same way twice", () => {
     const first = busyBoard("ai-replay");
     const second = busyBoard("ai-replay");
@@ -324,52 +438,149 @@ describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
 // cancelAttack — §6.3 Cancel an attack, §4.2 step 4, R44
 // ---------------------------------------------------------------------------
 
+/** p2 swings a 3/3 into p1's 5/10, with whatever traps the case puts in p1's backrow. */
+function swing(seed: string, traps: string[]): {
+  state: GameState;
+  attacker: CardInstance;
+  defender: CardInstance;
+  backrow: CardInstance[];
+} {
+  const state = game(seed);
+  state.active = "p2";
+  const attacker = put(state, plain.id, slot("p2", "units", 1));
+  // A second body, so `reduce`'s §2.5 auto-end does not close the turn under the assertions.
+  put(state, plain.id, slot("p2", "units", 2));
+  const defender = put(state, bigBody.id, slot("p1", "units", 1));
+  const backrow = traps.map((defId, index) => put(state, defId, slot("p1", "backrow", index + 1)));
+  return { state, attacker, defender, backrow };
+}
+
+function attackAction(attackerId: string, targetId: string, nonce: string): Action {
+  return { type: "attack", attackerId, targetId, playerId: "p2", nonce };
+}
+
+function typesOf(events: readonly GameEvent[]): string[] {
+  return events.map((event) => event.type);
+}
+
 describe("cancelAttack (§6.3 Cancel an attack, §4.2 step 4, R44, #96)", () => {
-  // ###################################################################################
-  // KNOWN FAILING TEST — it names a real engine gap and must stay until the gap is shut.
-  //
-  // §4.2 step 4 ("Trap window: My Pawn checks whether the hit would be lethal and, if so,
-  // cancels the attack") has no implementation to hook into:
-  //   1. `GameState` (packages/engine/src/state.ts) has no `declaredAttack` field, so there is
-  //      no open declaration for `cancelAttack` to mark, and the verb correctly fizzles.
-  //   2. `combat.declareAttack` (packages/engine/src/combat.ts:304) calls `resolveCombat` on the
-  //      line after it pushes `attackDeclared`, so the damage is already dealt before any trap
-  //      can see the event — the window does not exist in time, not merely in state.
-  //
-  // THE FIX (one field and three lines, both files outside this agent's ownership):
-  //   * src/state.ts:   add `declaredAttack?: { attackerId: string; targetId: string;
-  //                     cancelled?: boolean }` to `GameState`.
-  //   * src/combat.ts:  in `declareAttack`, after spending the exertion and pushing the event,
-  //                     set `state.declaredAttack`, call `traps.fireTrapsFor(sink, event)`, then
-  //                     `if (state.declaredAttack?.cancelled !== true) resolveCombat(...)`, and
-  //                     clear the field before returning.
-  // `cancelAttack` itself needs no change once that lands; this test then passes as written and
-  // `it.fails` becomes `it`.
-  // ###################################################################################
-  it.fails(
-    "R44 a cancelled attack resolves no combat and emits attackCancelled [KNOWN GAP: no declaredAttack field and declareAttack resolves combat immediately — see the block comment above]",
-    () => {
-      const state = game("cancel");
-      state.active = "p2";
-      const attacker = put(state, plain.id, slot("p2", "units", 1));
-      const defender = put(state, bigBody.id, slot("p1", "units", 1));
-      // The trap that cancels: `self` of the script, and the `byInstanceId` of the event.
-      const trap = put(state, ambush.id, slot("p1", "backrow", 1));
-      const sink = sinkFor(state);
+  it("R44 a cancelled attack resolves no combat and emits attackCancelled", () => {
+    const { state, attacker, defender, backrow } = swing("cancel", [canceller.id]);
+    const trap = backrow[0] as CardInstance;
+    const sink = sinkFor(state);
 
-      // The trap window of §4.2 step 4 belongs inside this call, before any damage.
-      declareAttack(sink, attacker, { kind: "unit", instance: defender });
-      cancelAttack().apply(makeContext(sink, trap, { controller: "p1" }));
+    // §4.2 step 4's window belongs inside this call, before any damage: the trap fires there.
+    declareAttack(sink, attacker, { kind: "unit", instance: defender });
 
-      expect(eventsOfType(sink.events, "attackCancelled")).toEqual([
-        { type: "attackCancelled", attackerId: attacker.id, targetId: defender.id, byInstanceId: trap.id },
-      ]);
-      // R44: no combat resolved, and the exertion is gone either way.
-      expect(defender.damage).toBe(0);
-      expect(attacker.damage).toBe(0);
-      expect(attacker.exertion.attacked).toBe(true);
-    },
-  );
+    expect(eventsOfType(sink.events, "attackCancelled")).toEqual([
+      { type: "attackCancelled", attackerId: attacker.id, targetId: defender.id, byInstanceId: trap.id },
+    ]);
+    // R44: no combat resolved, and the exertion is gone either way.
+    expect(eventsOfType(sink.events, "damage")).toEqual([]);
+    expect(defender.damage).toBe(0);
+    expect(attacker.damage).toBe(0);
+    expect(attacker.exertion.attacked).toBe(true);
+    // §4.2 step 5 has had its answer, so the window is shut again.
+    expect(state.declaredAttack).toBeNull();
+    // §3.2: the trap is spent whatever its effects achieved (R61), and the attacker is untouched.
+    expect(trap.zone.z).toBe("graveyard");
+    expect(cardAt(state, slot("p2", "units", 1))?.id).toBe(attacker.id);
+  });
+
+  it("§4.2 step 4 the window opens between the declaration and the damage, not after it", () => {
+    const { state, attacker, defender } = swing("window-order", [watcher.id]);
+    const sink = sinkFor(state);
+
+    declareAttack(sink, attacker, { kind: "unit", instance: defender });
+
+    const order = typesOf(sink.events);
+    expect(order.indexOf("attackDeclared")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("trapFired")).toBeGreaterThan(order.indexOf("attackDeclared"));
+    expect(order.indexOf("damage")).toBeGreaterThan(order.indexOf("trapFired"));
+    // R61: the trap fired and did nothing, so the combat is the ordinary one — the 3/3 hits the
+    // 5/10 for 3 and is struck back for 5, which kills it and takes it off the field (§4.5, R78).
+    expect(defender.damage).toBe(3);
+    expect(eventsOfType(sink.events, "damage").map((event) => event.amount)).toEqual([3, 5]);
+    expect(cardAt(state, slot("p2", "units", 1))).toBeNull();
+  });
+
+  it("R100 the declaration reaches the traps once: the window's event is not offered again", () => {
+    // A Field Trap stays on the field after firing (§5.1, R33), so a second offer of the same
+    // declaration — §10.3's immediate check taking the event off the frontier after the window has
+    // already delivered it — would show up here as a second `trapFired`.
+    const { state, attacker, defender, backrow } = swing("window-once", [watcher.id]);
+    const field = backrow[0] as CardInstance;
+    const result = reduce(state, attackAction(attacker.id, defender.id, "n1"));
+
+    expect(result.error).toBeUndefined();
+    expect(eventsOfType(result.events, "trapFired").map((event) => event.instanceId)).toEqual([field.id]);
+    expect(result.state.declaredAttack).toBeNull();
+  });
+
+  it("R113, R117 a trap that prompts parks the combat, and the answer finishes the window first", () => {
+    // R68 within a side is lane order, so the asker is offered the declaration first and the
+    // canceller is still owed it when the prompt stops the window.
+    const { state, attacker, defender, backrow } = swing("window-pause", [asker.id, canceller.id]);
+    const cancelling = backrow[1] as CardInstance;
+
+    const paused = reduce(state, attackAction(attacker.id, defender.id, "n1"));
+    expect(paused.error).toBeUndefined();
+
+    // The window stopped where it stood: the prompt is state, the declaration is still open, and
+    // the combat is owed rather than resolved or dropped (§9.3, R113).
+    const pending = paused.state.pending;
+    expect(pending?.playerId).toBe("p1");
+    expect(paused.state.declaredAttack).toEqual({
+      id: expect.any(String) as unknown as string,
+      attackerId: attacker.id,
+      targetId: defender.id,
+      cancelled: false,
+    });
+    expect(paused.state.work.map((item) => item.resume.hook)).toEqual(["@trapWindow", "@attackWindow"]);
+    expect(eventsOfType(paused.events, "damage")).toEqual([]);
+
+    // §10.1: everything owed is plain JSON, so the paused attack survives a clone round trip.
+    expect(cloneState(paused.state).declaredAttack).toEqual(paused.state.declaredAttack);
+    expect(cloneState(paused.state).work).toEqual(paused.state.work);
+
+    const answered = reduce(paused.state, {
+      type: "answer",
+      choiceId: pending?.id ?? "",
+      selection: [{ pick: "mode", option: "a" }],
+      playerId: "p1",
+      nonce: "n2",
+    });
+    expect(answered.error).toBeUndefined();
+
+    // The traps the window still owed ran before the combat it precedes, so the second trap's
+    // cancel still lands and no damage is ever dealt.
+    expect(eventsOfType(answered.events, "attackCancelled").map((event) => event.byInstanceId)).toEqual([
+      cancelling.id,
+    ]);
+    expect(eventsOfType(answered.events, "damage")).toEqual([]);
+    expect(cardAt(answered.state, slot("p1", "units", 1))?.damage).toBe(0);
+    expect(answered.state.declaredAttack).toBeNull();
+    expect(answered.state.work).toEqual([]);
+  });
+
+  it("R121 a forced attack opens no window, so nothing can cancel it", () => {
+    const { state, attacker, defender, backrow } = swing("forced-window", [canceller.id]);
+    const trap = backrow[0] as CardInstance;
+    const sink = sinkFor(state);
+
+    // §4.2's last paragraph: the compelling effect declares this, so there is no open declaration
+    // at any point — and R53's combat and state check happen inside the call, as before.
+    forceAttack(sink, attacker, { kind: "unit", instance: defender });
+    expect(state.declaredAttack).toBeNull();
+    expect(defender.damage).toBe(3);
+    expect(attacker.exertion.attacked).toBe(false);
+
+    // The forced declaration still reaches the traps, through §10.3's immediate check — it is only
+    // the window that a forced attack skips — and `cancelAttack` there has nothing to mark.
+    settle(sink);
+    expect(eventsOfType(sink.events, "trapFired").map((event) => event.instanceId)).toEqual([trap.id]);
+    expect(eventsOfType(sink.events, "attackCancelled")).toEqual([]);
+  });
 
   it("§6.3 fizzles silently with no open declaration, so the card still resolves", () => {
     const state = game("cancel-nothing");

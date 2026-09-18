@@ -85,12 +85,94 @@ exception when others then
 end $$;
 
 \echo '=== CHECK 12: authenticated can read its own row and not the other profile ==='
+-- `set local role` only takes effect inside a transaction block. Issued outside one — as this
+-- check used to — Postgres answers `WARNING: SET LOCAL can only be used in transaction blocks`,
+-- keeps the superuser session, which BYPASSES RLS, and every count below comes back as the whole
+-- table while the check still passes. So the probes run inside an explicit transaction, the way
+-- 02_rls_as_client.sql does it, and the block at the end raises on a wrong answer instead of
+-- leaving a human to notice a number.
+--
+-- The transaction also seeds one collection row owned by the *other* profile, so "its own rows
+-- only" has something to hide (profile 2 is pending here and owns nothing, which would make the
+-- collection half of this check vacuous). The rollback puts the database back as CHECK 11 left it.
+begin;
+
+insert into public.collection (profile_id, card_id, quantity)
+values ('22222222-2222-2222-2222-222222222222', 'core-002', 1);
+
+-- Read as superuser, with RLS bypassed: the totals the client's answers are measured against.
+do $$
+begin
+  perform set_config('check12.profiles_total',
+                     (select count(*) from public.profiles)::text, true);
+  perform set_config('check12.cards_total',
+                     (select count(*) from public.cards)::text, true);
+  perform set_config('check12.collection_own',
+                     (select count(*) from public.collection
+                       where profile_id = '11111111-1111-1111-1111-111111111111')::text, true);
+  perform set_config('check12.collection_other',
+                     (select count(*) from public.collection
+                       where profile_id <> '11111111-1111-1111-1111-111111111111')::text, true);
+end $$;
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+
 select count(*) as own_profile_rows from public.profiles;
 select count(*) as own_collection_rows from public.collection;
 select count(*) as visible_cards from public.cards;
+
+do $$
+declare
+  caller constant uuid := '11111111-1111-1111-1111-111111111111';
+  -- Read with `missing_ok`, defaulting to -1: the totals above are transaction-scoped too, so if
+  -- this check ever loses its transaction again the guards below report *that* rather than dying
+  -- in a cast.
+  profiles_total   bigint := coalesce(nullif(current_setting('check12.profiles_total', true), ''), '-1')::bigint;
+  cards_total      bigint := coalesce(nullif(current_setting('check12.cards_total', true), ''), '-1')::bigint;
+  collection_own   bigint := coalesce(nullif(current_setting('check12.collection_own', true), ''), '-1')::bigint;
+  collection_other bigint := coalesce(nullif(current_setting('check12.collection_other', true), ''), '-1')::bigint;
+  seen_profiles    bigint;
+  seen_collection  bigint;
+  seen_cards       bigint;
+  seen_id          uuid;
+begin
+  -- Without this the whole check is theatre: a superuser reads every row and passes.
+  if current_user <> 'authenticated' then
+    raise exception 'FAIL (CHECK 12): running as %, not authenticated — SET LOCAL did not take',
+      current_user;
+  end if;
+  if profiles_total < 2 or collection_other < 1 then
+    raise exception 'FAIL (CHECK 12): nothing to hide (% profiles, % foreign collection rows)',
+      profiles_total, collection_other;
+  end if;
+
+  select count(*) into seen_profiles from public.profiles;
+  select id into seen_id from public.profiles limit 1;
+  select count(*) into seen_collection from public.collection;
+  select count(*) into seen_cards from public.cards;
+
+  -- SPEC §9.1: a profile may read a projection of its own row and of nobody else's.
+  if seen_profiles <> 1 or seen_id is distinct from caller then
+    raise exception 'FAIL (CHECK 12): profiles showed % of % rows (first %), expected only %',
+      seen_profiles, profiles_total, seen_id, caller;
+  end if;
+  if seen_collection <> collection_own then
+    raise exception 'FAIL (CHECK 12): collection showed % rows, expected % own (% foreign)',
+      seen_collection, collection_own, collection_other;
+  end if;
+  -- §9.4: the catalog is public to a logged-in user, so hiding it would be a failure too.
+  if seen_cards <> cards_total then
+    raise exception 'FAIL (CHECK 12): cards showed % of % rows; the catalog is readable',
+      seen_cards, cards_total;
+  end if;
+
+  raise notice 'OK: 1 own profile row, % own collection rows, % cards, % foreign rows hidden',
+    seen_collection, seen_cards, collection_other;
+end $$;
+
 reset role;
+rollback;
 
 \echo '=== CHECK 13: authenticated cannot read invite_codes or matches ==='
 do $$

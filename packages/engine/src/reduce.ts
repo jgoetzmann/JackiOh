@@ -14,7 +14,10 @@
 //                      reads the cost, so the refusal a client's greyed-out button comes from and
 //                      the refusal this reducer returns are the same call. Nothing of that rule is
 //                      restated here; a second copy is what would let the two disagree.
-//   attack           → `combat.declareAttack`, listed by `combat.attackTargets` (§4.2)
+//   attack           → `combat.declareAttack`, listed by `combat.attackTargets` (§4.2). That call
+//                      is §4.2 steps 1 to 5 whole, step 4's trap window included, so an `attack`
+//                      can come back with a prompt open and the combat still owed on `state.work`
+//                      (R113): the answer action finishes it, exactly as it finishes a Cry.
 //   switchPosition   → `combat.switchPosition` (§4.1, R20, R49)
 //   activatePower    → `subsystems/heroPower.activatePower`, listed by `whyCannotActivate` (R43)
 //   answer           → `prompts.answerPrompt`, or the play pipeline for a prompt it opened itself

@@ -141,7 +141,11 @@ select app.end_match(:'match_id', '11111111-1111-1111-1111-111111111111',
                      'hero-death', 14, 1016, 984);
 select count(*) as result_rows from public.results where match_id = :'match_id';
 
-\echo '### R110: a room code is reusable once its match is over ###'
+-- R142: this is where R110 is verifiable at all. Nothing lets a client ask for a specific room
+-- code, so the reuse is proved here — mint a code, finish its match, mint the same code again —
+-- and the end-to-end suite asserts only the consequence (both players queue-eligible once the
+-- match is over), which `end_match` above has just shown.
+\echo '### R110: a room code is reusable once its match is over (R142) ###'
 select app.create_room('11111111-1111-1111-1111-111111111111', 'ABC234', 'seed-2',
                        '["core-001"]'::jsonb, 'core-1') as reused_code_match;
 

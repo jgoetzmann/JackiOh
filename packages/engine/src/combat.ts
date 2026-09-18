@@ -2,19 +2,30 @@
 // M2-T2, M2-T4). The damage pipeline of §4.4 lives in `damage.ts` and the state check of §4.5 in
 // `stateCheck.ts`: this module orders them, it never re-implements them.
 //
-// Nothing here is random and nothing here asks the player anything, so combat is a plain function of
-// the state (CLAUDE.md rule 4): the client's `attack` and `switchPosition` actions come in through
-// `reduce`, and every refusal is a string the action layer hands back untouched.
+// Nothing here is random and nothing here asks the player *directly*: the client's `attack` and
+// `switchPosition` actions come in through `reduce`, and every refusal is a string the action layer
+// hands back untouched (CLAUDE.md rule 4).
+//
+// The one thing that is not a plain function of the state is §4.2 step 4, the trap window between a
+// declaration and its damage. A trap that fires there can prompt its controller, and a prompt is
+// state rather than a callback (§9.3), so `declareAttack` is a resumable sequence: it puts the
+// declaration in `state.declaredAttack`, hands the `attackDeclared` event to `traps.runTrapWindow`,
+// and — only if that pauses — owes step 5's combat to `state.work` under `ATTACK_WINDOW_WORK`
+// (R113, R117). Everything the resume needs is an id, because the window can replace every instance
+// in the state before step 5 runs (R44's AI turn drives `reduce`, which clones).
 
-import type { PlayerId } from "@jackioh/shared";
-import { hasKeyword, opponentOf } from "@jackioh/shared";
+import type { GameEvent, PlayerId } from "@jackioh/shared";
+import { PLAYER_IDS, hasKeyword, opponentOf } from "@jackioh/shared";
 import { LANE_RESTRICTED_ATTACKS } from "./config";
 import { dealDamage, type DamageTarget } from "./damage";
 import { unitView } from "./layers";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import type { CardInstance, GameState, Position } from "./state";
+import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
+import { runTrapWindow } from "./traps";
+import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
+import { owe, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
 /**
@@ -197,8 +208,27 @@ export function attackTargets(state: GameState, attacker: CardInstance): AttackT
   return candidates.filter((target) => canAttack(state, attacker, target));
 }
 
+/** §4.2 step 2's two possibilities as one id: an enemy unit's instance id, or `hero-<player>`. */
+const HERO_TARGET_PREFIX = "hero-";
+
 function targetIdOf(target: AttackTarget): string {
-  return target.kind === "unit" ? target.instance.id : `hero-${target.player}`;
+  return target.kind === "unit" ? target.instance.id : `${HERO_TARGET_PREFIX}${target.player}`;
+}
+
+/**
+ * The inverse of `targetIdOf`: the target an `attackDeclared` event or an open `declaredAttack`
+ * names. Exported because the ids are all a paused attack and a trap trigger have to go on — #96
+ * My Pawn reads the event, and §4.2 step 5 reads the state back after the window — and because the
+ * `hero-<player>` spelling is this module's, so nobody else should be parsing it.
+ */
+export function attackTargetOf(state: GameState, targetId: string): AttackTarget | null {
+  if (targetId.startsWith(HERO_TARGET_PREFIX)) {
+    const named = targetId.slice(HERO_TARGET_PREFIX.length);
+    const player = PLAYER_IDS.find((id) => id === named);
+    return player === undefined ? null : { kind: "hero", player };
+  }
+  const unit = findInstance(state, targetId);
+  return unit === undefined ? null : { kind: "unit", instance: unit };
 }
 
 /**
@@ -297,28 +327,190 @@ export function resolveCombat(sink: EngineSink, attacker: CardInstance, target: 
   strikeBack();
 }
 
-/**
- * The player's attack: §4.2 steps 1 to 5. Validation first, then the exertion, which step 4 spends
- * before any damage, then the combat and the state check.
- *
- * Step 4's trap window rides the `attackDeclared` event emitted here (My Pawn reads the projection
- * in `subsystems/lethal.ts` and cancels with `attackCancelled`, R44). The exertion above is spent
- * before the window, so a cancelled attack is gone either way.
- */
-export function declareAttack(sink: EngineSink, attacker: CardInstance, target: AttackTarget): CombatResult {
-  const refusal = whyCannotAttack(sink.state, attacker, target);
-  if (refusal !== null) return { error: refusal };
+// ---------------------------------------------------------------------------
+// §4.2 step 4: the trap window between the declaration and the damage (R44, R100, R113, R117)
+// ---------------------------------------------------------------------------
 
-  attacker.exertion.attacked = true;
-  sink.events.push({
-    type: "attackDeclared",
-    attackerId: attacker.id,
-    targetId: targetIdOf(target),
-    forced: false,
+/**
+ * R113: the `resume.hook` of the one work item this module parks — the rest of an attack whose
+ * step 4 window a prompt interrupted. It is an engine sequence and not a card's, so the name is one
+ * no `Script` can hold, and `runOwedAttack` below is registered for it at module scope, the way
+ * `traps.ts` registers its window and `turn.ts` its two boundaries. `work.runWorkItem` raises on a
+ * hook nothing knows, and an attack that cannot be resumed is exactly the lost sequence that rule
+ * exists to prevent: a declaration that spent an exertion and never became damage.
+ */
+export const ATTACK_WINDOW_WORK = "@attackWindow";
+
+/** The window owes one step: §4.2 step 5, the combat the declaration has not resolved yet. */
+const ATTACK_COMBAT_STEP = "combat";
+
+/**
+ * R100: "an event the window is scheduled to deliver is not also offered to the immediate trap
+ * check". The window below delivers `attackDeclared` itself, so §10.3's frontier must not deliver
+ * it a second time — a trap that declined a non-lethal swing would otherwise be offered the same
+ * declaration again *after* the damage, against a hero the attack has already hit, and a Field Trap
+ * would answer one declaration twice.
+ *
+ * `triggers.ts` copies events out of `sink.events` into `state.dispatch` starting at
+ * `sink.dispatched`, so advancing that cursor past this event is precisely "the frontier has taken
+ * it" — it has, into this window. R100's own mechanism (`traps.TRAP_WINDOW_EVENTS`) cannot serve
+ * here: it withholds an event *type*, and a forced attack's `attackDeclared` opens no window (R121)
+ * and must keep reaching the immediate check like any other event a card's effect list emits.
+ *
+ * The cursor is at the event on every path that opens a window: `reduce` hands an `attack` action a
+ * sink whose event list it has not touched, and `reduce` is the only production caller. A sink a
+ * test has already run a combat on is the one other shape; there the cursor is behind, and moving
+ * it would silently drop the events in between, so the event is left on the frontier instead.
+ */
+function withholdFromFrontier(sink: SettleSink, at: number): void {
+  if ((sink.dispatched ?? 0) !== at) return;
+  sink.dispatched = at + 1;
+}
+
+/**
+ * The ordinary (non-trap) triggers on the declaration, queued in R68's order. This is the second
+ * half of `triggers.dispatchEvent`; its first half is the immediate trap check, which §4.2 step 4
+ * replaces with the window, so calling `dispatchEvent` itself would offer the event to the traps a
+ * second time. Queueing only reads the board, so it cannot pause, and the entries pop in the
+ * caller's own resolution loop — after the combat, exactly where they popped before step 4 existed.
+ */
+function queueDeclarationTriggers(sink: EngineSink, event: GameEvent): void {
+  for (const holder of cardsInTriggerOrder(sink.state)) {
+    if (holder.isTrap) continue;
+    for (const def of triggersOnEvent(holder, event.type)) queueTrigger(sink, holder, def, event);
+  }
+}
+
+/**
+ * Park the rest of the attack (R113). `work.ts` owns `state.work`, so this only ever calls `owe`:
+ * the item lands at `state.workCursor`, which `traps.runTrapWindow` has just advanced past the
+ * traps *it* still owes, so the window finishes before the combat it precedes. Nothing is held but
+ * the declaration's id, which is plain JSON, so the paused attack survives a round trip.
+ *
+ * R117: this is called at the moment the window pauses and never in advance. While `declareAttack`
+ * is on the stack the combat is `declareAttack`'s alone, so a resolution loop running *inside* the
+ * window — My Pawn's AI playout drives `reduce`, which settles — can neither take nor re-run it.
+ * Pre-parking a sequence's continuation is what made a played card's Cry fire twice (R1, R117).
+ */
+function oweDeclaredAttack(sink: EngineSink, id: string): void {
+  owe(sink, {
+    defId: "",
+    hook: ATTACK_WINDOW_WORK,
+    step: ATTACK_COMBAT_STEP,
+    radiant: false,
+    data: { declaredAttack: id },
   });
+}
+
+/** Close the window, if this declaration is still the one that holds it open. */
+function closeWindow(state: GameState, id: string): DeclaredAttack | null {
+  const open = state.declaredAttack;
+  if (open === null || open.id !== id) return null;
+  state.declaredAttack = null;
+  return open;
+}
+
+/**
+ * §4.2 step 5, once step 4's window has closed: resolve the combat the declaration still owes, then
+ * run the state check.
+ *
+ * The attacker and the target are read back out of `state.declaredAttack` by id rather than from
+ * the caller's own variables, because the window can have replaced every instance in the state:
+ * R44's AI turn drives `reduce`, which clones, and `subsystems/aiPolicy.adoptState` copies the
+ * clone back field by field. Ids survive that; object references do not.
+ *
+ * R94 is untouched. "Both units' attack is read at the start of the combat" — that read is
+ * `resolveCombat`'s, and the combat starts here, after the window. Nothing reads either attack
+ * before it, so a trap that buffed or shrank a unit inside the window is read once, in the right
+ * order, and a First Strike survivor is still struck back with the attack the defender had when the
+ * combat began.
+ */
+function resolveDeclaredAttack(sink: EngineSink, id: string): void {
+  const state = sink.state;
+  // A window opened inside this one owns the field now, and this declaration is over either way.
+  // The only Core shape is My Pawn handing the turn to the AI policy, which cancels first (R44).
+  const open = closeWindow(state, id);
+  if (open === null || open.cancelled) return;
+  if (state.result !== null) return;
+
+  const attacker = findInstance(state, open.attackerId);
+  if (attacker === undefined) return;
+  const target = attackTargetOf(state, open.targetId);
+  if (target === null) return;
 
   resolveCombat(sink, attacker, target);
   stateCheck(sink);
+}
+
+/** `work.ts`'s handler for a parked attack: the same attack, continued where it stopped (R113). */
+function runOwedAttack(sink: EngineSink, item: WorkItem): void {
+  const id: unknown = item.resume.data.declaredAttack;
+  if (typeof id !== "string") return;
+  resolveDeclaredAttack(sink, id);
+}
+
+registerWorkHandler(ATTACK_WINDOW_WORK, runOwedAttack);
+
+/**
+ * The player's attack: §4.2 steps 1 to 5. Validation first, then step 4 — the exertion, then the
+ * trap window — and only then step 5's combat and state check.
+ *
+ * Step 4 in full: "Declaring the attack has now spent the attacker's exertion, before any damage.
+ * Trap window: My Pawn checks whether the hit would be lethal and, if so, cancels the attack; the
+ * exertion is not given back, so the attack is gone either way (R44)." So the declaration goes into
+ * `state.declaredAttack` before any trap sees it — that record is what `effects/combat.cancelAttack`
+ * marks (§6.3 "Cancel an attack") — and the traps are offered the event through
+ * `traps.runTrapWindow`, the same scheduled-window entry point §2.2's end-of-turn window uses. That
+ * is not an analogy: it is the one implementation, so the ordering, the R68 side order and, above
+ * all, R113's parking of the traps a prompt stopped the window from reaching are shared rather than
+ * re-derived here.
+ *
+ * A trap in the window can prompt its controller, so the rest of the attack is a resumable sequence
+ * like the two turn boundaries: at the moment the window pauses, and never before it (R117), the
+ * combat is owed to `state.work` and `runOwedAttack` above picks it up when the answer drains the
+ * queue. `state.work` is drained ahead of the trigger queue, and the traps the window still owes
+ * are parked on `state.work` too, in front of the combat — which is why the window uses
+ * `runTrapWindow` rather than `triggers.dispatchEvent`, whose remainder would wait *behind* the
+ * combat in the trigger queue and so fire after the damage it exists to pre-empt.
+ */
+export function declareAttack(sink: EngineSink, attacker: CardInstance, target: AttackTarget): CombatResult {
+  const state = sink.state;
+  const refusal = whyCannotAttack(state, attacker, target);
+  if (refusal !== null) return { error: refusal };
+
+  // Step 4's first sentence. R44 never gives this back, so a cancelled attack is gone either way.
+  attacker.exertion.attacked = true;
+
+  const targetId = targetIdOf(target);
+  const declared: DeclaredAttack = {
+    id: `d${state.nextSeq}`,
+    attackerId: attacker.id,
+    targetId,
+    cancelled: false,
+  };
+  state.nextSeq += 1;
+  state.declaredAttack = declared;
+
+  const event: GameEvent = { type: "attackDeclared", attackerId: attacker.id, targetId, forced: false };
+  const at = sink.events.length;
+  sink.events.push(event);
+  withholdFromFrontier(sink, at);
+
+  // Step 4's second sentence: the traps answer the declaration, before any damage.
+  runTrapWindow(sink, event);
+  queueDeclarationTriggers(sink, event);
+
+  if (state.result !== null) {
+    // The window ended the game; there is no step 5 and nothing to resume into.
+    closeWindow(state, declared.id);
+    return {};
+  }
+  if (state.pending !== null) {
+    oweDeclaredAttack(sink, declared.id);
+    return {};
+  }
+
+  resolveDeclaredAttack(sink, declared.id);
   return {};
 }
 
@@ -327,6 +519,21 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
  * steps 1 to 3, so position, sickness and the Taunt rule do not apply, and it spends no exertion, so
  * the unit may still take its own attack on its own turn. The target still strikes back, and the
  * combat is followed by its own state check.
+ *
+ * R121 — AND IT OPENS NO TRAP WINDOW. Step 4 is one sentence about spending the attacker's exertion
+ * and one about the window that answers the declaration, and a forced attack has neither half: R121
+ * says in as many words that it "is declared by the effect, not the player … so it is not 'the
+ * opponent declaring an attack'", and §6.3's Cancel-an-attack row is "call off an attack already
+ * declared", which is the player's declaration and not a compulsion. So `state.declaredAttack` stays
+ * null here and nothing can cancel a forced attack — which is also what #96 already says, since its
+ * `when` refuses every event carrying `forced`.
+ *
+ * The engineering reading agrees with the rules one. A window here would open inside a card's
+ * effect list, where a trap's prompt would split the list §10.3 calls one unit of work, and where
+ * `forceAttacksOn`'s run would have to become a second resumable sequence — for a window no Core
+ * card can fire in. Nothing is lost by leaving it out: the `attackDeclared` event a forced attack
+ * emits still reaches the traps through §10.3's immediate check, exactly as it does today, because
+ * the withholding above is per declaration rather than per event type.
  */
 export function forceAttack(sink: EngineSink, attacker: CardInstance, target: AttackTarget): void {
   const state = sink.state;

@@ -150,6 +150,30 @@ describe("match clock", () => {
     expect(clock.snapshot().graceDeadline.p2).toBeNull();
   });
 
+  it("R147 keeps the first deadline when a second grace starts, so a flapping socket cannot extend it", () => {
+    const { timers, clock, expiries, graceMs } = harness();
+    clock.startGrace("p1");
+    const deadline = clock.snapshot().graceDeadline.p1;
+    expect(deadline).toBe(timers.now() + graceMs);
+
+    // The socket flaps: another drop arrives while the first countdown is still running. Re-arming
+    // here would hand the player a fresh window every time they bounced, and the match would stall
+    // for as long as they kept it up.
+    timers.advance(graceMs - SECOND);
+    clock.startGrace("p1");
+    expect(clock.snapshot().graceDeadline.p1).toBe(deadline);
+    expect(expiries).toEqual([]);
+
+    // It expires at the deadline the *first* drop set, not a second later.
+    timers.advance(SECOND);
+    expect(expiries).toEqual([{ kind: "grace", player: "p1" }]);
+
+    // And a grace that has run out can be started again: the guard is about extending a live
+    // countdown, not about refusing the next one.
+    clock.startGrace("p1");
+    expect(clock.snapshot().graceDeadline.p1).toBe(timers.now() + graceMs);
+  });
+
   it("cancels grace when the player returns inside the window", () => {
     const { timers, clock, expiries, graceMs } = harness();
     clock.startGrace("p1");

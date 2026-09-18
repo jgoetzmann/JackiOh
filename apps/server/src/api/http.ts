@@ -8,6 +8,7 @@
  * place instead of at the top of every handler.
  */
 
+import { floodLimits } from "./deps";
 import type { AuthUser, Profile, ServerDeps, Timers } from "./ports";
 
 // ---------------------------------------------------------------------------
@@ -273,9 +274,99 @@ export function assertActive(profile: Profile): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// §9.8's per-account rate limit
+// ---------------------------------------------------------------------------
+
+/**
+ * Unit conversion, not configuration: R109 states its API allowance *per minute*, and
+ * `API_REQUESTS_PER_MINUTE` (via `floodLimits`) is the number itself.
+ */
+const API_RATE_WINDOW_MS = 60_000;
+
+/** §9.8, R109: the bucket a request is counted in. Never one shared counter — see `createRouter`. */
+export function accountKey(profileId: string): string {
+  return `account:${profileId}`;
+}
+
+/**
+ * The bucket for a request that named no account: an `auth: "none"` route, or a token that did not
+ * verify. Prefixed apart from `accountKey` so an IP hash can never land in a profile's bucket.
+ */
+export function addressKey(ipHash: string): string {
+  return `address:${ipHash}`;
+}
+
+export type RateLimiter = {
+  /** True while this key is still inside its allowance; false once it is over it. */
+  allow: (key: string, now: number) => boolean;
+  /** How many keys are being tracked, so a test can see idle ones dropped. */
+  readonly size: number;
+};
+
+/**
+ * §9.8: "per-account rate limit at the API", R109: 300 requests per minute per account.
+ *
+ * One sliding window per key, the same shape as the actor's per-seat `floodExceeded`
+ * (`src/match/actor.ts`) — the other half of the same §9.8 row — so the two limits are one
+ * mechanism read twice rather than two mechanisms that can drift.
+ *
+ * A request that is over the limit is **not** recorded: like §9.4's attempt log (`codes.ts`), the
+ * window drains, so a caller who keeps hammering cannot pin their own counter open for ever.
+ *
+ * Idle keys are swept once per window rather than left to accumulate, so a long-lived process does
+ * not hold a timestamp array for every account that ever called it.
+ */
+export function createRateLimiter(limit: number, windowMs: number): RateLimiter {
+  const hits = new Map<string, number[]>();
+  let sweptAt = 0;
+
+  const drop = (times: number[], now: number): void => {
+    while (times.length > 0 && (times[0] ?? 0) <= now - windowMs) times.shift();
+  };
+
+  return {
+    get size() {
+      return hits.size;
+    },
+    allow: (key, now) => {
+      if (now - sweptAt >= windowMs) {
+        sweptAt = now;
+        for (const [candidate, times] of hits) {
+          if ((times.at(-1) ?? 0) <= now - windowMs) hits.delete(candidate);
+        }
+      }
+
+      const times = hits.get(key) ?? [];
+      hits.set(key, times);
+      drop(times, now);
+      if (times.length >= limit) return false;
+      times.push(now);
+      return true;
+    },
+  };
+}
+
 export type Router = (request: Request) => Promise<Response>;
 
 export function createRouter(routes: readonly Route[], deps: ServerDeps): Router {
+  /**
+   * §9.8's "per-account rate limit at the API", held here for the same reason `createCodesRoutes`
+   * holds its circuit breaker in a closure: a fresh router starts with an empty window, so one
+   * test's flood cannot leak into the next.
+   *
+   * R137's reasoning applies to this half of §9.8 as much as to the actor's: a single shared
+   * counter lets one caller spend everybody else's budget, turning the anti-abuse limit into the
+   * abuse. So the key is the **account** — `profiles.id`, the row §9.4 owns, not the auth user id
+   * and not the bearer token, either of which a caller can hold several of for one account.
+   *
+   * NOT IN SPEC: what to key a request that names no account on. §9.8 and R109 say "per account",
+   * and an open route (sign-up, sign-in, the queue population) and a token that did not verify have
+   * none. They are keyed on the request's IP hash instead — never on one shared bucket, which would
+   * be exactly the failure R137 describes. The two namespaces are kept apart by their prefixes.
+   */
+  const limiter = createRateLimiter(floodLimits.apiRequestsPerMinute, API_RATE_WINDOW_MS);
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     let pathMatched = false;
@@ -289,12 +380,36 @@ export function createRouter(routes: readonly Route[], deps: ServerDeps): Router
       try {
         let user: AuthUser | null = null;
         let profile: Profile | null = null;
+        // Resolved before the rate limit because only auth knows which account a request belongs
+        // to, and the account is R109's key. A refusal is held rather than thrown, so a flood of
+        // bad tokens is still counted — against its address, since it named no account.
+        let authError: ApiError | null = null;
         if (candidate.auth !== "none") {
-          const caller = await resolveCaller(deps, request.headers);
-          user = caller.user;
-          profile = caller.profile;
-          if (candidate.auth === "active") assertActive(profile);
+          try {
+            const caller = await resolveCaller(deps, request.headers);
+            user = caller.user;
+            profile = caller.profile;
+          } catch (error) {
+            if (!(error instanceof ApiError)) throw error;
+            authError = error;
+          }
         }
+
+        // §9.4, §9.8: the client address is only ever seen hashed. Read once, for the limiter and
+        // for the request alike.
+        const ipHash = deps.hashes.ip(clientAddress(request.headers));
+
+        // §9.8: "per-account rate limit at the API" (R109: 300 a minute). Checked before the body
+        // is read and before §9.4's gate, so a flood costs the least work this router can manage.
+        const key = profile === null ? addressKey(ipHash) : accountKey(profile.id);
+        if (!limiter.allow(key, deps.timers.now())) {
+          // §9.8: "Every rejected action is logged with its reason."
+          deps.log.warn("api.rate_limited", { path: url.pathname, key });
+          throw new ApiError("rate_limited", "too many requests; slow down");
+        }
+
+        if (authError !== null) throw authError;
+        if (candidate.auth === "active" && profile !== null) assertActive(profile);
 
         const req: ApiRequest = {
           method: request.method,
@@ -302,7 +417,7 @@ export function createRouter(routes: readonly Route[], deps: ServerDeps): Router
           headers: request.headers,
           params,
           body: await readBody(request),
-          ipHash: deps.hashes.ip(clientAddress(request.headers)),
+          ipHash,
           user,
           profile,
         };

@@ -73,6 +73,58 @@ export function createManualTimers(start = 1_700_000_000_000): ManualTimers {
   return timers;
 }
 
+/**
+ * A clock for code that must `await` its own timer, which `createManualTimers` cannot serve: a
+ * request already in flight has no way to call `advance()` for itself, so `padTo`'s sleep
+ * (`src/api/http.ts`) would never resolve.
+ *
+ * `after` therefore fires on the host's microtask queue while the *virtual* clock — the only clock
+ * the server reads — jumps to the deadline. A sleep costs no real time and `now()` moves by exactly
+ * the milliseconds that were asked for, so a test can measure a response in milliseconds without a
+ * wall clock and without a tolerance.
+ *
+ * `charge(ms)` is the other half: it advances the clock the way *work* would, so a test can give a
+ * fake store a cost model and then assert what the code under test does about it (BUILD M6-T1's
+ * timing test does exactly that).
+ *
+ * One in-flight sleep at a time: callbacks fire in the order they were scheduled rather than in
+ * deadline order, which is all the server's padded responses need and keeps this fake honest about
+ * what it is. Anything driving several overlapping deadlines wants `createManualTimers` instead.
+ */
+export type VirtualTimers = Timers & {
+  /** Advances the clock by `ms` of work, as a real store round trip or hash would. */
+  charge: (ms: number) => void;
+  set: (epochMs: number) => void;
+};
+
+export function createVirtualTimers(start = 1_700_000_000_000): VirtualTimers {
+  let now = start;
+
+  return {
+    now: () => now,
+    after: (ms, fn) => {
+      const at = now + Math.max(ms, 0);
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (cancelled) return;
+        now = Math.max(now, at);
+        fn();
+      });
+      return {
+        cancel: () => {
+          cancelled = true;
+        },
+      };
+    },
+    charge: (ms) => {
+      now += Math.max(ms, 0);
+    },
+    set: (epochMs) => {
+      now = epochMs;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -256,7 +308,10 @@ export function testLimits(overrides: Partial<ApiLimits> = {}): ApiLimits {
     redeemPerProfilePerHour: 5,
     redeemPerIpPerHour: 20,
     redeemWindowMs: 3_600_000,
-    // Small on purpose: the §9.4 timing test sends 150 requests and still has to finish fast.
+    // Small on purpose: the §9.4 suites that drive redemption run on the *real* clock (a request in
+    // flight cannot advance a manual one), so every padded response in them is a real wait. BUILD
+    // M6-T1's timing test is the exception — it runs on `createVirtualTimers` and overrides this
+    // with the production `REDEMPTION_RESPONSE_FLOOR_MS`, which costs it nothing.
     redeemConstantMs: 20,
     breakerFailureThreshold: 100,
     breakerWindowMs: 600_000,

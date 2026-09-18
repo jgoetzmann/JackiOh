@@ -1,9 +1,12 @@
 // The real `EnginePort`, and the ONLY file in `apps/server` that imports `@jackioh/engine`.
 //
-// It is excluded from `apps/server/tsconfig.json` and reached only through the unanalyzed dynamic
-// import in `engine.ts`. That exclusion was taken while `packages/engine` did not compile; it does
-// now (`tsc -p packages/engine/tsconfig.json` exits 0), so the exclusion and the dynamic import are
-// both ready to be undone — tracked as B-18 in reviews/2026-09-18-part-b-gate.md.
+// It is typechecked with the rest of `src` — the `apps/server/tsconfig.json` exclusion taken while
+// `packages/engine` did not compile is gone, since `tsc -p packages/engine/tsconfig.json` now exits
+// 0 (B-18 in reviews/2026-09-18-part-b-gate.md).
+//
+// It is still reached only through the unanalyzed dynamic import in `engine.ts`, which is what lets
+// the server boot, degrade and be tested without the engine in the process; that file's
+// `loadEnginePort` doc says why making it static would cost more than it saves.
 //
 // WHY `registerAll()` IS HERE. `createGame` looks its card definitions up in the engine's
 // registered catalog, and `packages/cards` is the one module that owns the catalog and the 109

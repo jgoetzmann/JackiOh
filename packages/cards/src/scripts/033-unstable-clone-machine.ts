@@ -20,10 +20,10 @@
 // argument, so a played card whose stats were overridden (a Fused or Crafted body, #22's meal)
 // copies at its printed stats instead of its overridden ones, which R57 says it should keep.
 //
-// NEW RULING NEEDED (proposed R82, see the report): a permanent is on the field before its own
-// `cardPlayed` event is emitted (`reduce.ts` places it, then pushes the event), so the Clone Machine
-// would otherwise answer its own play and shuffle 3 copies of itself. Hearthstone semantics are that
-// a permanent's trigger does not fire on the play that put it there, so its own play is excluded.
+// R119: a permanent is on the field before its own `cardPlayed` event is emitted (the play places
+// it, then pushes the event), so the Clone Machine would otherwise answer its own play and shuffle
+// 3 copies of itself. §10.3 offers an event only to the cards watching when it is dispatched, so a
+// card that reacts to "a card played" starts counting from the next play, not from itself.
 
 import type { Effect, EffectContext, Script, TriggerDef } from "@jackioh/engine";
 import { findInstance } from "@jackioh/engine";
