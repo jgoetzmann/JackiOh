@@ -290,9 +290,6 @@ describe("06 room code — a networked match between a browser and a Node client
       }
       cy.get(ts(handCountId(side))).should("exist");
     }
-    cy.get(`${ts(manaId("you"))} ${MANA_CRYSTAL}`)
-      .its("length")
-      .should("be.within", 1, constants.MAX_MANA);
 
     cy.then(() => {
       cy.wsPlayer({ action: "view", name: SEAT_TWO }).should((result) => {
@@ -319,6 +316,15 @@ describe("06 room code — a networked match between a browser and a Node client
     cy.keepMulligans();
     seatTwoKeepsMulligan();
     waitForMyTurn();
+
+    // Mana is asserted HERE and not with the rest of the board, because §2.1 puts the mulligan
+    // before turn 1 and §2.3 makes max mana the number of turns the player has started — so during
+    // the mulligan `you.mana` is correctly `{current: 0, max: 0}` and `Board.tsx` renders no
+    // crystals at all. "Both see the board" is satisfied above; this is the first moment a crystal
+    // is a thing that ought to exist.
+    cy.get(`${ts(manaId("you"))} ${MANA_CRYSTAL}`)
+      .its("length")
+      .should("be.within", 1, constants.MAX_MANA);
 
     // CLAUDE.md rule 7: the browser renders seat 1's hand and nothing more.
     cy.then(() => {

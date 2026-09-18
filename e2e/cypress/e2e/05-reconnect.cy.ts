@@ -343,9 +343,12 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
     cy.playByName(MASOCHISM_MASK, { zone: { side: "you", row: "backrow", lane: 1 } });
     cy.endTurn();
     seatTwoEndsTurn();
-    waitForMyTurn();
 
     // --- player-turn 5: the Mask's start-of-turn choice is open for seat 1 --------------------
+    // No `waitForMyTurn()` here, deliberately: the Mask's choice opens at the START of this turn,
+    // and while a `PendingChoice` is open `legalActions` for its holder is `['answer']` alone — no
+    // `endTurn` — so `end-turn` is correctly disabled and waiting for it to enable can never
+    // succeed. `waitForPrompt` is the right wait for a turn that begins with a question.
     cy.waitForPrompt("mode");
 
     fingerprint().then((print) => {

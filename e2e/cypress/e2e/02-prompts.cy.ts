@@ -179,16 +179,29 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
       // §2.1 / R9: the picked cards are the ones KEPT; the rest are returned, replacements are
       // drawn first and only then are the returned cards shuffled back in.
       cy.answerPrompt("mulligan", { cards: kept, submit: true });
-      pickerAnswered("mulligan");
 
-      // The far seat's mulligan is the next prompt, and the device follows a prompt by itself
-      // (BUILD M5-T3), so answering it is what clears the phase.
+      // NOT `pickerAnswered("mulligan")`: `answerMulligan` opens the FAR seat's mulligan in the
+      // same reduction (§2.1, R9), and both pickers carry `data-prompt-kind="mulligan"` while the
+      // watching seat's panel carries none — so a mulligan picker is always in the DOM here, and
+      // "not.exist" can never hold. What actually changed is whose question it is, so that is what
+      // this asserts, which is a stronger claim than the absence ever was.
+      cy.gameState().should((mid) => {
+        expect(mid.pending?.kind, "the far seat's mulligan is the next prompt").to.eq("mulligan");
+        expect(mid.pending?.player, "and it belongs to the other seat now").to.eq("p2");
+      });
+
+      // The device follows a prompt by itself (BUILD M5-T3), so answering it is what clears the
+      // phase.
       cy.keepMulligans();
       cy.noPrompt();
 
       cy.gameState().should((after) => {
         const now = handOf(after, "p1");
-        expect(now, "R9: the replacements are drawn, so the hand is three again").to.have.length(3);
+        // Three replacements plus R10's turn-1 draw. Both mulligans are answered by the line above,
+        // so the game has left the mulligan phase and player 1's first turn has begun — and R10
+        // ("First player's turn-1 draw — Yes, draws") gives them a fourth card. Asserting three
+        // here would be asserting that R10 does not happen.
+        expect(now, "R9's three replacements, plus R10's turn-1 draw").to.have.length(4);
         expect(now, "the kept card stayed in hand").to.include(kept[0]);
         for (const id of returned) {
           expect(now, "a returned card left the hand").to.not.include(id);

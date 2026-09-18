@@ -1,0 +1,115 @@
+# CI for JackiOh — BUILD.md §5's Definition of done, in the order it lists them.
+#
+# The e2e job is the only awkward one, and the awkwardness is a rule rather than an accident:
+# SPEC §11 R144 makes the server reseed its fixture accounts and invite codes **at boot**, so a
+# suite that activates the pending account or spends an invite code is repeatable only against a
+# fresh server. Spec 10 does both. So the server is restarted before each browser pass, and a
+# retried spec-10 test cannot pass either — which is why `retries` is left at the Cypress config's
+# value and not raised here to paper over a red run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Card data and rules only. No secret belongs in this file: SUPABASE_SECRET_KEY and CODE_PEPPER
+  # are the two that must never be committed, which is why .gitignore carries `.env`.
+  CATALOG_VERSION: core-1
+
+jobs:
+  checks:
+    name: lint, typecheck, unit, fuzz, coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: lint
+        run: pnpm lint
+      - name: typecheck
+        run: pnpm typecheck
+
+      # BUILD §5 names these four by hand, so they run by hand rather than hiding inside `test`.
+      - name: catalog data (100 cards, 9 tokens, rarity counts)
+        run: pnpm validate:catalog
+      - name: every card has a test file
+        run: pnpm exec tsx packages/cards/scripts/missing-tests.ts
+      - name: every SPEC §11 row has a named test
+        run: pnpm rulings:coverage
+
+      - name: unit and integration suites
+        run: pnpm test
+
+      # 1,000 seeds over the full card pool. Separate from `pnpm test`, which sweeps the same file
+      # at a reduced seed count — the gate is this one.
+      - name: fuzz gate
+        run: pnpm fuzz
+
+      # BUILD §5's 90% line floor. The threshold lives in vitest.config.ts; it is enforced here
+      # rather than asserted in prose.
+      - name: coverage floor
+        run: pnpm test:coverage
+
+  e2e:
+    name: e2e (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One job per browser, so M8's "Chrome and Electron" is two independent results rather than one
+    # run that happened to pick a browser. A failure in one does not mask the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, electron]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: build the client
+        # A built client rather than `vite dev`: HMR reloads the page mid-run when anything under
+        # apps/web/src changes, which remounts the route and restarts the game at turn 0.
+        run: pnpm build
+
+      - name: start the client
+        run: pnpm --dir apps/web exec vite preview --port 5173 --strictPort &
+      - name: start the server
+        env:
+          E2E: "1"
+        run: pnpm --dir apps/server exec tsx src/index.ts &
+
+      - name: wait for both to answer
+        run: |
+          # /api/catalog is the one route R163 makes unauthenticated, so it is the honest
+          # readiness probe: no token, and a 200 means the catalog really did register.
+          npx --yes wait-on http://127.0.0.1:5173 http://127.0.0.1:8787/api/catalog --timeout 120000
+
+      - name: the twelve specs
+        env:
+          E2E: "1"
+        run: pnpm --dir e2e exec cypress run --browser ${{ matrix.browser }}
+
+      - name: keep the evidence when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-${{ matrix.browser }}
+          path: |
+            e2e/cypress/screenshots
+            e2e/cypress/videos
+          if-no-files-found: ignore
