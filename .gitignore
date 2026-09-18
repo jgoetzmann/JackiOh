@@ -17,3 +17,6 @@ e2e/cypress/videos/
 # Test-runner caches and local scratch.
 .vitest/
 *.tmp.*
+
+# Agent worktrees (git worktrees created by the Agent tool for isolated parallel work).
+.claude/worktrees/
