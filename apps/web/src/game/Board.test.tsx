@@ -64,6 +64,27 @@ describe("Board", () => {
     expect(container.firstChild).toMatchSnapshot();
   });
 
+  it("is given the fixture BUILD M5-T1 asks for: 10 units, 10 backrow cards and a stacked pile", () => {
+    // The acceptance names the fixture's contents, so the fixture is asserted rather than trusted:
+    // one `null` in a backrow lane made this 9 backrow cards while every test above still passed,
+    // because none of them counts. Both sides are counted, since "10 units" is the board's total.
+    const view = fullBoardView();
+    const units = [...view.you.units, ...view.opponent.units].filter((unit) => unit !== null);
+    const backrow = [...view.you.backrow, ...view.opponent.backrow].filter((slot) => slot !== null);
+
+    expect(units, "BUILD M5-T1: the fixture board holds 10 units").toHaveLength(10);
+    expect(backrow, "BUILD M5-T1: the fixture board holds 10 backrow cards").toHaveLength(10);
+    expect(units.filter((unit) => unit.buried > 0), "BUILD M5-T1: a stacked pile").not.toHaveLength(0);
+
+    // And the board draws all twenty: a card for every unit, and a card or a back for every
+    // backrow slot — so a fixture that grew a lane cannot pass while the board drops it.
+    render(<Board view={view} />);
+    const drawn = FIELD_SLOTS.flatMap((slot) =>
+      LANES.map((lane) => screen.getByTestId(testid.zone(slot.side, slot.row, lane))),
+    ).filter((zone) => zone.querySelector(".card, .card-back") !== null);
+    expect(drawn).toHaveLength(20);
+  });
+
   it("renders every zone of every lane, with no element wider than the viewport", () => {
     // jsdom has no layout engine, so this is structural: `document.body.scrollWidth` is always 0
     // there and asserting on it would be a fake pass. The real pixel check at 1280x720 and

@@ -1251,7 +1251,18 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         data-row="backrow"
         data-side="opponent"
         data-testid="zone-opponent-backrow-5"
-      />
+      >
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-backrow"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
+      </div>
       <div
         aria-disabled="true"
         aria-label="opponent units lane 5"

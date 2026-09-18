@@ -98,7 +98,14 @@ export type GameOverReason =
   | "disconnect"
   | "match-ceiling";
 
-/** Every type in the union, for the animation-table test (BUILD M5-T4). */
+/**
+ * Every type in the union, for the animation-table test (BUILD M5-T4).
+ *
+ * `satisfies readonly GameEventType[]` below is only a SUBSET check — it rejects a member that is
+ * not a `GameEventType` and says nothing about one that is missing. `GameEventTypesAreExhaustive`
+ * underneath the array closes that direction, and `test/events.test.ts` closes it again at runtime
+ * by reading the union out of this file's own source, so a new event cannot slip past `vitest run`.
+ */
 export const GAME_EVENT_TYPES = [
   "cardPlayed",
   "cardResolved",
@@ -142,3 +149,17 @@ export const GAME_EVENT_TYPES = [
   "drawAnswered",
   "gameOver",
 ] as const satisfies readonly GameEventType[];
+
+/**
+ * The other half of the check: a `GameEvent` member missing from `GAME_EVENT_TYPES` is a COMPILE
+ * ERROR, and the error names it — `Type '"newThing"' does not satisfy the constraint 'never'`.
+ *
+ * `Exclude` leaves exactly the members the array forgot; `never` is the only type that satisfies
+ * the constraint, so an empty difference compiles and a non-empty one does not. Nothing is emitted:
+ * this is a type alias, so the assertion costs no runtime bytes.
+ */
+type NoneMissing<T extends never> = T;
+
+export type GameEventTypesAreExhaustive = NoneMissing<
+  Exclude<GameEventType, (typeof GAME_EVENT_TYPES)[number]>
+>;

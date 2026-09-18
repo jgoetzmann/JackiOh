@@ -207,8 +207,18 @@ export function fullBoardView(over: Partial<PlayerView> = {}): PlayerView {
       graveyard: [card({ defId: "core-009" })],
       exile: [],
       units: enemyUnits.map((u) => u),
-      // The opponent's traps are face-down; their Field Spells are public (SPEC §10.8).
-      backrow: [faceDownBackrow, faceDownBackrow, faceUpBackrow("p2", { defId: "core-031", type: "Field Spell" }), faceDownBackrow, null],
+      // The opponent's traps are face-down; their Field Spells are public (SPEC §10.8). Lane 5 used
+      // to be `null`, which left the fixture with 9 backrow cards against the 10 BUILD M5-T1 asks
+      // for — and no empty field zone is lost by filling it: `baseView`/`emptySide` are all-null
+      // boards, and `routes/match.test.tsx` renders one of them through `Game` into this same
+      // `Board`.
+      backrow: [
+        faceDownBackrow,
+        faceDownBackrow,
+        faceUpBackrow("p2", { defId: "core-031", type: "Field Spell" }),
+        faceDownBackrow,
+        faceDownBackrow,
+      ],
       locks: { units: [false, true, false, false, false], backrow: [false, false, false, false, false] },
     }),
     ...over,
