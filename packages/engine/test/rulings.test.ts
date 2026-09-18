@@ -1450,6 +1450,13 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   it("R167 lets a queued player cancel, idempotently, and never unmakes a pairing", () => {
     provenIn(167, SERVER_QUEUE_TEST);
   });
+
+  // Proved by viewFor.test.ts "R168 §10.8's N is a floor: one action's own event burst is never
+  // truncated" — found by the e2e suite, where a My Pawn cancel plus its AI turn emitted 38 events
+  // in one reduction and the three the cancel is made of were dropped from the front of the window.
+  it("R168 keeps a whole action in the view's event window, so N is a floor and not a cap", () => {
+    provenIn(168, "viewFor.test.ts");
+  });
 });
 
 describe("SPEC §11 index completeness", () => {

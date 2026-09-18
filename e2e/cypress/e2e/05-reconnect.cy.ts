@@ -274,7 +274,7 @@ function optionKeysOf(print: ViewFingerprint): string[] {
 
 describe("05 reconnect — a networked game reloaded mid-prompt", () => {
   it("rebuilds the same view and the same open prompt, with the clock still running", () => {
-    const seed = seedFor("05-reconnect");
+    const seed = seedFor("05-reconnect-14");
     const seatOne = accounts.p1();
     const seatTwo = accounts.p2();
     let matchId = "";

@@ -365,6 +365,30 @@ Cypress.Commands.add("seedGame", (options: SeedGameOptions) => {
  * and a silent change to the opening hand of every spec that seeds a game.
  */
 Cypress.Commands.add("keepMulligans", () => {
+  // WAIT FOR THE CLIENT TO HAVE A VIEW BEFORE ASKING WHETHER A PICKER IS OPEN.
+  //
+  // `exists()` is one non-retrying DOM read, which is right for "is the SECOND seat's mulligan up?"
+  // — by then the answer is already settled — and wrong for the first. A networked board has no
+  // view at all for the first few frames after `cy.visit`: §9.5 has the actor push a fresh full
+  // view on attach, and until that frame lands there is no prompt in the DOM to find. Asking then
+  // answers "no", and this command returns having silently done nothing: seat 1 never mulligans,
+  // the far seat's choice never opens, and the spec fails much later somewhere else. (Measured:
+  // spec 05 died in `wsPlayer` with "timed out waiting for a view matching {promptKind: mulligan}",
+  // and spec 06 only escaped because twenty board assertions ran first.)
+  //
+  // `window.__jackioh.state` is the client's own answer to "have I got a view yet": the hotseat
+  // handle's is a getter over the live session and is never null, so this is a no-op there, while
+  // `net.ts`'s is null until the first `view` frame arrives. Waiting on it costs the hotseat specs
+  // nothing and closes the race for the networked ones in one place.
+  cy.window({ timeout: timeouts.view, log: false }).should((win) => {
+    const handle = win.__jackioh;
+    expect(handle, "window.__jackioh (BUILD M5-T3)").to.not.eq(undefined);
+    expect(
+      handle?.state,
+      "the client has a view to render (§9.5: the actor pushes one on attach)",
+    ).to.not.eq(null);
+  });
+
   const drain = (remaining: number): void => {
     if (remaining === 0) return;
     exists(promptOf("mulligan")).then((open) => {

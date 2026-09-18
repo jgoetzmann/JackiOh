@@ -427,10 +427,23 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): Game
  * §10.8: "the last N events for animation". `state.applied` is the only event history a state
  * carries (§9.3's nonce dedupe), oldest action first, so flattening it in order and taking the tail
  * is the stream — and it is bounded by `NONCE_HISTORY` already.
+ *
+ * `VIEW_EVENT_LIMIT` is a FLOOR, not a cap: the window never ends inside the newest applied action.
+ * BUILD M5-T4 gives every §10.3 event an animation and `PlayerView.events` is the client's only
+ * channel for them, so a fixed length silently drops the FRONT of any single action that emits more
+ * than it — the client then animates the tail of something whose beginning it was never told about.
+ * One #96 My Pawn cancel plus the §10.7 AI turn it hands over is 38 events in one `reduce`, and the
+ * three the cancel is made of (`attackDeclared`, `trapFired`, `attackCancelled`) were exactly the
+ * ones lost, which made M5-T4's `attackCancelled` row unreachable. Measured: 38 emitted, 32
+ * carried, 6 dropped from the front.
+ *
+ * This is SPEC §11 R168, which states the floor and records the measurement above.
  */
 function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
   const all = state.applied.flatMap((entry) => entry.events);
-  return all.slice(Math.max(0, all.length - VIEW_EVENT_LIMIT)).map((event) => redactEvent(state, viewer, event));
+  const newest = state.applied[state.applied.length - 1]?.events.length ?? 0;
+  const window = Math.max(VIEW_EVENT_LIMIT, newest);
+  return all.slice(Math.max(0, all.length - window)).map((event) => redactEvent(state, viewer, event));
 }
 
 // ---------------------------------------------------------------------------

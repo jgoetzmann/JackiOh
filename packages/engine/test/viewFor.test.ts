@@ -498,6 +498,41 @@ describe("viewFor (§10.8, M3-T6)", () => {
     expect(viewFor(state, "p1").events).toEqual([]);
   });
 
+  it("R168 §10.8's N is a floor: one action's own event burst is never truncated", () => {
+    const state = game("burst");
+
+    // §10.8's window is the client's only animation channel (BUILD M5-T4), so an action longer
+    // than `VIEW_EVENT_LIMIT` must not lose its front. #96 My Pawn's cancel plus the §10.7 AI turn
+    // it hands over is 38 events in one `reduce`, and `attackDeclared` / `trapFired` /
+    // `attackCancelled` — the three the cancel is made of — are the first three of them.
+    const head: GameEvent[] = [
+      { type: "attackDeclared", attackerId: "atk", targetId: "hero-p2", forced: false },
+      { type: "attackCancelled", attackerId: "atk", targetId: "hero-p2", byInstanceId: "trap" },
+    ];
+    const tail: GameEvent[] = Array.from({ length: VIEW_EVENT_LIMIT + 4 }, (_, i) => ({
+      type: "manaChanged",
+      player: "p1",
+      current: i,
+      max: 4,
+    }));
+    state.applied = [{ nonce: "burst", events: [...head, ...tail] }];
+
+    const events = viewFor(state, "p1").events;
+    expect(events).toHaveLength(head.length + tail.length);
+    expect(events.map((event) => event.type)).toContain("attackDeclared");
+    expect(events.map((event) => event.type)).toContain("attackCancelled");
+
+    // An older action is still trimmed away: the floor widens the window for the NEWEST action
+    // only, so the history before it does not grow without bound (§9.3's `NONCE_HISTORY`).
+    state.applied = [
+      { nonce: "old", events: [{ type: "turnStarted", player: "p2", turn: 1 }] },
+      { nonce: "burst", events: [...head, ...tail] },
+    ];
+    const withHistory = viewFor(state, "p1").events;
+    expect(withHistory).toHaveLength(head.length + tail.length);
+    expect(withHistory.map((event) => event.type)).not.toContain("turnStarted");
+  });
+
   it("R97 redacts an event that names a card the viewer may not read, rather than dropping it", () => {
     const state = game("r97-redaction");
     // §11 names the sentinel, so the string itself is part of the ruling.
