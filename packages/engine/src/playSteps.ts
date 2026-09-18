@@ -260,7 +260,13 @@ function consumeUsedDiscounts(sink: EngineSink, run: PlayRun, card: CardInstance
   if (isXCost(state, card)) return;
   const type = defOf(state, card.defId).type;
   for (const mod of [...state.players[run.player].mods]) {
-    if (mod.kind !== "costDiscount" || mod.expiry.until !== "used") continue;
+    if (mod.kind !== "costDiscount") continue;
+    // §2.2 names the Lunar Eclipse discount as both "consumed on use" AND expired at cleanup, so
+    // it cannot be expressed by the expiry alone: `{ until: "used" }` survives cleanup (that is
+    // what keeps #79 Twinspell's `echoNextSpell` alive, R30), while `{ until: "thisTurn" }` is
+    // never consumed here. `oncePerTurn` is the flag for exactly that pair — the card keeps the
+    // "this turn" expiry and this consumes it on the first matching play (§8 row 35).
+    if (mod.expiry.until !== "used" && mod.oncePerTurn !== true) continue;
     if (!modifierIsLive(state, mod)) continue;
     if (mod.onlyType !== undefined && mod.onlyType !== type) continue;
     removeModifier(sink, run.player, mod.id);

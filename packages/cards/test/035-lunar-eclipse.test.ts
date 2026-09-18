@@ -2,10 +2,16 @@
 // "3 damage; next spell this turn −1; a unit play does not consume it; expires at cleanup;
 //  radiant 6 / −2".
 //
-// RED UNTIL ONE VERB LANDS: the script imports `addPlayerModifier({ player, mod })`, which #64,
-// #77, #78 and #79 import too and which `effects/index.ts` does not export yet, so this whole file
-// fails to load until it is added. The discount also needs `reduce`'s play case to consume a
-// `oncePerTurn` `costDiscount` once it applies; the script file's header has both notes.
+// ONE CASE IS RED, AND IT IS AN ENGINE GAP, NOT A FIXTURE ONE. "only the NEXT Spell is cheaper,
+// not every Spell this turn" fails because nothing consumes the discount when it applies:
+// `playSteps.consumeUsedDiscounts` only retires a `{ until: "used" }` discount, and `oncePerTurn` —
+// which the card sets and which `state.ts` declares — is read by no source file. The card cannot
+// close it from this side: asking for `{ until: "used" }` instead does get the discount consumed,
+// but `modifiers.expireModifiers` keeps every `used` modifier at cleanup (it has to — R30 and §2.2
+// need #79 Twinspell's to survive), so the discount would then leak into later turns and take
+// "the discount expires at cleanup" (both faces) and "a Spell on a later turn pays full price" down
+// with it. `src/scripts/035-lunar-eclipse.ts`'s header writes out the one-line engine fix.
+// Not one assertion in this file has been softened to go around it.
 //
 // The second spell is #16 Hit Job, a 2-cost Spell: at full price p1 would be left with 1 mana, with
 // the discount 2 (and 3 with the radiant −2).

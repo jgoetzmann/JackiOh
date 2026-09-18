@@ -14,19 +14,36 @@
 //   * `oncePerTurn` on the `costDiscount` variant is the "consumed on use" half of the §8.2 Engine
 //     cell: without it every Spell this turn would be cheaper, not just the next one.
 //
-// MISSING VERB (reported; #64, #77, #78 and #79 import the same verb, so one implementation serves
-// all five cards):
+// `addPlayerModifier` has since landed in `effects/index.ts`, so the verb this file needed exists.
 //
-//   addPlayerModifier({ player?: PlayerSpec; mod: DistributiveOmit<PlayerModifier, "id"> })
-//       Wraps `modifiers.addModifier(ctx, playerOf(ctx, player ?? "self"), mod)`, which assigns the
-//       id and emits `modifierChanged`. `effects/index.ts` has no modifier verb at all today —
-//       `gainMana` and `nextTurnMana` are the only player-level verbs and neither touches
-//       `side.mods` — and `addModifier` itself is engine code a card script may not call
-//       (CLAUDE.md rule 5).
+// ONE ENGINE GAP IS LEFT, AND IT IS WHY `only the NEXT Spell is cheaper` IS RED. Nothing consumes
+// the discount on use. `playSteps.consumeUsedDiscounts` is the only consumer in the tree and its
+// predicate is `mod.expiry.until !== "used" → skip`, while `oncePerTurn` — declared on the
+// `costDiscount` variant at `state.ts:72` — is read by no source file at all. So every Spell played
+// this turn is cheaper, not just the next one.
 //
-// A SECOND, SMALLER ENGINE GAP (reported): nothing consumes the discount on use. `consumeModifier`
-// exists and is called from nowhere, and `oncePerTurn` is read by nothing, so `reduce`'s play case
-// has to consume a `oncePerTurn` `costDiscount` once it has applied.
+// THE CARD CANNOT FIX THIS BY CHANGING ITS EXPIRY, which was tried and measured:
+//   * `{ until: "used" }` does get the discount consumed on the first Spell — and then leaks. It is
+//     `modifiers.expireModifiers` that runs at cleanup, and it keeps everything that is neither
+//     `thisTurn` nor a due `nextTurnOf`. So the discount survives into later turns, against §2.2's
+//     own sentence ("Cleanup expires every 'this turn' effect (the Lunar Eclipse discount, …)") and
+//     against the §8.2 Engine cell's "consumed on use OR AT CLEANUP". Two green cases in
+//     `test/035-lunar-eclipse.test.ts` go red on it: "the discount expires at cleanup" (both faces)
+//     and "a Spell on a later turn pays full price".
+//   * Nor can `expireModifiers` simply drop every `{ until: "used" }` modifier at cleanup: R30 and
+//     §2.2 require the other one, #79 Twinspell's `echoNextSpell`, to SURVIVE cleanup.
+//   * And no card-side workaround exists: `addPlayerModifier` is the only player-modifier verb in
+//     the barrel — there is nothing that removes or consumes one — so a script cannot retire its
+//     own rider at end of turn.
+//
+// THE FIX IS ONE LINE OF ENGINE, in `playSteps.consumeUsedDiscounts`: treat `oncePerTurn: true` as
+// a second way of saying "consumed on use", alongside `{ until: "used" }` —
+//
+//     if (mod.kind !== "costDiscount") continue;
+//     if (mod.expiry.until !== "used" && mod.oncePerTurn !== true) continue;
+//
+// — which leaves the expiry below free to be `thisTurn`, so §2.2's cleanup still takes an unused
+// discount. Nothing else in the tree sets `oncePerTurn`, so the blast radius is this card alone.
 
 import type { Effect, EffectContext, Script } from "@jackioh/engine";
 import { addPlayerModifier, damage } from "@jackioh/engine/effects";

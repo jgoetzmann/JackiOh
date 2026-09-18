@@ -98,11 +98,21 @@ describe("#79 Twinspell — base", () => {
       p2: { hand: ["core-005"], field: ["core-019"], library: [...LIBRARY] },
     });
     s.play(TWINSPELL); // 12 − 2 = 10
-    s.play(FULLSEND); // 10 − 4 = 6, +8 = 14
-
-    s.play(FULLSEND); // 14 − 4 = 10, +4 = 14
-
+    s.play(FULLSEND); // 10 − 4 = 6, then +4 per resolution, twice: 14
     s.expectMana("p1", 14);
+
+    // Those two resolutions each installed /fullsend's own rider — §8 row 78, "this turn your
+    // cards cost 1 less" — so R65 charges the second copy 4 − 2 = 2, not 4. The number that
+    // carries R30 is the GAIN: 4 for one resolution, where an echoed spell would have gained 8.
+    expect(s.state.players.p1.mods.filter((mod) => mod.kind === "costDiscount")).toHaveLength(2);
+
+    s.play(FULLSEND); // 14 − 2 = 12, +4 = 16
+
+    s.expectMana("p1", 16);
+    // The same fact without the arithmetic: the rider was spent on the first spell, so this one
+    // carries no Echo and has exactly one resolution to show for itself (§10.5 step 6).
+    expect(s.lastEvents.filter((event) => event.type === "cardResolved")).toHaveLength(1);
+    expect(echoRiders(s)).toHaveLength(0);
   });
 
   it("§10.5 step 6 an echoed prompting spell reopens its prompt on the repeat", () => {

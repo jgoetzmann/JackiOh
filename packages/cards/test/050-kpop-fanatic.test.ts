@@ -106,7 +106,15 @@ describe("#50 Kpop Fanatic", () => {
   it("R76 base: the steal fires even though Kpop Fanatic died in between", () => {
     const g = scenario({
       p1: { hand: [KPOP, FILLER], library: [...LIBRARY] },
-      p2: { hand: [FILLER], field: [{ def: SEVEN_SEVEN, lane: 2 }], library: [...LIBRARY] },
+      // The 7/7 carries 2 damage into the case. It cannot pick damage up in combat here: §8 row 25
+      // prints Armor 7, so the 1 a 1/1 strikes back with is 0 after Armor and is not a damage
+      // instance at all (§4.4 step 2, R63). Seeding it is the only way to have damage on the prey
+      // before the steal, which is what makes the R78 claim below observable.
+      p2: {
+        hand: [FILLER],
+        field: [{ def: SEVEN_SEVEN, lane: 2, damage: 2 }],
+        library: [...LIBRARY],
+      },
     });
     const prey = g.unit("p2", 2);
     if (prey === null) throw new Error("setup: p2 should hold the 7/7 in lane 2");
@@ -125,8 +133,9 @@ describe("#50 Kpop Fanatic", () => {
     // R76: the continuation lives in `state.delayed`, not on the unit.
     expect(g.unit("p1", 2)?.id).toBe(prey.id);
     expect(g.card(prey).controller).toBe("p1");
-    // It never left the field, so it keeps the damage it took (R78 is about leaving).
-    expect(g.card(prey).damage).toBe(1);
+    // A steal moves `controller` and nothing else: the card never leaves the field, so R78's reset
+    // — which is about LEAVING it — does not run and the damage it was carrying is still there.
+    expect(g.card(prey).damage).toBe(2);
   });
 
   it("R76 base: it fizzles when the target left the field", () => {
@@ -206,27 +215,40 @@ describe("#50 Kpop Fanatic", () => {
   });
 
   it("radiant: the steal still fires after a radiant Kpop Fanatic dies (R76)", () => {
+    // The radiant face is a 2/2 with Divine Shield, so killing it takes TWO hits — and R76 gives
+    // the opponent exactly one turn in which to land them, because the steal resolves at p1's very
+    // next start of turn. One attacker cannot do it (a unit has one attack exertion per turn,
+    // §4.1), so p2 fields two: the Duelist pops the shield and the 7/7 finishes the job.
     const g = scenario({
       p1: { hand: [{ def: KPOP, radiant: true }, FILLER], library: [...LIBRARY] },
-      p2: { hand: [FILLER], field: [{ def: SEVEN_SEVEN, lane: 4 }], library: [...LIBRARY] },
+      p2: {
+        hand: [FILLER],
+        field: [
+          { def: DUELIST, lane: 3 },
+          { def: SEVEN_SEVEN, lane: 4 },
+        ],
+        library: [...LIBRARY],
+      },
     });
     const prey = g.unit("p2", 4);
+    const opener = g.unit("p2", 3);
     if (prey === null) throw new Error("setup: p2 should hold the 7/7 in lane 4");
+    if (opener === null) throw new Error("setup: p2 should hold Deft Duelist in lane 3");
     g.play(KPOP, { targets: [{ pick: "instance", instanceId: prey.id }] });
     const fanatic = g.unit("p1", 1);
     if (fanatic === null) throw new Error("Kpop Fanatic should be in p1's lane 1");
 
     g.endTurn();
-    // Two hits: the shield takes the first, the second kills it.
-    g.attack(prey, fanatic);
+    // §6.1: the shield absorbs the whole first hit, so the 4/3 cannot kill the 2/2.
+    g.attack(opener, fanatic);
     g.expectInZone(fanatic, "field");
-    g.endTurn();
-    g.endTurn();
+    // The second hit lands on a shieldless 2/2 and kills it, on the same turn.
     g.attack(prey, fanatic);
     g.expectInZone(fanatic, "graveyard");
 
     g.endTurn();
 
+    // R76: the delayed steal is state, not something the dead unit was holding.
     expect(g.unit("p1", 4)?.id).toBe(prey.id);
     expect(g.card(prey).controller).toBe("p1");
   });

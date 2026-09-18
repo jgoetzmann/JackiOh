@@ -107,7 +107,7 @@ For each row, name the test(s) that prove it, or trace a fixture state through t
 | §4.5 State check | Simultaneous deaths, Death order, Reborn, Indestructible would-destroy | M2-T5 tests; R8, R46, R47 |
 | §5 Catalog | `catalog.test.ts` diffs against §8 including rarity counts 35/37/16/7/5 and §5.3 corrections | Green |
 | §5.2 Radiant | On-field conversion keeps damage and buffs, no Cry re-fire, copies inherit flag | R22, R57 tests |
-| §6 Keywords | One effect file per state-changing §6.3 verb (BUILD M3-T1); keyword set computation per §10.4 | M3-T1, M3-T4 tests; `ls packages/engine/src/effects` lists every verb |
+| §6 Keywords | Every state-changing §6.3 verb is exported from the effects barrel (BUILD M3-T1); keyword set computation per §10.4 | M3-T1, M3-T4 tests; `grep -c "^  [a-z]" packages/engine/src/effects/index.ts` against §6.3's verb list — files are grouped by family, so check the barrel and not the directory listing |
 | §6.2 Triggers | Ordering (active player, lanes, backrow), traps first, opponent-turn prompts pause the action | M3-T2 tests |
 | §7 Tokens | Only created by name; stat overrides; fill-board; spell tokens in GY | Token tests (BUILD table row "T") |
 
@@ -121,7 +121,7 @@ For each row, name the test(s) that prove it, or trace a fixture state through t
 
 ### B4 Rulings (SPEC §11)
 
-`grep -o "R[0-9]\+ " packages/engine/test/rulings.test.ts packages/cards/test/*.test.ts | sort -u` must contain every row id in SPEC §11 (R1 through R155 as of 2026-09-17). Each "decide" row (R1, R2, R4, R5, R14, R26, R39) is a named constant in `engine/src/config.ts` with the spec's value. Any ruling found in a code comment but not in §11 is MAJOR.
+`grep -o "R[0-9]\+ " packages/engine/test/rulings.test.ts packages/cards/test/*.test.ts | sort -u` must contain every row id in SPEC §11 (R1 through R156 as of 2026-09-17). Each "decide" row (R1, R2, R4, R5, R14, R26, R39) is a named constant in `engine/src/config.ts` with the spec's value. Any ruling found in a code comment but not in §11 is MAJOR.
 
 ### B5 Client and animations (SPEC §10.8, §10.10; BUILD M5)
 

@@ -1,16 +1,10 @@
 // #88 Twisting Nether (SPEC §8.5, BUILD M4-T4 row 88): "Every permanent on both rows destroyed,
 // Indestructibles survive; radiant enemy-only mode".
 //
-// BLOCKED on one engine addition, which `src/scripts/088-twisting-nether.ts` documents in full:
-// the effects barrel has no verb that can destroy a permanent nobody chose (`destroy` takes a
-// `TargetSpec` of `self | selfHero | enemyHero | chosen`), so #88 — like #43 Big Felinor, which
-// already needs the same call — needs `destroyAll`, with a `rows` option so it reaches the backrow.
-// The script imports nothing for it: one unresolvable import in a card file takes down the
-// typecheck and the test run for all 109, since `src/scripts/_generated.ts` imports every one.
-//
-// Every case that needs the verb is `it.todo` WITH ITS BODY INTACT, per the wave contract: the
-// assertions are the acceptance for the verb and become live the moment it exists, rather than
-// being deleted or weakened. The cases that need nothing missing are ordinary tests.
+// These six cases were held as `it.todo` with their bodies intact while the board-wide destroy was
+// missing from the effects barrel. `destroyAll({ side, rows })` has since landed in
+// `engine/src/effects/destroy.ts` and is re-exported from the barrel, so every case below is live:
+// the assertions are unchanged from the ones written as the acceptance for that verb.
 
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
@@ -42,7 +36,7 @@ describe("#88 Twisting Nether — declared play choices (R81, §10.6)", () => {
 });
 
 describe("#88 Twisting Nether — base", () => {
-  it.todo("destroys every permanent on both rows, the backrow included — blocked on destroyAll", () => {
+  it("destroys every permanent on both rows, the backrow included", () => {
     const s = scenario({
       seed: SEED,
       p1: {
@@ -77,7 +71,7 @@ describe("#88 Twisting Nether — base", () => {
     expect(s.pile("p2", "graveyard").map((card) => card.id)).toContain(reno.id);
   });
 
-  it.todo("R59 every permanent dies together in one state check — blocked on destroyAll", () => {
+  it("R59 every permanent dies together in one state check", () => {
     const s = scenario({
       seed: SEED,
       p1: { hand: [NETHER, FILLER], field: [{ def: GARY, lane: 1 }, { def: RENO, lane: 2 }] },
@@ -91,7 +85,7 @@ describe("#88 Twisting Nether — base", () => {
     expect(s.lastEvents.filter((event) => event.type === "destroyed")).toHaveLength(3);
   });
 
-  it.todo("R46 an Indestructible unit survives, switches to ATK and loses Taunt — blocked on destroyAll", () => {
+  it("R46 an Indestructible unit survives, switches to ATK and loses Taunt", () => {
     const s = scenario({
       seed: SEED,
       p1: {
@@ -130,7 +124,7 @@ describe("#88 Twisting Nether — base", () => {
 });
 
 describe("#88 Twisting Nether — radiant", () => {
-  it.todo('"enemy": only the opponent\'s permanents are destroyed, both rows — blocked on destroyAll', () => {
+  it('"enemy": only the opponent\'s permanents are destroyed, both rows', () => {
     const s = scenario({
       seed: SEED,
       p1: {
@@ -157,7 +151,7 @@ describe("#88 Twisting Nether — radiant", () => {
     expect(s.backrow("p1", 1)?.id).toBe(myWell.id);
   });
 
-  it.todo('"all": the radiant face can still sweep both sides — blocked on destroyAll', () => {
+  it('"all": the radiant face can still sweep both sides', () => {
     const s = scenario({
       seed: SEED,
       p1: { hand: [{ def: NETHER, radiant: true }, FILLER], field: [{ def: GARY, lane: 1 }] },
@@ -171,7 +165,7 @@ describe("#88 Twisting Nether — radiant", () => {
     s.expectInZone(mine, "graveyard").expectInZone(theirs, "graveyard");
   });
 
-  it.todo("R46 Indestructibles survive the enemy-only mode too — blocked on destroyAll", () => {
+  it("R46 Indestructibles survive the enemy-only mode too", () => {
     const s = scenario({
       seed: SEED,
       p1: { hand: [{ def: NETHER, radiant: true }, FILLER] },

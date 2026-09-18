@@ -8,6 +8,13 @@ import { pool, query } from "../src/query";
 /** Two ordinary library cards, top first, so a draw is visible as an id moving to the hand. */
 const LIBRARY = ["core-005", "core-016", "core-010"];
 
+/**
+ * §2.5/R82 TURN ANCHOR. #10 Rapid Replenish is a 0-cost Spell and therefore always an affordable
+ * play, so one in hand keeps a side's turn from auto-ending underneath the assertions. It is a
+ * Spell, so it adds no body to the board and nothing to a draw or a hand-size count but its own.
+ */
+const ANCHOR = "core-010";
+
 describe("#51.1 KY's Empty Notebook — base", () => {
   it("draws 1: the top library card moves to hand", () => {
     const s = scenario({ p1: { hand: ["core-051-1"], library: LIBRARY } });
@@ -30,13 +37,23 @@ describe("#51.1 KY's Empty Notebook — base", () => {
   });
 
   it("§2.4 an empty library draws nothing but fatigue, and the token still counts as played", () => {
-    const s = scenario({ p1: { hand: ["core-051-1"], library: [] } });
+    // The anchor is what makes this case readable at all. Without it, playing the Notebook empties
+    // p1's hand and p1's only remaining legal actions are ending the turn, conceding and offering a
+    // draw — so §2.5 auto-ends the turn under the assertions, p2 takes a turn off an empty library
+    // too, and `startTurn` clears `turnLog` before `cardsPlayed` is read (it comes back 0) while
+    // the hero collects a second helping of fatigue. The tell is a `turnAutoEnded` followed by a
+    // `damage amount: 1, combat: false, sourceId: null`.
+    const s = scenario({ p1: { hand: ["core-051-1", ANCHOR], library: [] } });
 
     s.play("core-051-1");
 
-    expect(s.state.players.p1.hand).toHaveLength(0);
+    // Still p1's own turn, so every number below belongs to the play above (§2.5).
+    expect(s.state.active).toBe("p1");
+    // Nothing was drawn: the hand holds the anchor and nothing else.
+    expect(s.pile("p1", "hand").map((card) => card.defId)).toEqual([ANCHOR]);
     expect(s.state.players.p1.turnLog.cardsPlayed).toBe(1);
     // §2.4/R3: no card is drawn, so no `drawn` event — the fatigue damage instance is what happened.
+    expect(s.events.filter((event) => event.type === "drawn")).toHaveLength(0);
     s.expectHealth("p1", 29).expectEvents("damage");
   });
 });

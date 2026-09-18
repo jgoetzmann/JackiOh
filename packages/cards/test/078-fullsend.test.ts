@@ -18,6 +18,13 @@ const COST_3 = "core-017"; // Flood
 const COST_4 = "core-025"; // 4-mana 7/7
 const X_CARD = "core-074"; // Adaptive UI, printed cost X
 
+/**
+ * R81: #74 Adaptive UI declares one target with its play ("Deal X damage to a target"), so the
+ * `play` action has to carry it or the engine refuses the play. It is not part of what this file
+ * is about — the enemy hero is always a legal pick and takes the X damage off to one side.
+ */
+const AT_ENEMY_HERO = [{ pick: "hero", player: "p2" } as const];
+
 const LIBRARY = ["core-008", "core-008", "core-008", "core-008"] as const;
 
 /** The cost a card in the viewer's own hand shows now (§10.8, R65). */
@@ -88,7 +95,7 @@ describe("#78 /fullsend — base", () => {
     s.play(FULLSEND);
     s.expectMana("p1", 4);
 
-    s.play(X_CARD, { x: 2 });
+    s.play(X_CARD, { x: 2, targets: AT_ENEMY_HERO });
 
     // Exactly 2, not 1: "costMod and discounts don't change it" (R65).
     s.expectMana("p1", 2);
@@ -131,9 +138,25 @@ describe("#78 /fullsend — base", () => {
 
     expect(s.pile("p1", "hand")).toHaveLength(0);
     expect(s.pile("p1", "exile").map((card) => card.defId).sort()).toEqual([...left].sort());
-    // R62: end-of-turn delayed effects run after the trap window and before cleanup, and `turn.ts`
-    // emits `turnEnded` immediately before cleanup — so the exile precedes it in the log.
-    s.expectEvents("cardPlayed", "exiled", "turnEnded");
+
+    // R62 places the exile between the trap window and cleanup, and the log says so — but not by
+    // straddling `turnEnded`. `turn.ts` emits that event at the TOP of the window rather than at
+    // cleanup, because the window's traps read it: #18 Bread and Butter answers
+    // `event.unspentMana`, the mana the player still holds before cleanup closes the turn log, and
+    // R100 keeps `turnEnded` out of the immediate trap check so the window is the only place it
+    // fires. So the exile comes after `turnEnded`, and cleanup comes after the exile — cleanup
+    // being visible as the `modifierChanged` that retires /fullsend's own "this turn" modifiers.
+    const types = s.events.map((event) => event.type);
+    const windowOpened = types.indexOf("turnEnded");
+    const lastExile = types.lastIndexOf("exiled");
+    const cleanupAt = s.events.findIndex(
+      (event) => event.type === "modifierChanged" && event.added === false,
+    );
+
+    expect(windowOpened).toBeGreaterThanOrEqual(0);
+    expect(lastExile).toBeGreaterThan(windowOpened);
+    expect(cleanupAt).toBeGreaterThan(lastExile);
+    s.expectEvents("cardPlayed", "turnEnded", "exiled", "turnStarted");
   });
 
   it('§2.2 the "this turn" modifiers are gone after cleanup', () => {
@@ -176,7 +199,7 @@ describe("#78 /fullsend — radiant", () => {
     const s = board(true);
     s.play(FULLSEND);
 
-    s.play(X_CARD, { x: 2 });
+    s.play(X_CARD, { x: 2, targets: AT_ENEMY_HERO });
 
     s.expectMana("p1", 2);
   });

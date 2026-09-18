@@ -46,8 +46,17 @@ describe("#56 Jilliax — base", () => {
     expect(() => g.attack("core-056", "hero")).toThrow(/Rush cannot hit the hero/);
     g.expectHealth("p2", 30);
 
-    // The same sick unit may attack a unit: 3 into Mr. Vanilla's 3/3.
-    g.attack("core-056", "core-008").expectStats("core-008", { health: 0, maxHealth: 3 });
+    // The same sick unit may attack a unit: 3 into Mr. Vanilla's 3/3, which kills it.
+    //
+    // The kill cannot be read as `health: 0` on the card. R78 resets an instance's damage as it
+    // leaves the field, so the graveyard copy reads its printed 3/3 undamaged — an assertion on
+    // its computed health could never hold. R89 is where the stats as they were survive: "the
+    // `destroyed` event carries what the card was … its attack and max health as the layers
+    // computed them at the moment it died".
+    g.attack("core-056", "core-008").expectInZone("core-008", "graveyard");
+
+    const killed = g.lastEvents.find((event) => event.type === "destroyed");
+    expect(killed).toMatchObject({ defId: "core-008", attack: 3, maxHealth: 3 });
   });
 
   it("§4.2 step 3 Taunt forces the attacker onto it while any other enemy unit stands", () => {

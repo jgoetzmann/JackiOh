@@ -6,6 +6,7 @@
 // (see the harness header): a unit with an unspent exertion is always a meaningful action.
 
 import { describe, expect, it } from "vitest";
+import { effectiveCost } from "@jackioh/engine";
 import { scenario } from "./_harness";
 
 const AT_ENEMY_HERO = [{ pick: "hero", player: "p2" } as const];
@@ -101,10 +102,25 @@ describe("#31 KY's Math Equation — base", () => {
     s.endTurn();
 
     expect(s.state.active).toBe("p1");
+
+    // §8 row 31's Engine cell: "cost = printed + `costMod` (R67); the return adds +1 to the
+    // instance's permanent `costMod`". ONE return has happened, so `costMod` is 1 and the price
+    // R65 computes is the printed 1 plus that 1 — the "costs 2" of this case's name. `costMod`
+    // reaches 2 only after the SECOND return, at the end of the turn this play is on.
+    expect(s.card(equation).costMod).toBe(1);
+    expect(effectiveCost(s.state, s.card(equation))).toBe(2);
+
+    const manaBefore = s.state.players.p1.mana.current;
     s.play(equation, { targets: AT_ENEMY_HERO });
-    // 1 damage from the first play, 2 from the second.
+    // It really charged 2, and R67's index read printed 1 + costMod 1 + 1 = Fib(3) = 2 damage:
+    // 1 from the first play, 2 from the second.
+    s.expectMana("p1", manaBefore - 2);
     s.expectHealth("p2", 27);
+
+    // And the second return puts the instance at cost 3 for its next play (1 → 2 → 3 → 5).
+    s.endTurn();
     expect(s.card(equation).costMod).toBe(2);
+    expect(effectiveCost(s.state, s.card(equation))).toBe(3);
   });
 
   it("the return belongs to the turn it was played on, not to every graveyard copy", () => {

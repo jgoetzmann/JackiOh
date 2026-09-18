@@ -7,7 +7,7 @@ Work order for implementing JackiOh from `SPEC.md` (the master game specificatio
 - Read SPEC.md end to end before writing code. Re-read the relevant section before each task.
 - Tasks are `M<milestone>-T<n>`. Each lists **Files** and **Acceptance**. A task is done when every acceptance item is a green automated test (or a lint rule), not when the code exists.
 - Milestones are gates. Do not start M(n+1) until the M(n) gate passes.
-- Rulings: every SPEC §11 row (R1–R155 as of 2026-09-17) is implemented exactly as written. Rows marked "decide" (R1, R2, R4, R5, R14, R26, R39) live behind named constants in `packages/engine/src/config.ts` so a designer can flip them in one line. Every ruling has a test whose name starts with its id, e.g. `it("R8 Death fires on both deaths of a Reborn unit")`.
+- Rulings: every SPEC §11 row (R1–R156 as of 2026-09-17) is implemented exactly as written. Rows marked "decide" (R1, R2, R4, R5, R14, R26, R39) live behind named constants in `packages/engine/src/config.ts` so a designer can flip them in one line. Every ruling has a test whose name starts with its id, e.g. `it("R8 Death fires on both deaths of a Reborn unit")`.
 - If SPEC.md is silent on something you hit, follow Hearthstone semantics, add a row to SPEC §11 (next R-number) in the same PR, and name the test after it.
 - M1–M3 acceptance items that name a card (Gravedigger, Hinder, CN-Virus, Twinspell, Mana Well, Jlockeed Shredder, Big D-fender, Moths to the Flame, Big Felinor, Hit Job, Right-house defender and others) are tested with a test-only fixture script under `packages/engine/test/fixtures/` that reproduces just that behaviour; the real card test in M4 covers the same case again.
 - Stack: TypeScript strict; pnpm workspaces; vitest; eslint with `no-restricted-properties` banning `Math.random`, `Date.now`, `new Date()` inside `packages/engine` and `packages/cards`; React + Vite for `apps/web`; Cypress for `e2e`; Postgres for `apps/server`; one stateful actor per match (Cloudflare Durable Objects or an equivalent single-threaded actor runtime).
@@ -230,7 +230,7 @@ Acceptance: Big Felinor's Cry kills six units in one check and fires six Death t
 
 ### M3 — Effects, triggers, prompts, layers, view (`packages/engine`)
 
-**M3-T1 Effects library.** Files: `engine/src/effects/<name>.ts`, one per §6.3 row that changes state (Embiggen, Choose one and Cost are play-time choices and a calculation, living in `prompts.ts` and `mana.ts`) plus stat/keyword helpers:
+**M3-T1 Effects library.** Files: `engine/src/effects/<name>.ts`, grouped by family — one file may own several related §6.3 verbs (`move.ts` holds exile, bounce, discard and counter; `destroy.ts` holds the destruction verbs) so that verbs sharing a rule share one implementation. What must hold is the barrel, not the filenames: every state-changing §6.3 row is an exported factory named in `effects/index.ts`, which uses explicit named exports and no `export *`, so a missing verb fails typecheck rather than at runtime, and every module has its own test file or a named owner in `effects-core.test.ts`'s map. Embiggen, Choose one and Cost are play-time choices and a calculation, living in `prompts.ts` and `mana.ts`, plus stat/keyword helpers:
 `summon`, `play` (internal), `destroy`, `sacrifice`, `exile`, `bounce`, `discard`, `counter`, `steal`, `transform`, `vanilla`, `heal`, `damage`, `loseHealth`, `draw`, `addToHand`, `shuffleInto`, `recruit`, `discover`, `tribute`, `fuse` (delegates to subsystem), `lock`, `plague`, `gainMana`, `nextTurnMana`, `setRadiant`, `buff`, `grantKeyword`, `setCostMod`, `setCostOverride`, `fillBoard`, `switchPosition`, `swap`, `cast`, `replace`, `rotate` (delegates to the subsystem) (§6.3).
 Each effect is a pure function `(state, rng, args) → { state, events }` and is the only place its zone move or counter change happens.
 Acceptance: every effect has its own test file; `grep -r "state.players\[" packages/cards` returns nothing (scripts never touch state); `steal` places into the same lane if free else first free and leaves excess (R15); `summon` with no zone takes the leftmost free zone and skips zones reserved for Reborn (R64); `cast` counts as a play with cost paid 0 (R70); `fuse` follows R77; leaving the field resets an instance per R78 while `costMod`, `costOverride` and `radiant` persist; `bounce` returns to the owner's hand and drops buffs (§6.3); `transform` and `vanilla` are refused on Immutable (R23); `recruit` scans top-down and keeps library order.
@@ -266,7 +266,7 @@ Acceptance: `JSON.stringify(viewFor(state, P1))` contains no `defId` from P2's h
 - `lethal.ts`: projected damage of a declared attack after armor and cap versus hero health (R44).
 Acceptance: each subsystem has a test file with at least one case per bullet in its spec row; `scorer.rank(state)` returns a total order that is stable across runs; `aiPolicy` given a seed produces the same action sequence.
 
-**M3 gate.** R62's end-of-turn half (end-of-turn triggers, then the trap window, then delayed effects, then cleanup) has a named test now that traps and delayed effects exist; all effects and subsystems tested; `engine/test/rulings.test.ts` exists with one `it("R<n> …")` per §11 row (R1–R155) (rows that only concern cards may delegate to the card test and reference it by name in a comment).
+**M3 gate.** R62's end-of-turn half (end-of-turn triggers, then the trap window, then delayed effects, then cleanup) has a named test now that traps and delayed effects exist; all effects and subsystems tested; `engine/test/rulings.test.ts` exists with one `it("R<n> …")` per §11 row (R1–R156) (rows that only concern cards may delegate to the card test and reference it by name in a comment).
 
 ### M4 — Catalog and card scripts (`packages/cards`)
 
@@ -545,7 +545,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - `pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e` all green in CI.
 - `catalog.test.ts` passes: 100 cards, 9 tokens, rarity counts 35/37/16/7/5.
 - `missing-tests.ts` prints nothing.
-- `rulings.test.ts` covers every SPEC §11 row, R1–R155 (script `rulings-coverage.ts` lists any missing id).
+- `rulings.test.ts` covers every SPEC §11 row, R1–R156 (script `rulings-coverage.ts` lists any missing id).
 - Fuzz gate: `pnpm fuzz` runs 1,000 seeds with the full card pool and prints its own counts (seeds, throws, non-terminations, replay mismatches, endings). `pnpm test` sweeps the same file at a reduced seed count as a smoke wave; the card pool is never reduced, and any exclusion must be a named entry in `POOL_EXCLUSIONS` with a reason, printed on every run so a narrowing cannot be hidden.
 - `animations.test.ts` passes: every event type animated, reduced-motion path drains synchronously.
 - A networked room-code game between two browsers completes and records a result.
