@@ -84,14 +84,27 @@ jobs:
       - name: build the client
         # A built client rather than `vite dev`: HMR reloads the page mid-run when anything under
         # apps/web/src changes, which remounts the route and restarts the game at turn 0.
-        run: pnpm build
+        #
+        # `build:e2e`, not `build`: BUILD M5-T3 publishes `window.__jackioh` only when
+        # `import.meta.env.MODE !== "production"`, and every one of the twelve specs reaches it
+        # through cy.jackioh(). Under a plain `vite build` the handle is absent, /dev/hotseat
+        # serves NotFound, and all twelve fail on their first command. Measured, not assumed:
+        # 0 occurrences of `__jackioh` in a production bundle, 7 in this one.
+        run: pnpm build:e2e
 
+      # Both servers are backgrounded with their stdout redirected to a file. Without the
+      # redirect the step inherits the runner's output pipe and can sit waiting for a child that
+      # never closes it; with it, the logs also become uploadable evidence when the suite fails.
       - name: start the client
-        run: pnpm --dir apps/web exec vite preview --port 5173 --strictPort &
+        run: |
+          nohup pnpm --dir apps/web exec vite preview --port 5173 --strictPort \
+            > "$RUNNER_TEMP/client.log" 2>&1 &
       - name: start the server
         env:
           E2E: "1"
-        run: pnpm --dir apps/server exec tsx src/index.ts &
+        run: |
+          nohup pnpm --dir apps/server exec tsx src/index.ts \
+            > "$RUNNER_TEMP/server.log" 2>&1 &
 
       - name: wait for both to answer
         run: |
@@ -109,7 +122,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cypress-${{ matrix.browser }}
+          # e2e/artifacts/*, not e2e/cypress/*: e2e/cypress.config.ts puts screenshots under
+          # `artifacts/screenshots`, resolved against the config's own directory. The cypress/
+          # paths do not exist, so the upload collected nothing — and `if-no-files-found: ignore`
+          # made that silent, which is the worst way to fail: a red run with no evidence attached.
+          # `warn` instead, because a red run that produced no screenshot is itself a finding
+          # (`screenshotOnRunFailure` is on, so one should always be there).
           path: |
-            e2e/cypress/screenshots
-            e2e/cypress/videos
-          if-no-files-found: ignore
+            e2e/artifacts/screenshots
+            ${{ runner.temp }}/client.log
+            ${{ runner.temp }}/server.log
+          if-no-files-found: warn

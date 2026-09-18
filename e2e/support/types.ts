@@ -79,7 +79,19 @@ export type GameStateLike = {
   active: PlayerId;
   phase: string;
   result: { winner: PlayerId | "draw"; reason: string } | null;
-  pending: { id?: string; choiceId?: string; kind?: PromptKind; player?: PlayerId } | null;
+  /**
+   * TWO SHAPES, ONE FIELD. The hotseat handle hands over the raw `GameState`, so `pending` is the
+   * engine's `PendingChoice` and the seat it belongs to is **`playerId`**
+   * (`packages/engine/src/state.ts`). A networked handle has no `GameState` at all and derives this
+   * from the `PlayerView` instead (`apps/web/src/game/net.ts` `viewDerivedState`), which spells the
+   * same seat **`player`**. Both are optional here because either may be the one present.
+   *
+   * Declaring only `player` is what made an assertion on a hotseat game read `undefined` and pass
+   * type-checking while failing at run time, so both names are spelled out rather than one.
+   */
+  pending:
+    | { id?: string; choiceId?: string; kind?: PromptKind; playerId?: PlayerId; player?: PlayerId }
+    | null;
   players: Record<PlayerId, unknown>;
   [key: string]: unknown;
 };

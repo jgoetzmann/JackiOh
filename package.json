@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @jackioh/web build",
+    "build:e2e": "pnpm --filter @jackioh/web build:e2e",
     "dev": "pnpm --filter @jackioh/web dev",
     "fuzz": "vitest run --project cards fuzz",
     "lint": "eslint .",

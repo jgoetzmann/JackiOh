@@ -187,7 +187,10 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
       // this asserts, which is a stronger claim than the absence ever was.
       cy.gameState().should((mid) => {
         expect(mid.pending?.kind, "the far seat's mulligan is the next prompt").to.eq("mulligan");
-        expect(mid.pending?.player, "and it belongs to the other seat now").to.eq("p2");
+        // `playerId`, not `player`: this is a hotseat game, so the handle hands over the raw
+        // `GameState` and `pending` is the engine's `PendingChoice` (§10.6). `player` is the
+        // networked spelling, which `net.ts` derives from the view.
+        expect(mid.pending?.playerId, "and it belongs to the other seat now").to.eq("p2");
       });
 
       // The device follows a prompt by itself (BUILD M5-T3), so answering it is what clears the
