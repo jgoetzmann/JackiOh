@@ -17,9 +17,11 @@
 //   - R97: the event stream is redacted, not truncated. An event that names a card the viewer may
 //     not read keeps its type and its animation fields and shows `HIDDEN_ID` for that card.
 //   - R169: the player modifiers (§10.1 `mods`) travel on both seats as `{ id, label }`, because
-//     every one of them is installed by a card played face-up and `modifierChanged` is already
-//     public in both directions. The caption is built from the modifier's own kind and numbers and
-//     never from its `sourceId`, so no card identity can leave through a badge.
+//     every one of them is installed by a card played FACE-UP and `modifierChanged` is already
+//     public in both directions. Face-up, not "by a Cry": #35 and #78 are Spells and can never have
+//     one, #64 and #79 install theirs without one, and only #77 is a Cry. The caption is built from
+//     the modifier's own kind and numbers and never from its `sourceId`, so no card identity can
+//     leave through a badge.
 //
 // Stats are never read off an instance: `layers.unitView` recomputes every stat and keyword on read
 // (§10.4), so no stored total ever reaches the client.
@@ -249,8 +251,12 @@ function modifierLabel(mod: PlayerModifier): string {
 
 /**
  * §10.8 does not list the player modifiers, so R169 decides them: both seats carry the list, since
- * every Core modifier is installed by the Cry of a card played face-up and `modifierChanged` is
- * already public in both directions (see `redactEvent`). Only the id and the caption travel.
+ * every Core modifier is installed by a card played face-up and `modifierChanged` is already public
+ * in both directions (see `redactEvent`). Only the id and the caption travel.
+ *
+ * "Face-up" is the load-bearing word and "Cry" would be wrong: #35 Lunar Eclipse and #78 /fullsend
+ * are Spells, which never enter the field and so can never have a Cry; #64 and #79 install theirs
+ * from other hooks. What all five share is that the play itself was public.
  *
  * R48: a modifier that covers the controller's *next* turn is installed at once and bites later, so
  * the caption says so while `modifierIsLive` is still false — otherwise #77's badge would claim a
