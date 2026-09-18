@@ -157,6 +157,18 @@ const quick = unit("quick", 2, 20, {
   base: { keywords: [{ kind: "First Strike" }] },
   radiant: { keywords: [{ kind: "First Strike" }] },
 });
+/**
+ * #20 Pointmaster's printed line: 7/2 with First Strike. It is the card R93 names, and the only
+ * fixture here whose step-1 strike KILLS an ordinary attacker, which is the half of the ruling a
+ * survivor can never show — a defender that lives through the exchange proves the order of the two
+ * hits, not that the second one never happens.
+ */
+const pointmaster = unit("pointmaster", 7, 2, {
+  base: { keywords: [{ kind: "First Strike" }] },
+  radiant: { keywords: [{ kind: "First Strike" }] },
+});
+/** A plain 3/3: the ordinary attacker #20 Pointmaster kills before its blow lands. */
+const doomed = unit("doomed", 3, 3);
 /** Cleave on a body that survives, so R95 can count where the extra instances landed. */
 const cleaver = unit("cleaver", 3, 20, {
   base: { keywords: [{ kind: "Cleave" }] },
@@ -284,6 +296,8 @@ const felinor = unit("felinor", 3, 10, { tags: ["Felinor"] });
 const DEFS: CardDef[] = [
   body,
   quick,
+  pointmaster,
+  doomed,
   cleaver,
   weakener,
   tributeTwo,
@@ -715,7 +729,7 @@ describe("SPEC §11 R91–R96: positions and combat (M3 gate)", () => {
   // R93, R94: how many times each unit strikes, and with what (§4.3).
   // ---------------------------------------------------------------------------
 
-  it("R93 has a First Strike unit strike once: step 1 is when its strike happens, not an extra one", () => {
+  it("R93 has a First Strike unit strike once, on whichever side it is: step 1 is when its strike happens, not an extra one", () => {
     // A First Strike attacker against a survivor: one hit each, not two for the attacker.
     const state = game("r93-attacker");
     const attacker = put(state, quick.id, slot("p1", "units", 1)); // 2/20 First Strike
@@ -739,6 +753,20 @@ describe("SPEC §11 R91–R96: positions and combat (M3 gate)", () => {
       { from: quickDefender.id, to: plainAttacker.id, amount: 2 },
       { from: plainAttacker.id, to: quickDefender.id, amount: 4 },
     ]);
+
+    // The half §4.3 used to leave unstated, and the reason R93 needed rewording: a First Strike
+    // DEFENDER that kills its attacker in step 1 takes nothing back. #20 Pointmaster is a 7/2, so
+    // a 3/3 attacking into it dies before its own blow lands and Pointmaster survives on 2 health
+    // — which is exactly the case the old wording ("First Strike only moves the attacker's strike
+    // earlier") got backwards while the engine had it right all along.
+    const lethal = game("r93-defender-kills");
+    const attacking = put(lethal, doomed.id, slot("p1", "units", 1));
+    const point = put(lethal, pointmaster.id, slot("p2", "units", 1));
+    const lethalEvents: GameEvent[] = [];
+    expect(declareAttack(sinkFor(lethal, lethalEvents), attacking, onUnit(point)).error).toBeUndefined();
+    expect(hits(lethalEvents)).toEqual([{ from: point.id, to: attacking.id, amount: 7 }]);
+    expect(lethal.players.p1.graveyard.map((c) => c.id)).toEqual([attacking.id]);
+    expect(point.damage).toBe(0);
 
     // Two First Strikers trade in step 1: two hits in all, not four, and neither waits for step 2.
     const trade = game("r93-trade");

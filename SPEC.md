@@ -145,14 +145,15 @@ sequenceDiagram
   participant D as Defender
   Note over A,D: Step 1, First Strike
   A->>D: A's attack, if A has First Strike and D does not
-  Note over A,D: If D is destroyed here it deals nothing
+  D->>A: D's attack, if D has First Strike and A does not
+  Note over A,D: Whichever is destroyed here deals nothing
   Note over A,D: Step 2, simultaneous
   A->>D: A's attack
   D->>A: D's attack
   Note over A,D: Step 3, state check, Death triggers, Reborn
 ```
 
-Both units with First Strike strike simultaneously in step 1. When the defender is a hero, only the attacker deals damage. A defender in Defense Position still strikes back with its full attack.
+First Strike moves **that unit's** strike into step 1, on whichever side of the combat it is: an attacker with it hits a defender without it before that defender answers, and a defender with it hits an attacker without it before that attacker's blow lands. Either way the unit that struck in step 1 takes nothing back if its target falls there — §6.1's "deals damage before non-First-Strike units", stated as a sequence. Both units with First Strike strike simultaneously in step 1. When the defender is a hero, only the attacker deals damage. A defender in Defense Position still strikes back with its full attack.
 
 ### 4.4 One damage instance
 
@@ -816,7 +817,7 @@ Every place this spec decided something the source left open is listed here; eac
 | R90 | Validating a play's choices | The engine checks the choices a play carried against what the card declared and what the board allows, so a client can never name a card it may not see or reach: a unit pick offers the top of a Stack pile and never a dormant card (R13), a hand pick offers only the chooser's own hand (§9.1), and a card that declared nothing takes nothing. Several declarations read the flat `targets` list in order, each taking its own minimum, so a card that asks twice asks for a fixed number each time and the last declaration takes the remainder. One declaration may not pick the same card twice, and each declaration is checked on its own, so two different declarations may both name the same card. A declaration the board cannot satisfy does not refuse the play: the play is legal with the answers that exist and the effect fizzles on resolution (§8's conventions). `legalActions` enumerates every legal combination, bounded by `MAX_CHOICE_COMBINATIONS` | #2, #17, #22, #24, #26, #30, #46, #48, #52, #55, #59, #66, #74, #84, #87, #88 |
 | R91 | Switching to the position a unit already holds | Does nothing: no error, no event and no exertion spent. §4.1 describes a flip, and 5pek Controller's "switch every unit" (#48) reaches units already in the position it would set | #48, #65.1 |
 | R92 | Only a card on the field has a position | A card dormant under a Stack, or off the field, cannot be switched at all, the same way R13 stops it being attacked | #92 |
-| R93 | A First Strike unit strikes once | §4.3's step 1 is when its strike happens, not an extra one: each unit deals its damage once per combat, and First Strike only moves the attacker's strike earlier. Two First Strikers therefore trade in step 1 | #11, #14, #20 |
+| R93 | A First Strike unit strikes once | §4.3's step 1 is when its strike happens, not an extra one: each unit deals its damage once per combat, and First Strike only moves **that unit's** strike earlier — on whichever side of the combat it is, since §6.1 says "deals damage before non-First-Strike units" without naming a side. A defender with First Strike therefore hits a plain attacker first and takes nothing back if that attacker falls: #20 Pointmaster, a 7/2, kills a 3/3 that attacks into it and survives. Two First Strikers trade in step 1 | §4.3, §6.1, #11, #14, #20 |
 | R94 | Attack values are read once per combat | Both units' attack is read at the start of the combat, which is what makes the simultaneous step simultaneous (R59). A First Strike survivor is struck back with the attack the defender had before the hit landed | All combat |
 | R95 | Where Cleave lands | Cleave rides the attacker's own hit, immediately after it, never the defender's strike-back, and a hero target cleaves nothing, since no unit is adjacent to a hero (§4.4 step 10, R63) | #32 |
 | R96 | A forced attacker that is already gone | It is skipped in silence, with no `attackDeclared`, and the sequence also stops once the game has a result — R53 states only that it stops when the target is gone | #9, #60 |
