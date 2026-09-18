@@ -207,7 +207,9 @@ export async function redeemCode(deps: ServerDeps, input: RedeemInput): Promise<
     const since = now - deps.limits.redeemWindowMs;
 
     // ---- Step 2: "reject if this profile made more than 5 attempts in the last hour" ---------
-    // Strictly `>`: config.ts spells out that the 6th attempt is the first rejection.
+    // Strictly `>`, and the count excludes the attempt being made, because step 4 logs it below.
+    // So the SEVENTH attempt is the first refused: attempt 6 sees 5 rows, and 5 is not "more than
+    // 5". config.ts carries the reasoning.
     const byProfile = await t.codes.countAttemptsByProfile(profile.id, since);
     if (byProfile > deps.limits.redeemPerProfilePerHour) {
       return { ok: false, error: new ApiError("rate_limited", RATE_LIMITED_MESSAGE) };

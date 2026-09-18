@@ -61,8 +61,15 @@ export const INVITE_CODE_SEPARATOR = "-";
 // ---------------------------------------------------------------------------------------------
 
 // SPEC §9.4 step 2: "reject if this profile made more than 5 attempts in the last hour" — the
-// limit is exceeded strictly *after* the 5th attempt, so the check must be `attempts > 5`
-// (the 6th attempt is the first rejection), never `attempts >= 5`.
+// limit is exceeded strictly *after* the 5th attempt, so the check must be `attempts > 5`, never
+// `attempts >= 5`.
+//
+// Which attempt is the first refused: the SEVENTH, not the sixth as this comment used to say. The
+// count is taken before the attempt is logged (`codes.ts` step 2 runs ahead of step 4), so attempt
+// N sees N-1 rows. Attempt 6 sees 5, and 5 is not "more than 5", so it is allowed; attempt 7 sees
+// 6 and is refused. That is the spec's sentence read literally, which is what rules here — a
+// budget of "5 per hour" that admits 6 tries looks off by one until you notice the count excludes
+// the attempt being made.
 export const CODE_ATTEMPTS_PER_PROFILE_PER_HOUR = 5;
 // SPEC §9.4 step 3: "reject if this IP hash made more than 20" — same strictness: `> 20`, not
 // `>= 20`.
