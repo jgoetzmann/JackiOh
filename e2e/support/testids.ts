@@ -175,9 +175,30 @@ export function exileId(side: Side): string {
   return `exile-${side}`;
 }
 
-/** The player-modifier badges beside the hero (§6.4). */
+/**
+ * The player-modifier badge list beside the hero (R169, BUILD M5-T4 `modifierChanged`). The
+ * container is rendered on both seats even when the list is empty — `apps/web/src/game/Hero.tsx`
+ * keeps it because the fade `modifierChanged` plays is the animation for the badge that has just
+ * *left* — so it carries `data-count` and "no badges" is a different DOM state from "no list".
+ */
 export function modifiersId(side: Side): string {
   return `modifiers-${side}`;
+}
+
+/**
+ * R169: one badge inside that list. A class rather than a testid, like `.mana-crystal` and
+ * `.damage-pop` above, because the badges are a repeated part of one named element rather than an
+ * element a spec addresses on its own.
+ */
+export const MODIFIER_BADGE = ".modifier-badge";
+
+/**
+ * R169: the badge for one modifier, keyed by `ModifierView.id`. The id is the only thing that
+ * travels besides the caption — never the `sourceId` of the card that installed it, which is why
+ * a badge can be public on both seats without leaking a face-down card's identity.
+ */
+export function modifierBadgeOf(modifierId: string): string {
+  return `[data-modifier-id="${modifierId}"]`;
 }
 
 /** The backrow as a region: a face-down `BackrowView` carries no `instanceId` (§10.8). */

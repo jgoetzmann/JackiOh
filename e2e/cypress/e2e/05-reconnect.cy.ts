@@ -14,18 +14,47 @@
 // HOW THE PROMPT IS OPENED. `05-reconnect-a` puts SPEC §8 #65 Masochism Mask in seat 1's opening
 // hand for every seed (Quickdraw, §6.2), a 2-cost Field Spell whose base script is "Start of
 // turn: choose one: ...". Played on seat 1's second turn (§2.3: max mana = turns started, so 2 on
-// player-turn 3), it opens one `mode` PendingChoice at the start of player-turn 5 — seat 1's own
-// turn, which is what the fixture was built for: R79 arms the separate `PROMPT_CLOCK_SECONDS`
-// clock only for a prompt held by the *non-active* player, so the clock under test here is the
-// active player's `TURN_CLOCK_SECONDS` turn clock.
+// player-turn 3), it opens one `mode` PendingChoice at the start of EVERY later seat-1 turn —
+// seat 1's own turn, which is what the fixture was built for: R79 arms the separate
+// `PROMPT_CLOCK_SECONDS` clock only for a prompt held by the *non-active* player, so the clock
+// under test here is the active player's `TURN_CLOCK_SECONDS` turn clock.
 //
-// WHAT "SAME VIEW" IS ASSERTED AS. The client renders `viewFor` and never sees hidden state
-// (CLAUDE.md rule 7), so the view is asserted through the DOM the client produced: the complete,
-// sorted set of `data-testid` values in the document, plus the open prompt's `data-prompt-kind`
-// and its `prompt-option-<key>` testids. Instance ids are engine-generated and deterministic in
-// (seed, log), so that set is a fingerprint of the whole rendered view — every card in every
-// lane, every hand card, both heroes, every counter, every mana crystal. Values that MUST move
-// across a reload (the clock) are deliberately not in it.
+// WHY THE RELOAD IS ON PLAYER-TURN 7 AND NOT 5. The Mask asks the same question on 5, 7, 9 …, so
+// any of them would do for "reload mid-prompt". Turn 7 is chosen so that the view being rebuilt
+// carries a player modifier, because R169's badge list is the one part of the rendered view that
+// `fingerprint()` could not see until it was read separately (see below), and a fingerprint that
+// covers a list it never sees populated is the same hole one level up. So seat 1 answers the
+// turn-5 question, spends the freed mana on SPEC §8 #77 Professor Curvature — already in
+// `05-reconnect-a`, so no fixture changed — and reloads on turn 7 instead. R48 puts the discount
+// on "your next turn", which from turn 5 is turn 7 exactly: the badge is LIVE across the reload
+// rather than dormant, which is the harder of the two captions for a rebuilt view to get right,
+// since it depends on `state.turn` and `state.active` and not only on the modifier's existence.
+// The three options the Mask offers are the same on 5 and on 7, and the option answered on turn 5
+// is the first one — exiling the bottom card of seat 1's library, which leaves both heroes' health
+// alone and so leaves every other assertion in this file reading exactly as it did.
+//
+// WHAT "SAME VIEW" IS ASSERTED AS, AND WHAT IT IS NOT. The client renders `viewFor` and never
+// sees hidden state (CLAUDE.md rule 7), so the view is asserted through the DOM the client
+// produced. `fingerprint()` reads four things, and it is worth being exact about which, because
+// the first one used to be described here as covering the whole rendered view and does not:
+//
+//   * `testids`   — the complete, sorted set of `data-testid` values in the document. Instance ids
+//                   are engine-generated and deterministic in (seed, log), so this is every card
+//                   in every lane, every hand card, both heroes, every counter, every mana crystal
+//                   — every element the testid vocabulary NAMES (BUILD M5-T1, M5-T4, and the A-
+//                   numbered additions in support/testids.ts). It is not every element on screen.
+//   * `promptKind` and the `prompt-option-<key>` ids that fall out of `testids`.
+//   * `counters`  — the per-side hand/library/graveyard/exile readouts and the mana crystals,
+//                   which are text and counts rather than testids and so are read separately.
+//   * `modifiers` — R169's badge list per side. These are read separately for the same reason the
+//                   counters are: a badge carries `data-modifier-id`, NOT a `data-testid`, so the
+//                   whole list is invisible to `testids` — only its container `modifiers-<side>`
+//                   appears there, and that container is rendered even when the list is empty.
+//                   Before this field existed, a reconnect that came back having dropped every
+//                   modifier deep-equalled a pre-reload view with its badges on screen: the two
+//                   containers were in `testids` either way and nothing read what was inside them.
+//
+// Values that MUST move across a reload (the clock) are deliberately in none of them.
 //
 // WHAT "CLOCK KEPT RUNNING" IS ASSERTED AS. Seat 2's socket, driven from Node by
 // `cy.task("wsPlayer")`, records the `clock` frames the actor pushes (`MatchClocks` + the server's
@@ -50,6 +79,7 @@ import { accounts, constants, routes, seedFor, server, timeouts } from "../../su
 import {
   END_TURN,
   MANA_CRYSTAL,
+  MODIFIER_BADGE,
   PROMPT,
   exileCountId,
   graveyardCountId,
@@ -57,6 +87,7 @@ import {
   heroId,
   libraryCountId,
   manaId,
+  modifiersId,
   promptOptionId,
   ts,
   zoneId,
@@ -98,6 +129,20 @@ function spec8Name(index: number): string {
 
 /** SPEC §8 #65: the Quickdraw Field Spell whose start-of-turn choice this spec reloads on. */
 const MASOCHISM_MASK = spec8Name(65);
+
+/**
+ * SPEC §8 #77: the 2-cost unit whose Cry installs the one player modifier this fixture can reach,
+ * so that the view the reload rebuilds has a badge in it (see the header).
+ */
+const PROFESSOR_CURVATURE = spec8Name(77);
+
+/**
+ * R48 / R65 as `viewFor.modifierLabel` writes them: a `costDiscount` of 1 gated on a current cost
+ * of 4. No suffix, because by the turn this file reloads on the discount is live — `modifierViews`
+ * appends "(next turn)" only while `modifierIsLive` is false, which is the turn it was played and
+ * the opponent's turn after it.
+ */
+const CURVATURE_LIVE_LABEL = "Cost-4 cards cost 1 less";
 
 function api(path: string): string {
   return `${server.http()}${path}`;
@@ -225,6 +270,18 @@ type ViewFingerprint = {
   promptKind: string | null;
   /** Per-side counters and mana, read through the testids support/testids.ts builds. */
   counters: Record<string, string>;
+  /**
+   * R169's badge list per side, each badge as `<modifier id>=<caption>`, in the view's own order
+   * ("the order they were installed"). Read separately from `testids` because a badge carries
+   * `data-modifier-id` and no `data-testid`, so the list is invisible to the set above — only its
+   * container is in there, and the container is rendered even when it holds nothing.
+   *
+   * The caption is part of the key on purpose. The id alone would survive a rebuilt view that
+   * came back with the same modifier reading the wrong thing — R48's "(next turn)" suffix is
+   * computed from `state.turn` and `state.active` rather than stored, so it is exactly the kind of
+   * thing a reconnect could get wrong while the modifier itself round-tripped fine.
+   */
+  modifiers: Record<string, string[]>;
 };
 
 /**
@@ -256,10 +313,22 @@ function fingerprint(): Cypress.Chainable<ViewFingerprint> {
       counters[manaId(side)] = String($body.find(`${ts(manaId(side))} ${MANA_CRYSTAL}`).length);
     }
 
+    const modifiers: Record<string, string[]> = {};
+    for (const side of SIDES) {
+      modifiers[modifiersId(side)] = $body
+        .find(`${ts(modifiersId(side))} ${MODIFIER_BADGE}`)
+        .map(
+          (_index, element) =>
+            `${element.getAttribute("data-modifier-id") ?? ""}=${(element.textContent ?? "").trim()}`,
+        )
+        .get();
+    }
+
     return {
       testids,
       promptKind: prompt.length === 0 ? null : (prompt.attr("data-prompt-kind") ?? null),
       counters,
+      modifiers,
     };
   });
 }
@@ -278,7 +347,7 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
     const seatOne = accounts.p1();
     const seatTwo = accounts.p2();
     let matchId = "";
-    let before: ViewFingerprint = { testids: [], promptKind: null, counters: {} };
+    let before: ViewFingerprint = { testids: [], promptKind: null, counters: {}, modifiers: {} };
     let beforeClock: ClockFrame = {
       now: 0,
       clocks: { turnDeadline: null, promptDeadline: null, graceDeadline: { p1: null, p2: null }, ceilingAt: 0 },
@@ -352,12 +421,32 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
     cy.endTurn();
     seatTwoEndsTurn();
 
-    // --- player-turn 5: the Mask's start-of-turn choice is open for seat 1 --------------------
+    // --- player-turn 5: answer the Mask, then install the modifier the reload has to rebuild ---
     // No `waitForMyTurn()` here, deliberately: the Mask's choice opens at the START of this turn,
     // and while a `PendingChoice` is open `legalActions` for its holder is `['answer']` alone — no
     // `endTurn` — so `end-turn` is correctly disabled and waiting for it to enable can never
     // succeed. `waitForPrompt` is the right wait for a turn that begins with a question.
     cy.waitForPrompt("mode");
+    // `first: 1` is the first option offered, which for #65 base is "exile the bottom card of your
+    // library" — the one of the three that touches neither hero's health, so nothing later in this
+    // file reads differently for having answered it.
+    cy.answerPrompt("mode", { first: 1 });
+    cy.noPrompt();
+    // …and the freed mana buys the badge. R48 makes the discount cover seat 1's NEXT turn, which
+    // is player-turn 7 — the turn this file reloads on.
+    cy.playByName(PROFESSOR_CURVATURE, { zone: { side: "you", row: "units", lane: 1 } });
+    cy.get(ts(modifiersId("you"))).should("have.attr", "data-count", "1");
+    cy.endTurn();
+    seatTwoEndsTurn();
+
+    // --- player-turn 7: the Mask asks again, and now the view under the prompt has a badge ----
+    cy.waitForPrompt("mode");
+
+    // Stated rather than assumed, because the fingerprint below is a self-comparison and would be
+    // just as green over an empty list. R169's badge is on screen, and R48's suffix is gone
+    // because `modifierIsLive` is true on the controller's next turn.
+    cy.get(ts(modifiersId("you"))).should("have.attr", "data-count", "1");
+    cy.get(ts(modifiersId("you"))).find(MODIFIER_BADGE).should("have.text", CURVATURE_LIVE_LABEL);
 
     fingerprint().then((print) => {
       before = print;
@@ -368,6 +457,19 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
         optionKeysOf(print).length,
         '#65 base offers three options: "exile the bottom card of your library, lose 3 health, or summon a Spikey Pillow"',
       ).to.eq(3);
+      // The badge is IN the fingerprint, so the comparison after the reload covers a populated
+      // list rather than an empty one. The modifier's id is deterministic in (seed, log) but is
+      // not spelled here: pinning it would turn any unrelated change in `nextSeq` into a failure
+      // that reads like a modifier bug.
+      const badges = print.modifiers[modifiersId("you")] ?? [];
+      expect(badges, "R169's badge list reached the fingerprint").to.have.length(1);
+      expect(badges[0] ?? "", "…carrying R48's live caption, not just an id").to.have.string(
+        `=${CURVATURE_LIVE_LABEL}`,
+      );
+      expect(
+        print.modifiers[modifiersId("opponent")] ?? [],
+        "seat 2 installed none of its own, so the badge above is seat 1's",
+      ).to.have.length(0);
     });
 
     clockFrames(SEAT_TWO).then((frames) => {
@@ -403,6 +505,13 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
       expect(after.promptKind, "the same open prompt kind").to.eq(before.promptKind);
       expect(after.counters, "the same hand, library, graveyard, exile and mana readouts").to.deep.eq(
         before.counters,
+      );
+      // R169: the same badges, per side, in the same order, with the same captions. The captions
+      // are the load-bearing half — R48's "(next turn)" is derived from `state.turn` and
+      // `state.active` on every read rather than stored, so a view rebuilt from a fresh full push
+      // (§9.5: "Reconnect gets a fresh full view, never a log replay") has to arrive at it again.
+      expect(after.modifiers, "the same player modifiers, side by side").to.deep.eq(
+        before.modifiers,
       );
       expect(optionKeysOf(after), "the same PendingChoice options (§10.8)").to.deep.eq(
         optionKeysOf(before),

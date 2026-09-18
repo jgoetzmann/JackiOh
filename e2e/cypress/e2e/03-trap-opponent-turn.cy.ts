@@ -28,20 +28,70 @@
 //
 // Seed `03-sheep-19` was chosen against these two fixtures so #15 and #81 are in player 1's hand
 // by its second turn (two mana, one each) and Sheepish is in player 2's hand on its first.
+//
+// ---------------------------------------------------------------------------------------------
+// THE SECOND `it` IS THE OTHER HALF OF THE SAME SENTENCE. This file is the suite's
+// hidden-information-on-the-board spec: §10.8 and R33 decide what each seat may read off a card
+// standing in a zone, and the trap above is the FACE-DOWN case — player 1's screen has no
+// `card-<instanceId>` for Sheepish at all while it is set.
+//
+// R169 is the face-up case, and it had no browser coverage anywhere in the twelve. The player
+// modifiers travel in the view "as `{ id, label }` on **both** seats, because every one of them is
+// installed by a card played FACE-UP", and the caption "is built from the modifier's own kind and
+// numbers and never from its `sourceId`, so no card identity can leave through a badge". #77
+// Professor Curvature is the one Core modifier installed by a Cry, and `03-plays-a` already holds
+// it, so the second `it` plays it and reads the badge from both seats.
+//
+// R48 is what makes the caption worth asserting rather than merely counting. "During your NEXT
+// turn" means the discount is installed at once and bites later, so `viewFor` appends
+// "(next turn)" while `modifierIsLive` is still false — otherwise the badge would claim a discount
+// on the very turn the discount does nothing. Three readings pin that down: the turn it lands
+// (dormant), the opponent's turn in between (still dormant — "your" next turn, not the next turn),
+// and the controller's next turn (live). Then R48's cleanup takes it away and the empty container
+// stays behind.
+// ---------------------------------------------------------------------------------------------
 
 import { seedFor } from "../../support/config.ts";
 import {
   END_TURN,
+  MODIFIER_BADGE,
   RADIANT,
   cardId,
   graveyardCountId,
   handCardId,
+  modifierBadgeOf,
+  modifiersId,
   ts,
   zoneId,
 } from "../../support/testids.ts";
-import type { PlayerId } from "../../support/types.ts";
+import type { PlayerId, Side } from "../../support/types.ts";
 
 const SEED = seedFor("03-sheep-19");
+
+/**
+ * The second `it`'s seed, chosen the same way the first one's was: against these two fixtures it
+ * puts #77 in player 1's hand by player-turn 3, which is player 1's second turn and the first one
+ * whose two mana can pay SPEC §8's price for it.
+ */
+const CURVATURE_SEED = seedFor("03-curvature-4");
+
+/** SPEC §8 #77, as the client prints it on a card. */
+const CURVATURE = "Professor Curvature";
+
+/**
+ * The badge caption, whole. `viewFor.modifierLabel` builds it from the modifier's own kind and
+ * numbers — a `costDiscount` of 1 gated on a current cost of 4 (R48, R65) — and `modifierViews`
+ * appends the suffix while the discount is dormant. Asserted with `have.text` rather than
+ * `contain.text` precisely so that a caption which quietly dropped the suffix fails here.
+ */
+const CURVATURE_DISCOUNT = "Cost-4 cards cost 1 less";
+const CURVATURE_DORMANT = `${CURVATURE_DISCOUNT} (next turn)`;
+
+/** BUILD M5-T1's two viewports; the first is `cypress.config.ts`'s default. */
+const DESKTOP = { width: 1280, height: 720 } as const;
+const PHONE = { width: 390, height: 844 } as const;
+
+const SIDES: readonly Side[] = ["you", "opponent"];
 
 /** Stat hooks BUILD M5-T4's acceptance rows read off a card; not in support/testids.ts (reported). */
 const attackIs = (n: number): string => `[data-attack="${n}"]`;
@@ -76,7 +126,7 @@ function advanceToTurn(turn: number, budget = 8): void {
   });
 }
 
-describe("BUILD M8 03 — a trap fires on the other player's turn", () => {
+describe("BUILD M8 03 — a trap fires on the other player's turn; a face-up modifier shows on both seats", () => {
   it("R17 / R118 — Sheepish flips during P1's turn, the unit is a Sheep, and P1 plays on", () => {
     cy.seedGame({ seed: SEED, a: "03-plays-a", b: "03-sheepish-b" });
 
@@ -164,5 +214,125 @@ describe("BUILD M8 03 — a trap fires on the other player's turn", () => {
         });
       });
     });
+  });
+
+  it("R169 / R48 — Professor Curvature's badge is on both seats, says it is not live yet, and goes at cleanup", () => {
+    cy.seedGame({ seed: CURVATURE_SEED, a: "03-plays-a", b: "03-sheepish-b" });
+
+    // Before anything installs one, the list exists on both seats and holds nothing. Both halves
+    // matter: `Hero.tsx` keeps the container when the list is empty because `modifierChanged`'s
+    // fade is the animation for the badge that has just left, so "no badges" and "no list" have to
+    // be distinguishable — and a suite that only ever saw an empty list would not notice either.
+    for (const side of SIDES) {
+      cy.get(ts(modifiersId(side))).should("exist").and("have.attr", "data-count", "0");
+      cy.get(ts(modifiersId(side))).find(MODIFIER_BADGE).should("not.exist");
+    }
+
+    // Player-turn 3 is player 1's second turn: two mana, which is what SPEC §8 prices #77 at.
+    // `cy.advanceToTurn` rather than this file's older local helper because it is R82-safe — it
+    // presses `end-turn` only when the client is still offering one.
+    cy.advanceToTurn(3);
+    ensureSeat("p1");
+
+    cy.playByName(CURVATURE, {
+      zone: { side: "you", row: "units", lane: 2 },
+      // BUILD M5-T4 `modifierChanged`: "Player modifier badge appears or fades by the hero", 200 ms
+      // on `modifiers-<side>`. Caught between the click and `cy.playCard`'s own `cy.settled()`.
+      // This is the row whose animation had a target that no component rendered until R169.
+      expectAnimating: "modifierChanged",
+    });
+
+    // R169 from the controller's own seat: one badge, and it is the view's list rather than a
+    // count the client kept for itself.
+    cy.get(ts(modifiersId("you"))).should("have.attr", "data-count", "1");
+    cy.get(ts(modifiersId("you"))).find(MODIFIER_BADGE).should("have.length", 1);
+    // R48, and the whole reason the caption is asserted and not just the count: on the turn
+    // Curvature lands the discount does nothing, so the badge says so. A badge reading the bare
+    // discount here would be telling the player they have something they do not have yet.
+    cy.get(ts(modifiersId("you"))).find(MODIFIER_BADGE).should("have.text", CURVATURE_DORMANT);
+    // The opponent's own list is still empty, so the badge below is player 1's and not a stray.
+    cy.get(ts(modifiersId("opponent"))).should("have.attr", "data-count", "0");
+
+    cy.get(ts(modifiersId("you")))
+      .find(MODIFIER_BADGE)
+      .invoke("attr", "data-modifier-id")
+      .should("be.a", "string")
+      .then((raw) => {
+        const modifierId = String(raw);
+
+        // R169's "on BOTH seats". The device goes to player 2 and the same modifier, by the same
+        // id and with the same caption, is now drawn against the opponent's hero. §10.8 lists no
+        // `mods`, so this is the ruling being visible rather than merely written down.
+        cy.handOver();
+        cy.get(ts(modifiersId("opponent"))).should("have.attr", "data-count", "1");
+        cy.get(ts(modifiersId("opponent"))).find(modifierBadgeOf(modifierId)).should("exist");
+        cy.get(ts(modifiersId("opponent")))
+          .find(MODIFIER_BADGE)
+          .should("have.text", CURVATURE_DORMANT);
+        // …and player 2 has none of their own, which is what makes the line above a statement
+        // about whose modifier it is rather than about how many badges exist.
+        cy.get(ts(modifiersId("you"))).should("have.attr", "data-count", "0");
+        cy.get(ts(modifiersId("you"))).find(MODIFIER_BADGE).should("not.exist");
+
+        // THE BADGE AT PHONE WIDTH. `.modifiers` and `.modifier-badge` are new content inside
+        // `.hero`, which is a `display: flex` row with no wrap of its own, and this is the only
+        // place in the twelve where a badge is on screen at all — so it is the only browser-side
+        // look that CSS will ever get at 390 px. Spec 12 measures the board at both viewports;
+        // this measures the one element spec 12's board never has.
+        cy.viewport(PHONE.width, PHONE.height);
+        cy.get(ts(modifiersId("opponent"))).find(modifierBadgeOf(modifierId)).should("be.visible");
+        cy.get(ts(modifiersId("opponent")))
+          .find(MODIFIER_BADGE)
+          .should("have.text", CURVATURE_DORMANT);
+        cy.document({ log: false }).should((doc) => {
+          expect(
+            doc.documentElement.scrollWidth,
+            `the badge did not widen the document past ${String(PHONE.width)}px`,
+          ).to.be.at.most(PHONE.width);
+          expect(doc.body.scrollWidth, `nor the body past ${String(PHONE.width)}px`).to.be.at.most(
+            PHONE.width,
+          );
+        });
+        cy.viewport(DESKTOP.width, DESKTOP.height);
+
+        // R48's middle case, and the one a naive reading gets wrong. `modifierIsLive` is
+        // `state.turn > fromTurn && state.active === player`: the opponent's turn in between
+        // satisfies the first half and not the second, because #77 says "during **your** next
+        // turn". So the caption is still the dormant one here.
+        cy.advanceToTurn(4);
+        cy.gameState().should((state) => {
+          expect(state.active, "player 2's turn").to.eq("p2");
+        });
+        cy.get(ts(modifiersId("opponent"))).find(modifierBadgeOf(modifierId)).should("exist");
+        cy.get(ts(modifiersId("opponent")))
+          .find(MODIFIER_BADGE)
+          .should("have.text", CURVATURE_DORMANT);
+
+        // The controller's next turn: live, and the caption drops the suffix. Nothing else about
+        // the badge changes, which is how this reads as one modifier becoming live rather than as
+        // one badge being replaced by another.
+        cy.advanceToTurn(5);
+        ensureSeat("p1");
+        cy.get(ts(modifiersId("you"))).should("have.attr", "data-count", "1");
+        cy.get(ts(modifiersId("you"))).find(modifierBadgeOf(modifierId)).should("exist");
+        cy.get(ts(modifiersId("you"))).find(MODIFIER_BADGE).should("have.text", CURVATURE_DISCOUNT);
+
+        // R48's expiry: `expireModifiers` drops it at the cleanup of that player's next turn
+        // (§2.2). The badge goes with it and the container stays — the state `Hero.tsx` renders an
+        // empty list for.
+        cy.advanceToTurn(6);
+        cy.get(modifierBadgeOf(modifierId)).should("not.exist");
+        for (const side of SIDES) {
+          cy.get(ts(modifiersId(side))).should("exist").and("have.attr", "data-count", "0");
+          cy.get(ts(modifiersId(side))).find(MODIFIER_BADGE).should("not.exist");
+        }
+        // …because the modifier went, not because the list stopped being drawn.
+        cy.gameState().should((state) => {
+          const side = state.players.p1 as { mods?: unknown[] };
+          expect(side.mods ?? [], "R48: expired at the cleanup of player 1's next turn").to.have.length(
+            0,
+          );
+        });
+      });
   });
 });
