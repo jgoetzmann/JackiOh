@@ -7,8 +7,13 @@
  * §9.4 gate, the constant-time padding and the handler all take part.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createCodesRoutes, mintInviteCode } from "../../src/api/codes";
+import {
+  DEFAULT_INVITE_CODE_MAX_USES,
+  createCodesRoutes,
+  mintInviteCode,
+} from "../../src/api/codes";
 import { createRouter, ok, route, type Router } from "../../src/api/http";
 import { systemTimers, type ApiLimits, type Ids, type ProfileStatus } from "../../src/api/ports";
 import {
@@ -656,6 +661,82 @@ describe("§9.4: the global circuit breaker", () => {
     // next failure rather than inheriting an open one.
     const response = await redeem(second, token, UNMINTED_CODE);
     expect(response.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R161 — "How many accounts one invite code activates: one, unless its mint says otherwise"
+// ---------------------------------------------------------------------------
+
+/**
+ * Every other test in this file passes `maxUses` explicitly, which is exactly what R161's default
+ * cannot be proved from: a code that was *told* to allow one use says nothing about what a code
+ * that was told nothing allows. Both tests below mint through `mintInviteCode(deps)` with no
+ * `maxUses` at all.
+ */
+describe("R161 — how many accounts one invite code activates (§9.4, §9.8)", () => {
+  it("R161 activates exactly one account from a code minted with no maxUses", async () => {
+    const deps = codeDeps();
+    const router = createRouter(createCodesRoutes(), deps);
+    const first = seedCaller(deps, "first-holder");
+    const second = seedCaller(deps, "second-holder");
+
+    const leaked = await mintInviteCode(deps);
+
+    // PREMISE: the mint really did default, and defaulted to one.
+    expect(DEFAULT_INVITE_CODE_MAX_USES).toBe(1);
+    expect(deps.store.tables.codes[0]?.maxUses).toBe(1);
+    expect(deps.store.tables.codes[0]?.uses).toBe(0);
+
+    // The one account the code is worth.
+    expect((await redeem(router, first.token, leaked.formatted)).status).toBe(200);
+    expect(deps.store.tables.profiles.find((row) => row.id === "first-holder")?.status).toBe("active");
+
+    // The second caller is refused — through R145's identical error, so the refusal itself says
+    // nothing about *why*. One leaked code is one account, not an open door (§9.8).
+    const refused = await redeem(router, second.token, leaked.formatted);
+    expect(refused.status).toBe(400);
+    expect((await readJson<ErrorBody>(refused)).error.message).toBe(REDEMPTION_IDENTICAL_ERROR);
+    expect(deps.store.tables.codes[0]?.uses).toBe(1);
+    expect(deps.store.tables.profiles.find((row) => row.id === "second-holder")?.status).toBe("pending");
+
+    // CONTROL: the second caller is not refused for some reason of their own. A code with a use
+    // left activates them on the spot, so what the first redemption consumed was the *code*.
+    const another = await mintInviteCode(deps);
+    expect((await redeem(router, second.token, another.formatted)).status).toBe(200);
+    expect(deps.store.tables.profiles.find((row) => row.id === "second-holder")?.status).toBe("active");
+  });
+
+  it("R161 leaves a larger maximum available to whoever mints deliberately", async () => {
+    const deps = codeDeps();
+    const router = createRouter(createCodesRoutes(), deps);
+    const callers = ["one", "two", "three", "four"].map((name) => seedCaller(deps, name));
+
+    const batch = await mintInviteCode(deps, { maxUses: 3 });
+    expect(deps.store.tables.codes[0]?.maxUses).toBe(3);
+
+    for (const caller of callers.slice(0, 3)) {
+      expect((await redeem(router, caller.token, batch.formatted)).status).toBe(200);
+    }
+    expect(deps.store.tables.codes[0]?.uses).toBe(3);
+
+    // "One" is a default, not a law — and the counter still stops where the mint said it would.
+    const fourth = await redeem(router, callers[3]?.token ?? "", batch.formatted);
+    expect(fourth.status).toBe(400);
+    expect(deps.store.tables.codes[0]?.uses).toBe(3);
+    expect(deps.store.tables.profiles.find((row) => row.id === "four")?.status).toBe("pending");
+  });
+
+  it("R161 agrees with the schema, so minting through the API and inserting by hand match", () => {
+    // The other half of "one unless the mint says otherwise": a row written straight into
+    // `invite_codes` gets the same default the API applies.
+    const migration = readFileSync(
+      new URL("../../src/db/migrations/0001_profiles_and_invites.sql", import.meta.url),
+      "utf8",
+    );
+    expect(migration).toMatch(
+      new RegExp(`max_uses\\s+int not null default ${String(DEFAULT_INVITE_CODE_MAX_USES)}\\b`),
+    );
   });
 });
 

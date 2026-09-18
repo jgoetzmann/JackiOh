@@ -176,8 +176,8 @@ describe("server frames", () => {
   });
 
   it("with no legal list anywhere, the board stays empty and says so", () => {
-    // The hard blocker: `protocol.ts` has no frame carrying `legalActions`. The client does NOT
-    // compute it (rule 7, BUILD M5-T2) — it reports the gap.
+    // A server that sends no `legalActions` at all leaves the board read-only. The client does NOT
+    // compute it (rule 7, BUILD M5-T2) — it reports the gap, and `routes/match.tsx` shows it.
     const h = connected();
     h.socket().deliver({ type: "view", view: baseView() });
     expect(h.client.snapshot().legal).toEqual([]);

@@ -112,8 +112,11 @@ export function withCors<H extends (request: Request) => Promise<Response>>(
           origin: origin ?? "(none)",
           allowed: origins,
         });
-        // No CORS headers: the browser refuses it, which is the correct outcome.
-        return new Response(null, { status: 204 });
+        // No CORS headers: the browser refuses it, which is the correct outcome. `Vary: Origin`
+        // still goes on, because R162 puts it on EVERY response this layer touches — the answer
+        // depends on the request's origin, so a shared cache must not serve this one to an origin
+        // that would have been allowed.
+        return new Response(null, { status: 204, headers: { vary: "Origin" } });
       }
       return new Response(null, {
         status: 204,
@@ -127,7 +130,19 @@ export function withCors<H extends (request: Request) => Promise<Response>>(
     }
 
     const response = await handler(request);
-    if (!allowed || origin === null) return response;
+    if (!allowed || origin === null) {
+      // R162 again: the ordinary response an unlisted or origin-less caller gets is still an answer
+      // that depended on the origin, so it is still cacheable-per-origin. Without this a shared
+      // cache can store the no-CORS-headers answer and later hand it to an allowed origin, which is
+      // exactly the failure the clause names.
+      const bare = new Headers(response.headers);
+      bare.set("vary", "Origin");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: bare,
+      });
+    }
 
     // `Response` headers are immutable once constructed by some runtimes, so the headers are
     // copied rather than mutated in place.

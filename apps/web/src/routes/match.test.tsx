@@ -1,11 +1,11 @@
 // `/match/<id>`: the board specs 05 and 06 drive, with the socket faked.
 //
-// The load-bearing assertion in this file is the one that currently FAILS to be satisfiable end to
-// end: `apps/server/src/match/protocol.ts` sends no frame carrying `legalActions`, so a networked
-// board renders with `legal={[]}` and `end-turn` is `disabled` — which is exactly where specs 05 and
-// 06 stop (`waitForMyTurn` waits for `end-turn` to be enabled). The route says so out loud, and the
-// second test shows the board comes alive the moment either accepted shape arrives. Nothing here
-// computes legality; that is the engine's (BUILD M5-T2, CLAUDE.md rule 7).
+// The load-bearing assertion in this file is what a board does with `legalActions`. A view that
+// carries none renders `legal={[]}`, `end-turn` is `disabled`, and `waitForMyTurn` in specs 05 and
+// 06 waits forever — so the route says so out loud rather than looking merely idle. The two tests
+// after it show the board coming alive on either accepted shape: the `legal` field on the `view`
+// frame, which is what `apps/server/src/match/actor.ts` sends, and a `legal` frame of its own.
+// Nothing here computes legality; that is the engine's (BUILD M5-T2, CLAUDE.md rule 7).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -125,6 +125,59 @@ describe("the networked board", () => {
 
     expect(screen.queryByTestId("missing-legal-frame")).toBeNull();
     expect(screen.getByTestId("end-turn")).not.toBeDisabled();
+  });
+
+  /**
+   * R7 of this route's own making: `GET /api/catalog` resolves whenever it resolves, and the board
+   * must not be rebuilt when it does.
+   *
+   * The route used to render `lookup === null ? board : <CatalogContext.Provider>{board}</…>`.
+   * That changes the ELEMENT TYPE at that position the moment the catalog lands, so React unmounts
+   * the whole board and mounts a new one: every DOM node is replaced. It cost spec 05 a mulligan —
+   * `cy.click()` had already resolved a prompt option and reported it "disappeared from the page"
+   * — and a real player would lose a half-finished play the same way. Node identity is the
+   * assertion, because that is exactly what a remount does not preserve.
+   */
+  it("does not rebuild the board when the catalog arrives", async () => {
+    let resolveCatalog = (): void => {};
+    const catalog = new Promise<Response>((resolve) => {
+      resolveCatalog = () =>
+        resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              JSON.stringify({
+                version: "v1",
+                defs: {
+                  "core-001": {
+                    name: "Big D-fender",
+                    type: "Unit",
+                    tags: [],
+                    base: { text: "", attack: 1, health: 1 },
+                    radiant: { text: "", attack: 1, health: 1 },
+                  },
+                },
+              }),
+            ),
+        } as unknown as Response);
+    });
+    vi.stubGlobal("fetch", vi.fn(() => catalog));
+
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach({ legal: [{ type: "endTurn" }] });
+
+    const heroBefore = screen.getByTestId("hero-you");
+    const endTurnBefore = screen.getByTestId("end-turn");
+
+    await act(async () => {
+      resolveCatalog();
+      await catalog;
+    });
+
+    expect(screen.getByTestId("hero-you")).toBe(heroBefore);
+    expect(screen.getByTestId("end-turn")).toBe(endTurnBefore);
+    expect(heroBefore.isConnected).toBe(true);
   });
 
   it("shows a holding panel until the first view lands", () => {

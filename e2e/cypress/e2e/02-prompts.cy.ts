@@ -58,14 +58,14 @@ import type { GameStateLike, PlayerId, PromptKind } from "../../support/types.ts
 const SEEDS = {
   mulligan: seedFor("02-mulligan-0"),
   zone: seedFor("02-zone-0"),
-  discover: seedFor("02-discover-5"),
+  discover: seedFor("02-discover-1"),
   target: seedFor("02-target-70"),
   hand: seedFor("02-hand-1"),
-  mode: seedFor("02-mode-9"),
-  tribute: seedFor("02-tribute-419"),
-  direction: seedFor("02-direction-3"),
+  mode: seedFor("02-mode-16"),
+  tribute: seedFor("02-tribute-1359"),
+  direction: seedFor("02-direction-5"),
   x: seedFor("02-x-5"),
-  embiggen: seedFor("02-embiggen-5"),
+  embiggen: seedFor("02-embiggen-0"),
 };
 
 /**

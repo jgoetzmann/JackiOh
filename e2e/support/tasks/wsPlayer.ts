@@ -45,6 +45,8 @@ type Client = {
   lastView: Record<string, unknown> | null;
   waiters: Waiter[];
   nonce: number;
+  /** The match this socket was opened onto, for the leave-nothing-behind concede below. */
+  matchId: string | null;
 };
 
 export type WsPlayerCommand =
@@ -150,6 +152,7 @@ async function connect(command: Extract<WsPlayerCommand, { action: "connect" }>)
     lastView: null,
     waiters: [],
     nonce: 0,
+    matchId: command.matchId ?? null,
   };
   clients.set(command.name, record);
 
@@ -267,6 +270,38 @@ async function awaitView(command: Extract<WsPlayerCommand, { action: "awaitView"
   return { ok: true, name: command.name, view: isRecord(message.view) ? message.view : null };
 }
 
+/**
+ * Leave no live match behind when a spec file ends.
+ *
+ * A profile with `inMatchId` set is refused by `POST /api/rooms`, `POST /api/rooms/:code/join` and
+ * `POST /api/queue` alike — all three answer `409 already_in_match`
+ * (`apps/server/src/match/rooms.ts`, `apps/server/src/api/queue.ts`). Spec 05 ends with its match
+ * still running, on purpose: the point of that spec is that the prompt rebuilt after the reload is
+ * live state, so it answers the prompt and stops. Spec 06 is next in the alphabetical order Cypress
+ * runs, and its first server call is `POST /api/rooms` as the same account — so without this the
+ * suite passes spec by spec and fails as a suite, which is the shape the M8 gate is run in.
+ *
+ * §2.5 already gives a player a way out of a match, so nothing new is invented here: this sends the
+ * `concede` the protocol already carries, and §9.5's "every ending records a result and clears both
+ * players' in-match state" does the rest for BOTH seats. It is best-effort by design — a match that
+ * is already over answers `match_over` and a closed socket answers nothing, and neither is a
+ * failure worth taking a spec file down for.
+ */
+async function concedeIfLive(record: Client): Promise<void> {
+  if (record.matchId === null) return;
+  if (record.socket.readyState !== WebSocket.OPEN) return;
+  // `result` is non-null once the match has ended (§10.8), so there is nothing to concede. A view
+  // that never arrived is not evidence of an ended match, so that case still concedes: the cost of
+  // a redundant concede is one `match_over` error nobody reads.
+  const view = record.lastView;
+  if (view !== null && view.result !== null && view.result !== undefined) return;
+  try {
+    await send({ action: "send", name: record.name, body: { type: "concede" } });
+  } catch {
+    // The socket went away, the actor had already stopped, or the match was over after all.
+  }
+}
+
 export async function wsPlayer(command: WsPlayerCommand): Promise<WsPlayerResult> {
   try {
     switch (command.action) {
@@ -282,11 +317,14 @@ export async function wsPlayer(command: WsPlayerCommand): Promise<WsPlayerResult
         return { ok: true, name: command.name, messages: client(command.name).messages };
       case "disconnect": {
         const record = client(command.name);
+        // A deliberate disconnect is what spec 05 uses to model a dropped player, so it must NOT
+        // concede: the grace countdown is the thing under test. Only `reset` cleans up.
         record.socket.close();
         clients.delete(command.name);
         return { ok: true, name: command.name };
       }
       case "reset": {
+        for (const record of clients.values()) await concedeIfLive(record);
         for (const record of clients.values()) record.socket.close();
         clients.clear();
         return { ok: true };

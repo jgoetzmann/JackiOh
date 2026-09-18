@@ -68,8 +68,17 @@ import {
 } from "../../support/testids.ts";
 import type { GameStateLike, Lane, PlayerId } from "../../support/types.ts";
 
-/** Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it. */
-const SEED = seedFor("07-my-pawn");
+/**
+ * Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it.
+ *
+ * Chosen for the opening this file's steps need, and nothing else: My Pawn is in seat 2's opening
+ * hand, so it is set on seat 2's first turn (player-turn 2), and #20 Pointmaster is in seat 1's, so
+ * a grinder is affordable on seat 1's second turn (player-turn 3). Four 7-damage swings take the
+ * hero from 30 to 2 and the lethal declaration lands on player-turn 13 — well inside R2's cap,
+ * which the previous seed was not: under it #96 never reached seat 2's hand at all and the whole
+ * game ran out as a draw inside `advanceUntil`.
+ */
+const SEED = seedFor("07-my-pawn-10");
 
 /** Budgets: R2 caps the game at 30 player-turns, so nothing here may loop forever. */
 const TURN_BUDGET = 34;

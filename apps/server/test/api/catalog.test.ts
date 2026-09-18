@@ -1,5 +1,11 @@
 // The catalog and validator bindings (src/api/catalog.ts, src/api/loadout-validator.ts): the two
 // places the server reaches data and rules that live in other packages (SPEC §9.4).
+//
+// Two SPEC §11 rulings live here as well:
+//   * R163 — the catalog endpoint a client that ships none can read: whole, unprojected,
+//     unauthenticated, carrying R105's version.
+//   * R164 — where L6's ban list lives: server state, never a flag on a card definition, read
+//     through the catalog handle.
 
 import { describe, expect, it } from "vitest";
 
@@ -7,10 +13,15 @@ import {
   CatalogUnavailableError,
   catalogFrom,
   catalogUrl,
+  createCatalogRoutes,
   loadCatalog,
   versionOf,
 } from "../../src/api/catalog";
+import { createRouter, ok, route } from "../../src/api/http";
+import type { CardDefs } from "@jackioh/shared";
+import type { CatalogInfo } from "../../src/api/ports";
 import { sharedLoadoutValidator } from "../../src/api/loadout-validator";
+import { createTestDeps, jsonRequest, readJson } from "../fakes/deps";
 
 describe("catalog", () => {
   it("loads packages/cards/catalog.json through the workspace link", async () => {
@@ -131,5 +142,150 @@ describe("loadout validator binding (§9.4: one module, shared)", () => {
     }
     // Otherwise the loop above would prove the claim by never reaching L5 at all.
     expect(sawL5, "no case reached L5, so this proves nothing").toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R163 — "The catalog a client that ships none can read"
+// ---------------------------------------------------------------------------
+
+type CatalogBody = { version: string; defs: CardDefs };
+
+describe("R163 — the catalog endpoint (§9.1, §9.4, R105)", () => {
+  it("R163 serves the whole, unprojected catalog to a caller with no account at all", async () => {
+    const catalog = await loadCatalog();
+    const deps = createTestDeps({ catalog });
+    // A second, `active` route on the same router, so "the anonymous call worked" is not just
+    // "this router lets everybody through": §9.4's gate has to be demonstrably awake.
+    const router = createRouter(
+      [...createCatalogRoutes(), route("GET", "/api/collection", "active", async () => ok({}))],
+      deps,
+    );
+
+    // PREMISE: the gate is on. The same request with no token is refused by the guarded route.
+    const gated = await router(jsonRequest("GET", "/api/collection"));
+    expect(gated.status).toBe(401);
+
+    const response = await router(jsonRequest("GET", "/api/catalog"));
+    expect(response.status).toBe(200);
+    const body = await readJson<CatalogBody>(response);
+
+    // R105's version, so a stale client learns it is stale before it builds a deck.
+    expect(body.version).toBe(catalog.version);
+    expect(body.version).toMatch(/^c1-[0-9a-f]{12}$/);
+
+    // Whole: §8's 100 cards plus 9 tokens, every one of them.
+    expect(Object.keys(body.defs)).toHaveLength(109);
+    expect(body.defs).toEqual(catalog.defs);
+
+    // Unprojected: not one field is trimmed off a card on the way out. A trimmed card would be a
+    // second, weaker copy of the catalog, and the deckbuilder's verdict (UX) would stop being the
+    // verdict the save runs (law).
+    for (const cardId of Object.keys(catalog.defs)) {
+      expect(Object.keys(body.defs[cardId] ?? {}).sort()).toEqual(
+        Object.keys(catalog.defs[cardId] ?? {}).sort(),
+      );
+    }
+  });
+
+  it('R163 declares `auth: "none"`, like the file it stands in for', () => {
+    const routes = createCatalogRoutes();
+    expect(routes).toHaveLength(1);
+    expect(routes[0]?.method).toBe("GET");
+    expect(routes[0]?.path).toBe("/api/catalog");
+    // "The same bytes for everybody, naming no profile": §9.4's gate is about collection, loadout,
+    // queue and match, and card data is none of those.
+    expect(routes[0]?.auth).toBe("none");
+  });
+
+  it("R163 hands a pending account and an anonymous caller the identical bytes", async () => {
+    const catalog = await loadCatalog();
+    const deps = createTestDeps({ catalog });
+    const router = createRouter(createCatalogRoutes(), deps);
+    deps.store.seedProfile({ id: "pending", userId: "user-pending", status: "pending" });
+    const token = deps.auth.addUser({ userId: "user-pending", email: "pending@example.test" });
+
+    const anonymous = await router(jsonRequest("GET", "/api/catalog"));
+    const pending = await router(jsonRequest("GET", "/api/catalog", undefined, { token }));
+
+    expect(anonymous.status).toBe(200);
+    expect(pending.status).toBe(200);
+    // It names no profile, so it cannot differ by one.
+    expect(await pending.text()).toBe(await anonymous.text());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R164 — "Where L6's ban list lives"
+// ---------------------------------------------------------------------------
+
+/** A ban held as server state: the catalog data is untouched, only the handle answers differently. */
+function withBan(catalog: CatalogInfo, bannedId: string): CatalogInfo {
+  return { ...catalog, isBanned: (cardId) => cardId === bannedId };
+}
+
+describe("R164 — where L6's ban list lives (§9.4, R105)", () => {
+  it("R164 reads bannedness through the catalog handle, never off a card definition", async () => {
+    const catalog = await loadCatalog();
+    const playable = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId)).slice(0, 60);
+    const victim = playable[0] ?? "";
+    const owned = new Map(playable.map((cardId) => [cardId, 1] as const));
+    const decks = [playable.slice(0, 20), playable.slice(20, 40), playable.slice(40, 60)];
+
+    // PREMISE: the loadout is legal today, so the L6 below comes from the ban and nothing else.
+    expect(
+      sharedLoadoutValidator({ decks, catalogVersion: catalog.version, catalog, owned }),
+    ).toEqual([]);
+
+    const banned = withBan(catalog, victim);
+    const issues = sharedLoadoutValidator({
+      decks,
+      catalogVersion: banned.version,
+      catalog: banned,
+      owned,
+    });
+
+    // L6: "every card exists in the current catalog version and is not banned".
+    expect(issues.map((issue) => issue.rule)).toContain("L6");
+    expect(issues.find((issue) => issue.rule === "L6")?.cardId).toBe(victim);
+  });
+
+  it("R164 keeps a ban out of the catalog data, so R105's version does not move", async () => {
+    const catalog = await loadCatalog();
+    const victim = catalog.cardIds[0] ?? "";
+    const banned = withBan(catalog, victim);
+
+    // The failure R164 exists to prevent: a flag on the card would mean a new R105 version, and
+    // §9.4's stale-version rejection would invalidate every saved loadout in the game at once.
+    expect(banned.version).toBe(catalog.version);
+    expect(banned.defs).toEqual(catalog.defs);
+    expect(banned.cardIds).toEqual(catalog.cardIds);
+    // A card definition carries no ban flag for anything to have been written to.
+    for (const def of Object.values(catalog.defs)) {
+      const keys = Object.keys(def as unknown as Record<string, unknown>);
+      expect(keys.filter((key) => /ban/iu.test(key))).toEqual([]);
+    }
+  });
+
+  it("R164 never hands the client a copy of the list: the served bytes do not change", async () => {
+    const catalog = await loadCatalog();
+    const victim = catalog.cardIds[0] ?? "";
+
+    const serve = async (info: CatalogInfo): Promise<string> => {
+      const router = createRouter(createCatalogRoutes(), createTestDeps({ catalog: info }));
+      return (await router(jsonRequest("GET", "/api/catalog"))).text();
+    };
+
+    // R163's route carries the catalog both sides ship; R164 keeps the ban list out of it, so the
+    // client has no copy of a list it has no business being able to disagree with.
+    expect(await serve(withBan(catalog, victim))).toBe(await serve(catalog));
+  });
+
+  it("R164 bans nothing in §8 at launch, and holds the hook open for when something is", async () => {
+    const catalog = await loadCatalog();
+    // "Nothing in §8 is banned at launch" — every one of the 109, not just a sample.
+    expect(catalog.cardIds.filter((cardId) => catalog.isBanned(cardId))).toEqual([]);
+    // The single hook, which reads the db agent's `cards` table once there is something to ban.
+    expect(catalogFrom({}, "v0").isBanned("core-001")).toBe(false);
   });
 });

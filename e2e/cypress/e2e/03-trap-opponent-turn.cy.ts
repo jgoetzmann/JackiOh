@@ -26,7 +26,7 @@
 // far side of the board tests (CLAUDE.md rule 7, §10.8, R33): while the trap is set, player 1's
 // screen has no `card-<instanceId>` for it at all — only a face-down card in a zone.
 //
-// Seed `03-sheep-167` was chosen against these two fixtures so #15 and #81 are in player 1's hand
+// Seed `03-sheep-19` was chosen against these two fixtures so #15 and #81 are in player 1's hand
 // by its second turn (two mana, one each) and Sheepish is in player 2's hand on its first.
 
 import { seedFor } from "../../support/config.ts";
@@ -41,7 +41,7 @@ import {
 } from "../../support/testids.ts";
 import type { PlayerId } from "../../support/types.ts";
 
-const SEED = seedFor("03-sheep-12");
+const SEED = seedFor("03-sheep-19");
 
 /** Stat hooks BUILD M5-T4's acceptance rows read off a card; not in support/testids.ts (reported). */
 const attackIs = (n: number): string => `[data-attack="${n}"]`;

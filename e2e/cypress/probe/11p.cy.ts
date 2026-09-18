@@ -31,13 +31,13 @@
 // failure as known. `apps/web` now depends on `@jackioh/cards` and calls `registerAll()` in its
 // composition root, so `registeredCatalog()` is populated, `/dev/hotseat` resolves a fixture deck
 // and `window.__jackioh` is exposed. If this spec fails in `cy.seedGame` now, it is a finding.
-//
-// The #94 blocker this header used to name is CLOSED too, and the same rule applies to it: this
-// header once said `packages/cards/src/scripts/094-genns-greed.ts` was down to its `gainMana`
-// clause because neither "draw every 2-cost card" nor "exile every odd-cost card" was in
-// `packages/engine/src/effects`. Both verbs exist now, and step 3's precondition — empty library,
-// a hand holding nothing but Knockoff Temu, Mr. Vanilla the only non-Radiant card on the field —
-// is met in a real run. So a failure there is a finding about #94, not a known gap.
+//     hotseat spec fails in `cy.seedGame` until that is fixed.
+//   * `packages/cards/src/scripts/094-genns-greed.ts` is down to its `gainMana` clause: neither
+//     of the two verbs its other two clauses need ("draw every 2-cost card", "exile every
+//     odd-cost card") is in `packages/engine/src/effects` yet. #26's `setRadiant` and #28's
+//     `setRadiantRandom` both exist, so the Glowy Jelly Bean half of this spec should pass and
+//     the precondition assertion in step 3 should be the first thing to fail — which is the
+//     point of asserting it rather than casting into a board the engine did not clear.
 //
 // Two things this file cannot do with today's support API, both reported rather than worked
 // around:
@@ -56,16 +56,8 @@ import { seedFor } from "../../support/config.ts";
 import { RADIANT, cardId, handCardId, ts } from "../../support/testids.ts";
 import type { GameStateLike, Lane, PlayerId } from "../../support/types.ts";
 
-/**
- * Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it.
- *
- * Chosen for the draw order the four plays below need: #8 Mr. Vanilla and #26 Glowy Jelly Bean are
- * in seat 1's opening hand, #31 KY's Math Equation reaches seat 2 by its first turn, and #94 Genn's
- * Greed reaches seat 1 by player-turn 5 — one turn before §2.3's mana cap can pay its 4. The
- * previous seed never drew #94 at all: seat 1's hand hit HAND_CAP at player-turn 13 and the game ran
- * out as a draw inside `waitToPlay("p1", GENNS_GREED)`, so step 3's precondition was never reached.
- */
-const SEED = seedFor("11-radiant-442");
+/** Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it. */
+const SEED = seedFor("11-radiant");
 
 const TURN_BUDGET = 34;
 const UNIT_LANE: Lane = 1;
@@ -216,13 +208,7 @@ describe("BUILD M8 11 — Glowy Jelly Bean on a hand card, Knockoff Temu on a da
       // -------------------------------------------------------------------------------------
       // 2. "Glowy Jelly Bean on a hand card": #26 (3) makes one card in the hand Radiant. R81
       //    calls the pick a declared `hand` choice; it travels in the play action's `targets`,
-      //    so it never pauses resolution — but the PICKER it opens is the `hand` one, not the
-      //    `target` one. SPEC §8 #26 names it ("A declared `hand` pick, so it travels in the play
-      //    action's `targets` (R81)") and §10.6 keeps `hand` as its own kind for exactly this card
-      //    ("an Echo repeat of Glowy Jelly Bean reopens its hand pick"), which is why
-      //    `apps/web/src/game/Prompt.tsx` draws a `target` need whose every candidate is a card in
-      //    the viewer's own hand with `data-prompt-kind="hand"`. This file asked for `target` and
-      //    so never found the modal; the kind asserted here is now the one §10.6 names.
+      //    so the client renders it with its `target` picker and never pauses resolution.
       // -------------------------------------------------------------------------------------
       waitToPlay("p1", CARDS.glowyJellyBean);
       cy.gameState().then((state) => {

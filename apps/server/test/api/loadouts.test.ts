@@ -252,11 +252,24 @@ describe("validation is the shared validator's job (§9.4)", () => {
     ]);
   });
 
-  it("queueing without a saved loadout is a loadout failure, not a crash", async () => {
+  // R165: §9.4's L1 assumes a loadout exists and so cannot state this case, but the player is in
+  // exactly the position L1 describes — they do not have three decks — and the remedy is the same.
+  // The endpoint-level half (a 422 out of `POST /api/queue`, and the control that the same profile
+  // queues fine once it has saved) is in `queue.test.ts`.
+  it("R165 makes queueing without a saved loadout a loadout failure, not a missing resource", async () => {
     const error = await apiError(() =>
       validateStoredLoadout(deps, PROFILE, deps.catalog.version),
     );
     expect(error.code).toBe("loadout_invalid");
+    // "A 404 would say the endpoint found nothing, sending a client looking for a route that is
+    // working correctly" — so the status has to be the loadout one, not the missing-resource one.
+    expect(error.status).toBe(422);
+    expect(error.status).not.toBe(404);
+    // Nor is it a staleness problem: only a catalog mismatch reports as stale.
+    expect(error.code).not.toBe("stale_catalog");
+
+    // The premise the refusal rests on: this profile really has saved nothing.
+    expect(await deps.store.loadouts.get(PROFILE)).toBeNull();
   });
 
   it("returns the stored loadout when everything checks out at queue time", async () => {

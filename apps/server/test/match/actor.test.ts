@@ -584,6 +584,110 @@ describe("M6-T4 the match actor", () => {
 });
 
 // ---------------------------------------------------------------------------
+// BUILD M5-T2 / §10.2: the array the client greys the board out with
+// ---------------------------------------------------------------------------
+
+/**
+ * "The client never computes legality itself; it asks `legalActions` and greys out the rest"
+ * (BUILD M5-T2), and §10.2 makes `legalActions(state, playerId)` "what both the client UI and the
+ * My Pawn AI consume". The socket is the client's only source for it, so it travels on the `view`
+ * frame (`protocol.ts` `ViewMessage` says why there and not in a frame of its own).
+ *
+ * The property under test is not "an array arrives" but **whose** array arrives. `legalActions`
+ * enumerates one `play` per card in the player's hand, so the other seat's array would hand over
+ * every instance id in the opponent's hand — §9.1 lists that first under "Hidden".
+ */
+describe("the legal-action array on the view frame (BUILD M5-T2, §10.2)", () => {
+  function legalOf(socket: FakeSocket): ActionBody[] {
+    const frame = socket.ofType<{ type: "view"; legal: ActionBody[] }>("view").at(-1);
+    if (frame === undefined) throw new Error("no view frame was sent");
+    return frame.legal;
+  }
+
+  it("gives each seat its own array and never the other seat's", async () => {
+    const { p1, p2 } = await harness();
+
+    // The fake engine's `legalActions` is the real one's shape: one `play` per hand card for the
+    // active player, plus `endTurn` and `concede`; `[{ type: "concede" }]` for the other seat.
+    const p1Hand = hand(lastView(p1)).map((card) => card.instanceId);
+    const p2Hand = hand(lastView(p2)).map((card) => card.instanceId);
+    expect(p1Hand.length).toBeGreaterThan(0);
+    expect(p2Hand.length).toBeGreaterThan(0);
+
+    const mine = legalOf(p1);
+    expect(mine.filter((action) => action.type === "play").map((action) => action.instanceId)).toEqual(
+      p1Hand,
+    );
+    expect(mine.map((action) => action.type)).toContain("endTurn");
+
+    // p2 is not the active player, so its own array is the one the engine gives p2 — and it names
+    // none of p1's cards. This is the assertion that would fail if `pushView` ever passed the
+    // wrong player to `legalActions`.
+    expect(legalOf(p2)).toEqual([{ type: "concede" }]);
+    const p2Sees = JSON.stringify(legalOf(p2));
+    for (const instanceId of p1Hand) expect(p2Sees).not.toContain(instanceId);
+  });
+
+  it("re-derives the array after every action, for both seats", async () => {
+    const { actor, p1, p2 } = await harness();
+
+    expect(legalOf(p1).map((action) => action.type)).toContain("endTurn");
+    expect(legalOf(p2)).toEqual([{ type: "concede" }]);
+
+    await send(actor, p1, "hand-over", { type: "endTurn" });
+
+    // The turn moved, so the two arrays swapped — neither client had to work that out.
+    expect(legalOf(p1)).toEqual([{ type: "concede" }]);
+    expect(legalOf(p2).map((action) => action.type)).toContain("endTurn");
+  });
+
+  it("an open prompt leaves the seat that does not hold it with nothing to do (§10.6)", async () => {
+    const { actor, p1, p2 } = await harness();
+
+    // `test-prompt-self` opens a prompt for the player who played it.
+    await send(actor, p1, "prompt", { type: "play", instanceId: firstInHand(p1) });
+
+    const choiceId = openChoice(p1);
+    expect(legalOf(p1)).toEqual([{ type: "answer", choiceId, selection: [{ pick: "none" }] }]);
+    // §10.6: the opponent "sees only that a prompt is open". Not even the choiceId reaches it —
+    // an empty array is the whole of what p2 may do.
+    expect(legalOf(p2)).toEqual([]);
+    expect(JSON.stringify(legalOf(p2))).not.toContain(choiceId);
+  });
+
+  it("§9.5: a reconnecting socket gets the array with its fresh view", async () => {
+    const { actor, p1 } = await harness();
+    const before = legalOf(p1);
+
+    p1.drop();
+    await actor.idle();
+
+    const revived = createFakeSocket();
+    actor.attach("p1", revived);
+    await actor.idle();
+
+    // The attach pushed one view, and it carries the array: a board rebuilt after a reload is
+    // interactive without waiting for the next action to happen (spec 05 reloads mid-prompt).
+    expect(views(revived)).toHaveLength(1);
+    expect(legalOf(revived)).toEqual(before);
+
+    // `hello` means "push me a fresh full view" (§9.5), and that view is no different.
+    revived.receiveJson({ type: "hello" });
+    await actor.idle();
+    expect(views(revived)).toHaveLength(2);
+    expect(legalOf(revived)).toEqual(before);
+  });
+
+  it("is empty once the match has a result", async () => {
+    const { actor, p1, p2 } = await harness();
+    await send(actor, p1, "gg", { type: "concede" });
+    expect(lastView(p1).result).not.toBeNull();
+    expect(legalOf(p1)).toEqual([]);
+    expect(legalOf(p2)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The `ws` adapter (smoke only: every protocol guarantee above is proven on the same `Socket`)
 // ---------------------------------------------------------------------------
 

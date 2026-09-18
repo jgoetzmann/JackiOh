@@ -11,7 +11,7 @@
 //
 //   client -> server   hello {token?, matchId?, roomCode?}
 //                      action {nonce, action: ActionBody}      (`playerId` is DISCARDED server-side)
-//   server -> client   view {view: PlayerView}
+//   server -> client   view {view: PlayerView, legal: ActionBody[]}   (this seat's own actions)
 //                      ack {nonce, seq}
 //                      error {code, message, nonce?}
 //                      prompt {forYou, pendingFor, choiceId?, kind?, deadline}
@@ -29,23 +29,28 @@
 // type import across that boundary would be a build-time coupling the topology (§9.2) does not
 // have.
 //
-// THE MISSING FRAME. `apps/web/src/game/actions.ts` derives every clickable element by filtering
-// the `legalActions` array (BUILD M5-T2: "The client never computes legality itself; it asks
-// `legalActions` and greys out the rest"). The protocol has no frame that carries it: `view`, `ack`,
-// `error`, `prompt`, `clock` and that is all. With an empty array `end-turn` renders `disabled` and
-// no hand card is clickable, so a networked board can answer prompts (`Prompt.tsx` rebuilds an
-// `answer` from `PendingView.options` when no array is supplied) and can do nothing else.
+// THE LEGAL-ACTION ARRAY. `apps/web/src/game/actions.ts` derives every clickable element by
+// filtering the `legalActions` array (BUILD M5-T2: "The client never computes legality itself; it
+// asks `legalActions` and greys out the rest"). With an empty array `end-turn` renders `disabled`
+// and no hand card is clickable, so a board with no array can answer prompts (`Prompt.tsx` rebuilds
+// an `answer` from `PendingView.options` when none is supplied) and do nothing else.
 //
-// This module does NOT close that hole by computing legality — that is exactly what rule 7 and
-// M5-T2 forbid. It accepts the array from EITHER of the two shapes the server may grow, whichever
-// arrives first:
+// The actor now sends it: `apps/server/src/match/protocol.ts` `ViewMessage` is
+// `{type:"view", view, legal}` and `actor.ts` `pushView` fills `legal` with
+// `legalActions(state, player)` for the seat that socket holds — after every change, and on attach
+// and `hello` too, which is what makes a reloaded board interactive again. That file's own comment
+// says why it rides on `view` rather than in a frame of its own: BUILD §1 fixes the message names,
+// and an array that travels with its view can never describe a different one.
 //
-//   1. a `legal` field riding alongside the view:  {type:"view", view, legal:[...]}
+// This module does NOT compute legality — that is exactly what rule 7 and M5-T2 forbid. It accepts
+// the array from EITHER shape, because the second is a protocol a server could still grow and an
+// unknown frame must not take the board down:
+//
+//   1. a `legal` field riding alongside the view:  {type:"view", view, legal:[...]}   <- the actor
 //   2. a frame of its own:                         {type:"legal", legal:[...]}
 //
-// and reports, in `legalSource`, that neither has ever arrived — which `routes/match.tsx` renders
-// as a visible notice rather than as a silently dead board. It is an ASK on the owner of
-// `protocol.ts` and `actor.ts`.
+// and reports in `legalSource` when neither has ever arrived — which `routes/match.tsx` renders as
+// a visible notice rather than as a silently dead board.
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
@@ -234,12 +239,12 @@ export function parseServerFrame(text: string): ServerFrame | null {
       return {
         type: "view",
         view: parsed.view as unknown as PlayerView,
-        // Shape 1 of the missing-frame ask (see the header): `legal` riding alongside the view.
+        // Shape 1 (see the header): `legal` riding alongside the view, which is what the actor sends.
         legal: parsed.legal === undefined ? null : parseLegal(parsed.legal),
       };
     }
     case "legal": {
-      // Shape 2 of the missing-frame ask: a frame of its own.
+      // Shape 2 (see the header): a frame of its own. Not what the actor sends today.
       const legal = parseLegal(parsed.legal);
       return legal === null ? null : { type: "legal", legal };
     }
@@ -315,8 +320,8 @@ export type ConnectionState =
   | "closed";
 
 /**
- * Where the `legalActions` array came from. `"none"` is the state the missing frame leaves the
- * board in, and `routes/match.tsx` renders it as a visible notice.
+ * Where the `legalActions` array came from. `"none"` means no server has sent one at all, which
+ * leaves the board read-only; `routes/match.tsx` renders that as a visible notice.
  */
 export type LegalSource = "none" | "view" | "frame";
 
@@ -442,9 +447,9 @@ export function createMatchClient(options: MatchClientOptions): MatchClient {
       case "view":
         patch({
           view: frame.view,
-          // A view that carries no `legal` leaves the previous array alone: the missing-frame ask
-          // means most servers send none at all, and dropping it here would blank a board that a
-          // separate `legal` frame had just filled.
+          // A view that carries no `legal` leaves the previous array alone: a server that sends
+          // the array as a separate frame sends views without one, and dropping it here would blank
+          // a board that `legal` frame had just filled.
           ...(frame.legal === null ? {} : { legal: frame.legal, legalSource: "view" as const }),
         });
         return;

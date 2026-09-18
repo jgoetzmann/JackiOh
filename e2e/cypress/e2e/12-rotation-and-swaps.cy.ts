@@ -41,7 +41,7 @@
 // failure as known. `apps/web` now depends on `@jackioh/cards` and calls `registerAll()` in its
 // composition root, so `registeredCatalog()` is populated, `/dev/hotseat` resolves a fixture deck
 // and `window.__jackioh` is exposed. If this spec fails in `cy.seedGame` now, it is a finding.
-// until that is fixed. The three cards this spec steers are further along than most: `rotate`
+// The three cards this spec steers are further along than most: `rotate`
 // (#52), `swap` (#87) and #60's `forcedAttacks` are all in the effects barrel now, and #96 is
 // only ever set face-down here, never fired.
 //
@@ -57,8 +57,18 @@ import { seedFor } from "../../support/config.ts";
 import { cardId, ts, zoneId } from "../../support/testids.ts";
 import type { GameStateLike, Lane, PlayerId, Side, ZoneRef } from "../../support/types.ts";
 
-/** Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it. */
-const SEED = seedFor("12-rotation");
+/**
+ * Every spec sets a seed (BUILD M8); `--expose seed=…` overrides it.
+ *
+ * Chosen for the draw order this file's six plays need, in the order it makes them: My Pawn is in
+ * seat 1's opening hand and Bear Honeypot in seat 2's, so the two traps are set on player-turns 1
+ * and 2 — which is also the order §8 #60 needs, since a 1-cost My Pawn set after the Honeypot was
+ * armed would fire it. Two of the six plain 2-cost units reach seat 1 by player-turn 5 and one
+ * reaches seat 2 by player-turn 6, Pocket Chaos arrives on player-turn 5 and Silly Silas on
+ * player-turn 11, so the rotation and the swap both happen inside R2's cap. The previous seed never
+ * put #96 in seat 1's hand at all and the game ran out as a draw in the first `advanceUntil`.
+ */
+const SEED = seedFor("12-rotation-4");
 
 const TURN_BUDGET = 34;
 

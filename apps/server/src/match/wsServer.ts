@@ -206,12 +206,23 @@ export function attachWebSocketServer(
   const wss = new WebSocketServer({ noServer: true });
   const handle = createMatchSocketHandler({ ...deps, registry });
 
+  /**
+   * R162 makes this list the same one the REST layer reads, "so the two doors cannot diverge" — so
+   * the comparison has to match too. `api/cors.ts` canonicalises a trailing slash before comparing;
+   * a raw `includes` here meant a hand-written `PUBLIC_ORIGINS=https://play.example/` was accepted
+   * by CORS and refused at the upgrade.
+   */
+  function sameOrigin(a: string, b: string): boolean {
+    const strip = (value: string): string => value.trim().replace(/\/+$/, "").toLowerCase();
+    return strip(a) === strip(b);
+  }
+
   function originAllowed(request: UpgradeRequest): boolean {
     if (allowed.length === 0) return true;
     const origin = request.headers.origin;
     // No Origin header at all is a non-browser client, which the CSRF concern does not reach.
     if (typeof origin !== "string" || origin.length === 0) return true;
-    return allowed.includes(origin);
+    return allowed.some((entry) => sameOrigin(entry, origin));
   }
 
   server.on("upgrade", (request, socket, head) => {

@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R155, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R167, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -122,6 +122,14 @@ const SERVER_CODES = "../../../apps/server/src/api/codes.ts";
 const SERVER_RESULTS = "../../../apps/server/src/api/results.ts";
 /** The end-to-end-mode server tests, which name R143 and R144 on their `describe`s. */
 const SERVER_E2E_TEST = "../../../apps/server/test/api/e2e.test.ts";
+/** The `apps/server` vitest files that prove R157 and R159 to R167 (BUILD M6, M7). */
+const SERVER_RATE_LIMIT_TEST = "../../../apps/server/test/api/rate-limit.test.ts";
+const SERVER_AUTH_TEST = "../../../apps/server/test/api/auth.test.ts";
+const SERVER_CODES_TEST = "../../../apps/server/test/api/codes.test.ts";
+const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
+const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
+const SERVER_LOADOUTS_TEST = "../../../apps/server/test/api/loadouts.test.ts";
+const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -138,7 +146,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
@@ -1353,7 +1361,7 @@ describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by apps/server rate-limit.test.ts "R157 keys a request that names no account on its
   // address, and keeps those apart too".
   it("R157 counts an accountless API request against its address, in its own namespace", () => {
-    provenIn(157, "../../../apps/server/test/api/rate-limit.test.ts");
+    provenIn(157, SERVER_RATE_LIMIT_TEST);
   });
 
   // Proved by draw-pause.test.ts "R158 draws nothing more while a cast-on-draw prompt is open, and
@@ -1361,6 +1369,86 @@ describe("SPEC §11 rulings R1–R155 (BUILD M3 gate, REVIEW B4)", () => {
   // controls that own nothing when nothing asks.
   it("R158 stops a draw at the prompt it opened and owes the rest, keeping R58's count", () => {
     provenIn(158, "draw-pause.test.ts");
+  });
+
+  // R159 to R167 are server rulings, like R104 to R112 and R137 to R149 before them: the index row
+  // stays here (B4 greps this file) and the proof lives in `apps/server/test`, where the store, the
+  // router and the `Timers` port are.
+
+  // Proved by apps/server auth.test.ts "R159 remembers a confirmed email briefly and per user id,
+  // and asks again once it lapses", with the three halves the ruling turns on — "never caches the
+  // no, so an account that has just clicked its link is unlocked at once", "fails closed when the
+  // provider cannot be reached" and "caches only what the provider gave".
+  it("R159 caches only a verified email, briefly and per user id, and fails closed", () => {
+    provenIn(159, SERVER_AUTH_TEST);
+  });
+
+  // R145 is the ruling this one extends, one door earlier: R145 flattens every refusal that
+  // depends on the *code*, R160 every refusal that depends on whether an *account* exists.
+  // Proved by apps/server auth.test.ts "R160 answers 'no such account' and 'wrong password'
+  // byte-identically at sign-in", "R160 answers 'already registered' identically to every other
+  // sign-up rejection", "R160 makes an address that already has an account look exactly like a new
+  // one" and "R160 is one error per endpoint, not one shared between them" — with the control,
+  // "the same endpoints still tell four other outcomes apart", that keeps "identical" from meaning
+  // "constant".
+  it("R160 answers sign-up and sign-in identically for every account-existence outcome", () => {
+    provenIn(160, SERVER_AUTH_TEST);
+  });
+
+  // Proved by apps/server codes.test.ts "R161 activates exactly one account from a code minted
+  // with no maxUses", with its control (a second code activates the refused caller at once), its
+  // deliberate-mint sibling and the schema check that `invite_codes.max_uses` defaults the same way.
+  it("R161 activates one account per invite code unless its mint says otherwise", () => {
+    provenIn(161, SERVER_CODES_TEST);
+  });
+
+  // NOTE: one clause of this row is NOT proved — `src/api/cors.ts` writes `Vary: Origin` only on
+  // the two allowed paths, so a refused preflight and an ordinary response to an unlisted or
+  // absent origin carry none. The test file says so in place of asserting it, rather than pinning
+  // the gap as correct; fixing it is a `src/` change.
+  // Proved by apps/server cors.test.ts "R162 echoes the one origin that asked, never `*`, and
+  // never allows credentials", "R162 gives an unlisted origin the ordinary response with no CORS
+  // headers, not a 403" and their preflight, no-Origin and shared-list siblings.
+  it("R162 echoes one allowed origin, never `*` or credentials, and refuses by silence", () => {
+    provenIn(162, SERVER_CORS_TEST);
+  });
+
+  // Proved by apps/server catalog.test.ts "R163 serves the whole, unprojected catalog to a caller
+  // with no account at all" — with the `active` route beside it proving §9.4's gate is awake —
+  // plus "R163 declares `auth: \"none\"`" and "R163 hands a pending account and an anonymous
+  // caller the identical bytes".
+  it("R163 serves the whole catalog unauthenticated and unprojected, carrying R105's version", () => {
+    provenIn(163, SERVER_CATALOG_TEST);
+  });
+
+  // Proved by apps/server catalog.test.ts "R164 reads bannedness through the catalog handle, never
+  // off a card definition", "R164 keeps a ban out of the catalog data, so R105's version does not
+  // move", "R164 never hands the client a copy of the list" and "R164 bans nothing in §8 at launch".
+  it("R164 holds L6's ban list as server state, read through the catalog handle", () => {
+    provenIn(164, SERVER_CATALOG_TEST);
+  });
+
+  // Proved at the port by apps/server loadouts.test.ts "R165 makes queueing without a saved
+  // loadout a loadout failure, not a missing resource", and at the endpoint by queue.test.ts
+  // "R165 reports a loadout failure, never a 404, for a profile that has never saved one", whose
+  // control queues the same profile successfully the moment it has a loadout.
+  it("R165 reports queueing with no loadout as a loadout failure, not a 404", () => {
+    provenIn(165, SERVER_LOADOUTS_TEST, SERVER_QUEUE_TEST);
+  });
+
+  // Proved by apps/server queue.test.ts "R166 pairs the oldest ticket against the oldest opponent
+  // its window admits, not the closest" — whose fixture holds an opponent closer in rating but
+  // newer, so the test can tell the two policies apart — with "R166 pairs the oldest ticket first
+  // when two pairs are available in one sweep", the id tie-break and the §9.5 window control.
+  it("R166 pairs the oldest ticket first, against the oldest opponent its window admits", () => {
+    provenIn(166, SERVER_QUEUE_TEST);
+  });
+
+  // Proved by apps/server queue.test.ts "R167 cancels an open ticket, and says so" (the premise
+  // every negative below it leans on), "R167 is idempotent: a second cancel is told nothing was
+  // cancelled, not given an error" and "R167 never unmakes a pairing".
+  it("R167 lets a queued player cancel, idempotently, and never unmakes a pairing", () => {
+    provenIn(167, SERVER_QUEUE_TEST);
   });
 });
 

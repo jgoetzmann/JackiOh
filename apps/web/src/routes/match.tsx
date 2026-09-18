@@ -5,16 +5,17 @@
 // straight back out. CLAUDE.md rule 7: no rule is decided here, and nothing on screen comes from
 // anywhere but the view.
 //
-// THE READ-ONLY BOARD. `game/actions.ts` derives every clickable element by filtering the
+// WHERE LEGALITY COMES FROM. `game/actions.ts` derives every clickable element by filtering the
 // `legalActions` array (BUILD M5-T2: "The client never computes legality itself; it asks
-// `legalActions` and greys out the rest"), and `apps/server/src/match/protocol.ts` has no frame
-// that carries it — `view`, `ack`, `error`, `prompt`, `clock` and that is all. `net.ts` accepts the
-// array from either shape a server may grow (a `legal` field on the `view` frame, or a `legal`
-// frame of its own) and reports when neither has ever arrived; this file renders that state as a
-// loud notice instead of a silently dead board. Prompts still work — `Prompt.tsx` rebuilds an
-// `answer` from `PendingView.options` when it is given no array — so a networked match can be
-// mulliganed and its choices answered, and nothing else. It is an ASK on the owner of
-// `protocol.ts` / `actor.ts`, not something to paper over with a client-side legality check.
+// `legalActions` and greys out the rest"). The actor sends it on the `view` frame —
+// `apps/server/src/match/protocol.ts` `ViewMessage` is `{type:"view", view, legal}` and `pushView`
+// fills it with `legalActions(state, player)` for that socket's own seat — so this route hands
+// `match.legal` to the same `Game.tsx` the hotseat route hands `engine.legalActions(state, seat)`.
+// `net.ts` also accepts a `legal` frame of its own and reports when NEITHER has ever arrived; this
+// file renders that state as a loud notice instead of a silently dead board, because the failure
+// is invisible otherwise: prompts would still work (`Prompt.tsx` rebuilds an `answer` from
+// `PendingView.options` when it is given no array) and nothing else would. Nothing here papers
+// over it with a client-side legality check.
 //
 // THE CATALOG. `CardView` is `{ instanceId, defId, radiant, cost }` (§10.8), so a view alone cannot
 // put a card's NAME on its face — and `cy.playByName` / `cy.handCardByName` find cards by name. The
@@ -171,17 +172,26 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
 
       {match.legalSource === "none" ? (
         <p className="notice" data-testid={matchTestid.missingLegal} role="alert">
-          This board is read-only. <code>apps/server/src/match/protocol.ts</code> sends{" "}
-          <code>view</code>, <code>ack</code>, <code>error</code>, <code>prompt</code> and{" "}
-          <code>clock</code>, and none of them carries the <code>legalActions</code> array BUILD
-          M5-T2 requires (&ldquo;the client never computes legality itself; it asks{" "}
-          <code>legalActions</code> and greys out the rest&rdquo;). Until the actor sends one — as a{" "}
-          <code>legal</code> field on the <code>view</code> frame, or as a <code>legal</code> frame
-          of its own; this client accepts either — only prompts can be answered.
+          This board is read-only. Nothing this socket has received carries the{" "}
+          <code>legalActions</code> array BUILD M5-T2 requires (&ldquo;the client never computes
+          legality itself; it asks <code>legalActions</code> and greys out the rest&rdquo;), so only
+          prompts can be answered. <code>apps/server/src/match/actor.ts</code> sends it as a{" "}
+          <code>legal</code> field on the <code>view</code> frame; a <code>legal</code> frame of its
+          own would do as well — this client accepts either.
         </p>
       ) : null}
 
-      {lookup === null ? board : <CatalogContext.Provider value={lookup}>{board}</CatalogContext.Provider>}
+      {/*
+        The provider is ALWAYS rendered, `value={null}` included. `GET /api/catalog` resolves
+        asynchronously, and conditionally wrapping the board changes the element type at this
+        position the moment it lands — which makes React unmount the whole board and mount a fresh
+        one. Every DOM node is replaced, so a click Cypress had already resolved to a prompt option
+        (or a player's half-finished play) is thrown away mid-gesture: `cy.click()` reports the
+        element "disappeared from the page". `CatalogContext`'s default is `null` and `useCardInfo`
+        falls back to `unknownCard(defId)` for it, so a null value renders exactly what the
+        unwrapped board rendered — def ids, never a guessed name.
+      */}
+      <CatalogContext.Provider value={lookup}>{board}</CatalogContext.Provider>
     </div>
   );
 }
