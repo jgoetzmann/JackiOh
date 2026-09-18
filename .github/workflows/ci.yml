@@ -62,6 +62,39 @@ jobs:
       - name: coverage floor
         run: pnpm test:coverage
 
+  # BUILD M6-T3's acceptance names a **raw SQL test**: "the unique index rejects a duplicate across
+  # decks even when the application check is bypassed". That test is CHECK 14 of
+  # apps/server/test/sql/01_schema_invariants.sql, and until now nothing ran it — the whole file
+  # executed only when a human typed the command. An acceptance item that never executes is the
+  # limit case of this project's recurring defect, so it gets a gate.
+  #
+  # It is worth its own job rather than a step in `checks`: the vitest suites run against an
+  # in-memory fake store, so nothing here overlaps them. RLS under the `authenticated` role, the
+  # append-only triggers, the SECURITY DEFINER boundaries and the L4 index can only be measured
+  # against a real Postgres.
+  sql:
+    name: sql invariants (real Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # NOT a `services:` block. run.sh starts and drives its own container over `docker exec` and
+      # never speaks TCP to Postgres, so an Actions service container would be started, ignored,
+      # and the suite would spin up its own anyway. What this job needs is a Docker daemon, which
+      # GitHub's Ubuntu runners already have. It needs no secret and no DATABASE_URL.
+      - name: pre-pull postgres
+        run: docker pull postgres:16
+
+      # The script directly rather than `pnpm test:sql`: it needs neither Node nor pnpm, and the
+      # npm script is a one-line wrapper. This keeps a 4-second suite from waiting on an install.
+      - name: schema, RLS and lifecycle invariants
+        run: sh apps/server/test/sql/run.sh
+
+      - name: remove the container
+        if: always()
+        run: docker rm -f jackioh-pg-test || true
+
   e2e:
     name: e2e (${{ matrix.browser }})
     runs-on: ubuntu-latest

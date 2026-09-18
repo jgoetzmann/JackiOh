@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --project engine --project cards",
     "test:e2e": "pnpm --filter @jackioh/e2e test:e2e",
+    "test:sql": "sh apps/server/test/sql/run.sh",
     "typecheck": "pnpm --filter @jackioh/cards run gen && tsc -p tsconfig.json && tsc -p packages/engine/tsconfig.json && tsc -p packages/cards/tsconfig.json && tsc -p packages/validator/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p e2e/tsconfig.json",
     "validate:catalog": "tsx packages/cards/scripts/validate-catalog.ts"
   },
