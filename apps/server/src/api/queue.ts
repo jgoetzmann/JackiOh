@@ -35,6 +35,68 @@ import type { MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
 const MS_PER_SECOND = 1000;
 
 // ---------------------------------------------------------------------------
+// R143 — the end-to-end mode's optional seed
+// ---------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R143: "Who chooses a match's seed. The server mints it; a client never supplies one. In
+ * end-to-end mode the room and queue endpoints accept an optional seed and use it verbatim so a
+ * networked spec can be seeded, and outside that mode the field is rejected. §9.3 makes
+ * `(seed, log)` the truth without saying who picks the seed, and BUILD requires every spec to set
+ * one, so the exception is confined to the test mode."
+ *
+ * Rejected, not ignored: a client that sends a seed against a production server is told its
+ * request was not understood, rather than silently getting a match it did not ask for.
+ */
+function seedOverrideOf(deps: ServerDeps, body: Readonly<Record<string, unknown>>): string | null {
+  const value = body["seed"];
+  if (value === undefined) return null;
+  if (deps.e2e !== true) {
+    throw badRequest('"seed" is only accepted by an end-to-end test server; the server mints it');
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw badRequest('"seed" must be a non-empty string');
+  }
+  return value;
+}
+
+/**
+ * ticketId -> the seed its enqueue asked for, until the ticket is paired or cancelled.
+ *
+ * Module state rather than a closure because `tryPair` is also run by the sweeper
+ * (`startMatchmaker`), which never sees the route table's closure. Nothing is ever written here
+ * outside end-to-end mode — `seedOverrideOf` has already refused the field by then — and the map
+ * empties itself as tickets resolve, so a production process keeps it permanently empty.
+ *
+ * NOT IN SPEC: `Ticket` (ports.ts) carries no seed, and adding one would put a test-mode field in
+ * the shape `src/db/**` persists. R143 confines the exception to the test mode; so does this.
+ */
+const e2eSeedByTicket = new Map<string, string>();
+
+/** Exported for the R143 tests; nothing in `src/` calls it. */
+export function e2eSeedCount(): number {
+  return e2eSeedByTicket.size;
+}
+
+function forgetSeed(ticketId: string): void {
+  e2eSeedByTicket.delete(ticketId);
+}
+
+/**
+ * The seed for a pair, consumed. Two seeded tickets can disagree — each spec seeds its own
+ * enqueue — so the older ticket's seed wins, which is the same "oldest first" tie-break `tryPair`
+ * already uses, and both entries are dropped either way.
+ */
+function takeSeedForPair(a: Ticket, b: Ticket): string | null {
+  const older = a.enqueuedAt <= b.enqueuedAt ? a : b;
+  const younger = older === a ? b : a;
+  const seed = e2eSeedByTicket.get(older.id) ?? e2eSeedByTicket.get(younger.id) ?? null;
+  forgetSeed(a.id);
+  forgetSeed(b.id);
+  return seed;
+}
+
+// ---------------------------------------------------------------------------
 // Enqueue
 // ---------------------------------------------------------------------------
 
@@ -57,6 +119,8 @@ async function enqueue(
   deps: ServerDeps,
   profile: Profile,
   deckIndex: number,
+  /** R143: the seed this enqueue asked for, or null. Only ever non-null in end-to-end mode. */
+  seed: string | null = null,
 ): Promise<Ticket> {
   // §9.5: "asserts the account is active and not in a match". `auth: "active"` did the first half
   // (§9.4's gate, in `createRouter`); this is the second.
@@ -101,6 +165,10 @@ async function enqueue(
     throw error;
   }
 
+  // R143, after the insert won: a seed remembered for a ticket that does not exist would never be
+  // consumed and never dropped.
+  if (seed !== null) e2eSeedByTicket.set(ticket.id, seed);
+
   deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, deckIndex });
   return ticket;
 }
@@ -144,7 +212,8 @@ async function startPairedMatch(
     { profileId: a.profileId, player: "p1", deck: a.deck },
     { profileId: b.profileId, player: "p2", deck: b.deck },
   ];
-  const seed = deps.ids.seed();
+  // R143: the server mints the seed, unless an end-to-end enqueue supplied one.
+  const seed = takeSeedForPair(a, b) ?? deps.ids.seed();
 
   await deps.store.tx(async (t) => {
     await t.matches.create({
@@ -291,7 +360,10 @@ export function createQueueRoutes(): Route[] {
      */
     route("POST", "/api/queue", "active", async (req, deps) => {
       const profile = callerProfile(req);
-      const ticket = await enqueue(deps, profile, deckIndexOf(req.body));
+      // R143: an optional `seed`, accepted only by an end-to-end test server and rejected — never
+      // ignored — anywhere else.
+      const seed = seedOverrideOf(deps, req.body);
+      const ticket = await enqueue(deps, profile, deckIndexOf(req.body), seed);
       await tryPair(deps);
       const current = await deps.store.tickets.get(ticket.id);
       return ok({
@@ -315,6 +387,8 @@ export function createQueueRoutes(): Route[] {
       const ticket = await deps.store.tickets.openForProfile(profile.id);
       if (ticket === null) return ok({ cancelled: false });
       await deps.store.tickets.cancel(ticket.id, deps.timers.now());
+      // R143: a cancelled ticket will never be paired, so its seed is dropped with it.
+      forgetSeed(ticket.id);
       deps.log.info("queue.cancelled", { profileId: profile.id, ticketId: ticket.id });
       return ok({ cancelled: true, ticketId: ticket.id });
     }),

@@ -492,4 +492,16 @@ export type ServerDeps = {
   validateLoadout: LoadoutValidator;
   matches: MatchDirectory;
   log: Logger;
+  /**
+   * BUILD M8's `E2E=1` test server. Absent (and therefore false) in every real deployment; set
+   * only by `src/index.ts` from `env.E2E`, which `src/env.ts` refuses together with
+   * `NODE_ENV=production`.
+   *
+   * A handler reads this for exactly one thing: R143's optional `seed`. "The server mints it; a
+   * client never supplies one. In end-to-end mode the room and queue endpoints accept an optional
+   * seed and use it verbatim so a networked spec can be seeded, and outside that mode the field is
+   * rejected." A flag on the deps, rather than an import of `src/env.ts`, keeps that rule testable
+   * both ways and keeps `src/api/**` free of the environment (see this file's header).
+   */
+  e2e?: boolean;
 };

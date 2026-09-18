@@ -113,3 +113,124 @@ export function switchPositionId(instanceId: string): string {
 /** A5: a zone the client has highlighted as legal for the held card (BUILD M5-T2). */
 export const LEGAL = '[data-legal="true"]';
 export const ILLEGAL = '[data-legal="false"]';
+
+// ---------------------------------------------------------------------------------------------
+// A5 (continued): shown stats. BUILD M5-T4's `buffed` row is "shown stats equal the view", so the
+// numbers have to be read off attributes rather than out of rendered text — a reformat of
+// `{health}/{maxHealth}` must not break a spec. Specs 02, 03 and 04 each declare these locally
+// today; these are the same attributes `apps/web/src/game/Card.tsx` already renders.
+// ---------------------------------------------------------------------------------------------
+
+export function attackIs(attack: number): string {
+  return `[data-attack="${String(attack)}"]`;
+}
+
+export function healthIs(health: number): string {
+  return `[data-health="${String(health)}"]`;
+}
+
+export function maxHealthIs(maxHealth: number): string {
+  return `[data-max-health="${String(maxHealth)}"]`;
+}
+
+export function armorIs(armor: number): string {
+  return `[data-armor="${String(armor)}"]`;
+}
+
+/** One keyword badge on a card, by `Keyword.kind` (SPEC §6.1). */
+export function keywordIs(keyword: string): string {
+  return `[data-keyword="${keyword}"]`;
+}
+
+/** §3.3: `ATK` or `DEF`. A Defense Position card is rotated. */
+export function positionIs(position: "ATK" | "DEF"): string {
+  return `[data-position="${position}"]`;
+}
+
+/** BUILD M5-T4 `radiantSet`: the attribute beside the `.radiant` class. */
+export const RADIANT_ATTR = '[data-radiant="true"]';
+
+// ---------------------------------------------------------------------------------------------
+// A5 (continued): regions and chrome. Every name below is one `apps/web` already renders —
+// `animTestid` in apps/web/src/game/animations.ts for the piles and toasts, `testid` in
+// apps/web/src/game/contract.ts for the shell — so these document the vocabulary in one place
+// rather than inventing it. No frozen spec calls them yet; the animation table (BUILD M5-T4)
+// targets them, so a spec that asserts a pile animation will.
+// ---------------------------------------------------------------------------------------------
+
+/** The hand as a region. An opponent hand is a `count` only (§10.8), so it holds no card ids. */
+export function handRegionId(side: Side): string {
+  return `hand-${side}`;
+}
+
+export function libraryId(side: Side): string {
+  return `library-${side}`;
+}
+
+export function graveyardId(side: Side): string {
+  return `graveyard-${side}`;
+}
+
+export function exileId(side: Side): string {
+  return `exile-${side}`;
+}
+
+/** The player-modifier badges beside the hero (§6.4). */
+export function modifiersId(side: Side): string {
+  return `modifiers-${side}`;
+}
+
+/** The backrow as a region: a face-down `BackrowView` carries no `instanceId` (§10.8). */
+export function backrowRegionId(side: Side): string {
+  return `backrow-${side}`;
+}
+
+/** The whole app shell, carrying `data-viewer`. */
+export const GAME = "game";
+/** The board (BUILD M5-T4 puts `rotated` and `swapped` on it). */
+export const BOARD = "board";
+export const CONCEDE = "concede";
+export const LOG = "log";
+/** §9.3: where a refused action's reason is shown, relayed and never restated. */
+export const ACTION_ERROR = "action-error";
+/** §2.5: the draw-offer toast. */
+export const DRAW_TOAST = "draw-toast";
+/** The prompt modal as an animation target (`animTestid.prompt`), not as a selector: see PROMPT. */
+export const PROMPT_MODAL = "prompt-modal";
+/** The backdrop behind an open prompt. */
+export const PROMPT_SCRIM = "prompt-scrim";
+
+// ---------------------------------------------------------------------------------------------
+// A11: the deckbuilder (BUILD M6-T3, SPEC §9.4). BUILD names no testid for this screen, so these
+// are a contract with whoever builds `/decks` — `cy.dragCardToDeck` is written against them and
+// they are the only names the suite will look for. `apps/web/src/routes/decks.tsx` is still the
+// placeholder, so nothing here is confirmed yet.
+// ---------------------------------------------------------------------------------------------
+
+/** A11: one card in the pool a deck is built from, keyed by catalog id (`core-001`). */
+export function cardPoolId(catalogCardId: string): string {
+  return `card-pool-${catalogCardId}`;
+}
+
+/** A11: the tab that selects deck `oneBased` of the three L1 wants (1..DECKS_PER_LOADOUT). */
+export function deckTabId(oneBased: number): string {
+  return `deck-tab-${String(oneBased)}`;
+}
+
+/** A11: the drop zone of deck `oneBased`. `cy.dragCardToDeck` falls back to the tab itself. */
+export function deckDropId(oneBased: number): string {
+  return `deck-drop-${String(oneBased)}`;
+}
+
+/** A11: one card already in a deck, so a drag can be asserted to have landed. */
+export function deckCardId(oneBased: number, catalogCardId: string): string {
+  return `deck-${String(oneBased)}-card-${catalogCardId}`;
+}
+
+/**
+ * A11: the payload `cy.dragCardToDeck` puts on the `DataTransfer`, alongside a `text/plain` copy
+ * of the same catalog id. The board's own drag uses `application/x-jackioh-target` for a click
+ * target (apps/web/src/game/Card.tsx); a deckbuilder drag carries a catalog id, which is a
+ * different thing, so it gets its own type.
+ */
+export const DECK_DRAG_MIME = "application/x-jackioh-card";

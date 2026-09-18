@@ -107,9 +107,17 @@ export const CARD_NAMES: Record<number, string> = {
   100: "Ceaseless Void",
 };
 
+/** How many deckable cards SPEC §8 numbers. `packages/cards/catalog.json` holds exactly 100. */
+export const CORE_CARD_COUNT = Object.keys(CARD_NAMES).length;
+
 /** The catalog id of SPEC §8 card #index. */
 export function cardId(index: number): string {
   return `core-${String(index).padStart(3, "0")}`;
+}
+
+/** Every deckable catalog id, in SPEC §8 order. The pool `installLoadout` pads a loadout from. */
+export function allCardIds(): string[] {
+  return Array.from({ length: CORE_CARD_COUNT }, (_, index) => cardId(index + 1));
 }
 
 /** The catalog id of the card SPEC §8 calls `name`. Throws on a typo, so a spec cannot drift. */
@@ -118,6 +126,54 @@ export function idOf(name: string): string {
     if (cardName === name) return cardId(Number(index));
   }
   throw new Error(`no SPEC §8 card named "${name}"`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tokens
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The 9 Token cards, read off `packages/cards/catalog.json` (`"token": true`), keyed by the
+ * catalog's own `index` string. They are deliberately NOT in `CARD_NAMES`: L3 bans Tokens from
+ * decks, and `asDeck` in support/commands.ts checks a fixture against `CARD_NAMES` being exactly
+ * the deckable set, so a Token added there would let an illegal fixture through.
+ *
+ * Two id shapes, both spelled by the catalog rather than invented here: a token created by a
+ * numbered card takes that card's index with a `.1` suffix (`65.1` -> `core-065-1`), and a token
+ * no single card owns is named (`T-sheep` -> `core-t-sheep`).
+ */
+export const TOKEN_NAMES: Record<string, string> = {
+  "51.1": "KY's Empty Notebook",
+  "65.1": "Spikey Pillow",
+  "90.1": "CN-Virus",
+  "93.1": "Combo-Fodder",
+  "95.1": "Chaos Golem",
+  "T-rush": "Rush Token",
+  "T-sheep": "Sheep Token",
+  "T-felinor": "Felinor Token",
+  "T-bread": "Bread Token",
+};
+
+/**
+ * The catalog id of the token the catalog indexes as `index`. Unlike `cardId`, this validates:
+ * the two id shapes are irregular enough that a typo would otherwise produce a plausible-looking
+ * id for a card that does not exist.
+ */
+export function tokenId(index: string): string {
+  if (!(index in TOKEN_NAMES)) throw new Error(`no Token card indexed "${index}"`);
+  const numbered = /^(\d+)\.(\d+)$/.exec(index);
+  if (numbered !== null) {
+    return `core-${(numbered[1] ?? "").padStart(3, "0")}-${numbered[2] ?? ""}`;
+  }
+  return `core-${index.toLowerCase()}`;
+}
+
+/** The catalog id of the Token called `name`. Throws on a typo, exactly as `idOf` does. */
+export function idOfToken(name: string): string {
+  for (const [index, tokenName] of Object.entries(TOKEN_NAMES)) {
+    if (tokenName === name) return tokenId(index);
+  }
+  throw new Error(`no Token card named "${name}"`);
 }
 
 /** Cards the M8 table names by hand, so a spec can say `CARDS.sheepish`. */
@@ -144,4 +200,17 @@ export const CARDS = {
   zoomerbinOomen: cardId(67),
   pocketChaos: cardId(87),
   myPawn: cardId(96),
+} as const;
+
+/** Tokens the M8 table names by hand, in the same style as `CARDS` (spec 09's L3 sentence). */
+export const TOKENS = {
+  kysEmptyNotebook: tokenId("51.1"),
+  spikeyPillow: tokenId("65.1"),
+  cnVirus: tokenId("90.1"),
+  comboFodder: tokenId("93.1"),
+  chaosGolem: tokenId("95.1"),
+  rushToken: tokenId("T-rush"),
+  sheepToken: tokenId("T-sheep"),
+  felinorToken: tokenId("T-felinor"),
+  breadToken: tokenId("T-bread"),
 } as const;

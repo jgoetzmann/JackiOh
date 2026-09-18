@@ -51,14 +51,17 @@
 //   * "lose 2 health" is a loss and not damage (R18): no Armor, no Anti-oneshot cap, no on-damage
 //     trigger. `drawEffects` uses `loseHealth`, which is that rule.
 //
-// ENGINE GAP, REPORTED, NOT WORKED AROUND (R43's last roll). "one created later rolls when it is
+// R43'S LAST ROLL IS THE ENGINE'S, NOT THIS FILE'S (R151). "one created later rolls when it is
 // created, and one that ends up in a hand or library with no `memory.power` (a bounced or reset
 // instance, R78) rolls as it arrives". `startOfGame` covers the two copies R43 names at setup —
 // `setup.finishSetup` runs it for every card in both hands and both libraries, a mulliganed one
-// included, and `ensurePower` is idempotent so a re-run keeps the roll. A copy that arrives later
-// has no hook to run: nothing in `zones.moveToZone`, `draw.addToHand`, `state.newInstance` or
-// `transform` calls `ensurePower`. That is an engine-side arrival hook, not a card hook, and no
-// effect in the barrel can reach an instance the card never saw.
+// included, and `ensurePower` is idempotent so a re-run keeps the roll. R151 makes that hook a rule
+// about a card's whereabouts rather than about a moment, so the engine now runs it on ARRIVAL too:
+// `draw.ts`'s `runArrivalHooks` fires a card's `startOfGame` as it reaches a hand (a draw, a bounce,
+// #72 Reminisce out of a graveyard, an effect that created it) or a library, which is every path
+// §2.4 routes an arrival down. Nothing is added here for it: the roll this card already declares is
+// the one that runs, and a rule written in this file would be a second source of truth for something
+// `subsystems/heroPower.ts` owns.
 
 import type { Script } from "@jackioh/engine";
 import { subsystems } from "@jackioh/engine";

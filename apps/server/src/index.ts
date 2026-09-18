@@ -8,17 +8,26 @@
  *
  * Nothing here decides a rule or states a constant. `ServerConfig` and `ApiLimits` come from
  * `src/api/deps.ts`, which is the one reader of `src/config.ts` (R79).
+ *
+ * BUILD M8's `E2E=1` mode is chosen here and nowhere else. When `env.E2E` is true this file binds
+ * two ports differently — the in-memory `Store` of `src/api/e2e-store.ts` and the fixture
+ * `AuthProvider` of `src/api/e2e.ts` — and runs R144's reseed before the port opens. Everything
+ * else, the route table included, is the same server. `src/env.ts` refuses `E2E` together with
+ * `NODE_ENV=production`, so none of it is reachable in a production deployment.
  */
 
 import { pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 
 import { createAuthRoutes, createSupabaseAuth } from "./api/auth";
-import { loadCatalog } from "./api/catalog";
+import { createCatalogRoutes, loadCatalog } from "./api/catalog";
 import { createCodesRoutes } from "./api/codes";
 import { createCollectionRoutes } from "./api/collection";
+import { VITE_DEV_ORIGINS, withCors } from "./api/cors";
 import { createHashes, systemIds } from "./api/crypto";
 import { consoleLogger, defaultConfig, defaultLimits } from "./api/deps";
+import { createE2EAuth, seedE2EFixtures } from "./api/e2e";
+import { createE2EStore, type E2EStore } from "./api/e2e-store";
 import { createRouter, type Route } from "./api/http";
 import { createLoadoutRoutes } from "./api/loadouts";
 import { sharedLoadoutValidator } from "./api/loadout-validator";
@@ -74,10 +83,69 @@ export async function loadStore(env: ServerEnv): Promise<Store> {
   throw new StoreUnavailableError("no matching export");
 }
 
+// ---------------------------------------------------------------------------
+// BUILD M8's `E2E=1` mode
+// ---------------------------------------------------------------------------
+
+/**
+ * NOT IN SPEC: placeholders so `E2E=1 pnpm --dir apps/server dev` — the command `e2e/README.md`
+ * documents — boots in a checkout with no `.env`.
+ *
+ * `src/env.ts` validates the whole contract whatever the mode, and end-to-end mode reaches neither
+ * Supabase (the fixture `AuthProvider` replaces it) nor Postgres (the in-memory `Store` replaces
+ * it), so demanding a project URL and a connection string would only be a puzzle for whoever runs
+ * the suite. Every value below is filled in ONLY when the variable is unset, so a deployment that
+ * does configure one keeps it, and none of this is reachable outside end-to-end mode — `env.ts`
+ * refuses `E2E` together with `NODE_ENV=production`.
+ *
+ * `CODE_PEPPER` is a throwaway: the fixture invite codes are checked into `e2e/support/config.ts`,
+ * so their hashes protect nothing. `CATALOG_VERSION` matches `.env.example`; the specs read the
+ * version back from the server rather than asserting a literal.
+ */
+const E2E_ENV_DEFAULTS: Readonly<Record<string, string>> = {
+  SUPABASE_URL: "https://e2e-fixture-auth.invalid",
+  SUPABASE_SECRET_KEY: "e2e-fixture-auth-has-no-supabase",
+  DATABASE_URL: "memory://e2e-fixture-store",
+  CODE_PEPPER: "e2e-fixture-code-pepper-not-a-secret-abcdefgh",
+  PUBLIC_ORIGINS: VITE_DEV_ORIGINS.join(","),
+  CATALOG_VERSION: "core-1",
+};
+
+function e2eRequested(source: Record<string, string | undefined>): boolean {
+  const raw = source.E2E?.trim();
+  return raw === "1" || raw === "true";
+}
+
+/**
+ * `loadEnv`, with the end-to-end placeholders applied first when `E2E` asks for them. The
+ * production path is `loadEnv(process.env)` exactly as before: when `E2E` is unset or false this
+ * function adds nothing and changes no message.
+ */
+export function loadServerEnv(source: Record<string, string | undefined> = process.env): ServerEnv {
+  if (!e2eRequested(source)) return loadEnv(source);
+  const merged: Record<string, string | undefined> = { ...source };
+  for (const [key, value] of Object.entries(E2E_ENV_DEFAULTS)) {
+    if ((merged[key] ?? "").trim().length === 0) merged[key] = value;
+  }
+  return loadEnv(merged);
+}
+
+/**
+ * The browser origins this deployment trusts: `PUBLIC_ORIGINS` for CORS and the WebSocket `Origin`
+ * check (`src/env.ts`), plus Vite's dev origins in end-to-end mode.
+ */
+export function browserOrigins(env: ServerEnv): string[] {
+  const configured = [...env.PUBLIC_ORIGINS];
+  if (!env.E2E) return configured;
+  return [...configured, ...VITE_DEV_ORIGINS.filter((origin) => !configured.includes(origin))];
+}
+
 export type Runtime = {
   deps: ServerDeps;
   /** The same object as `deps.matches`, with the two extra methods a socket needs. */
   registry: MatchRegistry;
+  /** BUILD M8: the fixture store R144 reseeds into, or null outside end-to-end mode. */
+  e2eStore: E2EStore | null;
 };
 
 /**
@@ -94,18 +162,29 @@ export async function createRuntime(
   const log: Logger = overrides.log ?? consoleLogger;
   const engine = await loadEnginePort();
   const catalog = overrides.catalog ?? (await loadCatalog({ version: env.CATALOG_VERSION }));
+  const timers = overrides.timers ?? systemTimers;
+
+  // BUILD M8, R144: end-to-end mode swaps exactly two ports — the `Store` and the `AuthProvider` —
+  // and nothing else about this file changes. `loadStore(env)` and `createSupabaseAuth(...)` are
+  // untouched on the production path, including the `StoreUnavailableError` a missing `./db/store`
+  // still raises there.
+  const e2eStore = env.E2E && overrides.store === undefined
+    ? createE2EStore({ catalog, now: timers.now })
+    : null;
 
   const deps: ServerDeps = {
-    store: overrides.store ?? (await loadStore(env)),
+    store: overrides.store ?? e2eStore ?? (await loadStore(env)),
     auth:
       overrides.auth ??
-      createSupabaseAuth({
-        url: env.SUPABASE_URL,
-        secretKey: env.SUPABASE_SECRET_KEY,
-        jwksUrl: env.SUPABASE_JWKS_URL,
-        jwtSecret: env.SUPABASE_JWT_SECRET,
-      }),
-    timers: overrides.timers ?? systemTimers,
+      (env.E2E
+        ? createE2EAuth()
+        : createSupabaseAuth({
+            url: env.SUPABASE_URL,
+            secretKey: env.SUPABASE_SECRET_KEY,
+            jwksUrl: env.SUPABASE_JWKS_URL,
+            jwtSecret: env.SUPABASE_JWT_SECRET,
+          })),
+    timers,
     // §9.4, §9.8: one pepper in the environment, two domains. Separating them means an invite-code
     // hash and an IP hash can never collide, and neither is reversible without the pepper.
     hashes: overrides.hashes ?? createHashes({ code: `${env.CODE_PEPPER}:code`, ip: `${env.CODE_PEPPER}:ip` }),
@@ -135,14 +214,17 @@ export async function createRuntime(
     recordResult: createRecordResult(deps),
   });
   deps.matches = overrides.matches ?? registry;
+  // R143: the one thing a handler reads this for is the optional seed on `POST /api/queue`.
+  deps.e2e = overrides.e2e ?? env.E2E;
 
-  return { deps, registry };
+  return { deps, registry, e2eStore };
 }
 
 /** Every route the server serves, in one table (see README.md for the surface). */
 export function allRoutes(): Route[] {
   return [
     ...createAuthRoutes(),
+    ...createCatalogRoutes(),
     ...createCodesRoutes(),
     ...createCollectionRoutes(),
     ...createLoadoutRoutes(),
@@ -153,17 +235,41 @@ export function allRoutes(): Route[] {
 
 export type RunningServer = { close: () => Promise<void> };
 
-export async function start(env: ServerEnv = loadEnv()): Promise<RunningServer> {
-  const { deps, registry } = await createRuntime(env);
-  const router = createRouter(allRoutes(), deps);
+export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningServer> {
+  const { deps, registry, e2eStore } = await createRuntime(env);
 
-  const server = serve({ fetch: (request: Request) => router(request), port: env.PORT });
+  if (env.E2E) {
+    // Loud, and at `alert` level, because a server holding fixture accounts that accept three
+    // hard-coded bearer tokens must never be mistaken for a real one.
+    deps.log.alert("server.e2e_mode", {
+      warning:
+        "BUILD M8 fixture mode: static test tokens, an in-memory store and no database. Never a production deployment.",
+      store: e2eStore === null ? "overridden" : "in-memory",
+      auth: "fixture",
+    });
+    // R144: reseeded on every start, before the port opens, so no request can land on half a
+    // fixture set and so spec 10 is repeatable run after run.
+    if (e2eStore !== null) await seedE2EFixtures(deps, e2eStore);
+  }
+
+  const origins = browserOrigins(env);
+  const router = createRouter(allRoutes(), deps);
+  // The browser and the API are separate origins (§9.2); without this every `fetch` from
+  // `apps/web` is blocked before a handler runs. Preflights never reach the router.
+  const handler = withCors((request: Request) => router(request), { origins, log: deps.log });
+
+  const server = serve({ fetch: handler, port: env.PORT });
   // SPEC §9.2: one WebSocket per player, upgraded on the same listener the API serves.
   const sockets = attachWebSocketServer(server, deps, registry, {
     path: WS_PATH,
-    allowedOrigins: env.PUBLIC_ORIGINS,
+    allowedOrigins: origins,
   });
-  deps.log.info("server.listening", { port: env.PORT, catalogVersion: deps.catalog.version });
+  deps.log.info("server.listening", {
+    port: env.PORT,
+    catalogVersion: deps.catalog.version,
+    origins,
+    e2e: env.E2E,
+  });
 
   // §9.5: pairing runs on enqueue plus a sweeper, and a reaper resolves anything past the ceiling.
   const matchmaker = startMatchmaker(deps);

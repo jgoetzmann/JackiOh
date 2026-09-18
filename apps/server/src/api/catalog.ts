@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { CardDef, CardDefs } from "@jackioh/shared";
+import { ok, route, type Route } from "./http";
 import type { CatalogInfo } from "./ports";
 
 export class CatalogUnavailableError extends Error {
@@ -105,4 +106,37 @@ export async function loadCatalog(
   }
 
   return catalogFrom(parsed as CardDefs, options.version ?? versionOf(json));
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET /api/catalog`.
+ *
+ * NOT IN SPEC, and reported as such. SPEC §9.4 says the catalog is "static, versioned, shipped
+ * with the client", which describes the end state; today the client ships none of its own, and the
+ * deckbuilder needs every card's name and cost before any engine is loaded. The server already
+ * holds `deps.catalog` for L3/L6 and the version check, so it serves it. `apps/web/src/net/api.ts`
+ * already calls exactly this shape:
+ *
+ *     export type CatalogResponse = { version: string; defs: CardDefs };
+ *
+ * The whole `CardDefs` record goes out rather than a projection, because `@jackioh/validator`'s
+ * `CatalogSnapshot.cards` *is* a `CardDefs`: §9.4 requires "one validator module shared by client
+ * and server", so the deckbuilder's own verdict (UX) runs the same module the save runs (law), and
+ * a trimmed card would be a second, weaker copy of the catalog.
+ *
+ * `auth: "none"`, like the catalog file it stands in for: it is the same bytes for everybody, it
+ * names no profile, and §9.4's gate is about "no collection, loadout, queue or match" — a pending
+ * account looking at card art is none of those. The version it carries is what a stale client
+ * compares against before it starts building, instead of finding out at save time.
+ */
+export function createCatalogRoutes(): Route[] {
+  return [
+    route("GET", "/api/catalog", "none", async (_req, deps) =>
+      ok({ version: deps.catalog.version, defs: deps.catalog.defs }),
+    ),
+  ];
 }

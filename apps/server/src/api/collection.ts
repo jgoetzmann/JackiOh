@@ -34,8 +34,13 @@ import type { CollectionEntry, CollectionGrant, Profile, ServerDeps, Store } fro
  * three decks legally, and more copies would be unreachable. The db agent stores the same value
  * as `app.settings('launch_quantity') = 1` in migration `0002_collection.sql`; it is not exported
  * from `src/config.ts`, so it cannot be imported here yet. Import it the day it is.
+ *
+ * Exported because R111's grant is a *database trigger* in production ("written by a trigger on
+ * the `pending → active` transition"), so the end-to-end mode's in-memory store has to carry the
+ * same trigger — see `e2e-store.ts`. It reads this value rather than restating it, so the
+ * application path and the trigger path cannot drift.
  */
-const LAUNCH_COPIES = 1;
+export const LAUNCH_COPIES = 1;
 
 /**
  * NOT IN SPEC: the default `reason` for the launch grant. `collection_grants.reason` carries a

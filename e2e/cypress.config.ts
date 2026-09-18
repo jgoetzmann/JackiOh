@@ -31,9 +31,11 @@ export default defineConfig({
     testIsolation: true,
     // Cypress 16: spec-visible variables live in `expose` and are read with Cypress.expose(key)
     // (support/config.ts wraps them). Override on the CLI with `--expose wsUrl=…`.
+    // `WS_PATH` is `/ws/match` (apps/server/src/match/wsServer.ts); a handshake off that path is
+    // never upgraded. support/config.ts carries the same default for the browser side.
     expose: {
       apiUrl: process.env.E2E_API_URL ?? "http://localhost:8787",
-      wsUrl: process.env.E2E_WS_URL ?? "ws://localhost:8787/match",
+      wsUrl: process.env.E2E_WS_URL ?? "ws://localhost:8787/ws/match",
     },
     setupNodeEvents(on, config) {
       registerTasks(on, config);

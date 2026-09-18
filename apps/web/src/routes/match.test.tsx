@@ -1,0 +1,160 @@
+// `/match/<id>`: the board specs 05 and 06 drive, with the socket faked.
+//
+// The load-bearing assertion in this file is the one that currently FAILS to be satisfiable end to
+// end: `apps/server/src/match/protocol.ts` sends no frame carrying `legalActions`, so a networked
+// board renders with `legal={[]}` and `end-turn` is `disabled` — which is exactly where specs 05 and
+// 06 stop (`waitForMyTurn` waits for `end-turn` to be enabled). The route says so out loud, and the
+// second test shows the board comes alive the moment either accepted shape arrives. Nothing here
+// computes legality; that is the engine's (BUILD M5-T2, CLAUDE.md rule 7).
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+
+import type { ActionBody } from "@jackioh/shared";
+
+import type { SocketLike } from "../game/net.ts";
+import { baseView } from "../test/fixtures.ts";
+import MatchRoute from "./match.tsx";
+
+class FakeSocket implements SocketLike {
+  readyState = 0;
+  onopen: ((event: unknown) => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onclose: ((event: { code: number; reason: string; wasClean: boolean }) => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+  readonly sent: string[] = [];
+
+  constructor(readonly url: string) {}
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.readyState = 3;
+  }
+
+  frames(): Record<string, unknown>[] {
+    return this.sent.map((text) => JSON.parse(text) as Record<string, unknown>);
+  }
+}
+
+let sockets: FakeSocket[] = [];
+
+function socketFactory(url: string): SocketLike {
+  const socket = new FakeSocket(url);
+  sockets.push(socket);
+  return socket;
+}
+
+function live(): FakeSocket {
+  const last = sockets.at(-1);
+  if (last === undefined) throw new Error("no socket was opened");
+  return last;
+}
+
+/** Open the socket and push one view, the way the actor does on attach (§9.5). */
+function attach(extra: Record<string, unknown> = {}): void {
+  act(() => {
+    live().readyState = 1;
+    live().onopen?.({});
+    live().onmessage?.({
+      data: JSON.stringify({ type: "view", view: baseView({ viewer: "p1", active: "p1" }), ...extra }),
+    });
+  });
+}
+
+beforeEach(() => {
+  sockets = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ version: "v1", defs: {} })),
+      } as unknown as Response),
+    ),
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+describe("the networked board", () => {
+  it("renders the board from the view alone, and names the frame that is missing", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+
+    // §10.8's view is enough to draw the board.
+    expect(screen.getByTestId("hero-you")).toBeInTheDocument();
+    expect(screen.getByTestId("hero-opponent")).toBeInTheDocument();
+    expect(screen.getByTestId("zone-you-units-1")).toBeInTheDocument();
+    expect(screen.getByTestId("zone-you-backrow-5")).toBeInTheDocument();
+
+    // ...and not enough to click anything, which is the gap the notice names.
+    expect(screen.getByTestId("missing-legal-frame")).toBeInTheDocument();
+    expect(screen.getByTestId("end-turn")).toBeDisabled();
+  });
+
+  it("comes alive on a `legal` frame, and the click goes out as an `action`", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+
+    const legal: ActionBody[] = [{ type: "endTurn" }];
+    act(() => {
+      live().onmessage?.({ data: JSON.stringify({ type: "legal", legal }) });
+    });
+
+    expect(screen.queryByTestId("missing-legal-frame")).toBeNull();
+    const endTurn = screen.getByTestId("end-turn");
+    expect(endTurn).not.toBeDisabled();
+
+    fireEvent.click(endTurn);
+    const sent = live().frames().at(-1) as { type: string; action: Record<string, unknown> };
+    expect(sent.type).toBe("action");
+    expect(sent.action.type).toBe("endTurn");
+    expect(typeof sent.action.nonce).toBe("string");
+  });
+
+  it("takes the same list riding on the `view` frame", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach({ legal: [{ type: "endTurn" }] });
+
+    expect(screen.queryByTestId("missing-legal-frame")).toBeNull();
+    expect(screen.getByTestId("end-turn")).not.toBeDisabled();
+  });
+
+  it("shows a holding panel until the first view lands", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    expect(screen.getByTestId("match-connecting")).toBeInTheDocument();
+    expect(screen.queryByTestId("hero-you")).toBeNull();
+  });
+
+  it("relays the actor's refusal verbatim (§9.3)", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+    act(() => {
+      live().onmessage?.({
+        data: JSON.stringify({
+          type: "error",
+          code: "illegal_action",
+          message: "it is not your turn",
+          nonce: "n1",
+        }),
+      });
+    });
+    expect(screen.getByTestId("action-error")).toHaveTextContent("it is not your turn");
+  });
+
+  it("publishes the seat on window.__jackioh, as e2e/support/types.ts expects", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+    const handle = (window as unknown as { __jackioh?: { seat?: string; seed?: string } }).__jackioh;
+    expect(handle?.seat).toBe("p1");
+    // And no seed: the server never sends one, because (seed, log) is the library order (§9.3).
+    expect(handle?.seed).toBe("");
+  });
+});

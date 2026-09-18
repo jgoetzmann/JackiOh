@@ -14,7 +14,15 @@ const IO_MESSAGE = "packages/engine and packages/cards are pure: no I/O, timers 
 export default defineConfig(
   {
     // Lint fixtures break the purity rules on purpose; test/lint-ban.test.ts lints them explicitly.
-    ignores: ["**/node_modules/**", "**/dist/**", "**/coverage/**", "**/test/fixtures/lint/**"],
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/coverage/**",
+      "**/test/fixtures/lint/**",
+      // Agent worktrees are whole checkouts of this same repo (see scripts/worktree.sh). Linting
+      // them lints every file twice and reports another agent's in-progress work as this tree's.
+      ".claude/**",
+    ],
   },
   js.configs.recommended,
   tseslint.configs.recommended,

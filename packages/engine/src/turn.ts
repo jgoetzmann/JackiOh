@@ -5,12 +5,17 @@
 // the delayed effects to `modifiers.dueDelayed` in creation order, and mana to `mana.ts`.
 //
 // Every one of those parts can pause, because a trigger, a trap or a delayed effect may ask its
-// controller something (§9.3, §10.6). So the end of a turn is a resumable sequence like any other:
-// at the moment it pauses it parks what is left of R62's order on `state.work` through `work.owe`
-// and returns, and `runOwedEndOfTurn` — registered with `work.registerWorkHandler` at module scope
-// below — picks it up when the answer drains the queue (R113, R117, R122). Walking on instead is
-// what let a delayed effect resolve inside an unfinished trap window and `cleanup` close the turn
-// log before the window's last traps had fired.
+// controller something (§9.3, §10.6). So BOTH turn boundaries are resumable sequences like any
+// other: at the moment one pauses it parks what is left of R62's order on `state.work` through
+// `work.owe` and returns, and `runOwedStartOfTurn` / `runOwedEndOfTurn` — each registered with
+// `work.registerWorkHandler` at module scope below — pick it up when the answer drains the queue
+// (R113, R117, R122). Walking on instead is what let a delayed effect resolve inside an unfinished
+// trap window and `cleanup` close the turn log before the window's last traps had fired, and, at
+// the other boundary, what had the turn's draw land inside an open start-of-turn prompt.
+//
+// The other half of §10.3 at a boundary is dispatch: a stage that emits events settles before the
+// next one runs, so the draw's events — for a Cast on draw, a whole play (R58) — reach the traps
+// and the trigger queue instead of sitting undispatched on the sink.
 
 import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
@@ -89,6 +94,49 @@ function resetExertion(sink: EngineSink, player: PlayerId): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The start of a turn, and the remainder it owes when something pauses (§2.2, R62, R113, R117)
+// ---------------------------------------------------------------------------
+
+/**
+ * R113: the `resume.hook` of the work item the START of a turn parks, the twin of
+ * `END_OF_TURN_WORK` below. It is an engine sequence and not a card's, so the name is one no
+ * `Script` can hold, and `runOwedStartOfTurn` is registered for it at module scope.
+ */
+export const START_OF_TURN_WORK = "@startOfTurn";
+
+/**
+ * Which part of R62's opening is still owed: `delayed` still has start-of-turn delayed effects to
+ * finish and owes everything after them; `triggers` has had its effects and owes the rest of the
+ * trigger queue and then the draw; `main` has drawn and owes only the phase the turn opens in.
+ */
+const START_DELAYED_STEP = "delayed";
+const START_TRIGGERS_STEP = "triggers";
+const START_MAIN_STEP = "main";
+
+/** Park the rest of the start of a turn (R113), exactly as `oweEndOfTurn` parks the rest of an end. */
+function oweStartOfTurn(sink: EngineSink, player: PlayerId, step: string): void {
+  const resume: Resume = {
+    defId: "",
+    hook: START_OF_TURN_WORK,
+    step,
+    radiant: false,
+    data: { player },
+  };
+  owe(sink, resume);
+}
+
+/**
+ * Start a turn (§2.2, R62): refresh, then the start-of-turn delayed effects, then the start-of-turn
+ * triggers, then the draw.
+ *
+ * Every one of those stages can pause, exactly as the end of a turn can, so the start of one is a
+ * resumable sequence in the same shape (R113, R117, R122): each stage stops at a pause, parks what
+ * is still owed on `state.work` through `oweStartOfTurn` and returns, and `runOwedStartOfTurn`
+ * picks it up when the answer drains the queue. Walking on instead is what had a start-of-turn
+ * trigger's prompt open with the turn's draw landing *inside* it, where R62 puts the draw after the
+ * triggers — the same bug the end of turn had.
+ */
 export function startTurn(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
   state.active = player;
@@ -106,21 +154,102 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   refreshMana(side);
   sink.events.push(manaEvent(player, side));
 
+  startOfTurnDelayed(sink, player);
+}
+
+/** R62's first stage: the start-of-turn delayed effects, in creation order. */
+function startOfTurnDelayed(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
   runDelayed(sink, "start", player);
   if (state.result !== null) return;
+  if (state.pending !== null) {
+    // The entries still due are in `state.delayed`, so the same step picks them up (R68's order).
+    oweStartOfTurn(sink, player, START_DELAYED_STEP);
+    return;
+  }
 
-  // R68: all four zones, not just the field and the backrow — a hand or graveyard trigger holder
-  // carries a start-of-turn hook too, and queueing lets one that prompts keep the rest in state.
+  startOfTurnTriggers(sink, player);
+}
+
+/**
+ * R62's second stage: the start-of-turn triggers, and R68's four zones rather than the two on the
+ * field — a hand or graveyard trigger holder carries a start-of-turn hook too, and queueing lets one
+ * that prompts keep the rest in state.
+ */
+function startOfTurnTriggers(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
   queueHooksInTriggerOrder(sink, "startOfTurn", player);
   settle(sink);
   if (state.result !== null) return;
+  if (state.pending !== null) {
+    // The queue is not empty yet, so what is owed is the queue's remainder and then the draw.
+    oweStartOfTurn(sink, player, START_TRIGGERS_STEP);
+    return;
+  }
+
+  startOfTurnDraw(sink, player);
+}
+
+/**
+ * R62's last stage: the turn's draw, and then the main phase.
+ *
+ * The `settle` after the draw is §10.3 and not tidiness: the draw's own events have to be collected
+ * into `state.dispatch` and offered to the traps and the trigger queue like any others. §2.4's Cast
+ * on draw makes that a whole play at the start of a turn — `drawn`, `cardPlayed`, `cardResolved`,
+ * `addedToHand` (R58) — and without this they were emitted and never dispatched, so a trap that
+ * answers one of them (#60 Bear Honeypot's `cardResolved`) never saw it. It only ever showed on a
+ * direct `startTurn` call, because `reduce` settles at the end of every action.
+ */
+function startOfTurnDraw(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
 
   draw(sink, player, 1);
   stateCheck(sink);
+  settle(sink);
   if (state.result !== null) return;
+  if (state.pending !== null) {
+    // A trap or a cast-on-draw card asked something: the turn still owes its own opening.
+    oweStartOfTurn(sink, player, START_MAIN_STEP);
+    return;
+  }
 
   state.phase = "main";
 }
+
+/**
+ * `work.ts`'s handler for a parked start of turn: the same turn, continued where it stopped (R113).
+ *
+ * The `triggers` stage settles the queue itself, because the hooks are already queued and `work.ts`
+ * is drained *ahead* of the trigger queue (`triggers.settle`), so the remainder has to finish the
+ * queue rather than jump it. The `delayed` stage re-enters `runDelayed`, whose still-due entries are
+ * in `state.delayed`, and the `main` step is the phase change a pause inside the draw held up.
+ */
+function runOwedStartOfTurn(sink: EngineSink, item: WorkItem): void {
+  const player = turnPlayerOf(item.resume.data);
+  if (player === null) return;
+
+  if (item.resume.step === START_DELAYED_STEP) {
+    startOfTurnDelayed(sink, player);
+    return;
+  }
+
+  if (item.resume.step === START_TRIGGERS_STEP) {
+    settle(sink);
+    if (sink.state.result !== null) return;
+    if (sink.state.pending !== null) {
+      oweStartOfTurn(sink, player, START_TRIGGERS_STEP);
+      return;
+    }
+    startOfTurnDraw(sink, player);
+    return;
+  }
+
+  if (sink.state.result === null) sink.state.phase = "main";
+}
+
+registerWorkHandler(START_OF_TURN_WORK, runOwedStartOfTurn);
 
 /**
  * Cleanup (§2.2): "this turn" modifiers expire, the turn log is closed and the AI lockout ends.
@@ -160,8 +289,11 @@ export const END_OF_TURN_WORK = "@endOfTurn";
 const END_TRIGGERS_STEP = "triggers";
 const END_DELAYED_STEP = "delayed";
 
-/** Whose turn is ending, read back defensively: the item came through JSON (§10.1). */
-function endingPlayerOf(data: Record<string, unknown>): PlayerId | null {
+/**
+ * Whose turn a parked boundary belongs to — the one ending, or the one starting — read back
+ * defensively, because the item came through JSON (§10.1). Both handlers park `{ player }`.
+ */
+function turnPlayerOf(data: Record<string, unknown>): PlayerId | null {
   const player: unknown = data.player;
   return PLAYER_IDS.find((id) => id === player) ?? null;
 }
@@ -288,7 +420,7 @@ function endOfTurnAfterWindow(sink: EngineSink, player: PlayerId): void {
  * time this runs (`work.takeWork`), so that `settle` can neither take nor re-run this item.
  */
 function runOwedEndOfTurn(sink: EngineSink, item: WorkItem): void {
-  const player = endingPlayerOf(item.resume.data);
+  const player = turnPlayerOf(item.resume.data);
   if (player === null) return;
 
   if (item.resume.step === END_TRIGGERS_STEP) {

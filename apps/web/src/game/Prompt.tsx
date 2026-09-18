@@ -52,8 +52,13 @@ export type PromptProps = {
   onCancel?: () => void;
 };
 
-/** `data-prompt-kind` for the seat that is only watching. §10.8 gives that view no kind at all. */
-const WAITING_KIND = "waiting";
+/**
+ * The seat that is only watching gets NO `data-prompt-kind` at all: §10.8 gives that view the
+ * fact that a choice is open and nothing else, and `data-prompt-kind` is the attribute M5-T4
+ * animates the open picker on. It is marked with its own flag instead, so "a prompt is open for
+ * me" and "somebody is choosing" never read the same in the DOM.
+ */
+const WAITING_FLAG = "waiting";
 
 /** R14 / §3.1: the only two directions a rotation can take (`RotationDirection` in the engine). */
 const DIRECTIONS = ["left", "right"] as const;
@@ -186,6 +191,25 @@ function isDirection(options: readonly string[]): boolean {
   return options.length > 0 && options.every((option) => DIRECTIONS.some((d) => d === option));
 }
 
+/**
+ * R81 puts a declared `hand` pick (#26 Glowy Jelly Bean) in the play action's `targets`, so it
+ * arrives here as a `target` need — but §10.6 still names `hand` as its own prompt kind and
+ * BUILD M5-T2 draws it as its own picker. The only thing that tells the two apart is where the
+ * offered instances live, which `PlayerView` already says: every candidate being a card in the
+ * viewer's own hand is a hand pick, anything else (a unit, a hero, a zone) is a target pick.
+ * Presentation only — the action built is the same `play` either way.
+ */
+function isHandPick(need: PlayNeed, view: PlayerView): boolean {
+  if (need.kind !== "target") return false;
+  const hand = Array.isArray(view.you.hand) ? view.you.hand : [];
+  if (hand.length === 0 || need.selections.length === 0) return false;
+  return need.selections.every(
+    (selection) =>
+      selection.pick === "instance" &&
+      hand.some((card) => card.instanceId === selection.instanceId),
+  );
+}
+
 function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerView): Picker {
   const play = (patch: Partial<PlayBuild>): Submitted => {
     const result = pickInPlay(interaction, patch);
@@ -237,10 +261,11 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
       };
     case "target": {
       const byKey = new Map(need.selections.map((selection) => [selectionKey(selection), selection]));
+      const inHand = isHandPick(need, view);
       return {
         ...common,
-        chrome: "target",
-        title: "Choose a target",
+        chrome: inHand ? "hand" : "target",
+        title: inHand ? "Choose a card in your hand" : "Choose a target",
         items: need.selections.map((selection) => {
           const key = selectionKey(selection);
           const label = selectionLabel(view, selection);
@@ -286,7 +311,7 @@ function CardOption(props: {
     <button
       type="button"
       className="prompt-card"
-      data-testid={`option-${props.item.key}`}
+      data-testid={`prompt-option-${props.item.key}`}
       aria-pressed={props.pressed}
       onClick={props.onPick}
     >
@@ -303,7 +328,7 @@ function ListOption(props: { item: PickerItem; pressed: boolean; onPick: () => v
     <li>
       <button
         type="button"
-        data-testid={`option-${props.item.key}`}
+        data-testid={`prompt-option-${props.item.key}`}
         aria-pressed={props.pressed}
         onClick={props.onPick}
       >
@@ -317,7 +342,7 @@ function PlainOption(props: { item: PickerItem; pressed: boolean; onPick: () => 
   return (
     <button
       type="button"
-      data-testid={`option-${props.item.key}`}
+      data-testid={`prompt-option-${props.item.key}`}
       aria-pressed={props.pressed}
       onClick={props.onPick}
     >
@@ -335,6 +360,12 @@ function PromptModal(props: {
 }) {
   const { picker } = props;
   const [selected, setSelected] = useState<readonly string[]>([]);
+  /**
+   * What is typed in the X field, which is not the same thing as what has been chosen: a field
+   * being cleared, or holding a number the engine did not offer, stages nothing. `null` means
+   * "nothing typed since the last stepper press", so the field follows the stepper.
+   */
+  const [typedX, setTypedX] = useState<string | null>(null);
   const inRange = selected.length >= picker.min && selected.length <= picker.max;
 
   function send(keys: readonly string[]): void {
@@ -382,7 +413,7 @@ function PromptModal(props: {
               }}
             >
               <span aria-hidden="true">{item.arrow === undefined ? "•" : ARROWS[item.arrow]}</span>
-              <span data-testid={`option-${item.key}`}>{item.label}</span>
+              <span data-testid={`prompt-option-${item.key}`}>{item.label}</span>
             </div>
           ))}
         </div>
@@ -395,7 +426,16 @@ function PromptModal(props: {
       const at = chosen === undefined ? 0 : Math.max(items.findIndex((item) => item.key === chosen), 0);
       const step = (delta: number): void => {
         const next = items[Math.min(Math.max(at + delta, 0), items.length - 1)];
-        if (next !== undefined) stage(next.key);
+        if (next === undefined) return;
+        setTypedX(null);
+        stage(next.key);
+      };
+      // Typing stages the value only when the engine offered it; anything else stages nothing, so
+      // an X the play cannot take can never be confirmed.
+      const typeX = (raw: string): void => {
+        setTypedX(raw);
+        const match = items.find((item) => item.key === raw);
+        setSelected(match === undefined ? [] : [match.key]);
       };
       return (
         <>
@@ -403,6 +443,19 @@ function PromptModal(props: {
             <button type="button" data-testid="x-minus" aria-label="Lower X" onClick={() => step(-1)}>
               −
             </button>
+            {/* The number is both typeable and readable: `prompt-x` is the input the value is
+                typed into, `x-value` the label the stepper moves. */}
+            <input
+              className="prompt-x-input"
+              data-testid="prompt-x"
+              type="number"
+              inputMode="numeric"
+              aria-label="X"
+              min={items[0]?.key}
+              max={items[items.length - 1]?.key}
+              value={typedX ?? chosen ?? ""}
+              onChange={(event) => typeX(event.target.value)}
+            />
             <span className="prompt-stepper-value" data-testid="x-value">
               {items[at]?.label ?? ""}
             </span>
@@ -504,7 +557,7 @@ function PromptModal(props: {
         <div className="prompt-actions">
           <button
             type="button"
-            data-testid="prompt-confirm"
+            data-testid="prompt-submit"
             aria-disabled={!inRange}
             onClick={() => {
               if (inRange) send(selected);
@@ -530,7 +583,7 @@ function Waiting(props: { pendingFor: PlayerId }) {
       <div
         className="prompt prompt-waiting"
         data-testid="prompt"
-        data-prompt-kind={WAITING_KIND}
+        data-prompt-waiting={WAITING_FLAG}
         role="dialog"
         aria-modal="true"
         aria-label="Waiting for choice"

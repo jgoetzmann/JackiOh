@@ -2,6 +2,11 @@
    Tokens come from src/index.css. M5-T4's promptOpened / promptAnswered animations key off
    [data-prompt-kind] on .prompt, so that attribute is the contract, not these classes. */
 
+/* The scrim dims the board; it must not swallow clicks on it. BUILD M5-T2 has a target and a
+   zone pick answerable ON THE BOARD while the picker is open ("Highlighted on the board as well"),
+   and R81's zone pick is a board click by design — a full-screen overlay eating pointer events
+   would make both unreachable for a player as much as for a test. Only the modal itself takes
+   pointer events back. */
 .prompt-scrim {
   position: fixed;
   inset: 0;
@@ -9,7 +14,12 @@
   display: grid;
   place-items: center;
   padding: 12px;
-  background: rgb(7 9 14 / 72%);
+  background: rgb(7 9 14 / 45%);
+  pointer-events: none;
+}
+
+.prompt {
+  pointer-events: auto;
 }
 
 .prompt {

@@ -25,6 +25,15 @@ import { DEFAULT_TURN, scenario, type PileName, type Scenario } from "./_harness
 const ANCHOR = { def: "core-056", lane: 5 } as const;
 
 /**
+ * The same job as `ANCHOR` for a test that owns the board: #10 Rapid Replenish is a 0-cost Spell
+ * and §8 row 10 says "always playable", so holding one is a legal action for R82's purposes and the
+ * turn cannot auto-end. A combat test wants this rather than `ANCHOR`, because `ANCHOR` is a second
+ * `core-056` and these tests name their attacker by def id (`s.attack("core-056", …)`), which is a
+ * first-match lookup.
+ */
+const HAND_ANCHOR = "core-010";
+
+/**
  * A whole §3.2 Stack pile, top-first, which `unit()` cannot give: it answers with the card on top.
  * `state.players[p].units[lane - 1]` is the pile itself (`Pile = CardInstance[]`, §10.1).
  */
@@ -446,14 +455,19 @@ describe("play", () => {
 
 describe("attack", () => {
   it("hits the enemy hero through `hero-${player}`", () => {
-    const s = scenario({ p1: { field: ["core-056"] }, p2: { health: 20 } });
+    // R82: with an empty hand and its one unit exerted, p1 would have nothing but `endTurn` left
+    // and the turn would auto-end under the assertion — taking the opponent's turn with it and
+    // charging §2.4 fatigue to both empty libraries. The hand anchor keeps the turn open.
+    const s = scenario({ p1: { field: ["core-056"], hand: [HAND_ANCHOR] }, p2: { health: 20 } });
     s.attack("core-056", "hero");
     // Jilliax is 3/2 with Lifesteal, so §4.4 step 8 heals p1 by the 3 it dealt.
     s.expectHealth("p2", 17).expectHealth("p1", 33).expectEvents("attackDeclared", "damage", "healed");
   });
 
   it("resolves a unit exchange and spends the exertion (§4.1, §4.3)", () => {
-    const s = scenario({ p1: { field: ["core-025"] }, p2: { field: ["core-056"] } });
+    // R82 again: the second attack must be refused for having ALREADY ACTED, which it can only be
+    // while it is still p1's turn (see the hero test above).
+    const s = scenario({ p1: { field: ["core-025"], hand: [HAND_ANCHOR] }, p2: { field: ["core-056"] } });
     s.attack("core-025", s.unit("p2", 1)!);
     // Divine Shield eats the 7 (§4.4 step 1); the strike-back of 3 is stopped by Armor 7 (step 2).
     s.expectEvents("attackDeclared", "divineShieldLost").expectStats("core-025", { health: 7 });
@@ -497,7 +511,9 @@ describe("startTurn and endTurn", () => {
   });
 
   it("exertion resets at the controller's own turn start (§4.1)", () => {
-    const s = scenario({ p1: { field: ["core-056"] }, p2: { health: 20 } });
+    // R82: without the hand anchor the first attack auto-ends the turn, and the refusal below comes
+    // back as "it is not your turn" instead of the exertion message this test is about.
+    const s = scenario({ p1: { field: ["core-056"], hand: [HAND_ANCHOR] }, p2: { health: 20 } });
     s.attack("core-056", "hero");
     expect(() => s.attack("core-056", "hero")).toThrow(/already acted/);
     s.startTurn();

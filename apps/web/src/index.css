@@ -99,3 +99,61 @@ button:disabled {
 .notice code {
   color: var(--text-dim);
 }
+
+/* The shell chrome the M6 screens share: /login, /play and the header of /match/<id>. Nothing
+   here is a game element — the board brings its own layout in game/board.css. */
+
+.form-card {
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 44ch;
+}
+
+.form-card h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.form-card label {
+  color: var(--text-dim);
+}
+
+.form-card input {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* `/match/<id>`: the seat, turn and connection line, with the clock on the right. */
+.match-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  color: var(--text-dim);
+}
+
+.match-bar code {
+  color: var(--text);
+}

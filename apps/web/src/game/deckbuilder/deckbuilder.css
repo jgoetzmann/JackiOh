@@ -1,0 +1,128 @@
+/* The loadout editor (BUILD M6-T3). Tokens come from src/index.css; nothing here is a rule.
+   `[data-legal="false"]` is M5-T2's vocabulary, reused for a pool card the builder will not put in
+   the open deck because another deck already holds it. */
+
+.deckbuilder {
+  gap: 12px;
+}
+
+.db-tabs {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.db-tabs button[data-active="true"] {
+  border-color: var(--you);
+  background: color-mix(in srgb, var(--you) 22%, var(--bg-raised));
+}
+
+.db-count {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.db-panes {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.db-pool,
+.db-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.db-pool {
+  flex: 1 1 260px;
+}
+
+.db-deck {
+  flex: 1 1 260px;
+  border-color: var(--line-bright);
+}
+
+.db-deck[data-active="true"] {
+  border-color: var(--you);
+}
+
+.db-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.db-card[data-legal="false"] {
+  opacity: 0.45;
+  border-color: var(--locked);
+}
+
+.db-card[data-refused="true"] {
+  border-color: var(--opponent);
+}
+
+.db-card-cost {
+  color: var(--mana);
+  font-variant-numeric: tabular-nums;
+}
+
+.db-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.db-saved {
+  color: var(--legal);
+}
+
+.db-errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 80ch;
+}
+
+.db-errors li {
+  border: 1px solid var(--opponent);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 6px 10px;
+}
+
+.db-errors:empty {
+  display: none;
+}
+
+.db-deck-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.db-deck-list > li {
+  display: flex;
+}
+
+.db-deck-list .db-card {
+  flex: 1 1 auto;
+}

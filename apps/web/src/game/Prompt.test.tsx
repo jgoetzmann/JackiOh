@@ -39,7 +39,7 @@ function playing(candidates: ActionBody[], instanceId = "h1"): Interaction {
 }
 
 function optionTestids(): string[] {
-  return [...document.querySelectorAll("[data-testid^='option-']")].map(
+  return [...document.querySelectorAll("[data-testid^='prompt-option-']")].map(
     (node) => node.getAttribute("data-testid") ?? "",
   );
 }
@@ -68,7 +68,7 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
     expect(kindOfModal()).toBe("discover");
     expect(optionTestids()).toHaveLength(3);
 
-    fireEvent.click(screen.getByTestId("option-mode:core-055"));
+    fireEvent.click(screen.getByTestId("prompt-option-mode:core-055"));
 
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith({
@@ -94,7 +94,7 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
     expect(blessed.split(" ")).toContain("card-e1");
     expect(blessed.split(" ")).toContain("hero-opponent");
 
-    fireEvent.click(screen.getByTestId("option-instance:e1"));
+    fireEvent.click(screen.getByTestId("prompt-option-instance:e1"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "answer",
@@ -116,7 +116,7 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
 
     expect(kindOfModal()).toBe("mode");
 
-    fireEvent.click(screen.getByTestId("option-mode:Draw a card"));
+    fireEvent.click(screen.getByTestId("prompt-option-mode:Draw a card"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "answer",
@@ -143,10 +143,10 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
     expect(kindOfModal()).toBe("mulligan");
 
     // A toggle alone sends nothing: the mulligan always waits for the confirm.
-    fireEvent.click(screen.getByTestId("option-h2"));
+    fireEvent.click(screen.getByTestId("prompt-option-h2"));
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("prompt-confirm"));
+    fireEvent.click(screen.getByTestId("prompt-submit"));
 
     expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h2"] });
   });
@@ -164,7 +164,7 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
 
     expect(kindOfModal()).toBe("hand");
 
-    fireEvent.click(screen.getByTestId("option-instance:h2"));
+    fireEvent.click(screen.getByTestId("prompt-option-instance:h2"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "answer",
@@ -200,9 +200,9 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
 
     expect(view.pending).toBeNull();
     expect(kindOfModal()).toBe("zone");
-    expect(optionTestids()).toEqual(["option-units:3", "option-units:5"]);
+    expect(optionTestids()).toEqual(["prompt-option-units:3", "prompt-option-units:5"]);
 
-    fireEvent.click(screen.getByTestId("option-units:5"));
+    fireEvent.click(screen.getByTestId("prompt-option-units:5"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "play",
@@ -224,15 +224,15 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
 
     expect(kindOfModal()).toBe("tribute");
 
-    const confirm = screen.getByTestId("prompt-confirm");
+    const confirm = screen.getByTestId("prompt-submit");
     expect(confirm).toHaveAttribute("aria-disabled", "true");
 
-    fireEvent.click(screen.getByTestId("option-u1"));
+    fireEvent.click(screen.getByTestId("prompt-option-u1"));
     expect(confirm).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(confirm);
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("option-u2"));
+    fireEvent.click(screen.getByTestId("prompt-option-u2"));
     expect(confirm).toHaveAttribute("aria-disabled", "false");
 
     fireEvent.click(confirm);
@@ -290,7 +290,7 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     fireEvent.click(screen.getByTestId("x-plus"));
     expect(screen.getByTestId("x-value")).toHaveTextContent("2");
 
-    fireEvent.click(screen.getByTestId("prompt-confirm"));
+    fireEvent.click(screen.getByTestId("prompt-submit"));
 
     expect(onAction).toHaveBeenCalledWith({ type: "play", instanceId: "h2", x: 2 });
   });
@@ -303,7 +303,7 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     ]);
 
     render(<Prompt view={viewWith()} interaction={interaction} onAction={onAction} />);
-    fireEvent.click(screen.getByTestId("option-1"));
+    fireEvent.click(screen.getByTestId("prompt-option-1"));
 
     expect(onAction).toHaveBeenCalledWith({ type: "play", instanceId: "h2", x: 1 });
   });
@@ -320,9 +320,9 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
 
     expect(kindOfModal()).toBe("embiggen");
     expect(screen.getByTestId("embiggen-toggle")).toBeInTheDocument();
-    expect(optionTestids()).toEqual(["option-false", "option-true"]);
+    expect(optionTestids()).toEqual(["prompt-option-false", "prompt-option-true"]);
 
-    fireEvent.click(screen.getByTestId("option-true"));
+    fireEvent.click(screen.getByTestId("prompt-option-true"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "play",
@@ -342,7 +342,7 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     render(<Prompt view={viewWith()} interaction={interaction} onAction={onAction} />);
 
     expect(kindOfModal()).toBe("target");
-    fireEvent.click(screen.getByTestId("option-hero:p2"));
+    fireEvent.click(screen.getByTestId("prompt-option-hero:p2"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "play",
@@ -372,8 +372,8 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
 
 describe("the R81 kinds render the same picker when the engine does open them as prompts", () => {
   const cases: [string, Parameters<typeof pendingFor>[1], string][] = [
-    ["zone", [{ key: "zone:p1:units:1", label: "Unit lane 1", player: "p1", row: "units", lane: 1 }], "option-zone:p1:units:1"],
-    ["tribute", [{ key: "instance:u1", label: "One", instanceId: "u1" }], "option-instance:u1"],
+    ["zone", [{ key: "zone:p1:units:1", label: "Unit lane 1", player: "p1", row: "units", lane: 1 }], "prompt-option-zone:p1:units:1"],
+    ["tribute", [{ key: "instance:u1", label: "One", instanceId: "u1" }], "prompt-option-instance:u1"],
     ["direction", [{ key: "mode:left", label: "left" }, { key: "mode:right", label: "right" }], "direction-left"],
     ["x", [{ key: "0", label: "0" }, { key: "1", label: "1" }], "x-stepper"],
     ["embiggen", [{ key: "false", label: "Normal" }, { key: "true", label: "Embiggened" }], "embiggen-toggle"],
@@ -407,7 +407,7 @@ describe("the seat that is only watching (§10.6, §10.8)", () => {
 
     expect(screen.getByTestId("prompt")).toHaveTextContent(/waiting for choice/i);
     expect(optionTestids()).toEqual([]);
-    expect(screen.queryByTestId("prompt-confirm")).toBeNull();
+    expect(screen.queryByTestId("prompt-submit")).toBeNull();
     expect(onAction).not.toHaveBeenCalled();
   });
 });
@@ -427,17 +427,17 @@ describe("min and max gate the confirm, and both came from the view", () => {
     });
 
     render(<Prompt view={view} onAction={onAction} />);
-    const confirm = screen.getByTestId("prompt-confirm");
+    const confirm = screen.getByTestId("prompt-submit");
 
     fireEvent.click(confirm);
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("option-h1"));
+    fireEvent.click(screen.getByTestId("prompt-option-h1"));
     expect(confirm).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(confirm);
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("option-h2"));
+    fireEvent.click(screen.getByTestId("prompt-option-h2"));
     expect(confirm).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(confirm);
     expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h1", "h2"] });
@@ -459,10 +459,10 @@ describe("min and max gate the confirm, and both came from the view", () => {
 
     render(<Prompt view={view} onAction={onAction} />);
 
-    fireEvent.click(screen.getByTestId("option-instance:u1"));
-    fireEvent.click(screen.getByTestId("option-instance:u2"));
-    fireEvent.click(screen.getByTestId("option-instance:e1"));
-    fireEvent.click(screen.getByTestId("prompt-confirm"));
+    fireEvent.click(screen.getByTestId("prompt-option-instance:u1"));
+    fireEvent.click(screen.getByTestId("prompt-option-instance:u2"));
+    fireEvent.click(screen.getByTestId("prompt-option-instance:e1"));
+    fireEvent.click(screen.getByTestId("prompt-submit"));
 
     expect(onAction).toHaveBeenCalledWith({
       type: "answer",

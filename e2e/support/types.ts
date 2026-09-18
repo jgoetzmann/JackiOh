@@ -123,6 +123,18 @@ export type E2EDeckInjection = {
 export type PromptAnswer = {
   /** `PendingOption.key` values to pick (discover, mode, direction, embiggen, hand, mulligan). */
   options?: string[];
+  /**
+   * Take the first N options offered, whatever their keys are. Discover's three options are drawn
+   * by the match rng (SPEC §10.6), so no spec can name one: "take the first" is the only stable
+   * way to answer it. Picked before `options`, and the two can be combined.
+   */
+  first?: number;
+  /**
+   * R81's embiggen price, as the boolean it is. The picker keys its two options `"true"` and
+   * `"false"` (the two prices), so this is `options: [String(embiggen)]` without a spec having to
+   * know that the key is a stringified boolean.
+   */
+  embiggen?: boolean;
   /** Board instance ids to pick (target, tribute, hand pickers rendered on the cards). */
   cards?: string[];
   /** Board zones to pick (zone pickers). */
