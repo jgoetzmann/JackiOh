@@ -12,8 +12,10 @@
  * on `(profile_id, card_id)`. The raw-SQL version of that test belongs to the db agent.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
-import { grantEntireCatalog } from "../../src/api/collection";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { grantEntireCatalog, ownedMap } from "../../src/api/collection";
+import { loadCatalog } from "../../src/api/catalog";
+import { sharedLoadoutValidator } from "../../src/api/loadout-validator";
 import {
   createLoadoutRoutes,
   deckFor,
@@ -21,7 +23,7 @@ import {
   validateStoredLoadout,
 } from "../../src/api/loadouts";
 import { ApiError, createRouter } from "../../src/api/http";
-import type { LoadoutIssue, StoredLoadout } from "../../src/api/ports";
+import type { CatalogInfo, LoadoutIssue, StoredLoadout } from "../../src/api/ports";
 import {
   createTestDeps,
   jsonRequest,
@@ -479,5 +481,222 @@ describe("the routes (§9.4: a pending account sees no loadout)", () => {
       jsonRequest("GET", "/api/loadout", undefined, { token: otherToken }),
     );
     expect((await readJson<{ loadout: StoredLoadout | null }>(get)).loadout).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// L1–L6 through the production wiring
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything above runs on `permissiveValidator`, which is the right double for the questions it
+ * asks (see `test/fakes/deps.ts`) but means the save path never actually refuses a deck. This block
+ * closes that: the real §8 catalog (`loadCatalog()`), the real adapter (`sharedLoadoutValidator`),
+ * the real route — the composition root's wiring, in memory — and one illegal loadout per rule.
+ *
+ * It does not re-test L1–L6 themselves; `packages/validator` does that, rule by rule and message by
+ * message. The question here is the join: does an illegal deck reach the store anyway, and does the
+ * refusal carry the shared module's own sentence out to the client. So no message is typed out
+ * below — every expectation is the verdict `sharedLoadoutValidator` gives for the same input, which
+ * is the only way to assert "the validator's own message" without making a second copy of it.
+ */
+describe("the real validator through the real save route (§9.4 L1–L6)", () => {
+  let realCatalog: CatalogInfo;
+
+  beforeAll(async () => {
+    realCatalog = await loadCatalog();
+  });
+
+  /**
+   * Three legal decks of real cards. The deck size is deliberately not spelled: BUILD §2 keeps
+   * `DECK_SIZE` in the engine's config and nothing restates it, so this grows three slices of the
+   * pool until the shared module stops objecting and lets the number be the module's. Failing to
+   * find one is a failure in itself — every test below rests on a legal loadout existing.
+   */
+  async function legalDecks(target: TestDeps): Promise<string[][]> {
+    const pool = target.catalog.cardIds.filter(
+      (cardId) => !target.catalog.isToken(cardId) && !target.catalog.isBanned(cardId),
+    );
+    const owned = await ownedMap(target, PROFILE);
+    for (let size = 1; size * 3 <= pool.length; size += 1) {
+      const decks = [0, 1, 2].map((index) => pool.slice(index * size, (index + 1) * size));
+      const issues = sharedLoadoutValidator({
+        decks,
+        catalogVersion: target.catalog.version,
+        catalog: target.catalog,
+        owned,
+      });
+      if (issues.length === 0) return decks;
+    }
+    throw new Error("no legal loadout could be built from the real catalog");
+  }
+
+  /** The production wiring: real catalog, real adapter, R111's launch grant, an active profile. */
+  async function realWiring(): Promise<{ real: TestDeps; realToken: string; decks: string[][] }> {
+    const real = createTestDeps({
+      catalog: realCatalog,
+      validateLoadout: sharedLoadoutValidator,
+    });
+    const realToken = activeProfile(real);
+    await grantEntireCatalog(real, PROFILE);
+    return { real, realToken, decks: await legalDecks(real) };
+  }
+
+  async function put(
+    target: TestDeps,
+    bearer: string,
+    decks: readonly (readonly string[])[],
+  ): Promise<Response> {
+    const router = createRouter(createLoadoutRoutes(), target);
+    return router(
+      jsonRequest(
+        "PUT",
+        "/api/loadout",
+        { catalogVersion: target.catalog.version, decks },
+        { token: bearer },
+      ),
+    );
+  }
+
+  /** What the shared module says about this input, for the route's answer to be compared against. */
+  async function issuesFor(
+    target: TestDeps,
+    decks: readonly (readonly string[])[],
+  ): Promise<LoadoutIssue[]> {
+    return sharedLoadoutValidator({
+      decks,
+      catalogVersion: target.catalog.version,
+      catalog: target.catalog,
+      owned: await ownedMap(target, PROFILE),
+    });
+  }
+
+  type ErrorBody = { error: { code: string; message: string; details: LoadoutIssue[] } };
+
+  /**
+   * The shape every rule below is asserted in: refused 422 with `loadout_invalid`, the shared
+   * module's own issues passed through untouched, its first sentence as the message, the rule and
+   * the card named — and not a row written.
+   */
+  async function expectRefusal(
+    target: TestDeps,
+    bearer: string,
+    decks: readonly (readonly string[])[],
+    rule: string,
+    cardId: string,
+  ): Promise<void> {
+    const response = await put(target, bearer, decks);
+    const body = await readJson<ErrorBody>(response);
+    const expected = await issuesFor(target, decks);
+
+    // PREMISE: the shared module really refuses this loadout, and for the rule named.
+    expect(expected[0]?.rule, `the validator's first issue for ${rule}`).toBe(rule);
+
+    expect(response.status).toBe(422);
+    expect(body.error.code).toBe("loadout_invalid");
+    // Passed through as reported: no renumbering, no recomposed sentence (§9.4 names the deck and
+    // the card, and the deckbuilder wants every failure at once).
+    expect(body.error.details).toEqual(expected);
+    expect(body.error.message).toBe(expected[0]?.message);
+    expect(body.error.message.length).toBeGreaterThan(0);
+    expect(expected[0]?.cardId).toBe(cardId);
+    expect(body.error.message).toContain(cardId);
+    // The save is all-or-nothing, and an illegal loadout never becomes a partial one.
+    expect(target.store.tables.loadouts).toEqual([]);
+  }
+
+  it("the premise: a legal loadout of real cards saves through the real validator", async () => {
+    const { real, realToken, decks } = await realWiring();
+
+    const response = await put(real, realToken, decks);
+
+    expect(response.status).toBe(200);
+    expect((await readJson<{ loadout: StoredLoadout }>(response)).loadout.decks).toEqual(decks);
+    expect(real.store.tables.loadouts).toHaveLength(1);
+  });
+
+  it("L2 refuses an oversized deck, with the validator's own message", async () => {
+    const { real, realToken, decks } = await realWiring();
+    // A card the loadout does not already hold, so the only thing wrong is the count.
+    const spare =
+      real.catalog.cardIds.find(
+        (cardId) => !real.catalog.isToken(cardId) && !decks.flat().includes(cardId),
+      ) ?? "";
+    expect(spare).not.toBe("");
+    const oversized = [[...(decks[0] ?? []), spare], decks[1] ?? [], decks[2] ?? []];
+
+    const response = await put(real, realToken, oversized);
+    const body = await readJson<ErrorBody>(response);
+    const expected = await issuesFor(real, oversized);
+
+    expect(expected[0]?.rule).toBe("L2");
+    expect(response.status).toBe(422);
+    expect(body.error.code).toBe("loadout_invalid");
+    expect(body.error.details).toEqual(expected);
+    expect(body.error.message).toBe(expected[0]?.message);
+    // L2 is a whole-deck failure, so it names the deck rather than a card (§9.4).
+    expect(expected[0]?.deck).toBe(1);
+    expect(expected[0]?.cardId).toBeUndefined();
+    expect(real.store.tables.loadouts).toEqual([]);
+  });
+
+  it("L4 refuses a card repeated across two decks in the application layer, before the unique index", async () => {
+    const { real, realToken, decks } = await realWiring();
+    const shared = decks[0]?.[0] ?? "";
+    const duplicated = [decks[0] ?? [], [shared, ...(decks[1] ?? []).slice(1)], decks[2] ?? []];
+
+    await expectRefusal(real, realToken, duplicated, "L4", shared);
+
+    // The point of doing it here rather than with the permissive validator: with the real module
+    // wired in, the refusal is the validator's 422 and the store is never reached, so the unique
+    // index on `(profile_id, card_id)` stays the backstop it is meant to be and not the check.
+    // (The backstop itself is tested above, with the application check deliberately absent.)
+    expect(real.store.tables.loadouts).toEqual([]);
+  });
+
+  it("L3 refuses a Token-tagged card, with the validator's own message", async () => {
+    const { real, realToken, decks } = await realWiring();
+    const token = real.catalog.cardIds.find((cardId) => real.catalog.isToken(cardId)) ?? "";
+    expect(token).not.toBe("");
+    const withToken = [[token, ...(decks[0] ?? []).slice(1)], decks[1] ?? [], decks[2] ?? []];
+
+    await expectRefusal(real, realToken, withToken, "L3", token);
+  });
+
+  it("L6 refuses an id the catalog does not have, with the validator's own message", async () => {
+    const { real, realToken, decks } = await realWiring();
+    const unknown = "core-does-not-exist";
+    expect(real.catalog.cardIds).not.toContain(unknown);
+    const withUnknown = [[unknown, ...(decks[0] ?? []).slice(1)], decks[1] ?? [], decks[2] ?? []];
+
+    await expectRefusal(real, realToken, withUnknown, "L6", unknown);
+    // L6's sentence quotes the version the id was not found in, so a stale client can tell the two
+    // refusals apart (a missing card, versus the 409 `assertCurrentCatalog` raises).
+    expect((await issuesFor(real, withUnknown))[0]?.message).toContain(real.catalog.version);
+  });
+
+  it("L5 refuses the same stored loadout at queue time once the collection moves", async () => {
+    // §9.4: "at save and again at queue", because the collection is server-owned and can change
+    // after a save. This is the one rule the save path cannot reach on its own — R141: against
+    // R111's launch grant of one copy of each, L5 never fires alone — so it is asked here, where
+    // the entitlements are taken away between the two checks.
+    const { real, realToken, decks } = await realWiring();
+    expect((await put(real, realToken, decks)).status).toBe(200);
+
+    real.store.tables.collection.length = 0;
+
+    const error = await apiError(() =>
+      validateStoredLoadout(real, PROFILE, real.catalog.version),
+    );
+
+    const expected = await issuesFor(real, decks);
+    expect(expected[0]?.rule).toBe("L5");
+    expect(error.code).toBe("loadout_invalid");
+    expect(error.status).toBe(422);
+    expect(error.details).toEqual(expected);
+    expect(error.message).toBe(expected[0]?.message);
+    expect(error.message).toContain(decks[0]?.[0] ?? "");
+    // The stored loadout is untouched: a queue-time refusal reports, it does not edit.
+    expect(real.store.tables.loadouts[0]?.loadout.decks).toEqual(decks);
   });
 });

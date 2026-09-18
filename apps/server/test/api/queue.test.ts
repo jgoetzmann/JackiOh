@@ -375,3 +375,58 @@ describe("R167 — how a player leaves the queue (§9.5, R108, R143)", () => {
     expect((await readJson<QueueBody>(response)).error?.code).toBe("account_pending");
   });
 });
+
+// ---------------------------------------------------------------------------
+// §9.4's gate on the queue (BUILD M6-T1)
+// ---------------------------------------------------------------------------
+
+/**
+ * BUILD M6-T1's last acceptance item: "a pending account cannot call collection, loadout or queue
+ * endpoints (403)". Collection and loadout are checked against their own route factories in
+ * `collection.test.ts` and `loadouts.test.ts`; the queue half was only ever checked for `DELETE`
+ * (R167's test above), which left enqueueing — the endpoint §9.4 actually names when it says a
+ * pending account gets "no collection, loadout, queue or match" — asserted by nobody.
+ *
+ * Its own block rather than a sixth test inside R167's: R167 is a ruling about *leaving* the
+ * queue, and this is M6-T1's gate on entering it.
+ */
+describe("§9.4's gate on the queue (BUILD M6-T1)", () => {
+  it("declares both queue mutations `active`, so the gate is on the route and not in a handler", () => {
+    const declared = createQueueRoutes()
+      .filter((entry) => entry.path === "/api/queue")
+      .map((entry) => `${entry.method}:${entry.auth}`);
+    // `src/api/queue.ts` says the gate "is §9.4's gate ... so a pending account gets 403 here
+    // without this handler saying anything about it". That is only true while these say `active`.
+    expect(declared).toEqual(["POST:active", "DELETE:active"]);
+  });
+
+  it("a pending account gets 403 from POST /api/queue, and nothing is queued on the way out", async () => {
+    deps.store.seedProfile({ id: "pending", userId: "user-pending", status: "pending" });
+    const token = deps.auth.addUser({ userId: "user-pending", email: "pending@example.test" });
+    await saveLoadoutFor(deps, "pending");
+
+    const response = await enqueue(token);
+
+    expect(response.status).toBe(403);
+    expect((await readJson<QueueBody>(response)).error?.code).toBe("account_pending");
+    // The refusal happens before the handler, so no ticket exists and nothing was logged as queued.
+    expect(deps.store.tables.tickets).toEqual([]);
+    expect(await deps.store.tickets.countOpen()).toBe(0);
+  });
+
+  it("the control: the same profile and the same request queue fine once the account is active", async () => {
+    // Without this, the 403 above could be any of the other things the route refuses. The loadout
+    // is saved first in both cases, so the only difference between the two calls is `status`.
+    deps.store.seedProfile({ id: "activating", userId: "user-activating", status: "pending" });
+    const token = deps.auth.addUser({ userId: "user-activating", email: "activating@example.test" });
+    await saveLoadoutFor(deps, "activating");
+
+    expect((await enqueue(token)).status).toBe(403);
+
+    await deps.store.profiles.setStatus("activating", "active");
+    const queued = await enqueue(token);
+
+    expect(queued.status).toBe(200);
+    expect((await readJson<QueueBody>(queued)).status).toBe("open");
+  });
+});

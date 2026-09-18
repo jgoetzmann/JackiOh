@@ -202,10 +202,23 @@ export function createTestCatalog(version = TEST_CATALOG_VERSION, count = 24): C
 }
 
 /**
- * A stand-in for `@jackioh/validator`, which is still empty (M6-T3 is another agent's task).
- * It checks only what the server's own tests need to distinguish: the catalog version, and
- * whether every card exists. Nothing in `src/` restates a loadout rule — the real validator is
- * adapted onto the `LoadoutValidator` port in `src/index.ts`.
+ * The default `LoadoutValidator` on `createTestDeps`: it approves everything.
+ *
+ * NOT because `@jackioh/validator` is unfinished — it is implemented and has its own suite (BUILD
+ * M6-T3's "unit test per rule with the specific error message"). It is a no-op because of the
+ * catalog next door: `createTestCatalog` is 24 synthetic ids with `defs: {}`, so the real L1–L6
+ * would answer L6 ("no such card in catalog version test-1") for every card in every fixture in
+ * this directory, and L2 for every deck, and not one of the suites that merely *needs a loadout*
+ * — the queue, the rooms, the actor — would be testing what it is about any more.
+ *
+ * So the split is deliberate: a test whose subject is not loadout legality gets this and a
+ * synthetic catalog, and a test whose subject IS loadout legality builds deps on the real catalog
+ * (`loadCatalog()`) with the real adapter (`sharedLoadoutValidator`) instead. Both do:
+ * `test/api/catalog.test.ts` drives the adapter directly, and the last block of
+ * `test/api/loadouts.test.ts` drives L2, L3, L4 and L6 through `PUT /api/loadout` itself.
+ *
+ * Nothing in `src/` restates a loadout rule; `test/validator-single-source.test.ts` is the grep
+ * that keeps it that way.
  */
 export const permissiveValidator: LoadoutValidator = () => [];
 
