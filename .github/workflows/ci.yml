@@ -103,14 +103,28 @@ jobs:
         env:
           E2E: "1"
         run: |
-          nohup pnpm --dir apps/server exec tsx src/index.ts \
-            > "$RUNNER_TEMP/server.log" 2>&1 &
+          nohup pnpm --dir apps/server start > "$RUNNER_TEMP/server.log" 2>&1 &
 
       - name: wait for both to answer
         run: |
           # /api/catalog is the one route R163 makes unauthenticated, so it is the honest
           # readiness probe: no token, and a 200 means the catalog really did register.
-          npx --yes wait-on http://127.0.0.1:5173 http://127.0.0.1:8787/api/catalog --timeout 120000
+          # curl rather than `npx wait-on`, so readiness does not depend on a registry fetch
+          # succeeding first — one less thing between a red run and its real cause.
+          for url in http://127.0.0.1:5173 http://127.0.0.1:8787/api/catalog; do
+            for i in $(seq 1 120); do
+              # -fs, not -fsS: a connection refused is the expected state while a server boots,
+              # and 120 of them printed to stderr would bury the one message that matters.
+              if curl -fs -o /dev/null "$url"; then echo "up: $url (${i}s)"; break; fi
+              if [ "$i" -eq 120 ]; then
+                echo "never answered: $url"
+                echo "--- client.log ---"; cat "$RUNNER_TEMP/client.log" || true
+                echo "--- server.log ---"; cat "$RUNNER_TEMP/server.log" || true
+                exit 1
+              fi
+              sleep 1
+            done
+          done
 
       - name: the twelve specs
         env:

@@ -294,10 +294,18 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
     });
 
     // --- a live match: seat 1 opens a room, seat 2 claims it (§9.5) ---------------------------
-    // `seed` is BUILD M8's "every spec sets a seed". A networked match's seed is minted by the
-    // server (`deps.ids.seed()`), so this is an ASK: under E2E=1 the room endpoint must honour a
-    // supplied seed. It is ignored today, which is why this spec's fixture guarantees the card it
-    // needs (Quickdraw) for every seed rather than for one.
+    // `seed` is BUILD M8's "every spec sets a seed". A networked match's seed is normally minted
+    // by the server (§9.3, `deps.ids.seed()`); R143 makes it an optional field that an end-to-end
+    // server honours and every other server REFUSES with a 400 — never ignores, so a production
+    // caller cannot quietly get an unseeded match while believing it asked for one. The room is
+    // created before anyone joins, so the host's seed is held against the code until the join
+    // consumes it (`match/rooms.ts` `rememberSeed`/`takeSeedForRoom`).
+    //
+    // This comment used to say the field was ignored and that the fixture therefore had to work
+    // for every seed. That was true when the spec was written and is not true now: `rooms.test.ts`
+    // proves the host's seed is used verbatim for the match the join creates. The fixture still
+    // guarantees its Quickdraw card for every seed, which costs nothing and is one less thing to
+    // depend on — but the match this spec drives IS seeded, and its determinism is real.
     cy.request<{ code: string }>({
       method: "POST",
       url: api("/api/rooms"),
