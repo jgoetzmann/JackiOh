@@ -144,7 +144,15 @@ jobs:
           # readiness probe: no token, and a 200 means the catalog really did register.
           # curl rather than `npx wait-on`, so readiness does not depend on a registry fetch
           # succeeding first — one less thing between a red run and its real cause.
-          for url in http://127.0.0.1:5173 http://127.0.0.1:8787/api/catalog; do
+          #
+          # `localhost`, not `127.0.0.1`: `vite preview` binds the IPv6 loopback only. Measured on
+          # the dev machine — [::1]:5173 and localhost:5173 answer 200, 127.0.0.1:5173 refuses the
+          # connection outright — so a v4-literal probe would burn its whole budget with both
+          # servers perfectly healthy. Whether a Linux runner binds v4, v6 or both is its resolver's
+          # business, so the fix is to stop asserting a family: `localhost` is also exactly what
+          # `baseUrl` in e2e/cypress.config.ts asks the browser for, which makes this probe a test
+          # of the URL the suite actually uses rather than a near neighbour of it.
+          for url in http://localhost:5173 http://localhost:8787/api/catalog; do
             for i in $(seq 1 120); do
               # -fs, not -fsS: a connection refused is the expected state while a server boots,
               # and 120 of them printed to stderr would bury the one message that matters.
