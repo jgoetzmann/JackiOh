@@ -276,3 +276,28 @@ export const LOADOUT_SAVE_ERROR = "loadout-save-error";
 export function loadoutErrorId(rule: string): string {
   return `loadout-error-${rule}`;
 }
+
+// ---------------------------------------------------------------------------------------------
+// A13: the invite code screen (BUILD M6-T1, SPEC §9.4). Like A11's deckbuilder block, BUILD names
+// no testid for this screen, so these mirror — name for name — the screen's own vocabulary in
+// `apps/web/src/routes/invite.tsx`, which exports every one of them. Keep the two files identical.
+//
+// THESE WERE NEVER MISSING FROM THE CLIENT. The M8 rule-8 review recorded spec 10's "code screen
+// shown" as blocked because `invite-code-input`, `invite-submit` and `invite-error` "really are
+// absent from both the client and `testids.ts`"
+// (reviews/2026-09-18-m5-m6-m8-gates.md). Only the second half was true: `invite.tsx` has
+// exported and rendered all three since it was written. Nothing under `e2e/` had ever named them,
+// which is why the row was proved as a URL redirect and an `/invite` route rendering a blank page
+// would have passed it.
+// ---------------------------------------------------------------------------------------------
+
+/** The box §9.4's `XXXX-XXXX-XXXX-XXXX` code is typed into; R104's alphabet normalises the input. */
+export const INVITE_CODE_INPUT = "invite-code-input";
+/** Submits the code (`POST /api/codes/redeem`). Disabled while the box is empty or paused. */
+export const INVITE_SUBMIT = "invite-submit";
+/** The server's refusal, rendered verbatim — §9.4's identical error is never paraphrased here. */
+export const INVITE_ERROR = "invite-error";
+/** §9.4's circuit breaker is open: the screen says so rather than guessing after a 503. */
+export const INVITE_PAUSED = "invite-paused";
+/** An active account reached the code screen; redemption is the pending → active transition only. */
+export const INVITE_NOT_NEEDED = "invite-not-needed";

@@ -24,11 +24,12 @@
 // that the three kinds do not separate across it.
 //
 // THE ATTEMPT BUDGET. §9.4 step 2 rejects a profile that "made more than 5 attempts in the last
-// hour", and `apps/server/src/config.ts` spells out that the 6th attempt is the first rejection.
-// This file spends exactly four logged attempts: three failures plus the good code. The
+// hour". This file spends five logged attempts: the bad code typed into the screen in the first
+// `it`, the three failure kinds over HTTP in the second, and the good code in the third. The
 // already-active re-redemption at the end is rejected at step 1, before step 4's log, so it costs
-// nothing. Adding a fifth sample would put the file one attempt from its own rate limit, which is
-// why there are three failure kinds here and not four.
+// nothing. Five is the budget: `CODE_ATTEMPTS_PER_PROFILE_PER_HOUR` is 5 and the check counts the
+// attempts already logged, so the fifth still goes through — which is why there are three failure
+// kinds here and not four, and one typed code and not two.
 //
 // R111 is the other half of "good code activates": the launch grant is "one copy of every
 // non-token card, written by a trigger on the pending → active transition and idempotent, so a
@@ -55,6 +56,14 @@ import {
 } from "../../../apps/server/src/config.ts";
 import { CARD_NAMES, cardId } from "../../support/cards.ts";
 import { accounts, constants, inviteCodes, routes, seedFor, server } from "../../support/config.ts";
+import {
+  INVITE_CODE_INPUT,
+  INVITE_ERROR,
+  INVITE_NOT_NEEDED,
+  INVITE_PAUSED,
+  INVITE_SUBMIT,
+  ts,
+} from "../../support/testids.ts";
 import type { FixtureDeck } from "../../support/types.ts";
 
 // ---------------------------------------------------------------------------------------------
@@ -222,15 +231,64 @@ describe("10 invite gate — a pending account", () => {
       });
     }
 
-    // The browser half that needs no new testid: a gated route sends a pending account to the
-    // code screen. ASK (support/testids.ts + apps/web): `invite-code-input`, `invite-submit` and
-    // `invite-error`, without which the screen's own contents and the typed-in-a-bad-code path
-    // cannot be asserted from a spec (see the hand-off report).
+    // The redirect: a gated route sends a pending account to the code screen.
     visitAs(pendingToken(), routes.deckbuilder());
     cy.location("pathname").should("eq", routes.invite());
 
     visitAs(pendingToken(), routes.invite());
     cy.location("pathname").should("eq", routes.invite());
+
+    // "CODE SCREEN SHOWN", at the layer the word means. Until now this row was a URL and nothing
+    // else — an `/invite` route that rendered a blank page passed it, and this spec's own ASK
+    // said so. The ASK was half wrong: `apps/web/src/routes/invite.tsx` has exported and rendered
+    // every testid below since it was written; what was missing was any name for them under
+    // `e2e/`, which A13 in `support/testids.ts` now carries.
+    cy.get(ts(INVITE_CODE_INPUT)).should("be.visible").and("have.value", "");
+    // §9.4's format, shown rather than described: the placeholder is `XXXX-XXXX-XXXX-XXXX` built
+    // from the same constants this file imports, so a client that invented its own grouping fails.
+    cy.get(ts(INVITE_CODE_INPUT)).should(
+      "have.attr",
+      "placeholder",
+      Array.from({ length: INVITE_CODE_LENGTH / INVITE_CODE_GROUP_SIZE }, () =>
+        "X".repeat(INVITE_CODE_GROUP_SIZE),
+      ).join(INVITE_CODE_SEPARATOR),
+    );
+    // Nothing to submit yet, so nothing submittable, and no refusal on a screen nobody has used.
+    cy.get(ts(INVITE_SUBMIT)).should("be.visible").and("be.disabled");
+    cy.get(ts(INVITE_ERROR)).should("not.exist");
+    // Neither of the screen's other two states: the breaker is closed (asserted above through
+    // `/api/codes/status`) and this account is pending, not active.
+    cy.get(ts(INVITE_PAUSED)).should("not.exist");
+    cy.get(ts(INVITE_NOT_NEEDED)).should("not.exist");
+
+    // THE TYPED-IN BAD CODE. §9.4's one sentence was asserted three times over `cy.request` in the
+    // next `it` and never once through the screen a person actually uses, which is the half of
+    // BUILD's row that a redirect cannot reach. Typed in lower case on purpose: R104's alphabet is
+    // upper-case only (`CODE_ALPHABET` has no `l`, `O`, `0` or `1`) and the input normalises
+    // before it reads, so the value the box settles on is the formatted code and nothing else.
+    //
+    // THE ATTEMPT BUDGET, which is why there is exactly one of these. §9.4 step 2 counts attempts
+    // per profile per hour and `apps/server/src/api/codes.ts` logs every attempt that gets past
+    // steps 2 and 3 — so this file now spends five: this one, the three failure kinds in the next
+    // `it`, and the good code in the last. `CODE_ATTEMPTS_PER_PROFILE_PER_HOUR` is 5 and the check
+    // is on the attempts already logged, so the fifth still goes through. A second typed code
+    // would spend the margin that keeps a re-run honest.
+    cy.get(ts(INVITE_CODE_INPUT)).type(inviteCodes.missing().toLowerCase());
+    cy.get(ts(INVITE_CODE_INPUT)).should("have.value", inviteCodes.missing());
+    cy.get(ts(INVITE_SUBMIT)).should("not.be.disabled").click();
+
+    // The server's sentence, on screen, verbatim. R145 draws the line this asserts: the client
+    // renders whatever `POST /api/codes/redeem` refused with, so a client that paraphrased would
+    // flatten §9.4's code failures into its own wording and the identical-error property would
+    // stop being observable where a user sees it.
+    cy.get(ts(INVITE_ERROR)).should("have.text", REDEMPTION_IDENTICAL_ERROR);
+    // A refused code leaves the account where it was: still pending, still on the code screen.
+    cy.location("pathname").should("eq", routes.invite());
+    cy.get(ts(INVITE_NOT_NEEDED)).should("not.exist");
+    me(pendingToken()).should((response) => {
+      expect(response.body.profile.status, "a refused code activates nothing").to.eq("pending");
+      expect(response.body.needsInviteCode).to.eq(true);
+    });
   });
 
   it("R107 — a missing, an expired and an exhausted code are indistinguishable", () => {

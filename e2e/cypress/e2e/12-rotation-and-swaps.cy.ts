@@ -54,7 +54,7 @@
 import { CARDS, CARD_NAMES, cardId as catalogId } from "../../support/cards.ts";
 import type { PlayCardOptions } from "../../support/commands.ts";
 import { seedFor } from "../../support/config.ts";
-import { cardId, ts, zoneId } from "../../support/testids.ts";
+import { BOARD, cardId, ts, zoneId } from "../../support/testids.ts";
 import type { GameStateLike, Lane, PlayerId, Side, ZoneRef } from "../../support/types.ts";
 
 /**
@@ -275,6 +275,64 @@ function expectTrapHidden(instanceId: string, zone: ZoneRef, name: string): void
   expectEngineAt(instanceId, zone);
 }
 
+// --- the pixel layout (BUILD M5-T1) -----------------------------------------------------------
+//
+// BUILD M5-T1's acceptance is "a snapshot test renders a fixture `PlayerView` with 10 units, 10
+// backrow cards and a stacked pile **without layout overflow at 1280x720 and 390x844**". Until
+// this block, nothing in the repo measured the second half of that sentence: the three places
+// that could have each deferred to one of the others.
+//
+//   apps/web/src/game/Board.test.tsx  "jsdom has no layout engine ... the real pixel check at
+//                                      1280x720 and 390x844 is the Cypress spec's job"
+//   apps/web/src/game/board.css       "The real pixel check is the Cypress spec's"
+//   e2e/cypress.config.ts             "the responsive case (390x844) is a component test there"
+//
+// Cypress is the only one of the three with a layout engine, and no spec in the twelve had ever
+// called `cy.viewport`. This is the measurement.
+
+/** BUILD M5-T1's two viewports. The first is also `cypress.config.ts`'s default. */
+const VIEWPORTS = [
+  { label: "desktop", width: 1280, height: 720 },
+  { label: "phone", width: 390, height: 844 },
+] as const;
+
+/**
+ * Nothing on the page needs more horizontal room than the viewport gives it.
+ *
+ * `scrollWidth` is the width the content would need; the viewport is the width it has. A lane
+ * column that will not shrink, a card with a min-width, a hero row that has grown a badge list —
+ * each of them shows up here and in no other assertion in this suite. `cards` are re-asserted
+ * visible at each size, because a board that fits by clipping its own cards to nothing would
+ * otherwise pass.
+ */
+function expectFitsViewport(
+  viewport: { label: string; width: number; height: number },
+  cards: readonly string[],
+): void {
+  cy.viewport(viewport.width, viewport.height);
+  cy.get(ts(BOARD)).should("be.visible");
+  for (const instanceId of cards) {
+    cy.get(ts(cardId(instanceId))).should("be.visible");
+  }
+  // `should`, not `then`: a resize relays out asynchronously, so this retries until it settles
+  // rather than reading the frame that happened to be current.
+  cy.document({ log: false }).should((doc) => {
+    const where = `${viewport.label} ${String(viewport.width)}x${String(viewport.height)}`;
+    expect(doc.documentElement.scrollWidth, `the document fits ${where}`).to.be.at.most(
+      viewport.width,
+    );
+    expect(doc.body.scrollWidth, `the body fits ${where}`).to.be.at.most(viewport.width);
+
+    const board = doc.querySelector(ts(BOARD));
+    expect(board, "the board is rendered").to.not.eq(null);
+    expect(board?.scrollWidth ?? 0, `the board fits ${where}`).to.be.at.most(viewport.width);
+    expect(
+      Math.ceil(board?.getBoundingClientRect().right ?? 0),
+      `the board's right edge is inside ${where}`,
+    ).to.be.at.most(viewport.width);
+  });
+}
+
 /** Where each tracked card stands, in the view seat 1 is looking at. */
 type Board = {
   yourLane1: ZoneRef;
@@ -425,6 +483,40 @@ describe("BUILD M8 12 — Silly Silas rotates one step around the ring and Pocke
       expectTrapReadable(need(ids.honeypot, "seat 2's Bear Honeypot"), swapped.honeypot, nameOf(60));
       // Its name is rendered on the field now, so the DOM can find the same instance by name.
       cy.fieldCardByName(nameOf(60)).should("eq", need(ids.honeypot, "seat 2's Bear Honeypot"));
+    });
+
+    // -----------------------------------------------------------------------------------------
+    // 5. THE PIXEL LAYOUT, measured at BUILD M5-T1's two viewports (see the block above the
+    //    `Board` type for why this lives here and nowhere else).
+    //
+    //    It runs at the END of this spec because this is the fullest board the twelve build: six
+    //    field zones occupied across both sides and both rows — four units, one readable trap and
+    //    one face-down back — plus both hands, both heroes, the control bar and the log. That is
+    //    short of the 10 units and 10 backrow cards BUILD M5-T1's fixture names, and deliberately
+    //    so: no deck fixture in `e2e/fixtures/decks` holds five backrow-capable cards a seat could
+    //    set, so a full board is not reachable by playing one. The premise is asserted rather than
+    //    assumed — every card measured is named — so an edit that empties the board turns this
+    //    into a failure and not into a measurement of an empty grid.
+    cy.then(() => {
+      expect(Cypress.config("viewportWidth"), "the desktop viewport is the suite's default").to.eq(
+        VIEWPORTS[0].width,
+      );
+      expect(Cypress.config("viewportHeight"), "and so is its height").to.eq(VIEWPORTS[0].height);
+
+      // The five cards seat 1 can see. Seat 1's own My Pawn is face-down to it after the swap
+      // (R33, asserted above), so it has no element to measure — which is the view being correct,
+      // not the board being empty.
+      const onScreen = [
+        need(ids.yourLane1, "seat 1's lane-1 unit"),
+        need(ids.silas, "Silly Silas"),
+        need(ids.yourLane5, "seat 1's lane-5 unit"),
+        need(ids.theirLane1, "seat 2's lane-1 unit"),
+        need(ids.honeypot, "seat 2's Bear Honeypot"),
+      ];
+
+      for (const viewport of VIEWPORTS) {
+        expectFitsViewport(viewport, onScreen);
+      }
     });
   });
 });
