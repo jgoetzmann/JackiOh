@@ -132,18 +132,12 @@ export function getMe(token: string): Promise<MeResponse> {
   return apiRequest<MeResponse>("/api/auth/me", { token });
 }
 
-export type SignInResponse = {
-  userId: string;
-  emailVerified: boolean;
-  session: { accessToken: string; refreshToken: string | null; expiresAt: number | null };
-};
-
-export function signIn(email: string, password: string): Promise<SignInResponse> {
-  return apiRequest<SignInResponse>("/api/auth/signin", {
-    method: "POST",
-    body: { email, password },
-  });
-}
+// Sign-in and sign-up are NOT here. SPEC §9.2 draws the browser's arrow to the auth provider
+// separately from its arrow to these API functions, so they live in `net/auth.ts` and go straight
+// to the provider. `/api/auth/signin` does exist on the server, but it is BUILD M8's fixture-account
+// path: without a publishable key configured there it answers 503 with "This server does not broker
+// passwords", which is the normal deployment. A second client helper pointing at it would be a
+// sign-in path that silently fails, so there is one and it is `net/auth.ts`.
 
 /** `GET /api/codes/status`: so the code screen can say "paused" instead of guessing. */
 export type CodeStatusResponse = { redemptionEnabled: boolean; retryAfterMs: number };
