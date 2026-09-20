@@ -427,6 +427,13 @@ export type PostgresStoreOptions = {
   connectionString: string;
   /** Maximum pooled connections. Small by default: every call is one short transaction. */
   max?: number;
+  /**
+   * Called when the pool reports an error on an **idle** client, which is normal operation against
+   * a pooler that closes idle connections. Optional: the handler below is attached either way,
+   * because its job is to keep Node from re-throwing an unhandled 'error' event and killing the
+   * process. This is only how a caller gets to log it -- `src/index.ts` passes its `Logger`.
+   */
+  onError?: (error: Error) => void;
 };
 
 export type PostgresStore = Store & {
@@ -483,6 +490,22 @@ function toRedeemResult(value: unknown): RedeemResult {
 export function createPostgresStore(options: PostgresStoreOptions): PostgresStore {
   assertPostgresUrl(options.connectionString);
   const pool = new Pool({ connectionString: options.connectionString, max: options.max ?? 10 });
+
+  // An idle client in the pool can be closed by the *server* at any time -- Supabase's Supavisor
+  // does it on its own idle timeout, and any network blip does it too. `pg` reports that as an
+  // `error` event on the Pool. Node's rule for EventEmitter is that an 'error' event with no
+  // listener is re-thrown, so without this handler a routine idle disconnect takes the whole
+  // process down: measured against the Supabase session pooler as "Error: Connection terminated
+  // unexpectedly ... Emitted 'error' event on Client instance", exit 1, mid-session.
+  //
+  // Swallowing it is correct rather than merely convenient: `pg` has already removed the broken
+  // client from the pool by the time this fires, the next checkout opens a fresh connection, and
+  // no query is lost -- a query that was in flight rejects at its own call site, which is where
+  // the caller can do something about it. What must not happen is the server dying.
+  pool.on("error", (error: Error) => {
+    options.onError?.(error);
+  });
+
   const store = buildStore(poolSession(pool)) as PostgresStore;
 
   store.close = async () => {

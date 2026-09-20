@@ -64,7 +64,7 @@ export class StoreUnavailableError extends Error {
   }
 }
 
-export async function loadStore(env: ServerEnv): Promise<Store> {
+export async function loadStore(env: ServerEnv, log?: Logger): Promise<Store> {
   const specifier = "./db/store";
   let mod: Record<string, unknown>;
   try {
@@ -75,8 +75,19 @@ export async function loadStore(env: ServerEnv): Promise<Store> {
   for (const name of STORE_EXPORT_CANDIDATES) {
     const factory = mod[name];
     if (typeof factory === "function") {
-      return (factory as (options: { connectionString: string }) => Store)({
+      return (
+        factory as (options: {
+          connectionString: string;
+          onError?: (error: Error) => void;
+        }) => Store
+      )({
         connectionString: env.DATABASE_URL,
+        // `warn`, not `alert`: a pooler closing an idle connection is routine, and the store has
+        // already dropped the dead client. It is logged rather than silent so that a *persistent*
+        // failure is visible as a stream of these instead of as nothing at all.
+        onError: (error) => {
+          log?.warn("store.pool.error", { message: error.message });
+        },
       });
     }
   }
@@ -176,7 +187,7 @@ export async function createRuntime(
     : null;
 
   const deps: ServerDeps = {
-    store: overrides.store ?? e2eStore ?? (await loadStore(env)),
+    store: overrides.store ?? e2eStore ?? (await loadStore(env, log)),
     auth:
       overrides.auth ??
       (env.E2E
