@@ -445,7 +445,9 @@ step that is not yet implemented says which BUILD task delivers it.
    redemption, so this is not optional.
 3. **Fill the server environment.** `cp apps/server/.env.example apps/server/.env` and set
    `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DATABASE_URL`, `CODE_PEPPER` (`openssl rand -base64 48`),
-   `PUBLIC_ORIGINS` and `CATALOG_VERSION`. Then `pnpm install`.
+   `PUBLIC_ORIGINS` and `CATALOG_VERSION`. Then `pnpm install`. Every `@jackioh/server` script runs
+   under `--env-file-if-exists=.env`, so this file is read without a dotenv dependency; a variable
+   set in the shell still overrides it, and a missing file is a warning rather than an error.
 4. **Apply the migrations.** `pnpm --filter @jackioh/server db:migrate`, which applies
    `0001_profiles_and_invites.sql` → `0002_collection.sql` → `0003_loadouts.sql` →
    `0004_matches.sql` in order and records them in `app.migrations`. Expected result: 13 tables in
@@ -462,10 +464,15 @@ step that is not yet implemented says which BUILD task delivers it.
 6. **Seed the catalog.** `pnpm --filter @jackioh/server db:seed-catalog`. Requires
    `packages/cards/catalog.json` (BUILD M4-T1). Check `select count(*) from public.cards;` → 109
    (100 cards + 9 tokens) and `select app.catalog_version();` → your `CATALOG_VERSION`.
-7. **Mint an invite code.** The server generates 16 characters from `CODE_ALPHABET`, formats them
-   `XXXX-XXXX-XXXX-XXXX`, HMACs with `CODE_PEPPER` and inserts only the hash (§9.4). Delivered by
-   BUILD M6-T1 as an admin script; until then, compute the HMAC yourself and
-   `insert into public.invite_codes (code_hash, label, max_uses) values (…, 'bring-up', 2);`.
+7. **Mint an invite code.** `pnpm --filter @jackioh/server codes:mint`. It generates 16 characters
+   from `CODE_ALPHABET`, formats them `XXXX-XXXX-XXXX-XXXX`, HMACs with `CODE_PEPPER` and inserts
+   only the hash (§9.4). The plaintext goes to stdout **once** — the database cannot give it back —
+   and the metadata to stderr, so `codes:mint > code.txt` captures the code alone. `--max-uses=N`
+   (default 1, R161) and `--expires-in-days=N` (default never) are the options; for two accounts on
+   one code, `--max-uses=2`. Check `select count(*) from public.invite_codes;` → 1.
+   `src/db/mint-code.ts` validates the whole environment through `loadEnv()` rather than the two
+   variables it reads, because a `CODE_PEPPER` that differs from the server's mints a well-formed
+   code that nobody can ever redeem.
 8. **Start the server and the client.** `pnpm --filter @jackioh/server dev` and
    `pnpm --filter @jackioh/web dev`. The server must print its resolved config and refuse to start
    with a missing env var.
@@ -576,6 +583,7 @@ apps/server/
     db/
       migrate.ts                   applies migrations/*.sql in order, ledger in app.migrations
       seed-catalog.ts              packages/cards/catalog.json -> public.cards
+      mint-code.ts                 `codes:mint`: one invite code, plaintext to stdout once
       migrations/
         0001_profiles_and_invites.sql   app schema, profiles, invite_codes, code_attempts,
                                         app.redeem_invite_code (the six steps of §9.4)

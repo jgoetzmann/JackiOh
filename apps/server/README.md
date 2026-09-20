@@ -51,21 +51,35 @@ You need a Supabase project and a Postgres connection string. Everything else is
 
 ```bash
 pnpm install
+cp apps/server/.env.example apps/server/.env    # then fill it in
 
 # 1. Schema. Applies src/db/migrations/*.sql in order.
-DATABASE_URL='postgresql://...' pnpm --filter @jackioh/server db:migrate
+pnpm --filter @jackioh/server db:migrate
 
 # 2. The card catalog, so loadout rule L6 has something to check against.
-DATABASE_URL='postgresql://...' pnpm --filter @jackioh/server db:seed-catalog
+pnpm --filter @jackioh/server db:seed-catalog
 
-# 3. Run it.
+# 3. An invite code, so an account can get past `pending`.
+pnpm --filter @jackioh/server codes:mint
+
+# 4. Run it.
 pnpm --filter @jackioh/server dev       # tsx watch
 pnpm --filter @jackioh/server start
 ```
 
-Then mint an invite code — every account starts `pending` and a pending account can do nothing but
-look at the code screen (§9.4). `mintInviteCode` in `src/api/codes.ts` is the only thing that
-creates one, and it returns the plaintext exactly once; the database stores only its keyed hash.
+Every script above runs under `--env-file-if-exists=.env`, so `apps/server/.env` is loaded
+without a dotenv dependency, a missing file is not an error, and a variable set in the shell
+still wins over the file — `DATABASE_URL='postgresql://...' pnpm --filter @jackioh/server
+db:migrate` does what it looks like.
+
+Step 3 mints one code. Every account starts `pending` and a pending account can do nothing but
+look at the code screen (§9.4). `src/db/mint-code.ts` is a thin wrapper over `mintInviteCode` in
+`src/api/codes.ts`, which is the only thing that creates one: the plaintext goes to stdout exactly
+once, the metadata to stderr, and the database stores only its keyed hash — so a lost code cannot
+be recovered, only replaced. `--max-uses=N` and `--expires-in-days=N` are the two options (R161:
+one account per code unless its mint says otherwise). The script loads the *whole* environment
+rather than the two variables it reads, because a `CODE_PEPPER` that differs from the running
+server's mints a well-formed code that nobody can ever redeem, and nothing would report it.
 
 ### Environment
 

@@ -96,12 +96,20 @@ function identicalCodeError(): ApiError {
 // ---------------------------------------------------------------------------
 
 /**
+ * The four ports minting actually touches, rather than the whole `ServerDeps`. A `ServerDeps` is
+ * assignable to this, so every handler keeps passing its own `deps` unchanged; the narrower type
+ * is what lets `src/db/mint-code.ts` open a store and a pepper and nothing else — no auth
+ * provider, no catalog, no match registry — to run the bring-up checklist's step 7.
+ */
+export type MintDeps = Pick<ServerDeps, "store" | "ids" | "hashes" | "timers">;
+
+/**
  * Mints one code: `INVITE_CODE_LENGTH` characters (§9.4's 80 bits over the 32-symbol alphabet),
  * formatted `XXXX-XXXX-XXXX-XXXX` for display, stored **hashed** and never in plaintext. The
  * plaintext is returned exactly once, to whoever asked for it; nothing persists it.
  */
 export async function mintInviteCode(
-  deps: ServerDeps,
+  deps: MintDeps,
   input: { maxUses?: number; expiresAt?: number | null } = {},
 ): Promise<{ id: string; formatted: string }> {
   const maxUses = input.maxUses ?? DEFAULT_INVITE_CODE_MAX_USES;

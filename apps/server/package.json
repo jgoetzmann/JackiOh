@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed-catalog": "tsx src/db/seed-catalog.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
+    "db:seed-catalog": "tsx --env-file-if-exists=.env src/db/seed-catalog.ts",
+    "codes:mint": "tsx --env-file-if-exists=.env src/db/mint-code.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

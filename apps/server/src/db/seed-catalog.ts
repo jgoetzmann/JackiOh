@@ -44,6 +44,39 @@ function isEntry(value: unknown): value is CatalogEntry {
   );
 }
 
+/**
+ * The three shapes a catalog file may arrive in, reduced to a list of entries. `undefined` means
+ * none of the three.
+ *
+ * The third is the one that matters: `packages/cards/catalog.json` is a **record keyed by card
+ * id**, which is what `CardDefs` is and what `src/api/catalog.ts` parses it as. Reading only an
+ * array meant the seeder and the API disagreed about the shape of the one file they share, and
+ * the seeder lost — `db:seed-catalog` could not load the real catalog at all.
+ */
+function catalogRows(parsed: unknown, path: string): unknown[] | undefined {
+  if (Array.isArray(parsed)) return parsed;
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+
+  const wrapped = (parsed as { cards?: unknown }).cards;
+  if (Array.isArray(wrapped)) return wrapped;
+
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (entries.length === 0) return undefined;
+
+  // The key and the entry's own `id` must agree. `seedCatalog` inserts `card.id`, so a record
+  // that disagrees with itself would seed a row under an id nothing else in the catalog uses,
+  // and `collection.card_id`'s foreign key would point at the wrong card rather than fail.
+  for (const [key, value] of entries) {
+    const id: unknown = (value as { id?: unknown } | null)?.id;
+    if (typeof id === "string" && id !== key) {
+      throw new Error(
+        `${path}: entry keyed ${JSON.stringify(key)} carries id ${JSON.stringify(id)}`,
+      );
+    }
+  }
+  return entries.map(([, value]) => value);
+}
+
 export async function readCatalog(path: string): Promise<CatalogEntry[]> {
   let text: string;
   try {
@@ -56,8 +89,13 @@ export async function readCatalog(path: string): Promise<CatalogEntry[]> {
   }
 
   const parsed: unknown = JSON.parse(text);
-  const rows = Array.isArray(parsed) ? parsed : (parsed as { cards?: unknown }).cards;
-  if (!Array.isArray(rows)) throw new Error(`${path}: expected an array of cards`);
+  const rows = catalogRows(parsed, path);
+  if (rows === undefined) {
+    throw new Error(
+      `${path}: expected an array of cards, a { "cards": [...] } wrapper, or an object keyed ` +
+        `by card id`,
+    );
+  }
 
   const entries: CatalogEntry[] = [];
   for (const [i, row] of rows.entries()) {
