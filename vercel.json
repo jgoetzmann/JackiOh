@@ -1,13 +1,7 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
+  "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @jackioh/web build --outDir ../../dist --emptyOutDir",
+  "buildCommand": "pnpm --filter @jackioh/web build && rm -rf dist && cp -r apps/web/dist dist",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }],
-  "build": {
-    "env": {
-      "CYPRESS_INSTALL_BINARY": "0"
-    }
-  }
+  "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }]
 }
