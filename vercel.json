@@ -2,10 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "pnpm install --frozen-lockfile",
-  "// buildCommand": "Emits to a REPO-ROOT dist rather than apps/web/dist. A build that wrote apps/web/dist failed with 'No Output Directory named \"dist\" found after the Build completed' -- Vercel looked for dist at the root and did not apply outputDirectory: apps/web/dist. Building to the root means the vite framework preset's default and the value below name the same folder, so it no longer matters which one Vercel honours.",
   "buildCommand": "pnpm --filter @jackioh/web build --outDir ../../dist --emptyOutDir",
   "outputDirectory": "dist",
-  "// rewrites": "main.tsx routes on window.location.pathname with no router, so /decks, /play and /match/<id> are real URLs a player can open or reload. assets/ is excluded so a missing bundle stays a 404 instead of silently returning index.html as JavaScript.",
   "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }],
   "build": {
     "env": {

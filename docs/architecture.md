@@ -190,6 +190,27 @@ What "operating a server" costs us, and the mitigation each cost already has in 
 | One process is one point of failure | The hard ceiling and the reaper (§9.5) guarantee no match and no player is stuck forever, whatever happens to the process. |
 | Horizontal scale needs match affinity | Out of scope at this population (ARCHITECTURE-CCG §6.1: "single digits at 3am"). When it is needed, `matches.status` plus a claim column is the smallest change. |
 
+### 4.2 The two deployment configs
+
+`vercel.json` (client) and `render.yaml` (server) are the two halves §3's table describes. Neither
+file can hold a comment, and three things in them are not obvious:
+
+- **The client build emits to a REPO-ROOT `dist`**, not `apps/web/dist`. A build that wrote the
+  latter failed with `No Output Directory named "dist" found after the Build completed` — Vercel
+  looked at the root and did not apply `outputDirectory`. Emitting to the root makes the vite
+  preset's default and `outputDirectory` name the same folder, so which one wins stops mattering.
+- **`vercel.json` rejects unknown keys.** The `"// name"` comment idiom this repo uses in
+  `package.json` is fine for npm and pnpm and is a hard error here, which is why this note is in
+  Markdown instead of beside the setting it explains.
+- **`render.yaml` installs with `--prod=false`.** `tsx` is a devDependency of the workspace root
+  and `apps/server`'s start script runs through it, so a production-only install builds a service
+  that cannot boot. Both files set `CYPRESS_INSTALL_BINARY=0`, since neither deploy runs a test.
+
+The SPA rewrite is not boilerplate either: `main.tsx` routes on `window.location.pathname`, so
+`/decks`, `/play` and `/match/<id>` are real URLs a player can open or reload, and without it each
+is a 404 on a cold load. `assets/` is excluded so a missing bundle stays a 404 rather than being
+served `index.html` as JavaScript.
+
 ### 4.2 Where each clock lives
 
 | Clock | Value | Held by | Also stored on `matches` | Why stored |
