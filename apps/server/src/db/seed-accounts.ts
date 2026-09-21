@@ -83,6 +83,60 @@ async function createOrFindUser(
   );
 }
 
+/**
+ * Three legal decks, so a seeded account can queue immediately instead of building 60 cards by
+ * hand before it can play once.
+ *
+ * Saved through `app.save_loadout` rather than by writing `loadout_decks` and
+ * `loadout_deck_cards` directly, because that function IS the rules: L1 (exactly 3 decks), L2
+ * (exactly `deck_size` each), L3 (no tokens, at most `max_copies` of a card), L4 (a card in one
+ * deck only, also a unique index), L5 and L6 (the card exists in this catalog version and is
+ * owned). A seeder that bypassed it could produce a loadout the queue then refuses, which is a
+ * worse outcome than no loadout at all.
+ *
+ * `MAX_COPIES` is 1, so the format is singleton and the three decks need 60 DISTINCT non-token
+ * cards. The launch grant gives every active profile all 100 of them, so ordering by id and
+ * slicing is enough; no deck here is trying to be good, only legal.
+ */
+async function saveStarterLoadout(
+  client: Client,
+  profileId: string,
+  catalogVersion: string,
+): Promise<void> {
+  const { rows } = await client.query<{ id: string }>(
+    "select id from public.cards where not token and catalog_version = $1 order by id",
+    [catalogVersion],
+  );
+  const ids = rows.map((r) => r.id);
+
+  const { rows: sizes } = await client.query<{ deck_size: number; decks: number }>(
+    "select (app.setting('deck_size'))::text::int as deck_size, 3 as decks",
+  );
+  const deckSize = sizes[0]?.deck_size ?? 20;
+  const deckCount = sizes[0]?.decks ?? 3;
+
+  const needed = deckSize * deckCount;
+  if (ids.length < needed) {
+    throw new Error(
+      `need ${String(needed)} distinct non-token cards for ${String(deckCount)} decks of ` +
+        `${String(deckSize)}, but the catalog has ${String(ids.length)}`,
+    );
+  }
+
+  // `app.save_loadout` reads each entry as `{card_id, count}` and sums `count` for L2, so a bare
+  // id string sums to 0 and the deck reads as empty.
+  const decks = Array.from({ length: deckCount }, (_, i) => ({
+    name: `Starter ${String(i + 1)}`,
+    cards: ids.slice(i * deckSize, (i + 1) * deckSize).map((id) => ({ card_id: id, count: 1 })),
+  }));
+
+  await client.query("select app.save_loadout($1::uuid, $2::text, $3::jsonb)", [
+    profileId,
+    catalogVersion,
+    JSON.stringify(decks),
+  ]);
+}
+
 export async function seedAccounts(count: number): Promise<SeededAccount[]> {
   const env = loadEnv();
   if (env.NODE_ENV === "production") {
@@ -119,6 +173,7 @@ export async function seedAccounts(count: number): Promise<SeededAccount[]> {
         [id],
       );
 
+      await saveStarterLoadout(client, id, env.CATALOG_VERSION);
       out.push({ email, password: PASSWORD, userId: id, created });
     }
   } finally {
