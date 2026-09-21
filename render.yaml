@@ -1,0 +1,58 @@
+# Render Blueprint for `apps/server` — the half of this repo Vercel cannot host.
+#
+# docs/architecture.md §4 ("Why the match actor cannot be a stateless function") takes the third
+# of ARCHITECTURE-CCG §2.1's options: "Long-running Node process hosting one actor object per live
+# match". That is what this file deploys. `apps/web` goes to a CDN instead (vercel.json).
+#
+# Free tier, and its one real consequence: a free instance SPINS DOWN after ~15 minutes with no
+# traffic and takes ~50 s to wake. A live match does not survive that, which SPEC §9.5 already
+# answers -- "a crashed actor rebuilds its state by folding (seed, log)" -- so a player reconnects
+# into the same position rather than losing it. The turn clock is wall-clock and keeps running
+# while the instance is down, so a long sleep mid-match can still expire a turn. Fine for playing
+# with friends; a paid instance is the fix if that ever matters.
+services:
+  - type: web
+    name: jackioh-server
+    runtime: node
+    plan: free
+    # Ohio is us-east-2, which is where this project's Supabase lives (its direct DB host resolves
+    # into AWS's 2600:1f16::/34, us-east-2). Same region = the shortest hop for every query.
+    region: ohio
+    branch: main
+    # `--prod=false` is load-bearing: `tsx` is a devDependency of the workspace ROOT, and
+    # `apps/server`'s start script runs through it, so a production-only install would leave the
+    # server with no way to boot. CYPRESS_INSTALL_BINARY below keeps that full install from
+    # downloading a browser this service never runs.
+    buildCommand: pnpm install --frozen-lockfile --prod=false
+    startCommand: pnpm --filter @jackioh/server start
+    # R163 makes /api/catalog the one unauthenticated route, so it is the honest readiness probe:
+    # a 200 means the catalog really did register, not merely that a port is open.
+    healthCheckPath: /api/catalog
+    envVars:
+      # .nvmrc. package.json `engines` asks for >=22.13.
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: CYPRESS_INSTALL_BINARY
+        value: "0"
+      - key: NODE_ENV
+        value: production
+      # R105's Core-set version. Must equal what db:seed-catalog stamped on public.cards.
+      - key: CATALOG_VERSION
+        value: core-1
+      # PORT is injected by Render and read by src/env.ts; do not set it here.
+      #
+      # `sync: false` means "prompt me, never store it in git". The four secrets plus the origin
+      # list are set in the Render dashboard. SUPABASE_SECRET_KEY bypasses every RLS policy and
+      # CODE_PEPPER keys the invite-code HMAC, so neither may ever be committed.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CODE_PEPPER
+        sync: false
+      # Comma-separated browser origins: the Vercel domain. Gates BOTH CORS and the WebSocket
+      # Origin check (R162), so a missing entry fails the socket, not just a fetch.
+      - key: PUBLIC_ORIGINS
+        sync: false
