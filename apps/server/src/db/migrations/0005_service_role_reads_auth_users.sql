@@ -1,0 +1,43 @@
+-- ============================================================================
+-- 0005 — service_role may read auth.users
+-- ============================================================================
+-- Every authenticated request failed with `permission denied for table users`
+-- until this ran. `src/db/store.ts` resolves a caller with
+--
+--   from public.profiles p left join auth.users u on u.id = p.id   (PROFILE_FROM)
+--
+-- and every session runs `set_config('role','service_role',true)` first, so
+-- that join executes as service_role. Measured against a fresh Supabase
+-- project before this migration:
+--
+--   set role service_role;
+--   select count(*) from public.profiles;  -- OK
+--   select count(*) from auth.users;       -- ERROR: permission denied for table users
+--   select grantee, privilege_type from information_schema.role_table_grants
+--     where table_schema='auth' and table_name='users';
+--   -- postgres only. service_role has nothing.
+--
+-- store.ts's own comment says "service_role needs SELECT on auth.users, which
+-- Supabase grants". The first half is true and the second is not: the auth
+-- schema belongs to supabase_auth_admin and Supabase's default grants cover
+-- `public`, not `auth`. BYPASSRLS does not help — it waives row policies, not
+-- table privileges.
+--
+-- SELECT only, and only on `users`. The server needs two columns from it —
+-- `email`, and `email_confirmed_at` for §9.4 step 1's verified-email
+-- precondition — and nothing in this application ever writes an identity: the
+-- auth provider owns that table (§9.2's separate arrow from the browser).
+-- No grant is made on any other auth table, and none to anon or authenticated,
+-- so a browser holding the publishable key is no closer to the user list than
+-- it was before.
+--
+-- Idempotent: GRANT is a no-op when the privilege is already held, so a
+-- project that does grant this by default is unaffected.
+
+grant usage on schema auth to service_role;
+grant select on table auth.users to service_role;
+
+-- No `comment on schema auth` here: supabase_auth_admin owns that schema, and
+-- the attempt failed with `must be owner of schema auth`, rolling the whole
+-- migration back. Granting INTO a schema you do not own is allowed; describing
+-- it is not.

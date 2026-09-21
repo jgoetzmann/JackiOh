@@ -195,6 +195,20 @@ function poolSession(pool: Pool): Session {
     pool,
     run: async <T>(subject: string | null, body: (q: Query) => Promise<T>): Promise<T> => {
       const client = await pool.connect();
+      // A CHECKED-OUT client emits `error` on itself, not on the Pool, so `pool.on("error")` in
+      // `createPostgresStore` does not cover this case and an unhandled 'error' event is re-thrown
+      // by Node. Measured against the Supabase pooler: `Error: read ETIMEDOUT ... Emitted 'error'
+      // event on Client instance`, process dead, mid-session, with a request in flight.
+      //
+      // The listener does not swallow the failure -- the in-flight query rejects on its own and
+      // that rejection is what the caller sees and reports. It exists so the process survives long
+      // enough to report it, and so the dead connection can be destroyed rather than returned to
+      // the pool: `release(err)` is how `pg` is told to discard a client instead of reusing it.
+      let fatal: Error | undefined;
+      const onClientError = (error: Error): void => {
+        fatal = error;
+      };
+      client.on("error", onClientError);
       try {
         await beginSession(client, subject);
         const result = await body(boundQuery(client));
@@ -204,7 +218,8 @@ function poolSession(pool: Pool): Session {
         await client.query("rollback").catch(() => undefined);
         throw error;
       } finally {
-        client.release();
+        client.removeListener("error", onClientError);
+        client.release(fatal);
       }
     },
   });
@@ -489,7 +504,19 @@ function toRedeemResult(value: unknown): RedeemResult {
  */
 export function createPostgresStore(options: PostgresStoreOptions): PostgresStore {
   assertPostgresUrl(options.connectionString);
-  const pool = new Pool({ connectionString: options.connectionString, max: options.max ?? 10 });
+  const pool = new Pool({
+    connectionString: options.connectionString,
+    max: options.max ?? 10,
+    // Supabase's Supavisor closes a client that has been idle on its side, and `pg` does not know
+    // until it tries to use it — which surfaces as `read ETIMEDOUT` on a request that did nothing
+    // wrong. Recycling an idle client after 10 s means the pool retires connections before the
+    // pooler does, so a checkout is far more likely to hand back a live socket.
+    idleTimeoutMillis: 10_000,
+    // TCP keepalive, so a connection that is merely quiet is not dropped by something in between.
+    keepAlive: true,
+    // Fail a checkout that cannot get a connection rather than hanging the request forever.
+    connectionTimeoutMillis: 10_000,
+  });
 
   // An idle client in the pool can be closed by the *server* at any time -- Supabase's Supavisor
   // does it on its own idle timeout, and any network blip does it too. `pg` reports that as an
