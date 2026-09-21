@@ -169,7 +169,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   const issues: readonly LoadoutError[] = serverIssues ?? clientIssues;
 
   return (
-    <div className="app-shell deckbuilder" data-testid={DECKBUILDER}>
+    <div className="app-shell app-shell--wide deckbuilder" data-testid={DECKBUILDER}>
       <h1>JackiOh — decks</h1>
 
       <div className="db-tabs" role="tablist" aria-label="Decks">

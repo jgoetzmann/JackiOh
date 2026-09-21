@@ -298,7 +298,7 @@ function Hotseat({
   const game = <Game view={view} legal={legal} onAction={dispatch} error={error} />;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell--wide">
       <header className="hotseat-bar">
         <span>
           seed <code>{session.seed}</code> · seat <code>{session.seat}</code> · turn {view.turn} ·

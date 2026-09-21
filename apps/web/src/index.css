@@ -100,27 +100,252 @@ button:disabled {
   color: var(--text-dim);
 }
 
-/* The shell chrome the M6 screens share: /login, /play and the header of /match/<id>. Nothing
-   here is a game element — the board brings its own layout in game/board.css. */
+/* ---------------------------------------------------------------------------------------------
+   The shell chrome: /, /login, /invite, /decks, /play and the header of /match/<id>.
+   Nothing here is a game element — the board brings its own layout in game/board.css.
 
-.form-card {
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  border-radius: var(--radius);
-  padding: 12px;
+   SCOPED ON PURPOSE. Every rule below is inside `.app-shell`, `.form-card` or a shell-only class.
+   `body`'s 13px and the --card-* tokens are left exactly as they were, because BUILD M5-T1's
+   acceptance is a PIXEL measurement of the 10/10 board in a real browser: a global type or
+   spacing change would move the board and fail a test that is not about the shell at all.
+   --------------------------------------------------------------------------------------------- */
+
+.app-shell {
+  padding: 32px 20px 48px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 44ch;
+  gap: 18px;
+  max-width: 960px;
+  margin: 0 auto;
+  font-size: 15px;
+}
+
+/* A match fills the viewport; it must not be squeezed into the reading column above. */
+.app-shell.app-shell--wide {
+  max-width: 100%;
+  padding: 12px;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.app-shell h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+  font-weight: 650;
+}
+
+.app-shell h2 {
+  font-size: 19px;
+  line-height: 1.25;
+  margin: 0;
+  font-weight: 600;
+}
+
+.app-shell p {
+  margin: 0;
+  color: var(--text-dim);
+  max-width: 64ch;
+}
+
+.app-shell a {
+  color: var(--you);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--you) 45%, transparent);
+}
+
+.app-shell a:hover {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+/* The wordmark: the one flourish, and it costs nothing at runtime. */
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand h1 {
+  background: linear-gradient(95deg, var(--text) 30%, var(--radiant));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand .tagline {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* --- surfaces ------------------------------------------------------------------------------ */
+
+.panel {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--bg-raised) 70%, var(--bg)));
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* An auth screen is one column, centred, and should not drift to the left edge of a wide page. */
+.panel--auth {
+  max-width: 400px;
+  width: 100%;
+  margin: 4vh auto 0;
+}
+
+.notice {
+  border: 1px solid var(--line-bright);
+  border-left: 3px solid var(--you);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 11px 14px;
+  max-width: 64ch;
+  color: var(--text-dim);
+}
+
+/* `.notice` used to be red unconditionally, which made ordinary prose read as a failure. Red is
+   now opt-in, and role="alert" gets it without a class so an error cannot forget to look like one. */
+.notice--error,
+.notice[role="alert"] {
+  border-left-color: var(--opponent);
+  color: var(--text);
+}
+
+.notice--ok,
+.notice[role="status"] {
+  border-left-color: var(--legal);
+}
+
+.notice code {
+  color: var(--text);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.92em;
+}
+
+/* --- controls ------------------------------------------------------------------------------ */
+
+.app-shell button,
+.form-card button {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 550;
+  transition: background-color 120ms, border-color 120ms, transform 60ms;
+}
+
+.app-shell button:hover:not(:disabled),
+.form-card button:hover:not(:disabled) {
+  border-color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg-raised) 70%, var(--line-bright));
+}
+
+.app-shell button:active:not(:disabled),
+.form-card button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* The one call to action on a screen. */
+.button-primary,
+.form-card button[type="submit"] {
+  background: var(--you);
+  border-color: color-mix(in srgb, var(--you) 70%, white);
+  color: #fff;
+}
+
+.button-primary:hover:not(:disabled),
+.form-card button[type="submit"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--you) 82%, white);
+  border-color: #fff;
+}
+
+/* An <a> that should read as a button: the landing's two calls to action. Kept as anchors rather
+   than buttons because they navigate, and a real href is what middle-click and "open in new tab"
+   need — `role="button"` only fixes how it is announced, not what it is. */
+.app-shell a.button-primary,
+.app-shell a.button-secondary {
+  display: inline-block;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: background-color 120ms, border-color 120ms;
+}
+
+.app-shell a.button-primary {
+  background: var(--you);
+  border-color: color-mix(in srgb, var(--you) 70%, white);
+  color: #fff;
+}
+
+.app-shell a.button-primary:hover {
+  background: color-mix(in srgb, var(--you) 82%, white);
+  border-color: #fff;
+  color: #fff;
+}
+
+.app-shell a.button-secondary {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.app-shell a.button-secondary:hover {
+  border-color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg-raised) 70%, var(--line-bright));
+  color: var(--text);
+}
+
+/* A button that should read as a link: the sign-in/sign-up toggle. Was used before it existed. */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--you);
+  cursor: pointer;
+  align-self: flex-start;
+  font-weight: 450;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-button:hover {
+  color: var(--text);
+  background: none;
+}
+
+:where(button, input, a):focus-visible {
+  outline: 2px solid var(--radiant);
+  outline-offset: 2px;
+}
+
+/* --- forms --------------------------------------------------------------------------------- */
+
+.form-card {
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 100%;
 }
 
 .form-card h2 {
-  font-size: 14px;
+  font-size: 19px;
   margin: 0;
 }
 
 .form-card label {
   color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 7px;
 }
 
 .form-card input {
@@ -128,16 +353,59 @@ button:disabled {
   color: inherit;
   background: var(--bg-sunken);
   border: 1px solid var(--line-bright);
-  border-radius: var(--radius);
-  padding: 5px 8px;
+  border-radius: 8px;
+  padding: 10px 12px;
   min-width: 0;
+  transition: border-color 120ms;
+}
+
+.form-card input:focus {
+  border-color: var(--you);
+}
+
+.form-card button[type="submit"] {
+  margin-top: 14px;
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 10px;
+}
+
+/* --- landing ------------------------------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 3vh 0 6px;
+}
+
+.hero .lede {
+  font-size: 17px;
+  color: var(--text-dim);
+  max-width: 54ch;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.card-grid .panel {
   gap: 8px;
+}
+
+.card-grid h2 {
+  font-size: 16px;
+}
+
+.card-grid p {
+  font-size: 13px;
+  flex: 1;
 }
 
 /* `/match/<id>`: the seat, turn and connection line, with the clock on the right. */
@@ -150,10 +418,24 @@ button:disabled {
   border: 1px solid var(--line);
   background: var(--bg-raised);
   border-radius: var(--radius);
-  padding: 6px 10px;
+  padding: 8px 12px;
   color: var(--text-dim);
 }
 
 .match-bar code {
   color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    padding: 20px 16px 36px;
+  }
+
+  .app-shell h1 {
+    font-size: 24px;
+  }
+
+  .panel--auth {
+    margin-top: 0;
+  }
 }

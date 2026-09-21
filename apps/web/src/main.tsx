@@ -41,12 +41,45 @@ export const shellTestid = {
 function Landing(): ReactElement {
   return (
     <div className="app-shell">
-      <h1>JackiOh</h1>
-      <p className="notice">
-        <a href={paths.play}>Play</a> a networked match, edit your <a href={paths.decks}>decks</a>,
-        or open <code>/dev/hotseat?seed=42&amp;a=first20&amp;b=first20</code> to play both seats on
-        one device.
-      </p>
+      <div className="hero">
+        <div className="brand">
+          <h1>JackiOh</h1>
+          <span className="tagline">a 1v1 card game</span>
+        </div>
+        <p className="lede">
+          Hearthstone-style mana and combat on Yu-Gi-Oh-style lanes, with a hidden trap backrow.
+        </p>
+        <div className="row">
+          <a className="button-primary" href={paths.play} role="button">
+            Play a match
+          </a>
+          <a className="button-secondary" href={paths.decks} role="button">
+            Build decks
+          </a>
+        </div>
+      </div>
+
+      <div className="card-grid">
+        <section className="panel">
+          <h2>Play</h2>
+          <p>Queue for a ranked match, or make a room code and send it to someone.</p>
+          <a href={paths.play}>Find a game →</a>
+        </section>
+        <section className="panel">
+          <h2>Decks</h2>
+          <p>Three decks, twenty cards each, singleton — no card twice and none shared between decks.</p>
+          <a href={paths.decks}>Edit your decks →</a>
+        </section>
+        {DEV_ONLY ? (
+          // Dev-only, and it really is absent in production: main.tsx serves NotFound for
+          // /dev/hotseat when MODE is production, so a link here would 404 on a deploy.
+          <section className="panel">
+            <h2>Hotseat</h2>
+            <p>Both seats on one device. No account, no server — it runs the engine in the tab.</p>
+            <a href={`${paths.hotseat}?seed=42&a=first20&b=first20`}>Open hotseat →</a>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

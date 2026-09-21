@@ -84,68 +84,73 @@ export default function LoginRoute(): ReactElement {
 
   return (
     <div className="app-shell">
-      <h1>JackiOh — {signingUp ? "create an account" : "sign in"}</h1>
+      <section className="panel panel--auth">
+        <div className="brand">
+          <h1>JackiOh</h1>
+        </div>
+        <h2>{signingUp ? "Create an account" : "Sign in"}</h2>
 
-      <form className="form-card" data-testid={loginTestid.form} onSubmit={onSubmit}>
-        <label htmlFor="login-email">Email</label>
-        <input
-          id="login-email"
-          data-testid={loginTestid.email}
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value);
+        <form className="form-card" data-testid={loginTestid.form} onSubmit={onSubmit}>
+          <label htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            data-testid={loginTestid.email}
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+            }}
+          />
+
+          <label htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            data-testid={loginTestid.password}
+            type="password"
+            autoComplete={signingUp ? "new-password" : "current-password"}
+            value={password}
+            onChange={(event) => {
+              setPassword(event.target.value);
+            }}
+          />
+
+          <button type="submit" data-testid={loginTestid.submit} disabled={busy}>
+            {busy
+              ? signingUp
+                ? "Creating…"
+                : "Signing in…"
+              : signingUp
+                ? "Create account"
+                : "Sign in"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          className="link-button"
+          data-testid={loginTestid.mode}
+          onClick={() => {
+            setMode(signingUp ? "signIn" : "signUp");
+            setError(null);
+            setNotice(null);
           }}
-        />
-
-        <label htmlFor="login-password">Password</label>
-        <input
-          id="login-password"
-          data-testid={loginTestid.password}
-          type="password"
-          autoComplete={signingUp ? "new-password" : "current-password"}
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value);
-          }}
-        />
-
-        <button type="submit" data-testid={loginTestid.submit} disabled={busy}>
-          {busy
-            ? signingUp
-              ? "Creating…"
-              : "Signing in…"
-            : signingUp
-              ? "Create account"
-              : "Sign in"}
+        >
+          {signingUp ? "Already have an account? Sign in" : "No account? Create one"}
         </button>
-      </form>
 
-      <button
-        type="button"
-        className="link-button"
-        data-testid={loginTestid.mode}
-        onClick={() => {
-          setMode(signingUp ? "signIn" : "signUp");
-          setError(null);
-          setNotice(null);
-        }}
-      >
-        {signingUp ? "Already have an account? Sign in" : "No account? Create one"}
-      </button>
+        {notice !== null ? (
+          <p className="notice" data-testid={loginTestid.notice} role="status">
+            {notice}
+          </p>
+        ) : null}
 
-      {notice !== null ? (
-        <p className="notice" data-testid={loginTestid.notice} role="status">
-          {notice}
-        </p>
-      ) : null}
-
-      {error !== null ? (
-        <p className="notice" data-testid={loginTestid.error} role="alert">
-          {error}
-        </p>
-      ) : null}
+        {error !== null ? (
+          <p className="notice" data-testid={loginTestid.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }

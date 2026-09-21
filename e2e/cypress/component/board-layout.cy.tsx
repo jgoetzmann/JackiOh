@@ -29,8 +29,11 @@
 // ---------------------------------------------------------------------------------------------
 //
 // `Board` is never rendered anywhere but inside `Game`, and `Game` is never rendered anywhere but
-// inside a `<div className="app-shell">` — routes/dev/hotseat.tsx and routes/match.tsx both do
-// exactly that. `.app-shell` has `padding: 12px` (src/index.css), so in the real client the board
+// inside a `<div className="app-shell app-shell--wide">` — routes/dev/hotseat.tsx and
+// routes/match.tsx both do exactly that. The `--wide` modifier is not decoration: plain
+// `.app-shell` is a 960px reading column for the sign-in and landing screens, which would crush
+// the board, so every screen that carries one opts out. `.app-shell--wide` keeps the original
+// `padding: 12px` (src/index.css), so in the real client the board
 // gets the viewport MINUS 24px. Mounting `Board` bare would hand it 24px it never has: a board
 // that overflows the phone by 20px would measure as fitting, and the acceptance item would have
 // been "closed" by a test that is more generous than the product. The mount is therefore the
@@ -205,7 +208,7 @@ describe("BUILD M5-T1 — the full fixture board fits 1280x720 and 390x844", () 
     // everything greyed out (Board.tsx). It changes borders and opacity, never geometry. `pending`
     // is null in this fixture, so `Prompt` renders nothing and no modal covers the measurement.
     cy.mount(
-      <div className="app-shell">
+      <div className="app-shell app-shell--wide">
         <Game view={view} legal={[]} onAction={() => undefined} />
       </div>,
     );

@@ -157,7 +157,7 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell--wide">
       <header className="match-bar">
         <span>
           match <code>{matchId}</code> · seat <code>{view.viewer}</code> · turn {view.turn} ·{" "}
