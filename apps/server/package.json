@@ -9,6 +9,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
     "db:seed-catalog": "tsx --env-file-if-exists=.env src/db/seed-catalog.ts",
     "codes:mint": "tsx --env-file-if-exists=.env src/db/mint-code.ts",
+    "db:seed-accounts": "tsx --env-file-if-exists=.env src/db/seed-accounts.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
