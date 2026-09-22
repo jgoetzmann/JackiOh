@@ -25,7 +25,6 @@
  */
 
 import { ratingWindow } from "../config";
-import { initialClocks } from "../match/clock";
 import { callerProfile } from "./collection";
 import { ApiError, badRequest, ok, route, type Route } from "./http";
 import { deckFor, validateStoredLoadout } from "./loadouts";
@@ -216,7 +215,6 @@ async function startPairedMatch(
   a: Ticket,
   b: Ticket,
   matchId: string,
-  now: number,
 ): Promise<void> {
   const seats: [MatchSeat, MatchSeat] = [
     { profileId: a.profileId, player: "p1", deck: a.deck },
@@ -225,19 +223,22 @@ async function startPairedMatch(
   // R143: the server mints the seed, unless an end-to-end enqueue supplied one.
   const seed = takeSeedForPair(a, b) ?? deps.ids.seed();
 
+  // NO `matches.create` HERE. `MatchRegistry.start` builds the row -- seed, both frozen decks,
+  // R79's clocks, status live -- and calls `store.matches.create` itself (registry.ts), so a
+  // create here made it TWICE for one id. The second call found the row already `live` and
+  // `matches.create` refuses that by contract ("anything else -> the id is taken"), so the
+  // SECOND player's enqueue returned 500 after the match had already been made, leaving both
+  // players in a match no client had been given the id of.
+  //
+  // The room path never had this bug and shows the shape that works: `rooms.claim` writes the
+  // `open` row and the registry's create promotes it to `live` -- one create, one promotion.
+  // `tickets.claimPair` writes the same `open` skeleton for a pair, so the queue now behaves
+  // identically.
+  //
+  // What stays in a transaction is the pair of `setInMatch` writes, which is what §9.5 means by
+  // in-match state; `profiles.current_match_id` is a foreign key into `matches` and the `open`
+  // row `claimPair` wrote is what satisfies it.
   await deps.store.tx(async (t) => {
-    await t.matches.create({
-      id: matchId,
-      seed,
-      players: [a.profileId, b.profileId],
-      // §9.4, §9.5: the decks the tickets froze, not the current loadouts.
-      decks: [a.deck, b.deck],
-      catalogVersion: deps.catalog.version,
-      status: "live",
-      createdAt: now,
-      finishedAt: null,
-      clocks: initialClocks(now, deps.config),
-    });
     // §9.5: in-match state is set here and cleared by `results.ts` at every ending.
     await t.profiles.setInMatch(a.profileId, matchId);
     await t.profiles.setInMatch(b.profileId, matchId);
@@ -314,7 +315,7 @@ export async function tryPair(deps: ServerDeps): Promise<number> {
 
       taken.add(a.id);
       taken.add(b.id);
-      await startPairedMatch(deps, a, b, matchId, now);
+      await startPairedMatch(deps, a, b, matchId);
       made += 1;
       break;
     }

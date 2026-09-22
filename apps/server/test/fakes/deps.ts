@@ -20,6 +20,7 @@ import type {
   ServerConfig,
   ServerDeps,
   StartMatchInput,
+  Store,
   Timers,
 } from "../../src/api/ports";
 import { createHashes } from "../../src/api/crypto";
@@ -282,7 +283,25 @@ export function createRecordingLogger(): RecordingLogger {
 
 export type FakeMatchDirectory = MatchDirectory & { started: StartMatchInput[] };
 
-export function createFakeMatchDirectory(): FakeMatchDirectory {
+/**
+ * `start` WRITES THE MATCH ROW, because the real one does.
+ *
+ * This fake used to only record the call. `createMatchRegistry`'s `start` (src/match/registry.ts)
+ * builds the row -- seed, both frozen decks, R79's clocks, status live -- and calls
+ * `store.matches.create` itself, so a fake that wrote nothing made the store's create invisible to
+ * every test that goes through the directory. That is not a small gap: matchmaking also created
+ * the row in `startPairedMatch`, so production wrote it TWICE for one id and the second player's
+ * enqueue returned 500 on every single pair, while the server suite stayed 100% green because no
+ * test ever saw the second write.
+ *
+ * `store` is OPT-IN rather than the default. Handing it to every test breaks the ones that
+ * pre-create a match row and then call `start`, because `test/fakes/store.ts`'s `create` throws
+ * `duplicate match` for ANY existing row while the real `src/db/store.ts` promotes an `open` one
+ * ("nothing -> insert; an `open` row -> complete it; anything else -> the id is taken"). That
+ * divergence is worth closing on its own; until it is, the store goes only to the test that needs
+ * the write to be real — `queue.test.ts`'s duplicate-create regression.
+ */
+export function createFakeMatchDirectory(store?: Store): FakeMatchDirectory {
   const started: StartMatchInput[] = [];
   const live = new Set<string>();
   return {
@@ -290,6 +309,25 @@ export function createFakeMatchDirectory(): FakeMatchDirectory {
     start: async (input) => {
       started.push(input);
       live.add(input.matchId);
+      if (store !== undefined) {
+        const [first, second] = input.seats;
+        await store.matches.create({
+          id: input.matchId,
+          seed: input.seed,
+          players: [first.profileId, second.profileId],
+          decks: [[...first.deck], [...second.deck]],
+          catalogVersion: input.catalogVersion,
+          status: "live",
+          createdAt: 0,
+          finishedAt: null,
+          clocks: {
+            turnDeadline: null,
+            promptDeadline: null,
+            graceDeadline: { p1: null, p2: null },
+            ceilingAt: 0,
+          },
+        });
+      }
     },
     has: (matchId) => live.has(matchId),
     stop: async (matchId) => {
@@ -354,15 +392,20 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
   // swap with it.
   const timers = overrides.timers ?? createManualTimers();
   const limits = overrides.limits ?? testLimits();
-  const base = {
-    store: createMemoryStore({
+  // Hoisted out of the literal below so the match directory can be handed the same store: its
+  // `start` writes the match row exactly as `createMatchRegistry` does.
+  const store =
+    (overrides.store as Store | undefined) ??
+    createMemoryStore({
       now: () => timers.now(),
       redemption: {
         attemptsPerProfilePerHour: limits.redeemPerProfilePerHour,
         attemptsPerIpPerHour: limits.redeemPerIpPerHour,
         attemptWindowMs: limits.redeemWindowMs,
       },
-    }),
+    });
+  const base = {
+    store,
     auth: createFakeAuth(),
     timers,
     hashes: createHashes({ code: "test-code-pepper", ip: "test-ip-pepper" }),

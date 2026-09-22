@@ -27,7 +27,13 @@ import { createRouter, type Router } from "../../src/api/http";
 import { createLoadoutRoutes } from "../../src/api/loadouts";
 import { createQueueRoutes, tryPair } from "../../src/api/queue";
 import type { Ticket } from "../../src/api/ports";
-import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
+import {
+  createFakeMatchDirectory,
+  createTestDeps,
+  jsonRequest,
+  readJson,
+  type TestDeps,
+} from "../fakes/deps";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -77,7 +83,16 @@ async function cancel(token: string): Promise<Response> {
 }
 
 beforeEach(() => {
+  // The match directory here WRITES THE MATCH ROW, because `createMatchRegistry.start` does
+  // (src/match/registry.ts) and this file's subject is what happens around that write.
+  //
+  // With the default store-less fake, production wrote the row twice for one id — once in
+  // `startPairedMatch` and once in the registry — and every second enqueue returned 500 while
+  // this file stayed green, because no test ever saw the registry's write. The row is now
+  // written exactly where production writes it, so a create in `startPairedMatch` fails here
+  // instead of shipping.
   deps = createTestDeps();
+  deps.matches = createFakeMatchDirectory(deps.store);
   router = createRouter(createQueueRoutes(), deps);
 });
 
