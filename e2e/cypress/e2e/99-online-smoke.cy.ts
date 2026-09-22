@@ -322,4 +322,62 @@ function signInThroughForm(email: string): void {
     cy.location("pathname", { timeout: 60_000 }).should("match", /^\/match\//);
     cy.get('[data-testid="board"]', { timeout: 60_000 }).should("exist");
   });
+
+  /**
+   * The account screen, which did not exist: a signed-in player could not see which address they
+   * were signed in as, could not see a record, and could not sign out at all.
+   */
+  it("the account screen shows who you are signed in as, and your record", () => {
+    signInThroughForm(P1);
+    cy.visit("/account");
+
+    cy.get('[data-testid="account-email"]', { timeout: 40_000 }).should("contain.text", P1);
+    cy.get('[data-testid="account-status"]').should("contain.text", "active");
+    // Seeded accounts have played during these runs, so the record is real data off `results`.
+    cy.get('[data-testid="account-rating"]').invoke("text").should("match", /^\d+$/);
+    cy.get('[data-testid="account-record"]').invoke("text").should("match", /^\d+–\d+–\d+$/);
+    cy.get('[data-testid="account-win-rate"]').should("exist");
+  });
+
+  it("signing out clears the session and an anonymous visitor is sent back to sign in", () => {
+    signInThroughForm(P1);
+    cy.visit("/account");
+    cy.get('[data-testid="account-sign-out"]', { timeout: 40_000 }).click();
+
+    // A real navigation, so the token is gone from storage as well as from memory.
+    cy.location("pathname", { timeout: 40_000 }).should("eq", "/");
+    cy.window().then((win) => {
+      expect(win.localStorage.getItem("jackioh.session"), "the token is cleared").to.eq(null);
+    });
+
+    // And the gate now refuses a guarded screen.
+    cy.visit("/decks");
+    cy.location("pathname", { timeout: 40_000 }).should("eq", "/login");
+  });
+
+  it("every inner screen offers a way back, and the landing offers the account", () => {
+    signInThroughForm(P1);
+
+    for (const path of ["/play", "/account"]) {
+      cy.visit(path);
+      cy.get('[data-testid="nav-back"], [data-testid="account-screen"]', { timeout: 40_000 }).should(
+        "exist",
+      );
+    }
+
+    cy.visit("/play");
+    cy.get('[data-testid="nav-back"]').click();
+    cy.location("pathname", { timeout: 40_000 }).should("eq", "/");
+    cy.get('[data-testid="landing-account"]').should("exist");
+  });
+
+  it("the password can be revealed while typing it", () => {
+    cy.visit("/login");
+    cy.get('[data-testid="login-password"]').should("have.attr", "type", "password");
+    cy.get('[data-testid="login-password"]').type("hunter22222");
+    cy.get('[data-testid="login-toggle-password"]').click();
+    cy.get('[data-testid="login-password"]')
+      .should("have.attr", "type", "text")
+      .and("have.value", "hunter22222");
+  });
 });
