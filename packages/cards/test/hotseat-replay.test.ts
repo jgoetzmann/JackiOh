@@ -60,7 +60,7 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * browser against a fold of it), copy that file over the fixture here, and paste the hash this test
  * reports. Editing the number on its own turns the check into a rubber stamp.
  */
-const EXPECTED_HASH = "f3b9a859";
+const EXPECTED_HASH = "addd656e";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

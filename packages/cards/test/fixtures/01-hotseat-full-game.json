@@ -312,7 +312,7 @@
       "instanceId": "c12",
       "zone": {
         "row": "units",
-        "lane": 1
+        "lane": 4
       },
       "playerId": "p1",
       "nonce": "n34"
@@ -322,29 +322,36 @@
       "instanceId": "c3",
       "zone": {
         "row": "units",
-        "lane": 4
+        "lane": 5
       },
       "playerId": "p1",
       "nonce": "n35"
     },
     {
       "type": "attack",
-      "attackerId": "c8",
+      "attackerId": "c18",
       "targetId": "c27",
       "playerId": "p1",
       "nonce": "n36"
     },
     {
       "type": "attack",
-      "attackerId": "c9",
-      "targetId": "hero-p2",
+      "attackerId": "c8",
+      "targetId": "c27",
       "playerId": "p1",
       "nonce": "n37"
     },
     {
-      "type": "endTurn",
+      "type": "attack",
+      "attackerId": "c9",
+      "targetId": "hero-p2",
       "playerId": "p1",
       "nonce": "n38"
+    },
+    {
+      "type": "endTurn",
+      "playerId": "p1",
+      "nonce": "n39"
     },
     {
       "type": "play",
@@ -354,40 +361,40 @@
         "lane": 1
       },
       "playerId": "p2",
-      "nonce": "n39"
+      "nonce": "n40"
     },
     {
       "type": "attack",
       "attackerId": "c43",
       "targetId": "hero-p1",
       "playerId": "p2",
-      "nonce": "n40"
+      "nonce": "n41"
     },
     {
       "type": "attack",
       "attackerId": "c30",
       "targetId": "hero-p1",
       "playerId": "p2",
-      "nonce": "n41"
+      "nonce": "n42"
     },
     {
       "type": "attack",
       "attackerId": "c44",
       "targetId": "hero-p1",
       "playerId": "p2",
-      "nonce": "n42"
+      "nonce": "n43"
     },
     {
       "type": "attack",
       "attackerId": "c45",
-      "targetId": "c12",
+      "targetId": "c8",
       "playerId": "p2",
-      "nonce": "n43"
+      "nonce": "n44"
     },
     {
       "type": "endTurn",
       "playerId": "p2",
-      "nonce": "n44"
+      "nonce": "n45"
     },
     {
       "type": "play",
@@ -397,24 +404,17 @@
         "lane": 1
       },
       "playerId": "p1",
-      "nonce": "n45"
+      "nonce": "n46"
     },
     {
       "type": "play",
       "instanceId": "c2",
       "playerId": "p1",
-      "nonce": "n46"
+      "nonce": "n47"
     },
     {
       "type": "play",
       "instanceId": "c15",
-      "playerId": "p1",
-      "nonce": "n47"
-    },
-    {
-      "type": "attack",
-      "attackerId": "c12",
-      "targetId": "hero-p2",
       "playerId": "p1",
       "nonce": "n48"
     },

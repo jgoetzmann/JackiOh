@@ -43,11 +43,16 @@ describe("#81 Radiant Saintess — base", () => {
   });
 
   /** Reborn is printed on the RADIANT face, which her Cry used to hand her for free. */
-  it("§8 played base she has no Reborn, because nothing makes her Radiant any more", () => {
+  /**
+   * Reborn is printed on BOTH faces. It used to be radiant-only, and her own Cry was what put her
+   * on that face — so cutting the Cry would have taken the Reborn with it and nerfed a second
+   * thing nobody asked to nerf. The Cry is gone; the body it used to buy is not.
+   */
+  it("§8 played base she still has Reborn, even though nothing makes her Radiant any more", () => {
     const s = scenario({ seed: "saintess", p1: { hand: [SAINTESS] } }).play(SAINTESS, { zone: 1 });
 
     expect(s.card(SAINTESS).radiant).toBe(false);
-    expect(keywordsOf(s.state, s.card(SAINTESS))).toEqual([]);
+    expect(keywordsOf(s.state, s.card(SAINTESS))).toEqual([{ kind: "Reborn" }]);
   });
 
   it("§8 'your units' is yours: the opponent's units are untouched", () => {
@@ -113,18 +118,21 @@ describe("#81 Radiant Saintess — base", () => {
 
     expect(s.unit("p1", 2)?.radiant).toBe(true);
     s.expectStats(s.unit("p1", 2) ?? TIMMY, { attack: 6, health: 6, maxHealth: 6 });
-    s.expectInZone(SAINTESS, "graveyard");
+    // Reborn catches her, so the Death fired from the field rather than the graveyard (R8, R64).
+    s.expectInZone(SAINTESS, "field");
+    expect(s.card(SAINTESS).rebornSpent).toBe(true);
   });
 
   it("R78 Death does not include herself: the base body reaches the graveyard non-Radiant", () => {
-    // Her Cry never ran (she was placed, not played), so nothing has set her flag. R78 has her
-    // leave the field before the Death hook runs, so "your units" no longer includes her.
+    // R78 has her leave the field before the Death hook runs, so "your units" never includes her.
+    // Reborn returns her, and the body that comes back is still not Radiant.
     const s = scenario({ seed: "saintess", p1: { field: [{ def: SAINTESS, damage: 2 }, TIMMY] } });
 
-    expect(s.pile("p1", "graveyard").map((card) => card.radiant)).toEqual([false]);
+    expect(s.card(SAINTESS).radiant).toBe(false);
+    expect(s.pile("p1", "graveyard")).toHaveLength(0);
   });
 
-  it("§8 played base she dies ONCE: no Cry means no Radiant, and so no Reborn to bring her back", () => {
+  it("R8/R83 played base she dies TWICE: Reborn catches the first, and Death fires on both", () => {
     // Mana at turn 9 is 4: Saintess 1 + True Strike 1 + Timmy 1 + True Strike 1.
     const s = scenario({
       seed: "saintess",
@@ -139,12 +147,16 @@ describe("#81 Radiant Saintess — base", () => {
     s.play(TIMMY, { zone: 2 });
     expect(s.unit("p1", 2)?.radiant).toBe(false);
 
-    // One death, and it is final: Reborn is printed on the RADIANT face only, and her own Cry
-    // used to be the thing that put her on it. Removing the Cry removed the Reborn with it.
+    // Death #1 radiates the board, and Reborn returns her at 1 health (§4.5 step 4, R64).
+    s.play(TRUE_STRIKE, { targets: [{ pick: "instance", instanceId: saintess.id }] });
+    s.expectInZone(saintess, "field");
+    expect(s.card(saintess).rebornSpent).toBe(true);
+    expect(s.unit("p1", 2)?.radiant, "her Death radiates the board").toBe(true);
+    s.expectStats(s.unit("p1", 2) ?? TIMMY, { attack: 6, health: 6, maxHealth: 6 });
+
+    // Death #2, off the Reborn body — R8: "Death fires on both deaths".
     s.play(TRUE_STRIKE, { targets: [{ pick: "instance", instanceId: saintess.id }] });
     s.expectInZone(saintess, "graveyard");
-    expect(s.unit("p1", 2)?.radiant, "her Death still radiates the board").toBe(true);
-    s.expectStats(s.unit("p1", 2) ?? TIMMY, { attack: 6, health: 6, maxHealth: 6 });
   });
 
   it.todo(

@@ -1926,8 +1926,12 @@
     "base": {
       "attack": 2,
       "health": 2,
-      "keywords": [],
-      "text": "Death: all your units become Radiant"
+      "keywords": [
+        {
+          "kind": "Reborn"
+        }
+      ],
+      "text": "Reborn; Death: all your other units become Radiant"
     },
     "radiant": {
       "attack": 4,
@@ -1937,7 +1941,7 @@
           "kind": "Reborn"
         }
       ],
-      "text": "Reborn; Death: all your units become Radiant"
+      "text": "Reborn; Death: all your other units become Radiant"
     }
   },
   "core-082": {

@@ -59,7 +59,8 @@ function radiateYourUnits(ctx: EffectContext, includeSelf: boolean): Effect[] {
 }
 
 /**
- * R78: by the time Death runs she is in the graveyard, so "your units" is everyone else.
+ * R78: by the time Death runs she is in the graveyard, so "your OTHER units" — which is what
+ * the card now says — is simply everyone left standing. The `false` below is that word.
  *
  * THERE IS NO CRY. She had "Cry and Death" and the Cry was cut for burst: playing her turned the
  * board Radiant the instant she landed, including herself (she arrived 4/4 with Reborn for one
