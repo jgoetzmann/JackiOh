@@ -99,7 +99,7 @@ export default defineConfig({
           // CLIENT, got a 404 and failed the whole spec with "Failed to fetch dynamically imported
           // module". Same trap the e2e job's readiness probe documents. `strictPort` makes a
           // future collision an immediate, legible bind error instead of that.
-          port: 5273,
+          port: Number(process.env.E2E_COMPONENT_PORT ?? 5273),
           strictPort: true,
         },
       },
