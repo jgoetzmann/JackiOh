@@ -31,7 +31,13 @@ import {
 import { createAuthRoutes } from "../../src/api/auth";
 import { ApiError, createRouter, type Router } from "../../src/api/http";
 import type { AuthProvider } from "../../src/api/ports";
-import { createTestDeps, createVirtualTimers, jsonRequest, type VirtualTimers } from "../fakes/deps";
+import {
+  createTestDeps,
+  createVirtualTimers,
+  jsonRequest,
+  readJson,
+  type VirtualTimers,
+} from "../fakes/deps";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -480,5 +486,64 @@ describe("R160 — the identical sign-up and sign-in error (§9.2, §9.4, §9.8;
     const h = providerWith();
     await expect(h.auth.signInWithPassword("a@b.test", "p")).rejects.toBeInstanceOf(ApiError);
     await expect(h.auth.signUp("a@b.test", "p")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `currentMatchId` on /api/auth/me (§9.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * The read that makes a two-player game reachable.
+ *
+ * In both lobby flows only ONE player's HTTP response carried the match id — the joiner of a room,
+ * or whoever enqueued second. The other player was already in the match and had no way to learn
+ * it: `/api/auth/me` returned status and rating and nothing else, and there is no other route that
+ * names a profile's match. So one player sat on /play while their opponent sat on the board, and
+ * the only way to actually play was to paste the URL across.
+ *
+ * `profiles.current_match_id` is set when a match starts and cleared by every ending (§9.5), so
+ * reporting it here is the authoritative answer to "am I in a match" for the player who waited,
+ * and the way back in after a reload that lost the URL.
+ */
+describe("/api/auth/me reports the caller's own current match (§9.5)", () => {
+  it("is null for an account that is not in a match", async () => {
+    const deps = createTestDeps();
+    const token = deps.auth.addUser({ userId: ALICE, email: "alice@example.test" });
+    const profile = await deps.store.profiles.create({
+      userId: ALICE,
+      email: "alice@example.test",
+      rating: 1000,
+      at: 1,
+    });
+    expect(profile.inMatchId, "premise: not in a match").toBeNull();
+
+    const router = createRouter(createAuthRoutes(), deps);
+    const res = await router(jsonRequest("GET", "/api/auth/me", undefined, { token }));
+    const body = (await readJson(res)) as { currentMatchId: string | null };
+
+    expect(res.status).toBe(200);
+    expect(body.currentMatchId).toBeNull();
+  });
+
+  it("names the match once the player is in one, which is what the waiting player reads", async () => {
+    const deps = createTestDeps();
+    const token = deps.auth.addUser({ userId: ALICE, email: "alice@example.test" });
+    const profile = await deps.store.profiles.create({
+      userId: ALICE,
+      email: "alice@example.test",
+      rating: 1000,
+      at: 1,
+    });
+    await deps.store.tx(async (t) => {
+      await t.profiles.setInMatch(profile.id, "match-42");
+    });
+
+    const router = createRouter(createAuthRoutes(), deps);
+    const res = await router(jsonRequest("GET", "/api/auth/me", undefined, { token }));
+    const body = (await readJson(res)) as { currentMatchId: string | null };
+
+    expect(res.status).toBe(200);
+    expect(body.currentMatchId, "the id /play navigates to").toBe("match-42");
   });
 });

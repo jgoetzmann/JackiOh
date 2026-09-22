@@ -54,6 +54,7 @@ function meBody(status: "pending" | "active", needsInviteCode: boolean) {
     profile: { id: "p", status, rating: 1000 },
     needsInviteCode,
     emailVerified: true,
+    currentMatchId: null,
   };
 }
 

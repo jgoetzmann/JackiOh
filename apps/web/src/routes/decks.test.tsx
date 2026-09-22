@@ -37,7 +37,12 @@ const catalog = fixtureCatalog();
 const collection = fixtureCollection();
 
 function meBody(status: "pending" | "active" | "banned", needsInviteCode: boolean) {
-  return { profile: { id: "p", status, rating: 1000 }, needsInviteCode, emailVerified: true };
+  return {
+    profile: { id: "p", status, rating: 1000 },
+    needsInviteCode,
+    emailVerified: true,
+    currentMatchId: null,
+  };
 }
 
 function collectionBody() {

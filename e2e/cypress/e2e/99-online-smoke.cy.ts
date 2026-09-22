@@ -282,4 +282,44 @@ function signInThroughForm(email: string): void {
         }),
     );
   });
+
+  /**
+   * The player who WAITED gets into the match without being told the id by anyone.
+   *
+   * This is the gap that made two-player play impossible in practice. Only one side's HTTP
+   * response carried the match id — the joiner of a room, or whoever enqueued second — so the
+   * other player sat on /play while their opponent sat on the board, and the only way to actually
+   * play was to paste the URL across. `/api/auth/me` now reports the caller's own
+   * `currentMatchId` (§9.5, cleared by every ending) and `/play` waits on it.
+   *
+   * Player 1 queues IN THE BROWSER and is never handed an id; player 2 is paired from outside the
+   * browser entirely. Nothing but the poll can move player 1, so arriving on the board is proof
+   * the fix works.
+   */
+  it("the player who waited is taken to the board with no id handed to them", () => {
+    resetOnlineState();
+
+    signInThroughForm(P1);
+    cy.visit("/play");
+    cy.get('[data-testid="play-queue"]').click();
+    // Queued, with nobody to pair against: the old build stopped here forever.
+    cy.get('[data-testid="play-status"]', { timeout: 30_000 }).should("exist");
+    cy.location("pathname").should("eq", "/play");
+
+    // Player 2 joins the queue from outside the browser; player 1's tab is told nothing.
+    tokenFor(P2).then((t2) => {
+      cy.request({
+        method: "POST",
+        url: `${SERVER}/api/queue`,
+        headers: { Authorization: `Bearer ${t2}` },
+        body: { deckIndex: 1 },
+      }).then((res) => {
+        expect(res.status, "player 2 enqueues").to.eq(200);
+      });
+    });
+
+    // Only the poll can do this.
+    cy.location("pathname", { timeout: 60_000 }).should("match", /^\/match\//);
+    cy.get('[data-testid="board"]', { timeout: 60_000 }).should("exist");
+  });
 });

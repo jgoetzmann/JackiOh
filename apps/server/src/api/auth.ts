@@ -609,6 +609,16 @@ export function createAuthRoutes(): Route[] {
         // shown the code screen. A banned account is not offered a way out of it.
         needsInviteCode: profile.status === "pending",
         emailVerified: user.emailVerified,
+        // §9.5: non-null while this profile is in a match, cleared by every ending. Without it a
+        // player who was WAITING — the host of a room, or the first ticket in the queue — is never
+        // told the match they are already in: the other player's HTTP response carried the id and
+        // theirs did not, so they sat on /play while their opponent sat on the board. It is also
+        // the only way back into a match after a reload that lost the URL.
+        //
+        // Safe to return to its owner: it is this caller's own profile row, the same row whose
+        // status and rating are already here, and a match id is not a capability — the socket
+        // still authenticates and the actor still stamps the seat from the token (§9.3).
+        currentMatchId: profile.inMatchId,
       });
     }),
   ];

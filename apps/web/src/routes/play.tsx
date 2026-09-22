@@ -6,27 +6,32 @@
 // queue asserts the account is active, not in a match and holding a valid loadout (§9.5), and this
 // screen only relays what it said.
 //
-// TWO GAPS, both reported rather than papered over (see the hand-off report):
+// BOTH GAPS ARE CLOSED, and by the endpoint they asked for rather than by a workaround here.
 //
-//  1. §9.5 makes the room code "the primary mode while the player base is small", but nothing tells
-//     the HOST that its room was claimed. `POST /api/rooms` answers `{ code, expiresAt, deckIndex }`
-//     and `GET /api/auth/me` answers `{ profile: { id, status, rating }, … }` with no `inMatchId`,
-//     so a host has a code and no way to learn the match id it turns into. Spec 06 sidesteps it by
-//     driving the browser straight to `/match/<id>` with the id the joiner's HTTP response carried.
-//  2. The same for the queue. `POST /api/queue` answers `{ ticketId, status, matchId, population }`,
-//     which does report a pairing that happened inline — but if the sweeper pairs the ticket a
-//     moment later there is no endpoint to ask. `GET /api/queue/population` is a count, not a
-//     ticket, and a second `POST` is refused with `already_queued`.
+// They were: nothing told the HOST that its room was claimed, and nothing told a QUEUED player
+// that the sweeper had paired their ticket a moment after they enqueued. In both cases the OTHER
+// player's HTTP response carried the match id and this one's did not, so one player sat on /play
+// while their opponent sat on the board — the whole reason two people could not simply play.
 //
-// So both flows navigate when the round trip they made returns a match id, and say plainly when it
-// did not. No polling loop is invented here to hide a missing endpoint.
+// The note that used to be here said "no polling loop is invented to hide a missing endpoint",
+// and that was the right call: the fix is the endpoint. `GET /api/auth/me` now returns
+// `currentMatchId` (§9.5's `profiles.current_match_id`, cleared by every ending), so waiting is a
+// legitimate read of one's own state rather than a guess. `useMatchWatch` below polls it only
+// while this screen is actually waiting, and stops the moment it navigates or the player leaves
+// the queue.
 
-import { useState, type FormEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from "react";
 
-import { ApiRequestError, createRoom, dequeue, enqueue, joinRoom } from "../net/api.ts";
+import { ApiRequestError, createRoom, dequeue, enqueue, getMe, joinRoom } from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
 
 /** Chrome this screen invented; none of it is in `e2e/support/testids.ts` (no spec drives it). */
+/**
+ * How often the wait asks whether a match has appeared. R108 sweeps the queue every 3 s, so a
+ * shorter poll only adds requests without finding a pairing sooner.
+ */
+const MATCH_WATCH_MS = 2_000;
+
 export const playTestid = {
   queue: "play-queue",
   leaveQueue: "play-leave-queue",
@@ -55,6 +60,46 @@ function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+/**
+ * While `waiting`, asks `/api/auth/me` for this profile's own `currentMatchId` and navigates the
+ * moment one appears. §9.5 sets it when a match starts and clears it at every ending, so it is
+ * the authoritative answer to "am I in a match" for both the room host and a queued player.
+ *
+ * Polling is confined to the wait: the interval exists only while `waiting` is true, and the
+ * effect's cleanup clears it on navigation, on leaving the queue, and on unmount. A failed poll is
+ * ignored rather than shown — a dropped request while waiting is not something the player can act
+ * on, and the next tick retries.
+ */
+function useMatchWatch(token: string, waiting: boolean): void {
+  // Survives a re-render so a slow response cannot navigate twice.
+  const navigated = useRef(false);
+
+  useEffect(() => {
+    if (!waiting) return undefined;
+    let cancelled = false;
+
+    const check = (): void => {
+      void getMe(token)
+        .then((me) => {
+          const matchId = me.currentMatchId;
+          if (cancelled || navigated.current) return;
+          if (typeof matchId === "string" && matchId.length > 0) {
+            navigated.current = true;
+            navigate(paths.match(matchId));
+          }
+        })
+        .catch(() => undefined);
+    };
+
+    check();
+    const handle = setInterval(check, MATCH_WATCH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, [token, waiting]);
+}
+
 export type PlayRouteProps = { token: string };
 
 export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
@@ -63,6 +108,10 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
+  /** True while this screen is waiting to be paired: queued, or hosting an unclaimed room. */
+  const [waiting, setWaiting] = useState(false);
+
+  useMatchWatch(token, waiting);
 
   function run(work: () => Promise<void>): void {
     if (busy) return;
@@ -85,9 +134,10 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
         return;
       }
       const population = result.population;
+      setWaiting(true);
       setStatus(
         `In the queue${typeof population === "number" ? ` · ${String(population)} waiting` : ""}. ` +
-          "Nothing yet tells this client when the sweeper pairs the ticket — see the note in this file.",
+          "You will be taken to the board as soon as someone is found.",
       );
     });
   }
@@ -95,6 +145,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
   function onLeaveQueue(): void {
     run(async () => {
       await dequeue(token);
+      setWaiting(false);
       setStatus("Left the queue.");
     });
   }
@@ -103,10 +154,8 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
     run(async () => {
       const room = await createRoom(token, DECK_INDEX);
       setRoomCode(room.code);
-      setStatus(
-        "Give your opponent this code. Nothing yet tells the host when the room is claimed, " +
-          "so the match id has to come from the joiner — see the note in this file.",
-      );
+      setWaiting(true);
+      setStatus("Give your opponent this code. You will be taken to the board when they join.");
     });
   }
 

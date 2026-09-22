@@ -39,6 +39,7 @@ function meBody(status: Status) {
     profile: { id: "profile-1", status, rating: 1000 },
     needsInviteCode: status === "pending",
     emailVerified: true,
+    currentMatchId: null,
   };
 }
 

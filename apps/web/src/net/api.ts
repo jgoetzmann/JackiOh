@@ -126,6 +126,8 @@ export type MeResponse = {
   profile: { id: string; status: "pending" | "active" | "banned"; rating: number };
   needsInviteCode: boolean;
   emailVerified: boolean;
+  /** §9.5: the match this profile is in, or null. What `/play` waits on after it queues. */
+  currentMatchId: string | null;
 };
 
 export function getMe(token: string): Promise<MeResponse> {
