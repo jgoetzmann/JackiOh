@@ -39,6 +39,7 @@ import {
   type SocketFactory,
 } from "../game/net.ts";
 import { getCatalog } from "../net/api.ts";
+import { BackLink } from "./nav.tsx";
 
 /** Chrome this route invented. None of it is in `e2e/support/testids.ts`; see the hand-off report. */
 export const matchTestid = {
@@ -181,6 +182,12 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
 
   return (
     <div className="app-shell app-shell--wide">
+      {/*
+        Leaving does NOT end the match — §9.5's clocks and the reaper still own that, and the
+        socket reconnects if you come back. Being unable to leave at all was the worse failure:
+        nav.tsx names this screen as trapped and it was the one that never got a way out.
+      */}
+      <BackLink />
       <header className="match-bar">
         <span>
           match <code>{matchId}</code> · seat <code>{view.viewer}</code> · turn {view.turn} ·{" "}

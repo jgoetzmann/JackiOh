@@ -21,3 +21,8 @@ __pycache__/
 
 # Agent worktrees (git worktrees created by the Agent tool for isolated parallel work).
 .claude/worktrees/
+
+# Claude Code session transcripts. One was committed at the repo root (1.5 MB) and pushed; it is
+# not source, it bloats every clone, and a transcript is exactly the kind of file a secret ends up
+# in by accident.
+*local-command-caveat*.txt

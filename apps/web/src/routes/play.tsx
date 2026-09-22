@@ -76,7 +76,6 @@ function useMatchWatch(token: string, waiting: boolean): void {
   const navigated = useRef(false);
 
   useEffect(() => {
-    if (!waiting) return undefined;
     let cancelled = false;
 
     const check = (): void => {
@@ -92,7 +91,19 @@ function useMatchWatch(token: string, waiting: boolean): void {
         .catch(() => undefined);
     };
 
+    // ONE CHECK ON EVERY MOUNT, waiting or not. `waiting` lives in component state, so a player
+    // who RELOADS /play after being paired loses it with the page — and without this check they
+    // sit in the lobby forever while their opponent is already on the board. That is the same
+    // dead end this hook exists to remove, just reached by refreshing instead of by waiting.
     check();
+
+    // The interval is still confined to an actual wait: a screen that is not expecting a pairing
+    // has no reason to keep asking.
+    if (!waiting) {
+      return () => {
+        cancelled = true;
+      };
+    }
     const handle = setInterval(check, MATCH_WATCH_MS);
     return () => {
       cancelled = true;
