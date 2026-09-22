@@ -17,10 +17,17 @@
 //     its Cry would have summoned never arrives — the exception R118 points at. It also has to be
 //     a unit that is not Immutable: R17 and R23 let an Immutable target refuse the Transform and
 //     the trap is merely spent, which would be a different test (#8 Mr. Vanilla is that card).
-//   * #81 Radiant Saintess is played straight afterwards, on the same turn, and its Cry ("all your
-//     units become Radiant", including itself — R22) lands on the Sheep. That is "P1 can
-//     continue": the turn is still player 1's, the client is not locked, and the next play's Cry
-//     fires normally.
+//   * #81 Radiant Saintess is played straight afterwards, on the same turn. That is "P1 can
+//     continue": the turn is still player 1's, the client is not locked, and the next play
+//     resolves normally.
+//
+//     This used to assert her CRY landing on the Sheep, which was the sharper observable — a Cry
+//     firing after a trap resolved is exactly what R118 is about. The Core Set balance pass
+//     (issue #1) removed that Cry: she is Death-only now, so there is no Cry left to watch. The
+//     seed picks this deck so that #15 and #81 are the two 1-mana plays in hand on turn 2, and no
+//     other card in `03-plays-a` has a board-visible Cry at that cost — so the play landing is
+//     the observable here, and the Sheep staying NON-Radiant is asserted deliberately, because
+//     silently dropping the check would hide the day the Cry came back.
 //
 // Hidden information is asserted on the way through, because it is the other thing a trap on the
 // far side of the board tests (CLAUDE.md rule 7, §10.8, R33): while the trap is set, player 1's
@@ -55,7 +62,6 @@ import { seedFor } from "../../support/config.ts";
 import {
   END_TURN,
   MODIFIER_BADGE,
-  RADIANT,
   cardId,
   graveyardCountId,
   handCardId,
@@ -191,15 +197,17 @@ describe("BUILD M8 03 — a trap fires on the other player's turn; a face-up mod
           cy.get(ts(cardId(trap))).should("not.exist");
           cy.get(ts(graveyardCountId("opponent"))).should("have.text", "1");
 
-          // "P1 can continue" (R118): the turn is still player 1's, the controls are live, and the
-          // next play resolves its own Cry — which lands on the Sheep (R22: "all your units",
-          // including itself; §5.2: a token with no radiant form still takes the flag).
+          // "P1 can continue" (R118): the turn is still player 1's, the controls are live, and
+          // the next play resolves — it reaches the field and the board is not stuck.
           cy.get(ts(END_TURN)).should("not.be.disabled");
           cy.playByName("Radiant Saintess", { zone: { side: "you", row: "units", lane: 2 } });
-          cy.get(ts(cardId(sheep))).should("have.attr", "data-radiant", "true");
-          cy.get(`${ts(cardId(sheep))}${RADIANT}`).should("exist");
+          cy.fieldCardByName("Radiant Saintess").should("exist");
+
+          // And she radiates NOTHING on arrival: issue #1 cut her Cry, leaving Death alone. This
+          // is asserted rather than dropped so the check fails loudly if the Cry ever returns.
+          cy.get(ts(cardId(sheep))).should("not.have.attr", "data-radiant", "true");
           cy.fieldCardByName("Radiant Saintess").then((saintess) => {
-            cy.get(ts(cardId(saintess))).should("have.attr", "data-radiant", "true");
+            cy.get(ts(cardId(saintess))).should("not.have.attr", "data-radiant", "true");
           });
 
           // …and the turn finishes the ordinary way, so the trap left nothing half-resolved.
