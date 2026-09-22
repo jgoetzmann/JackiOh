@@ -231,4 +231,55 @@ function signInThroughForm(email: string): void {
       cy.get('[data-testid="board"]', { timeout: 60_000 }).should("exist");
     });
   });
+
+  /**
+   * The ranked queue, which returned 500 to the SECOND player on every pair until the duplicate
+   * `matches.create` was removed (`startPairedMatch` wrote the row and then
+   * `createMatchRegistry.start` wrote it again). The match was created correctly and the caller
+   * was told nothing, so the client never learned the match id — which is why this asserts the
+   * RESPONSE, not just the database.
+   */
+  it("the ranked queue pairs two accounts and tells the second one the match id", () => {
+    resetOnlineState();
+
+    let t1 = "";
+    let t2 = "";
+    tokenFor(P1).then((token) => {
+      t1 = token;
+    });
+    tokenFor(P2).then((token) => {
+      t2 = token;
+    });
+
+    cy.then(() =>
+      cy
+        .request({
+          method: "POST",
+          url: `${SERVER}/api/queue`,
+          headers: { Authorization: `Bearer ${t1}` },
+          body: { deckIndex: 1 },
+        })
+        .then((res) => {
+          expect(res.status, "first enqueue").to.eq(200);
+          expect(res.body.status, "nobody to pair with yet").to.eq("open");
+          expect(res.body.matchId, "and so no match").to.eq(null);
+        }),
+    );
+
+    cy.then(() =>
+      cy
+        .request({
+          method: "POST",
+          url: `${SERVER}/api/queue`,
+          headers: { Authorization: `Bearer ${t2}` },
+          body: { deckIndex: 1 },
+        })
+        .then((res) => {
+          // This is the assertion the bug broke: a 500 here still left a live match behind.
+          expect(res.status, "second enqueue — 500 was the bug").to.eq(200);
+          expect(String(res.body.matchId ?? ""), "the pairing is reported to the caller").to.have
+            .length.greaterThan(0);
+        }),
+    );
+  });
 });

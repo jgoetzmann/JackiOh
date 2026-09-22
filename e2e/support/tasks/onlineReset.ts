@@ -56,6 +56,21 @@ export async function onlineReset(): Promise<OnlineResetResult> {
     );
     let ended = 0;
     for (const row of live.rows) {
+      // An UNCLAIMED ROOM cannot go through `end_match`, and that is a defect rather than a
+      // quirk: the function sets `status = 'over'` while `p2_profile_id` is still null, which
+      // `matches_p2_required_when_not_open_check` rejects —
+      //   new row for relation "matches" violates check constraint
+      //   "matches_p2_required_when_not_open_check"
+      // — so a room nobody joined can never be terminated by the sanctioned path, and §9.5's
+      // reaper hits the same wall. Such a row has no `match_actions` (nothing was played), so
+      // nothing append-only protects it and deleting it is safe here.
+      if (row.p2 === null) {
+        await client.query("delete from public.matches where id = $1::uuid and p2_profile_id is null", [
+          row.id,
+        ]);
+        ended += 1;
+        continue;
+      }
       const ratings = await client.query<{ rating: number }>(
         "select rating from public.profiles where id = any($1::uuid[])",
         [[row.p1, row.p2].filter((id): id is string => id !== null)],
