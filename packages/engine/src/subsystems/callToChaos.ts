@@ -33,9 +33,15 @@ export const CHAOS_HEAL = 30;
 export const CHAOS_MANA = 4;
 /** §8 #95: "add 3 random cards to hand costing 0". */
 export const CHAOS_ADDED_CARDS = 3;
-/** §8 #95 and §7: "summon five 5/5 Rush Tokens", the stats coming from `statsOverride`. */
+/**
+ * §8 #95 and §7: "summon five Radiant Rush Tokens".
+ *
+ * They used to be a bespoke 5/5 through `statsOverride`, which made #95 the only card in the set
+ * that invented a Rush Token size. It now summons the token's own RADIANT face (6/6, Rush), so
+ * the stats live in one place — the catalog — and a later change to the radiant token moves this
+ * card with it instead of leaving it behind.
+ */
 export const CHAOS_RUSH_TOKENS = 5;
-export const CHAOS_RUSH_TOKEN_STATS = { attack: 5, health: 5 } as const;
 /** §8 #95: "every card in your hand and library costs 2 less". */
 export const CHAOS_COST_DISCOUNT = 2;
 /** §8 #95: "summon 5 random Field Spells or Traps … into your backrow". */
@@ -178,9 +184,7 @@ export function summonRushTokens(): Effect {
   return chaosEffect("tokens", () => {
     const defId = tokenDefId(RUSH_TOKEN_INDEX);
     if (defId === null) return [];
-    return Array.from({ length: CHAOS_RUSH_TOKENS }, () =>
-      summon({ defId, statsOverride: { ...CHAOS_RUSH_TOKEN_STATS } }),
-    );
+    return Array.from({ length: CHAOS_RUSH_TOKENS }, () => summon({ defId, radiant: true }));
   });
 }
 

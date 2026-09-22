@@ -66,7 +66,7 @@ function events(): GameEvent[] {
 
 describe("the card-facing read surface (BUILD M3-T1, SPEC §10.9)", () => {
   // -------------------------------------------------------------------------
-  // heroOf — #68 Twisted Sourcerer's threshold, #70 Spiteful Stab's missing health.
+  // heroOf — #68 Twisted Sorcerer's threshold, #70 Spiteful Stab's missing health.
   // -------------------------------------------------------------------------
 
   it("heroOf reads the health the engine just took off, for the player named and no other", () => {

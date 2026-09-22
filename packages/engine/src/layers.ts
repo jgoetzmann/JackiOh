@@ -24,7 +24,14 @@ export function faceOf(state: GameState, instance: CardInstance): { attack: numb
   return {
     attack: instance.statsOverride?.attack ?? face.attack ?? 0,
     health: instance.statsOverride?.health ?? face.health ?? 0,
-    keywords: face.keywords,
+    // §7: the Bread Token's radiant "Armor X" is the same X as its X/X, so the printed `n` is a
+    // placeholder the summon fills in, exactly as `statsOverride` fills in the printed 0/0.
+    keywords:
+      instance.armorOverride === undefined
+        ? face.keywords
+        : face.keywords.map((keyword) =>
+            keyword.kind === "Armor" ? { kind: "Armor" as const, n: instance.armorOverride ?? 0 } : keyword,
+          ),
   };
 }
 

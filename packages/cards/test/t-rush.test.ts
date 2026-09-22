@@ -62,8 +62,11 @@ describe("T-rush Rush Token (SPEC §7)", () => {
       expect(def.base.keywords).toEqual([{ kind: "Rush" }]);
     });
 
-    it("§7 gives the Rush Token no radiant form, so def.radiant equals def.base (BUILD M4-T1)", () => {
-      expect(def.radiant).toEqual(def.base);
+    it("§7 gives the Rush Token a Radiant face: 6/6, Rush (BUILD M4-T1)", () => {
+      expect(def.radiant.attack).toBe(6);
+      expect(def.radiant.health).toBe(6);
+      expect(def.radiant.keywords).toEqual([{ kind: "Rush" }]);
+      expect(def.base.attack, "and the base face is untouched at 3/3").toBe(3);
     });
 
     it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
@@ -173,14 +176,15 @@ describe("T-rush Rush Token (SPEC §7)", () => {
 
   // §7's "Radiant form" column reads "none" for this token, so every case above holds unchanged
   // for a radiant instance: R74 sets the flag and the flag selects the same face and the same Script.
-  describe("radiant (§7: none — the radiant face is the base face)", () => {
-    it("R74 a radiant Rush Token still reads 3/3 with Rush, exactly as the base face does", () => {
+  describe("radiant (§7: 6/6, Rush)", () => {
+    it("R74 a radiant Rush Token reads 6/6 and keeps Rush", () => {
       const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-rush", radiant: true }] } });
       const token = s.unit("p1", 1) as CardInstance;
 
       expect(token.radiant).toBe(true);
-      s.expectStats(token, { attack: 3, health: 3, maxHealth: 3 });
-      expect(faceOf(s.state, token)).toEqual(faceOf(s.state, { ...token, radiant: false }));
+      s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
+      // The two faces are no longer the same face — that is the whole change.
+      expect(faceOf(s.state, token)).not.toEqual(faceOf(s.state, { ...token, radiant: false }));
       expect(unitView(s.state, token).keywords).toContainEqual({ kind: "Rush" });
       expect(keywordsOf(s.state, token)).toEqual([{ kind: "Rush" }]);
     });

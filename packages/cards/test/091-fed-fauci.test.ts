@@ -3,7 +3,7 @@
 //
 // Fixtures. Fauci is 1/6 → 2/12, so a 2-attack unit can hit it twice without killing it:
 // #61 Prejudiced Postdoc is a 2/4 with no keywords, and its Cry never fires because the harness
-// places it rather than playing it (R1). #68 Twisted Sourcerer (5/5) is the finisher for the R78
+// places it rather than playing it (R1). #68 Twisted Sorcerer (5/5) is the finisher for the R78
 // test and #4 Gary the Gambler (1/1) the 1-attack striker for R63's zero rule.
 //
 // Every test that crosses a turn boundary gives BOTH sides a card in hand: the engine auto-ends a

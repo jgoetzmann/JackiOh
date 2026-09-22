@@ -72,7 +72,7 @@ export const CARD_NAMES: Record<number, string> = {
   65: "Masochism Mask",
   66: "The Rock",
   67: "Zoomerbin Oomen",
-  68: "Twisted Sourcerer",
+  68: "Twisted Sorcerer",
   69: "Call to Arms",
   70: "Spiteful Stab",
   71: "Intern Stimmy",

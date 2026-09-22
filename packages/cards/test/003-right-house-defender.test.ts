@@ -12,6 +12,7 @@
 // not come back (the state check marks it used). See the report: R78's enumerated list does not
 // name Divine Shield, so this reading deserves its own ruling row.
 
+import { keywordsOf } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -25,6 +26,33 @@ function foe(s: Scenario, lane: number): string {
 const FOUR_VANILLAS = ["core-008", "core-008", "core-008", "core-008"];
 
 describe("#3 Right-house defender", () => {
+  /**
+   * Taunt on BOTH faces, added by the Core Set balance pass (issue #1, "it just makes sense").
+   * A 1-mana Divine Shield + Reborn body that could be walked past was a defender that did not
+   * defend; with Taunt the enemy has to spend the shield before anything behind it is reachable.
+   */
+  it("§6.1 Taunt is printed on both faces, so the enemy must come through it", () => {
+    const s = scenario({
+      active: "p2",
+      p1: { field: [{ def: "core-003", lane: 1 }, { def: "core-008", lane: 2 }] },
+      p2: { field: ["core-008"] },
+    });
+
+    expect(keywordsOf(s.state, s.card("core-003"))).toContainEqual({ kind: "Taunt" });
+
+    // The ally behind it cannot be reached while the Taunt stands (§4.2).
+    const ally = s.unit("p1", 2);
+    expect(ally).toBeDefined();
+    expect(() => s.attack(foe(s, 1), ally ?? "core-008")).toThrow(/Taunt/);
+  });
+
+  it("§6.1 the radiant face keeps Taunt too", () => {
+    const s = scenario({ p1: { field: [{ def: "core-003", radiant: true }] } });
+
+    expect(s.unit("p1", 1)?.radiant).toBe(true);
+    expect(keywordsOf(s.state, s.card("core-003"))).toContainEqual({ kind: "Taunt" });
+  });
+
   it("the Divine Shield eats the first hit", () => {
     const s = scenario({
       active: "p2",

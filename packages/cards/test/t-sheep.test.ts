@@ -41,8 +41,10 @@ describe("T-sheep Sheep Token (SPEC §7)", () => {
       expect(def.base.text).toMatch(/2 Tributes/);
     });
 
-    it("§7 gives the Sheep Token no radiant form, so def.radiant equals def.base (BUILD M4-T1)", () => {
-      expect(def.radiant).toEqual(def.base);
+    it("§7 gives the Sheep Token a Radiant face: 2/2, worth 3 Tributes (BUILD M4-T1)", () => {
+      expect(def.radiant.attack).toBe(2);
+      expect(def.radiant.health).toBe(2);
+      expect(def.base.attack, "and the base face is untouched at 1/1").toBe(1);
     });
 
     it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
@@ -161,24 +163,28 @@ describe("T-sheep Sheep Token (SPEC §7)", () => {
 
   // §7's "Radiant form" column reads "none", so every case above holds for a radiant instance too:
   // R74 sets the flag, and the flag selects the same face and the same (empty) Script.
-  describe("radiant (§7: none — the radiant face is the base face)", () => {
-    it("R74 a radiant Sheep Token is still a 1/1 with no keywords", () => {
+  describe("radiant (§7: 2/2, worth 3 Tributes)", () => {
+    it("R74 a radiant Sheep Token is a 2/2 with no keywords", () => {
       const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-sheep", radiant: true }] } });
       const sheep = s.unit("p1", 1) as CardInstance;
 
       expect(sheep.radiant).toBe(true);
-      s.expectStats(sheep, { attack: 1, health: 1, maxHealth: 1 });
+      s.expectStats(sheep, { attack: 2, health: 2, maxHealth: 2 });
       expect(keywordsOf(s.state, sheep)).toEqual([]);
     });
 
-    it("§3.2 a radiant Sheep Token is worth 2 Tributes exactly as the base face is", () => {
+    it("§3.2/§7 a radiant Sheep Token is worth 3 Tributes, where the base one is worth 2", () => {
       const s = scenario({
         seed: SEED,
         p1: { field: [{ def: "core-t-sheep", radiant: true }, { def: "core-t-felinor", radiant: true }] },
       });
 
-      expect(tributeValueOf(s.state, s.unit("p1", 1) as CardInstance)).toBe(2);
+      // The Radiant face is worth 3; the base one, added below, is still worth 2.
+      expect(tributeValueOf(s.state, s.unit("p1", 1) as CardInstance)).toBe(3);
       expect(tributeValueOf(s.state, s.unit("p1", 2) as CardInstance)).toBe(1);
+
+      const base = scenario({ seed: SEED, p1: { field: [{ def: "core-t-sheep" }] } });
+      expect(tributeValueOf(base.state, base.unit("p1", 1) as CardInstance)).toBe(2);
     });
 
     it("R11 a radiant Sheep Token that leaves the field ceases to exist just as the base face does", () => {

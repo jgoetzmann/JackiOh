@@ -1,4 +1,4 @@
-// #68 Twisted Sourcerer (SPEC §8.3, §4.4, §10.9, R75, R81, R90).
+// #68 Twisted Sorcerer (SPEC §8.3, §4.4, §10.9, R75, R81, R90).
 //
 // Base cell: "Cry: deal 4 damage to a target, 8 if your hero is below 10". Radiant cell: "6, or 12"
 // — a cell that changes only numbers changes only those numbers (§8 Conventions), so the target,
@@ -50,7 +50,7 @@ const targets: TargetDecl[] = [
  *
  * `low` is dealt normally, `high` when the controller's hero is below the threshold at resolution.
  */
-function sourcerer(low: number, high: number): Script {
+function sorcerer(low: number, high: number): Script {
   return {
     targets,
     cry: (ctx): Effect[] => {
@@ -60,6 +60,6 @@ function sourcerer(low: number, high: number): Script {
   };
 }
 
-export const base: Script = sourcerer(4, 8);
+export const base: Script = sorcerer(4, 8);
 
-export const radiant: Script = sourcerer(6, 12);
+export const radiant: Script = sorcerer(6, 12);

@@ -82,7 +82,7 @@ import * as m065_masochism_mask from "./065-masochism-mask";
 import * as m065_1_spikey_pillow from "./065-1-spikey-pillow";
 import * as m066_the_rock from "./066-the-rock";
 import * as m067_zoomerbin_oomen from "./067-zoomerbin-oomen";
-import * as m068_twisted_sourcerer from "./068-twisted-sourcerer";
+import * as m068_twisted_sorcerer from "./068-twisted-sorcerer";
 import * as m069_call_to_arms from "./069-call-to-arms";
 import * as m070_spiteful_stab from "./070-spiteful-stab";
 import * as m071_intern_stimmy from "./071-intern-stimmy";
@@ -193,7 +193,7 @@ export const SCRIPT_MODULES: readonly CardModule[] = [
   m065_1_spikey_pillow,
   m066_the_rock,
   m067_zoomerbin_oomen,
-  m068_twisted_sourcerer,
+  m068_twisted_sorcerer,
   m069_call_to_arms,
   m070_spiteful_stab,
   m071_intern_stimmy,

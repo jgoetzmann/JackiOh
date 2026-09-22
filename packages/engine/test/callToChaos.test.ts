@@ -229,7 +229,7 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
     expect(enemy?.radiant).toBe(false);
   });
 
-  it("§7 summons five Rush Tokens as 5/5 through statsOverride", () => {
+  it("§7 summons five RADIANT Rush Tokens, whose 6/6 comes from the catalog", () => {
     const state = game("chaos-tokens");
     const events: GameEvent[] = [];
     const sink = sinkFor(state, events);
@@ -244,9 +244,11 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
       expect(token).toBeDefined();
       if (token === undefined) continue;
       expect(defOf(state, token.defId).index).toBe("T-rush");
-      expect(token.statsOverride).toEqual({ attack: 5, health: 5 });
-      // §10.4 layer 1: the override replaces the token's printed 3/3.
-      expect(unitView(state, token)).toMatchObject({ attack: 5, maxHealth: 5 });
+      // No `statsOverride`: #95 was the only card that invented a Rush Token size, and it now
+      // summons the token's own Radiant face instead, so the 6/6 is the catalog's.
+      expect(token.radiant).toBe(true);
+      expect(token.statsOverride).toBeUndefined();
+      expect(unitView(state, token)).toMatchObject({ attack: 6, maxHealth: 6 });
     }
   });
 

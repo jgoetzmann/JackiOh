@@ -186,9 +186,20 @@ export function mayTributeEnemyUnits(card: CardInstance): boolean {
   return flags.tributeEnemies === true;
 }
 
-/** §3.2: "Sheep Tokens are worth 2 Tributes while on the field"; every other unit is worth 1. */
+/** §7: a Radiant Sheep Token is "2/2, worth 3 Tributes" — the base one is worth 2. */
+export const RADIANT_SHEEP_TRIBUTE_VALUE = 3;
+export const SHEEP_TRIBUTE_VALUE = 2;
+
+/**
+ * §3.2: "Sheep Tokens are worth 2 Tributes while on the field"; every other unit is worth 1.
+ *
+ * §7 gives the Sheep a Radiant face worth 3, so the value is read off the instance's face rather
+ * than its definition — the same card is worth a different amount depending on which face is up,
+ * which is exactly what a Radiant form is.
+ */
 export function tributeValueOf(state: GameState, unit: CardInstance): number {
-  return defOf(state, unit.defId).index === SHEEP_TOKEN_INDEX ? 2 : 1;
+  if (defOf(state, unit.defId).index !== SHEEP_TOKEN_INDEX) return 1;
+  return unit.radiant ? RADIANT_SHEEP_TRIBUTE_VALUE : SHEEP_TRIBUTE_VALUE;
 }
 
 /** §6.3: your own units, plus the enemy's for a card that says so (#55). Dormant cards never. */

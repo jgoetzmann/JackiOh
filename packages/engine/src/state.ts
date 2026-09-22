@@ -40,6 +40,13 @@ export type CardInstance = {
   memory: Record<string, unknown>;
   exertion: { attacked: boolean; switched: boolean };
   statsOverride?: { attack: number; health: number };
+  /**
+   * §7: the Bread Token's radiant face prints "Armor X", where X is the same unspent-mana X its
+   * stats use — so it cannot be a printed number any more than its X/X can. Set beside
+   * `statsOverride` by whoever summons it, and substituted into the printed `Armor` keyword by
+   * `faceOf`. Inert until the token is radiant, because only the radiant face prints Armor.
+   */
+  armorOverride?: number;
   returnToHandAtEndOfTurn?: boolean;
   /** Indestructible would-destroy: no Taunt for this turn (R46). */
   tauntSuppressedTurn?: number;

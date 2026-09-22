@@ -39,8 +39,10 @@ describe("T-felinor Felinor Token (SPEC §7)", () => {
       expect(def.base.text).toBe("");
     });
 
-    it("§7 gives the Felinor Token no radiant form, so def.radiant equals def.base (BUILD M4-T1)", () => {
-      expect(def.radiant).toEqual(def.base);
+    it("§7 gives the Felinor Token a Radiant face: 2/2 (BUILD M4-T1)", () => {
+      expect(def.radiant.attack).toBe(2);
+      expect(def.radiant.health).toBe(2);
+      expect(def.base.attack, "and the base face is untouched at 1/1").toBe(1);
     });
 
     it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
@@ -132,13 +134,13 @@ describe("T-felinor Felinor Token (SPEC §7)", () => {
 
   // §7's "Radiant form" column reads "none", so every case above holds for a radiant instance too:
   // R74 sets the flag, and the flag selects the same face and the same (empty) Script.
-  describe("radiant (§7: none — the radiant face is the base face)", () => {
-    it("R74 a radiant Felinor Token is still a 1/1 with no keywords and the Felinor tag", () => {
+  describe("radiant (§7: 2/2)", () => {
+    it("R74 a radiant Felinor Token is a 2/2 with no keywords, and keeps the Felinor tag", () => {
       const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-felinor", radiant: true }] } });
       const token = s.unit("p1", 1) as CardInstance;
 
       expect(token.radiant).toBe(true);
-      s.expectStats(token, { attack: 1, health: 1, maxHealth: 1 });
+      s.expectStats(token, { attack: 2, health: 2, maxHealth: 2 });
       expect(keywordsOf(s.state, token)).toEqual([]);
       expect(defOf(s.state, token.defId).tags).toContain("Felinor");
     });

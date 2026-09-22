@@ -60,11 +60,11 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * browser against a fold of it), copy that file over the fixture here, and paste the hash this test
  * reports. Editing the number on its own turns the check into a rubber stamp.
  */
-const EXPECTED_HASH = "b2a3f515";
+const EXPECTED_HASH = "f3b9a859";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;
-const EXPECTED_ACTIONS = 29;
+const EXPECTED_ACTIONS = 50;
 
 function read(path: string): Recording {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
@@ -125,7 +125,7 @@ describe("the recorded hotseat game replays in vitest (BUILD M5-T3)", () => {
     expect(hashState(second.state)).toBe(hashState(first.state));
   });
 
-  it("carries a real recording: 29 stamped actions over two deck-legal libraries", () => {
+  it("carries a real recording: 50 stamped actions over two deck-legal libraries", () => {
     expect(recording.seed).toBe("01-hotseat");
     expect(recording.log).toHaveLength(EXPECTED_ACTIONS);
     for (const action of recording.log) {

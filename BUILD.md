@@ -370,7 +370,7 @@ Acceptance: `pnpm test --filter cards` runs 109 test files; a script that lists 
 | 65.1 | Spikey Pillow | 2 | Cannot switch to DEF; your units −2 attack floored at 0; radiant excludes other Pillows |
 | 66 | The Rock | 2 | Play refused without a tribute; Indestructible; radiant Immutable |
 | 67 | Zoomerbin Oomen | 2 | Random trap face-down and unpaid into own lane's backrow; occupied or Locked → nothing (R47); pool = six traps |
-| 68 | Twisted Sourcerer | 1 | 4 damage, 8 when hero < 10 at resolution; radiant 6 / 12 |
+| 68 | Twisted Sorcerer | 1 | 4 damage, 8 when hero < 10 at resolution; radiant 6 / 12 |
 | 69 | Call to Arms | 1 | Three top-down recruits of cost ≤1, library order otherwise kept, stops when the board fills; radiant ≤2 |
 | 70 | Spiteful Stab | 1 | 2 + floor(missing/5) + exile count; radiant 4 + floor(missing/3) + exile |
 | 71 | Intern Stimmy | 2 | Trap window at the end of any turn with library > opponent's → recruit ≤1 (R62); fires again next qualifying turn; radiant ≤2 |

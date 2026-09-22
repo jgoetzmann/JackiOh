@@ -36,6 +36,8 @@ export type SummonPlacement = {
   /** §3.2: a Stack card may enter an occupied unit zone and becomes the top of the pile. */
   stack?: boolean;
   radiant?: boolean;
+  /** §7: the Bread Token's "Armor X", carried beside `statsOverride` for the same reason. */
+  armorOverride?: number;
   statsOverride?: StatsOverride;
 };
 
@@ -119,6 +121,7 @@ function summonFresh(
 
   const card = newInstance(ctx.state, defId, player, { z: "resolving", player });
   if (at.radiant === true) card.radiant = true;
+  if (at.armorOverride !== undefined) card.armorOverride = at.armorOverride;
   return summonOnto(ctx, card, ref, at) ? card : null;
 }
 
@@ -137,6 +140,7 @@ function summonExisting(
 
   removeFromAnyZone(ctx.state, card);
   if (at.radiant === true) card.radiant = true;
+  if (at.armorOverride !== undefined) card.armorOverride = at.armorOverride;
   return summonOnto(ctx, card, ref, at) ? card : null;
 }
 

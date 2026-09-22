@@ -53,7 +53,10 @@ export function tokenDef(name: string, tags: Tag[] = ["Token"]): CardDef {
     token: true,
     cost: 1,
     base: { attack: 3, health: 3, keywords: [{ kind: "Rush" }], text: "token" },
-    radiant: { attack: 3, health: 3, keywords: [{ kind: "Rush" }], text: "token" },
+    // §7 gives every unit token a DISTINCT radiant face now (the real Rush Token is 3/3 -> 6/6),
+    // so the fixture carries one too. A fixture whose faces were identical could not tell a test
+    // that reads the radiant face from one that silently read the base.
+    radiant: { attack: 6, health: 6, keywords: [{ kind: "Rush" }], text: "token" },
   };
 }
 

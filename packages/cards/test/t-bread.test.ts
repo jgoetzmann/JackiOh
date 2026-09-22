@@ -37,7 +37,11 @@ const SEED = "t-bread";
  */
 function summonBreadToken(
   s: Scenario,
-  args: { statsOverride?: { attack: number; health: number }; radiant?: boolean } = {},
+  args: {
+    statsOverride?: { attack: number; health: number };
+    radiant?: boolean;
+    armorOverride?: number;
+  } = {},
 ): CardInstance {
   const state = s.state;
   const sink: EngineSink = { state, events: [], rng: createRng(state.seed, state.rngCursor) };
@@ -64,8 +68,12 @@ describe("T-bread Bread Token (SPEC §7, R37)", () => {
       expect(def.base.text).toBe("");
     });
 
-    it("§7 gives the Bread Token no radiant form, so def.radiant equals def.base (BUILD M4-T1)", () => {
-      expect(def.radiant).toEqual(def.base);
+    it("§7 gives the Bread Token a Radiant face: X/X with Armor X (BUILD M4-T1)", () => {
+      // Its X/X is a `statsOverride`, so BOTH printed faces stay 0/0; the radiant one differs by
+      // printing Armor, whose `n` is a placeholder the summon fills in for the same reason.
+      expect(def.radiant.attack).toBe(0);
+      expect(def.radiant.keywords).toEqual([{ kind: "Armor", n: 0 }]);
+      expect(def.base.keywords, "the base face prints nothing").toEqual([]);
     });
 
     it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
@@ -96,7 +104,7 @@ describe("T-bread Bread Token (SPEC §7, R37)", () => {
       s.expectStats(token, { attack: 9, health: 9, maxHealth: 9 });
       expect(keywordsOf(s.state, token)).toEqual([]);
       expect(defOf(s.state, token.defId).base.text).toBe("");
-      expect(defOf(s.state, token.defId).radiant.text).toBe("");
+      expect(defOf(s.state, token.defId).radiant.text, "the radiant face does").toBe("Armor X");
     });
 
     it("§7 and §4.5 with no override a Bread Token is its printed 0/0, so it dies at the state check", () => {
@@ -167,15 +175,31 @@ describe("T-bread Bread Token (SPEC §7, R37)", () => {
 
   // §7's "Radiant form" column reads "none", so every case above holds for a radiant instance too:
   // R74 sets the flag, and the flag selects the same face and the same (empty) Script.
-  describe("radiant (§7: none — the radiant face is the base face)", () => {
-    it("R74 a radiant Bread Token summoned as X/X reads the same X/X with no keywords", () => {
+  describe("radiant (§7: X/X, Armor X)", () => {
+    it("§7 a radiant Bread Token summoned as X/X carries Armor X — the same X", () => {
       const s = scenario({ seed: SEED });
-      const token = summonBreadToken(s, { radiant: true, statsOverride: { attack: 6, health: 6 } });
+      const token = summonBreadToken(s, {
+        radiant: true,
+        statsOverride: { attack: 6, health: 6 },
+        armorOverride: 6,
+      });
 
       expect(token.radiant).toBe(true);
       s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
-      expect(faceOf(s.state, token)).toEqual({ attack: 6, health: 6, keywords: [] });
-      expect(keywordsOf(s.state, token)).toEqual([]);
+      expect(faceOf(s.state, token)).toEqual({
+        attack: 6,
+        health: 6,
+        keywords: [{ kind: "Armor", n: 6 }],
+      });
+      expect(keywordsOf(s.state, token)).toEqual([{ kind: "Armor", n: 6 }]);
+    });
+
+    /** Without the override the printed placeholder stands, which is Armor 0 — not Armor X. */
+    it("§7 a radiant Bread Token with no armor override reads the printed Armor 0", () => {
+      const s = scenario({ seed: SEED });
+      const token = summonBreadToken(s, { radiant: true, statsOverride: { attack: 6, health: 6 } });
+
+      expect(keywordsOf(s.state, token)).toEqual([{ kind: "Armor", n: 0 }]);
     });
 
     it("§7 a radiant Bread Token with no override is the same printed 0/0 and dies at the state check", () => {

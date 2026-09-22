@@ -1,4 +1,4 @@
-// #68 Twisted Sourcerer — SPEC §8.3, BUILD M4-T4: "4 damage, 8 when hero < 10 at resolution;
+// #68 Twisted Sorcerer — SPEC §8.3, BUILD M4-T4: "4 damage, 8 when hero < 10 at resolution;
 // radiant 6 / 12".
 //
 // §8.3's row: "Cry: deal 4 damage to a target, 8 if your hero is below 10" → "6, or 12", Engine
@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { scenario, type ScenarioOptions } from "./_harness";
-import { base, radiant } from "../src/scripts/068-twisted-sourcerer";
+import { base, radiant } from "../src/scripts/068-twisted-sorcerer";
 
 const SOURCERER = "core-068"; // Unit 5/5 → 10/10, cost 2.
 const SPONGE = "core-019"; // Midrange Menace, 9/9 → 18/18, no Armor: a target that survives.
@@ -43,7 +43,7 @@ function onUnit(s: Board, player: "p1" | "p2", lane: number): { pick: "instance"
 
 const AT_ENEMY_HERO = [{ pick: "hero", player: "p2" }] as const;
 
-describe("#68 Twisted Sourcerer", () => {
+describe("#68 Twisted Sorcerer", () => {
   // -------------------------------------------------------------------------------------------
   // The declaration (§8 Conventions, R81, R90)
   // -------------------------------------------------------------------------------------------

@@ -265,14 +265,19 @@ describe("#95 Call to Chaos — base, the ten effects", () => {
     ]);
   });
 
-  it("§8.4 6/10 summons five Rush Tokens as 5/5 (§7's statsOverride)", () => {
+  it("§8.4 6/10 summons five RADIANT Rush Tokens (§7's 6/6), not a bespoke 5/5", () => {
     const s = chaos("tokens");
     const tokens = unitsOf(s, "p1");
     expect(tokens.map((unit) => unit.defId)).toEqual(Array.from({ length: 5 }, () => RUSH_TOKEN));
-    // §7: the printed token is 3/3; Call to Chaos summons it 5/5 through `statsOverride`.
+    // §7: the printed token is 3/3 and its Radiant face is 6/6. #95 used to invent a 5/5 through
+    // `statsOverride` — the only card in the set that chose its own Rush Token size — and now
+    // summons the token's own Radiant face, so the stats live in the catalog and nowhere else.
     expect(cardDef(RUSH_TOKEN).base.attack).toBe(3);
+    expect(cardDef(RUSH_TOKEN).radiant.attack).toBe(6);
     for (const token of tokens) {
-      s.expectStats(token, { attack: 5, health: 5, maxHealth: 5 });
+      expect(token.radiant).toBe(true);
+      expect(token.statsOverride, "no bespoke stats any more").toBeUndefined();
+      s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
       expect(keywordsOf(s, token)).toContain("Rush");
     }
   });

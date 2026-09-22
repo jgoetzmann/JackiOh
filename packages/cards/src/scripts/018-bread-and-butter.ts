@@ -70,6 +70,9 @@ function breadTrigger(multiplier: number): TrapTrigger {
           player: "self",
           // §7, R37: X/X on a card printed 0/0.
           statsOverride: { attack: x, health: x },
+          // §7: the radiant face prints "Armor X" — the same X. Carried now rather than when the
+          // token turns Radiant, because nothing at that moment still knows what X was.
+          armorOverride: x,
         }),
       ];
     },

@@ -212,6 +212,7 @@ export function resetInstance(instance: CardInstance): void {
   delete instance.position;
   delete instance.summonedTurn;
   delete instance.statsOverride;
+  delete instance.armorOverride;
   delete instance.tauntSuppressedTurn;
   delete instance.faceUp;
   delete instance.lastDamagedBy;

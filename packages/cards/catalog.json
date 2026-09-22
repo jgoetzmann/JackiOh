@@ -66,26 +66,32 @@
       "health": 1,
       "keywords": [
         {
+          "kind": "Taunt"
+        },
+        {
           "kind": "Divine Shield"
         },
         {
           "kind": "Reborn"
         }
       ],
-      "text": "Divine Shield, Reborn"
+      "text": "Taunt, Divine Shield, Reborn"
     },
     "radiant": {
       "attack": 2,
       "health": 2,
       "keywords": [
         {
+          "kind": "Taunt"
+        },
+        {
           "kind": "Divine Shield"
         },
         {
           "kind": "Reborn"
         }
       ],
-      "text": "Divine Shield, Reborn; Death: summon a base Right-house defender"
+      "text": "Taunt, Divine Shield, Reborn; Death: summon a base Right-house defender"
     }
   },
   "core-004": {
@@ -439,7 +445,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "X = 3 × unspent"
+      "text": "X = 3 \u00d7 unspent"
     }
   },
   "core-019": {
@@ -1078,11 +1084,11 @@
     },
     "base": {
       "keywords": [],
-      "text": "Aura: all units −2/−2 (paid 4: −5/−5)"
+      "text": "Aura: all units \u22122/\u22122 (paid 4: \u22125/\u22125)"
     },
     "radiant": {
       "keywords": [],
-      "text": "Aura: enemy units −4/−4 (paid 4: −10/−10)"
+      "text": "Aura: enemy units \u22124/\u22124 (paid 4: \u221210/\u221210)"
     }
   },
   "core-047": {
@@ -1185,7 +1191,7 @@
     "cost": 1,
     "base": {
       "keywords": [],
-      "text": "Choose a type (Spell, Unit, Field Spell, Trap), then a cost bracket (0–1, 2, 3, 4+), offering only options with a match in your library; reveal 3 random matching library cards; choose one to hand. No match at all → add a KY's Empty Notebook"
+      "text": "Choose a type (Spell, Unit, Field Spell, Trap), then a cost bracket (0\u20131, 2, 3, 4+), offering only options with a match in your library; reveal 3 random matching library cards; choose one to hand. No match at all \u2192 add a KY's Empty Notebook"
     },
     "radiant": {
       "keywords": [],
@@ -1578,13 +1584,13 @@
       "attack": 0,
       "health": 2,
       "keywords": [],
-      "text": "Cannot be in Defense Position. Aura: your units have −2 attack"
+      "text": "Cannot be in Defense Position. Aura: your units have \u22122 attack"
     },
     "radiant": {
       "attack": 0,
       "health": 4,
       "keywords": [],
-      "text": "Aura: your non-Spikey-Pillow units have −2 attack"
+      "text": "Aura: your non-Spikey-Pillow units have \u22122 attack"
     }
   },
   "core-066": {
@@ -1651,7 +1657,7 @@
   "core-068": {
     "id": "core-068",
     "index": "68",
-    "name": "Twisted Sourcerer",
+    "name": "Twisted Sorcerer",
     "set": "Core",
     "type": "Unit",
     "tags": [],
@@ -1921,7 +1927,7 @@
       "attack": 2,
       "health": 2,
       "keywords": [],
-      "text": "Cry and Death: all your units become Radiant"
+      "text": "Death: all your units become Radiant"
     },
     "radiant": {
       "attack": 4,
@@ -1931,7 +1937,7 @@
           "kind": "Reborn"
         }
       ],
-      "text": "Reborn; same"
+      "text": "Reborn; Death: all your units become Radiant"
     }
   },
   "core-082": {
@@ -1948,7 +1954,7 @@
     "cost": 1,
     "base": {
       "keywords": [],
-      "text": "Discover among 3 distinct random numbers 1–100; add the Radiant Core card with that index to your hand"
+      "text": "Discover among 3 distinct random numbers 1\u2013100; add the Radiant Core card with that index to your hand"
     },
     "radiant": {
       "keywords": [],
@@ -2242,7 +2248,7 @@
     "cost": 2,
     "base": {
       "keywords": [],
-      "text": "Grade counter, starts at E (E,D,C,B,A,S = 1–6). End of turn: if cards played this turn ≥ grade, grade +1 and run every step from E up to the new grade. E: add a copy of a random card played this turn to your hand. D: 2 different random hand cards cost 1 less. C: opponent exiles a random hand card. B: a random hand card becomes Radiant. A: 8 damage to the enemy hero with Lifesteal. S: run E–A again"
+      "text": "Grade counter, starts at E (E,D,C,B,A,S = 1\u20136). End of turn: if cards played this turn \u2265 grade, grade +1 and run every step from E up to the new grade. E: add a copy of a random card played this turn to your hand. D: 2 different random hand cards cost 1 less. C: opponent exiles a random hand card. B: a random hand card becomes Radiant. A: 8 damage to the enemy hero with Lifesteal. S: run E\u2013A again"
     },
     "radiant": {
       "keywords": [],
@@ -2505,14 +2511,14 @@
       "text": "Rush."
     },
     "radiant": {
-      "attack": 3,
-      "health": 3,
+      "attack": 6,
+      "health": 6,
       "keywords": [
         {
           "kind": "Rush"
         }
       ],
-      "text": "Rush."
+      "text": "Rush"
     }
   },
   "core-t-sheep": {
@@ -2534,10 +2540,10 @@
       "text": "Worth 2 Tributes while on the field."
     },
     "radiant": {
-      "attack": 1,
-      "health": 1,
+      "attack": 2,
+      "health": 2,
       "keywords": [],
-      "text": "Worth 2 Tributes while on the field."
+      "text": "Worth 3 Tributes"
     }
   },
   "core-t-felinor": {
@@ -2560,8 +2566,8 @@
       "text": ""
     },
     "radiant": {
-      "attack": 1,
-      "health": 1,
+      "attack": 2,
+      "health": 2,
       "keywords": [],
       "text": ""
     }
@@ -2587,8 +2593,13 @@
     "radiant": {
       "attack": 0,
       "health": 0,
-      "keywords": [],
-      "text": ""
+      "keywords": [
+        {
+          "kind": "Armor",
+          "n": 0
+        }
+      ],
+      "text": "Armor X"
     }
   }
 }

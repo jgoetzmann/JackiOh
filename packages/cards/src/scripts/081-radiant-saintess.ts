@@ -58,13 +58,18 @@ function radiateYourUnits(ctx: EffectContext, includeSelf: boolean): Effect[] {
   return [...new Set(ids)].map((instanceId) => setRadiant({ instanceId }));
 }
 
-/** R22: the Cry includes the Saintess herself, so she is 4/4 with Reborn at once. */
-const cry: Hook = (ctx) => radiateYourUnits(ctx, true);
-
-/** R78: by the time Death runs she is in the graveyard, so "your units" is everyone else. */
+/**
+ * R78: by the time Death runs she is in the graveyard, so "your units" is everyone else.
+ *
+ * THERE IS NO CRY. She had "Cry and Death" and the Cry was cut for burst: playing her turned the
+ * board Radiant the instant she landed, including herself (she arrived 4/4 with Reborn for one
+ * mana). On Death alone the same effect has to be paid for with her body, which is the cost the
+ * card was missing. `includeSelf` stays a parameter because Death is the only caller and passing
+ * `false` at the one call site is what R78 is about.
+ */
 const death: Hook = (ctx) => radiateYourUnits(ctx, false);
 
-export const base: Script = { cry, death };
+export const base: Script = { death };
 
 /** "Reborn; same": Reborn is printed on the radiant face, so the text — and the code — is the base. */
-export const radiant: Script = { cry, death };
+export const radiant: Script = { death };

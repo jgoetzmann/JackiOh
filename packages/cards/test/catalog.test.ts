@@ -126,7 +126,7 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "65.1", name: "Spikey Pillow", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [0, 2], radiant: [0, 4] },
   { index: "66", name: "The Rock", cost: 4, type: "Unit", tags: ["Human"], rarity: "Common", base: [10, 10], radiant: [20, 20] },
   { index: "67", name: "Zoomerbin Oomen", cost: 1, type: "Unit", tags: ["Human"], rarity: "Rare", base: [1, 2], radiant: [2, 4] },
-  { index: "68", name: "Twisted Sourcerer", cost: 2, type: "Unit", tags: [], rarity: "Common", base: [5, 5], radiant: [10, 10] },
+  { index: "68", name: "Twisted Sorcerer", cost: 2, type: "Unit", tags: [], rarity: "Common", base: [5, 5], radiant: [10, 10] },
   { index: "69", name: "Call to Arms", cost: 2, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "70", name: "Spiteful Stab", cost: 3, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "71", name: "Intern Stimmy", cost: 1, type: "Field Trap", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
@@ -162,10 +162,10 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "98", name: "Heroic Power", cost: "X", type: "Field Spell", tags: ["Quickdraw"], rarity: "Mythic", base: [null, null], radiant: [null, null] },
   { index: "99", name: "Craft a Card", cost: 3, type: "Spell", tags: [], rarity: "Mythic", base: [null, null], radiant: [null, null] },
   { index: "100", name: "Ceaseless Void", cost: 100, type: "Unit", tags: [], rarity: "Mythic", base: [10, 10], radiant: [10, 10] },
-  { index: "T-rush", name: "Rush Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [3, 3], radiant: [3, 3], noRadiantForm: true },
-  { index: "T-sheep", name: "Sheep Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [1, 1], radiant: [1, 1], noRadiantForm: true },
-  { index: "T-felinor", name: "Felinor Token", cost: 1, type: "Unit", tags: ["Felinor", "Token"], rarity: "Token", base: [1, 1], radiant: [1, 1], noRadiantForm: true },
-  { index: "T-bread", name: "Bread Token", cost: 0, type: "Unit", tags: ["Token"], rarity: "Token", base: [0, 0], radiant: [0, 0], noRadiantForm: true },
+  { index: "T-rush", name: "Rush Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [3, 3], radiant: [6, 6] },
+  { index: "T-sheep", name: "Sheep Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
+  { index: "T-felinor", name: "Felinor Token", cost: 1, type: "Unit", tags: ["Felinor", "Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
+  { index: "T-bread", name: "Bread Token", cost: 0, type: "Unit", tags: ["Token"], rarity: "Token", base: [0, 0], radiant: [0, 0] },
 ];
 
 /** BUILD M4-T1: the only tags any entry may carry. */
@@ -190,17 +190,7 @@ const RARITY_COUNTS: Readonly<Record<string, number>> = {
 };
 
 /** BUILD M4-T1: the entries §8 gives no distinct radiant form. */
-const NO_RADIANT_FORM: readonly string[] = [
-  "38",
-  "80",
-  "93.1",
-  "95.1",
-  "96",
-  "T-rush",
-  "T-sheep",
-  "T-felinor",
-  "T-bread",
-];
+const NO_RADIANT_FORM: readonly string[] = ["38", "80", "93.1", "95.1", "96"];
 
 const ENTRIES: readonly CardDef[] = Object.values(CATALOG);
 
@@ -353,7 +343,7 @@ describe("tag vocabulary (BUILD M4-T1)", () => {
 });
 
 describe("no distinct radiant form (SPEC §8, §7, BUILD M4-T1)", () => {
-  it("is exactly #38, #80, #93.1, #95.1, #96 and the four shared tokens", () => {
+  it("is exactly #38, #80, #93.1, #95.1 and #96 — the four unit tokens now have radiant forms", () => {
     const fromFixture = SPEC_8.filter((row) => row.noRadiantForm === true).map((row) => row.index);
     expect(fromFixture.sort(), "SPEC rows with no radiant form").toEqual([...NO_RADIANT_FORM].sort());
   });
