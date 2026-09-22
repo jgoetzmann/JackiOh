@@ -188,27 +188,45 @@ function withQuery(session: Omit<Session, "query">): Session {
   };
 }
 
+/**
+ * Checks a client out of the pool with an `error` listener attached, and returns a `release` that
+ * destroys the connection when it broke.
+ *
+ * `pool.on("error")` in `createPostgresStore` only covers an IDLE client. A CHECKED-OUT one emits
+ * `error` on ITSELF, and Node re-throws an 'error' event that has no listener, so a connection
+ * dying mid-transaction took the whole process down: measured against the Supabase pooler as
+ * `Error: read ETIMEDOUT ... Emitted 'error' event on Client instance`, dead with a request in
+ * flight. Both checkout sites need it — `poolSession` for a single statement and `store.tx` for a
+ * multi-statement transaction — and `store.tx` is the one that matters most, since matchmaking's
+ * `startPairedMatch` runs there and is the most concurrent code in the server.
+ *
+ * The listener does not swallow the failure: the in-flight query rejects on its own and that
+ * rejection is what the caller reports. `release(err)` is how `pg` is told to discard a client
+ * rather than hand a poisoned connection to the next caller.
+ */
+async function checkout(pool: Pool): Promise<{ client: PoolClient; release: () => void }> {
+  const client = await pool.connect();
+  let fatal: Error | undefined;
+  const onError = (error: Error): void => {
+    fatal = error;
+  };
+  client.on("error", onError);
+  return {
+    client,
+    release: () => {
+      client.removeListener("error", onError);
+      client.release(fatal);
+    },
+  };
+}
+
 /** The top-level session: every call is its own transaction, opened and closed here. */
 function poolSession(pool: Pool): Session {
   return withQuery({
     joined: false,
     pool,
     run: async <T>(subject: string | null, body: (q: Query) => Promise<T>): Promise<T> => {
-      const client = await pool.connect();
-      // A CHECKED-OUT client emits `error` on itself, not on the Pool, so `pool.on("error")` in
-      // `createPostgresStore` does not cover this case and an unhandled 'error' event is re-thrown
-      // by Node. Measured against the Supabase pooler: `Error: read ETIMEDOUT ... Emitted 'error'
-      // event on Client instance`, process dead, mid-session, with a request in flight.
-      //
-      // The listener does not swallow the failure -- the in-flight query rejects on its own and
-      // that rejection is what the caller sees and reports. It exists so the process survives long
-      // enough to report it, and so the dead connection can be destroyed rather than returned to
-      // the pool: `release(err)` is how `pg` is told to discard a client instead of reusing it.
-      let fatal: Error | undefined;
-      const onClientError = (error: Error): void => {
-        fatal = error;
-      };
-      client.on("error", onClientError);
+      const { client, release } = await checkout(pool);
       try {
         await beginSession(client, subject);
         const result = await body(boundQuery(client));
@@ -218,8 +236,7 @@ function poolSession(pool: Pool): Session {
         await client.query("rollback").catch(() => undefined);
         throw error;
       } finally {
-        client.removeListener("error", onClientError);
-        client.release(fatal);
+        release();
       }
     },
   });
@@ -578,7 +595,7 @@ function buildStore(session: Session): Store {
   store.tx = async <T>(fn: (t: Store) => Promise<T>): Promise<T> => {
     const pool = session.pool;
     if (session.joined || pool === null) return fn(store);
-    const client = await pool.connect();
+    const { client, release } = await checkout(pool);
     try {
       await beginSession(client, null);
       const result = await fn(buildStore(joinedSession(client)));
@@ -588,7 +605,7 @@ function buildStore(session: Session): Store {
       await client.query("rollback").catch(() => undefined);
       throw error;
     } finally {
-      client.release();
+      release();
     }
   };
 

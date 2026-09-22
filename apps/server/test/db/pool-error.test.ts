@@ -18,15 +18,45 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-const { listeners } = vi.hoisted(() => ({
+const { listeners, clients } = vi.hoisted(() => ({
   listeners: new Map<string, ((...args: unknown[]) => void)[]>(),
+  clients: [] as {
+    errorListeners: ((...args: unknown[]) => void)[];
+    released: boolean;
+    releasedWith: unknown;
+  }[],
 }));
 
 vi.mock("pg", () => {
+  class FakeClient {
+    errorListeners: ((...args: unknown[]) => void)[] = [];
+    released = false;
+    releasedWith: unknown = undefined;
+    on(event: string, fn: (...args: unknown[]) => void): this {
+      if (event === "error") this.errorListeners.push(fn);
+      return this;
+    }
+    removeListener(event: string, fn: (...args: unknown[]) => void): this {
+      if (event === "error") this.errorListeners = this.errorListeners.filter((f) => f !== fn);
+      return this;
+    }
+    async query(): Promise<{ rows: unknown[]; rowCount: number }> {
+      return { rows: [], rowCount: 0 };
+    }
+    release(err?: unknown): void {
+      this.released = true;
+      this.releasedWith = err;
+    }
+  }
   class FakePool {
     on(event: string, fn: (...args: unknown[]) => void): this {
       listeners.set(event, [...(listeners.get(event) ?? []), fn]);
       return this;
+    }
+    async connect(): Promise<FakeClient> {
+      const client = new FakeClient();
+      clients.push(client);
+      return client;
     }
     async end(): Promise<void> {}
   }
@@ -65,5 +95,62 @@ describe("the Postgres pool's error event", () => {
     createPostgresStore({ connectionString: CONNECTION });
     const fire = (listeners.get("error") ?? [])[0];
     expect(() => fire?.(new Error("Connection terminated unexpectedly"))).not.toThrow();
+  });
+});
+
+/**
+ * The other half, and the half that was missed the first time.
+ *
+ * `pool.on("error")` covers an IDLE client. A CHECKED-OUT client emits on ITSELF, and there are
+ * TWO checkout sites: `poolSession` for a single statement and `store.tx` for a transaction. The
+ * first fix guarded only `poolSession`, leaving `store.tx` — where matchmaking's
+ * `startPairedMatch` runs, the most concurrent code in the server — still able to take the
+ * process down. Both go through `checkout()` now, and both are asserted here so a third site
+ * cannot quietly skip it.
+ */
+describe("a checked-out client", () => {
+  const CONNECTION = "postgresql://postgres:secret@db.example.supabase.co:5432/postgres";
+
+  it("carries its own error listener on the single-statement path", async () => {
+    clients.length = 0;
+    const store = createPostgresStore({ connectionString: CONNECTION });
+    await store.profiles.getById("11111111-1111-1111-1111-111111111111").catch(() => undefined);
+
+    expect(clients, "a client was checked out").to.have.length.greaterThan(0);
+    const client = clients[0];
+    expect(client?.released, "and released").toBe(true);
+  });
+
+  it("carries its own error listener inside store.tx", async () => {
+    clients.length = 0;
+    const store = createPostgresStore({ connectionString: CONNECTION });
+
+    let sawListener = false;
+    await store
+      .tx(async () => {
+        // Mid-transaction: this is exactly when a dropped connection used to kill the process.
+        sawListener = (clients[0]?.errorListeners.length ?? 0) > 0;
+      })
+      .catch(() => undefined);
+
+    expect(sawListener, "store.tx attaches an error listener while the client is checked out").toBe(
+      true,
+    );
+  });
+
+  it("destroys a connection that errored instead of pooling it again", async () => {
+    clients.length = 0;
+    const store = createPostgresStore({ connectionString: CONNECTION });
+    const boom = new Error("read ETIMEDOUT");
+
+    await store
+      .tx(async () => {
+        // Fire the event the pooler causes, the way `pg` would.
+        for (const fn of clients[0]?.errorListeners ?? []) fn(boom);
+      })
+      .catch(() => undefined);
+
+    // `release(err)` is what tells pg to discard the client rather than reuse it.
+    expect(clients[0]?.releasedWith, "released WITH the error").toBe(boom);
   });
 });

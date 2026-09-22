@@ -11,6 +11,19 @@
 // That is a gap in the product worth fixing separately. For the suite it means the only reliable
 // reset is the one below.
 //
+// IT ENDS MATCHES, IT DOES NOT DELETE THEM. The first version deleted from `match_actions` and
+// the database refused: "append-only table public.match_actions may not be updated or deleted".
+// That guard is SPEC §9.3 — `(seed, log)` IS the truth of a match, so the log cannot be rewritten,
+// and `matches` cannot be deleted either once rows reference it. An earlier hand-run of the same
+// DELETE appeared to work only because the table was empty, so it touched no rows and the trigger
+// never fired.
+//
+// So the reset goes through `app.end_match`, which migration 0004 calls "the one path that
+// terminates a match" and which is idempotent by design (§9.5's reaper and a client ending could
+// race). The reason is `match-ceiling` — one of the seven `results_reason_check` allows, and the
+// honest one for a match nobody finished, since §9.5 makes the ceiling a draw. Ratings are passed
+// back unchanged so a reset cannot move anyone's Elo.
+//
 // INERT WITHOUT `E2E_DATABASE_URL`. CI sets neither it nor `E2E_ONLINE`, so the spec is skipped
 // there and this task is never called. Nothing here is reachable from the frozen M8 specs.
 
@@ -33,20 +46,46 @@ export async function onlineReset(): Promise<OnlineResetResult> {
   const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
   try {
     await client.connect();
-    // Order matters: `tickets.match_id` and `profiles.current_match_id` are foreign keys into
-    // `matches`, so the references go before the rows they point at.
+    // 1. End every unfinished match through the sanctioned path. `end_match` clears both
+    //    players' `current_match_id` itself (§9.5: "every ending ... clears both players'
+    //    in-match state"), which is the whole point of using it rather than a bare UPDATE.
+    const live = await client.query<{ id: string; p1: string | null; p2: string | null }>(
+      `select m.id, m.p1_profile_id as p1, m.p2_profile_id as p2
+         from public.matches m
+        where m.status <> 'over'`,
+    );
+    let ended = 0;
+    for (const row of live.rows) {
+      const ratings = await client.query<{ rating: number }>(
+        "select rating from public.profiles where id = any($1::uuid[])",
+        [[row.p1, row.p2].filter((id): id is string => id !== null)],
+      );
+      const p1Rating = ratings.rows[0]?.rating ?? 1000;
+      const p2Rating = ratings.rows[1]?.rating ?? p1Rating;
+      // No winner: a draw, so neither rating is meant to move, and passing the current values
+      // back is how `end_match` is told that.
+      await client.query("select app.end_match($1::uuid, null, 'match-ceiling', 0, $2::int, $3::int)", [
+        row.id,
+        p1Rating,
+        p2Rating,
+      ]);
+      ended += 1;
+    }
+
+    // 2. Any straggler still pointing at a match `end_match` did not own.
     const profiles = await client.query(
       "update public.profiles set current_match_id = null where current_match_id is not null",
     );
-    await client.query("delete from public.match_actions");
+
+    // 3. Tickets carry no append-only guard; a stale one would keep the matchmaker busy.
     const tickets = await client.query("delete from public.tickets");
-    const matches = await client.query("delete from public.matches");
+
     return {
       ok: true,
       cleared: {
         profiles: profiles.rowCount ?? 0,
         tickets: tickets.rowCount ?? 0,
-        matches: matches.rowCount ?? 0,
+        matches: ended,
       },
     };
   } catch (error) {
