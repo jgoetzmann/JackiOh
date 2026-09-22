@@ -26,3 +26,8 @@ __pycache__/
 # not source, it bloats every clone, and a transcript is exactly the kind of file a secret ends up
 # in by accident.
 *local-command-caveat*.txt
+
+# This repo is pnpm (pnpm-lock.yaml, packageManager pnpm@11.3.0) and both deploys install with
+# --frozen-lockfile. An npm lockfile arrived once via a PR; ignored so it cannot drift back in and
+# be mistaken for the real one.
+package-lock.json
