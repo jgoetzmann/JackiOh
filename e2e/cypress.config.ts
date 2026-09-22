@@ -37,6 +37,16 @@ export default defineConfig({
     expose: {
       apiUrl: process.env.E2E_API_URL ?? "http://localhost:8787",
       wsUrl: process.env.E2E_WS_URL ?? "ws://localhost:8787/ws/match",
+      // 99-online-smoke.cy.ts only. It drives the DEPLOYED stack with real accounts, so it is
+      // skipped unless `online` is "true" and every value comes from the environment — nothing
+      // here is committed, and CI (which sets none of them) runs the spec as a skip.
+      online: process.env.E2E_ONLINE ?? "",
+      supabaseUrl: process.env.E2E_SUPABASE_URL ?? "",
+      supabaseKey: process.env.E2E_SUPABASE_KEY ?? "",
+      serverUrl: process.env.E2E_SERVER_URL ?? "",
+      testPassword: process.env.E2E_TEST_PASSWORD ?? "",
+      player1: process.env.E2E_PLAYER1 ?? "",
+      player2: process.env.E2E_PLAYER2 ?? "",
     },
     setupNodeEvents(on, config) {
       registerTasks(on, config);

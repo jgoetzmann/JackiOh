@@ -1,5 +1,6 @@
 // Node-side tasks. Registered from cypress.config.ts's setupNodeEvents.
 
+import { onlineReset } from "./onlineReset.ts";
 import { replayHash, type ReplayHashPayload } from "./replay.ts";
 import { wsPlayer, type WsPlayerCommand } from "./wsPlayer.ts";
 
@@ -15,6 +16,13 @@ export function registerTasks(
     /** Spec 01: fold the recorded log through the engine and compare state hashes. */
     replayHash(payload: ReplayHashPayload) {
       return replayHash(config.projectRoot, payload);
+    },
+    /**
+     * 99-online-smoke only: clear queue and match state so the spec is re-runnable. Inert unless
+     * `E2E_DATABASE_URL` is set, which CI never sets.
+     */
+    onlineReset() {
+      return onlineReset();
     },
     /** Surface a message in the terminal (Cypress swallows console.log from the browser). */
     log(message: unknown) {
