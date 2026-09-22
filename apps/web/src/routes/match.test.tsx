@@ -14,7 +14,7 @@ import type { ActionBody } from "@jackioh/shared";
 
 import type { SocketLike } from "../game/net.ts";
 import { baseView } from "../test/fixtures.ts";
-import MatchRoute from "./match.tsx";
+import MatchRoute, { withoutToken } from "./match.tsx";
 
 class FakeSocket implements SocketLike {
   readyState = 0;
@@ -209,5 +209,24 @@ describe("the networked board", () => {
     expect(handle?.seat).toBe("p1");
     // And no seed: the server never sends one, because (seed, log) is the library order (§9.3).
     expect(handle?.seed).toBe("");
+  });
+});
+
+describe("withoutToken", () => {
+  /**
+   * `net.ts` puts the access token in the socket URL's query, and the connecting status line
+   * renders that URL. Printing it raw put a live bearer token on screen and in the DOM.
+   */
+  it("strips the access token from the socket URL it displays", () => {
+    const withToken =
+      "wss://jackioh-server.onrender.com/ws/match?token=eyJhbGciOiJFUzI1NiJ9.SECRET.sig&matchId=abc";
+    const shown = withoutToken(withToken);
+    expect(shown).not.toContain("SECRET");
+    expect(shown).not.toContain("token=");
+    expect(shown).toContain("wss://jackioh-server.onrender.com/ws/match");
+  });
+
+  it("returns an unparseable value unchanged rather than throwing", () => {
+    expect(withoutToken("not a url")).toBe("not a url");
   });
 });

@@ -81,6 +81,28 @@ function useCatalog(): CardDefs | null {
   return defs;
 }
 
+/**
+ * The socket URL with its credentials stripped, for display only.
+ *
+ * `net.ts`'s `socketUrlFor` puts the access token in the query string (`url.searchParams.set(
+ * "token", token)`), so rendering the URL raw printed a live bearer token on screen and into the
+ * DOM on every connect — visible in a screenshot, a screen share, over a shoulder, and to any
+ * extension that can read the page. The host and path are the useful part of the diagnostic; the
+ * query never was.
+ *
+ * Returns the input unchanged if it will not parse, since this is a status line and must not be
+ * the thing that throws.
+ */
+export function withoutToken(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.search = "";
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 export default function MatchRoute({ matchId, token, socketFactory }: MatchRouteProps): ReactElement {
   const match = useMatch({
     matchId,
@@ -134,7 +156,8 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
         </p>
         {match.connection === "refused" ? null : (
           <p className="notice">
-            <code data-testid={matchTestid.status}>{match.connection}</code> · <code>{match.url}</code>
+            <code data-testid={matchTestid.status}>{match.connection}</code> ·{" "}
+            <code>{withoutToken(match.url)}</code>
           </p>
         )}
       </div>
