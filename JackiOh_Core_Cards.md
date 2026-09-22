@@ -30,6 +30,8 @@ Cry: Destroy **all** opponents non-**Human unit**
 
 **1/1**
 
+**Taunt**
+
 **Divine Shield**
 
 **Reborn**
@@ -37,6 +39,8 @@ Cry: Destroy **all** opponents non-**Human unit**
 **\~\~\~**
 
 **2/2**
+
+**Taunt**
 
 **Divine Shield**
 
@@ -938,7 +942,7 @@ Your non-**Spikey Pillow** units have **\-2 attack**
 
 &nbsp;
 
-**(2) Twisted Sourcerer Spell, Unit Core, Epic, \#68**
+**(2) Twisted Sorcerer Spell, Unit Core, Epic, \#68**
 
 5/5
 
@@ -1100,7 +1104,7 @@ Summon 2 **Rush Tokens**. Give each of them 2 random **Keywords**.
 
 2/2
 
-**Cry and Death**: Make all your **Units** **Radiant**
+**Death**: Make all your **Units** **Radiant**
 
 \~\~\~
 
@@ -1108,7 +1112,7 @@ Summon 2 **Rush Tokens**. Give each of them 2 random **Keywords**.
 
 **Reborn**
 
-**Cry and Death**: Make all your **Units** **Radiant**
+**Death**: Make all your **Units** **Radiant**
 
 &nbsp;
 
@@ -1349,7 +1353,7 @@ Gain 6 mana
 - **Draw** your deck, gain 4 mana  
 - Add 3 random cards to your hand, they cost (0)  
 - Make all cards in your hand **Radiant**&nbsp;  
-- Summon 5 5/5 **Rush Tokens**  
+- Summon 5 **Radiant Rush Tokens**  
 - Reduce the cost of all your cards in your hand **Hand** and **Deck** by (2)  
 - Summon a **Chaos Golem**  
 - Summon 5 random **Field Spells** or **Traps**  
