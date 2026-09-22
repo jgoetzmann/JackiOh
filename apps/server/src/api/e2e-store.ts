@@ -617,6 +617,17 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
       const row = tables.results.find((result) => result.matchId === matchId);
       return row === undefined ? null : clone(row);
     },
+    /** Counted as the Postgres store counts it: a winnerless row is a draw (§9.5). */
+    recordFor: async (profileId) => {
+      const mine = tables.results.filter((row) => row.players.includes(profileId));
+      return {
+        wins: mine.filter((row) => row.winnerProfileId === profileId).length,
+        losses: mine.filter(
+          (row) => row.winnerProfileId !== null && row.winnerProfileId !== profileId,
+        ).length,
+        draws: mine.filter((row) => row.winnerProfileId === null).length,
+      };
+    },
   };
 
   store.reset = () => {

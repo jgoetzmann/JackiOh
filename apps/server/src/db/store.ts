@@ -1349,6 +1349,34 @@ function buildStore(session: Session): Store {
   // -------------------------------------------------------------------------
 
   store.results = {
+    /**
+     * A profile's finished-match record, counted in one pass over `results`.
+     *
+     * A draw is a row with no winner — §9.5 makes the ceiling, a mutual hero death and an
+     * accepted draw all winnerless — so the three counts partition every finished match and no
+     * separate "played" column can drift from them. The profile may sit on either side, hence
+     * the `in (p1, p2)` rather than a join.
+     */
+    recordFor: async (profileId: string) => {
+      const { rows } = await session.query<{ wins: string; losses: string; draws: string }>(
+        profileId,
+        `select
+           count(*) filter (where winner_profile_id = $1::uuid)                         as wins,
+           count(*) filter (where winner_profile_id is not null
+                              and winner_profile_id <> $1::uuid)                        as losses,
+           count(*) filter (where winner_profile_id is null)                            as draws
+         from public.results
+        where p1_profile_id = $1::uuid or p2_profile_id = $1::uuid`,
+        [profileId],
+      );
+      const row = rows[0];
+      return {
+        wins: Number(row?.wins ?? 0),
+        losses: Number(row?.losses ?? 0),
+        draws: Number(row?.draws ?? 0),
+      };
+    },
+
     /** One row per match: `results.match_id` is the primary key, so a second insert raises. */
     insert: async (row: ResultRow) => {
       await session.query(

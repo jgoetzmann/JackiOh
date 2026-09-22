@@ -428,6 +428,18 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
   };
 
   store.results = {
+    /** Counted the same way the Postgres store counts it: a winnerless row is a draw. */
+    recordFor: async (profileId: string) => {
+      call("results.recordFor");
+      const mine = tables.results.filter((r) => r.players.includes(profileId));
+      return {
+        wins: mine.filter((r) => r.winnerProfileId === profileId).length,
+        losses: mine.filter((r) => r.winnerProfileId !== null && r.winnerProfileId !== profileId)
+          .length,
+        draws: mine.filter((r) => r.winnerProfileId === null).length,
+      };
+    },
+
     insert: async (row: ResultRow) => {
       call("results.insert");
       if (tables.results.some((existing) => existing.matchId === row.matchId)) {

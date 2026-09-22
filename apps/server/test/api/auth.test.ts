@@ -547,3 +547,90 @@ describe("/api/auth/me reports the caller's own current match (§9.5)", () => {
     expect(body.currentMatchId, "the id /play navigates to").toBe("match-42");
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/profile (§9.5) — the account screen's read
+// ---------------------------------------------------------------------------
+
+describe("/api/profile reports identity and the ladder record", () => {
+  async function activeProfile(deps: ReturnType<typeof createTestDeps>) {
+    const token = deps.auth.addUser({ userId: ALICE, email: "alice@example.test" });
+    const profile = await deps.store.profiles.create({
+      userId: ALICE,
+      email: "alice@example.test",
+      rating: 1000,
+      at: 1,
+    });
+    await deps.store.profiles.setStatus(profile.id, "active");
+    return { token, profile };
+  }
+
+  it("reports the address the account is tied to, so a player can see who they are", async () => {
+    const deps = createTestDeps();
+    const { token } = await activeProfile(deps);
+
+    const router = createRouter(createAuthRoutes(), deps);
+    const res = await router(jsonRequest("GET", "/api/profile", undefined, { token }));
+    const body = (await readJson(res)) as { email: string | null; status: string };
+
+    expect(res.status).toBe(200);
+    expect(body.email).toBe("alice@example.test");
+    expect(body.status).toBe("active");
+  });
+
+  /** Nothing played is not the same claim as a 0% win rate, so it is null rather than 0. */
+  it("is a null win rate, not zero, before any match is finished", async () => {
+    const deps = createTestDeps();
+    const { token } = await activeProfile(deps);
+
+    const router = createRouter(createAuthRoutes(), deps);
+    const res = await router(jsonRequest("GET", "/api/profile", undefined, { token }));
+    const body = (await readJson(res)) as {
+      record: { wins: number; losses: number; draws: number };
+      winRate: number | null;
+    };
+
+    expect(body.record).toEqual({ wins: 0, losses: 0, draws: 0 });
+    expect(body.winRate).toBeNull();
+  });
+
+  /**
+   * A winnerless row is a DRAW (§9.5 makes the ceiling, a mutual hero death and an accepted draw
+   * all winnerless), and a draw counts as played while being neither a win nor a loss — so one
+   * win, one loss and one draw is a third, not a half.
+   */
+  it("counts wins, losses and draws from results, and rates on all three", async () => {
+    const deps = createTestDeps();
+    const { token, profile } = await activeProfile(deps);
+    const other = await deps.store.profiles.create({
+      userId: "user-bob",
+      email: "bob@example.test",
+      rating: 1000,
+      at: 1,
+    });
+
+    const row = (matchId: string, winner: string | null) => ({
+      matchId,
+      players: [profile.id, other.id] as [string, string],
+      winnerProfileId: winner,
+      reason: (winner === null ? "match-ceiling" : "concede") as never,
+      turns: 3,
+      ratingBefore: [1000, 1000] as [number, number],
+      ratingAfter: [1000, 1000] as [number, number],
+      endedAt: 10,
+    });
+    await deps.store.results.insert(row("m1", profile.id));
+    await deps.store.results.insert(row("m2", other.id));
+    await deps.store.results.insert(row("m3", null));
+
+    const router = createRouter(createAuthRoutes(), deps);
+    const res = await router(jsonRequest("GET", "/api/profile", undefined, { token }));
+    const body = (await readJson(res)) as {
+      record: { wins: number; losses: number; draws: number };
+      winRate: number | null;
+    };
+
+    expect(body.record).toEqual({ wins: 1, losses: 1, draws: 1 });
+    expect(body.winRate).toBeCloseTo(1 / 3, 5);
+  });
+});

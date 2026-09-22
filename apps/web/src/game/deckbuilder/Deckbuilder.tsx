@@ -29,6 +29,7 @@ import {
   removeCard,
   type Draft,
 } from "./loadout.ts";
+import { BackLink } from "../../routes/nav.tsx";
 import {
   CARD_POOL,
   DECKBUILDER,
@@ -170,6 +171,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
 
   return (
     <div className="app-shell app-shell--wide deckbuilder" data-testid={DECKBUILDER}>
+      <BackLink />
       <h1>JackiOh — decks</h1>
 
       <div className="db-tabs" role="tablist" aria-label="Decks">

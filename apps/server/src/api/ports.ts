@@ -471,10 +471,21 @@ export type ResultRow = {
   ratingAfter: [number, number];
 };
 
+/**
+ * A profile's finished-match record, counted from `results`.
+ *
+ * A draw is a row with no winner — §9.5 makes the ceiling, a mutual hero death and an accepted
+ * draw all winnerless — so wins + losses + draws is every match the profile has finished, and
+ * nothing needs a separate "played" column to stay consistent with them.
+ */
+export type ProfileRecord = { wins: number; losses: number; draws: number };
+
 export type ResultStore = {
   /** One row per match (§9.5). Rejects a second row for the same match. */
   insert: (row: ResultRow) => Promise<void>;
   getByMatch: (matchId: string) => Promise<ResultRow | null>;
+  /** Every finished match this profile played, as wins/losses/draws. */
+  recordFor: (profileId: string) => Promise<ProfileRecord>;
 };
 
 /**

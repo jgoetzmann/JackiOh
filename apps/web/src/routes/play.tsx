@@ -24,6 +24,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactElement } from "
 
 import { ApiRequestError, createRoom, dequeue, enqueue, getMe, joinRoom } from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
+import { BackLink } from "./nav.tsx";
 
 /** Chrome this screen invented; none of it is in `e2e/support/testids.ts` (no spec drives it). */
 /**
@@ -171,6 +172,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
 
   return (
     <div className="app-shell">
+      <BackLink />
       <h1>JackiOh — play</h1>
 
       <section className="form-card">

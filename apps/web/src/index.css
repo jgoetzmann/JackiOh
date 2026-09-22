@@ -408,6 +408,90 @@ button:disabled {
   flex: 1;
 }
 
+/* --- screen nav ---------------------------------------------------------------------------- */
+
+.screen-nav {
+  margin-bottom: -4px;
+}
+
+.screen-nav--end {
+  justify-content: flex-end;
+}
+
+/* --- an input with a control inside it (the password reveal) --------------------------------- */
+
+.input-with-affix {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.input-with-affix input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Reads as a control on the field, not a second call to action beside it. */
+.affix-button {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.affix-button:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+  background: var(--bg-sunken);
+}
+
+/* --- stat tiles (the account record) --------------------------------------------------------- */
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+}
+
+/*
+ * The value wears a TEXT token, not an accent: nothing here encodes a series, so a coloured
+ * number would imply a meaning it does not have. Proportional figures on purpose — `tabular-nums`
+ * gives every digit the width of a `0`, which reads loose on a large standalone number; it is for
+ * columns that must align, which these tiles are not.
+ */
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+/* Sentence case, no trailing colon. */
+.stat-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.account-email {
+  color: var(--text);
+  font-size: 16px;
+  word-break: break-all;
+}
+
 /* `/match/<id>`: the seat, turn and connection line, with the clock on the right. */
 .match-bar {
   display: flex;

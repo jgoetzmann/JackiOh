@@ -42,6 +42,7 @@ function meBody(status: "pending" | "active" | "banned", needsInviteCode: boolea
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,
+    email: "player@example.test",
   };
 }
 

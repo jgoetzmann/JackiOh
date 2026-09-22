@@ -28,6 +28,7 @@ const LoginRoute = lazy(() => import("./routes/login.tsx"));
 const InviteRoute = lazy(() => import("./routes/invite.tsx"));
 const DecksRoute = lazy(() => import("./routes/decks.tsx"));
 const PlayRoute = lazy(() => import("./routes/play.tsx"));
+const AccountRoute = lazy(() => import("./routes/account.tsx"));
 const MatchRoute = lazy(() => import("./routes/match.tsx"));
 
 const DEV_ONLY = import.meta.env.MODE !== "production";
@@ -39,8 +40,25 @@ export const shellTestid = {
 } as const;
 
 function Landing(): ReactElement {
+  // The landing is not gated, so it asks for itself. `useAccount` answers `loading` first, and
+  // rendering nothing for that beat avoids flashing "Sign in" at somebody who already is.
+  const account = useAccount();
+  const signedIn = account.kind === "ready";
+
   return (
     <div className="app-shell">
+      <nav className="row screen-nav screen-nav--end">
+        {account.kind === "loading" ? null : signedIn ? (
+          <a className="button-secondary" href={paths.account} data-testid="landing-account">
+            Account
+          </a>
+        ) : (
+          <a className="button-secondary" href={paths.login} data-testid="landing-sign-in">
+            Sign in
+          </a>
+        )}
+      </nav>
+
       <div className="hero">
         <div className="brand">
           <h1>JackiOh</h1>
@@ -187,6 +205,14 @@ export function App(): ReactElement {
     if (path === paths.invite) return <Gated allowPending>{() => <InviteRoute />}</Gated>;
     if (path === paths.decks) return <Gated>{() => <DecksRoute />}</Gated>;
     if (path === paths.play) return <Gated>{(account) => <PlayRoute token={account.token} />}</Gated>;
+    // `allowPending`: a pending account still has an email, a status and a way to sign out,
+    // and being unable to sign out of the screen that tells you to redeem a code is the trap
+    // this route exists to remove.
+    if (path === paths.account) {
+      return (
+        <Gated allowPending>{(account) => <AccountRoute token={account.token} />}</Gated>
+      );
+    }
 
     const matchId = matchIdOf(path);
     if (matchId !== null) {

@@ -128,7 +128,24 @@ export type MeResponse = {
   emailVerified: boolean;
   /** §9.5: the match this profile is in, or null. What `/play` waits on after it queues. */
   currentMatchId: string | null;
+  /** The address this account is tied to, so a player can see who they are signed in as. */
+  email: string | null;
 };
+
+/** `GET /api/profile`: the account screen's read — identity plus the ladder record. */
+export type ProfileResponse = {
+  id: string;
+  email: string | null;
+  status: "pending" | "active" | "banned";
+  rating: number;
+  record: { wins: number; losses: number; draws: number };
+  /** 0..1, or null when nothing has been played. Computed server-side so the two cannot differ. */
+  winRate: number | null;
+};
+
+export function getProfile(token: string): Promise<ProfileResponse> {
+  return apiRequest<ProfileResponse>("/api/profile", { token });
+}
 
 export function getMe(token: string): Promise<MeResponse> {
   return apiRequest<MeResponse>("/api/auth/me", { token });

@@ -600,6 +600,35 @@ export function createAuthRoutes(): Route[] {
     // §9.4: declared `user`, not `active`, because this *is* the code screen's read — a pending
     // account must be able to see that it needs a code. Every other authenticated endpoint is
     // `active` and 403s for the same caller (BUILD M6-T1).
+    /**
+     * The account screen: who you are signed in as, and how you have done.
+     *
+     * Separate from `/api/auth/me` rather than folded into it because `me` is the GATE's read —
+     * every guarded route resolves through it — and counting a profile's whole results history on
+     * each of those would put a scan behind every page load. This one is `active`, so it is only
+     * reachable by an account that can actually have a record.
+     */
+    route("GET", "/api/profile", "active", async (req, deps) => {
+      const { profile, user } = req;
+      if (profile === null || user === null) throw new ApiError("unauthorized", "sign in first");
+      const record = await deps.store.results.recordFor(profile.id);
+      return ok({
+        id: profile.id,
+        email: user.email,
+        status: profile.status,
+        rating: profile.rating,
+        record,
+        // Computed here so the client cannot disagree with itself about what counts as a played
+        // match. Draws count as played and as neither win nor loss, which is the convention every
+        // ladder uses; null rather than 0 when nothing has been played, so the screen can say
+        // "no matches yet" instead of "0%".
+        winRate:
+          record.wins + record.losses + record.draws === 0
+            ? null
+            : record.wins / (record.wins + record.losses + record.draws),
+      });
+    }),
+
     route("GET", "/api/auth/me", "user", async (req) => {
       const { profile, user } = req;
       if (profile === null || user === null) throw new ApiError("unauthorized", "sign in first");
@@ -619,6 +648,10 @@ export function createAuthRoutes(): Route[] {
         // status and rating are already here, and a match id is not a capability — the socket
         // still authenticates and the actor still stamps the seat from the token (§9.3).
         currentMatchId: profile.inMatchId,
+        // The address this account is tied to, so a player can see WHICH account they are signed
+        // in as. Read from the auth provider's user (the same place §9.4 step 1 reads
+        // `emailVerified` from), never from the token's user_metadata, which is user-editable.
+        email: user.email,
       });
     }),
   ];

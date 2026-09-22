@@ -55,6 +55,7 @@ function meBody(status: "pending" | "active", needsInviteCode: boolean) {
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,
+    email: "player@example.test",
   };
 }
 

@@ -118,8 +118,17 @@ describe("signUp", () => {
     const fetchMock = mockFetch(200, { id: "user-1", email: "new@example.com" });
     const result = await signUp("new@example.com", "hunter22222");
 
-    expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toBe(`${URL_}/auth/v1/signup`);
+    const url = (fetchMock.mock.calls[0] as [string, RequestInit])[0];
+    expect(url).to.contain(`${URL_}/auth/v1/signup`);
     expect(result.needsEmailConfirmation).toBe(true);
+
+    // The confirmation link must come back to THIS deployment. GoTrue builds it from the
+    // project's Site URL otherwise, which on this project is still the default localhost — so a
+    // confirmation email sent from the deployed site pointed at the reader's own machine.
+    const redirect = new URL(url).searchParams.get("redirect_to");
+    expect(redirect, "signup asks for a redirect back to this origin").to.contain(
+      window.location.origin,
+    );
   });
 
   /**

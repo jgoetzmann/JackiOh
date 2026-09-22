@@ -30,6 +30,7 @@ import {
 import { getCodeStatus, redeemCode, type CodeStatusResponse } from "../net/api.ts";
 import { useAccount } from "../net/gate.ts";
 import { navigate, paths } from "../net/navigate.ts";
+import { BackLink } from "./nav.tsx";
 
 export const INVITE_CODE_INPUT = "invite-code-input";
 export const INVITE_SUBMIT = "invite-submit";
@@ -122,6 +123,7 @@ export default function InviteRoute() {
 
   return (
     <div className="app-shell">
+      <BackLink />
       <h1>JackiOh — invite code</h1>
 
       {active ? (

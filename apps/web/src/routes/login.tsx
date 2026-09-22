@@ -23,6 +23,7 @@ export const loginTestid = {
   email: "login-email",
   password: "login-password",
   submit: "login-submit",
+  togglePassword: "login-toggle-password",
   error: "login-error",
   mode: "login-mode",
   notice: "login-notice",
@@ -34,6 +35,7 @@ export default function LoginRoute(): ReactElement {
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,16 +106,33 @@ export default function LoginRoute(): ReactElement {
           />
 
           <label htmlFor="login-password">Password</label>
-          <input
-            id="login-password"
-            data-testid={loginTestid.password}
-            type="password"
-            autoComplete={signingUp ? "new-password" : "current-password"}
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-          />
+          <div className="input-with-affix">
+            <input
+              id="login-password"
+              data-testid={loginTestid.password}
+              // The whole point of the toggle: a password you cannot read is a password you
+              // cannot check before submitting, which matters most while CREATING one.
+              type={showPassword ? "text" : "password"}
+              autoComplete={signingUp ? "new-password" : "current-password"}
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+              }}
+            />
+            <button
+              type="button"
+              className="affix-button"
+              data-testid={loginTestid.togglePassword}
+              // Announced, not just drawn: the icon alone tells a screen reader nothing.
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              onClick={() => {
+                setShowPassword((shown) => !shown);
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           <button type="submit" data-testid={loginTestid.submit} disabled={busy}>
             {busy

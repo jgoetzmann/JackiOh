@@ -40,6 +40,7 @@ function meBody(status: Status) {
     needsInviteCode: status === "pending",
     emailVerified: true,
     currentMatchId: null,
+    email: "player@example.test",
   };
 }
 

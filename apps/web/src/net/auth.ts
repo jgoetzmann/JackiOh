@@ -153,7 +153,23 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
   const config = authConfig();
   if (config === null) throw new AuthError(AUTH_UNCONFIGURED_MESSAGE);
 
-  const { status } = await post(config, "/auth/v1/signup", { email, password });
+  // WHERE THE CONFIRMATION LINK POINTS. GoTrue builds it from the project's Site URL, which is
+  // still its default (`http://localhost:3000`) — so every confirmation email sent from the
+  // deployed site pointed at the reader's own machine and was useless. `redirect_to` overrides it
+  // per sign-up, and taking the value from `window.location.origin` means the link comes back to
+  // whichever deployment actually sent it: production, a Vercel preview, or a dev server.
+  //
+  // Supabase only honours a `redirect_to` that matches the Site URL or an entry in the project's
+  // Redirect URLs allow-list, and falls back to the Site URL when it does not — so this fixes the
+  // link the moment the deployed origin is allow-listed, and cannot be used to point a
+  // confirmation email at an attacker's domain.
+  const redirectTo = typeof window === "undefined" ? "" : `${window.location.origin}/login`;
+  const path =
+    redirectTo === ""
+      ? "/auth/v1/signup"
+      : `/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`;
+
+  const { status } = await post(config, path, { email, password });
   if (status < 200 || status >= 300) throw new AuthError(SIGN_UP_FAILED_MESSAGE);
 
   // With confirmations on there is no session to return: the account exists but cannot sign in
