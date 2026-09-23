@@ -164,6 +164,18 @@ importers:
         specifier: 8.19.0
         version: 8.19.0
 
+  packages/ai:
+    dependencies:
+      '@jackioh/cards':
+        specifier: workspace:*
+        version: link:../cards
+      '@jackioh/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@jackioh/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/cards:
     dependencies:
       '@jackioh/engine':

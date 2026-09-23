@@ -62,6 +62,27 @@ jobs:
       - name: coverage floor
         run: pnpm test:coverage
 
+  # The practice AI's quality gates at their full seed counts (docs/polish/3-ai.md B28–B31): the AI
+  # on Easy against the random policy (100 games) and the greedy baseline (50), and the AI on Hard
+  # against itself on Easy (50), every game folded back to its hash. `pnpm test` in `checks` runs
+  # the same three files at a smoke size; the full run is minutes of search, so it gets its own job
+  # and runs beside the others instead of after them.
+  ai-gate:
+    name: ai quality gates (full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: the three matchups at their full seed counts
+        run: pnpm ai:gate
+
   # BUILD M6-T3's acceptance names a **raw SQL test**: "the unique index rejects a duplicate across
   # decks even when the application check is bypassed". That test is CHECK 14 of
   # apps/server/test/sql/01_schema_invariants.sql, and until now nothing ran it — the whole file
@@ -201,7 +222,7 @@ jobs:
             done
           done
 
-      - name: the twelve specs
+      - name: the thirteen specs
         env:
           E2E: "1"
         run: pnpm --dir e2e exec cypress run --browser ${{ matrix.browser }}
