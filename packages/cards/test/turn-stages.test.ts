@@ -12,6 +12,10 @@
 // resolves (R68, §10.3), and cleanup settles its own events — My Pawn reaching the graveyard at the
 // end of the turn it took (R152) — before the turn-cap check and the next turn (R62).
 //
+// Round 8 (lens L8) added two more: the deaths the check after a delayed effect collects reach the
+// traps before the next delayed effect resolves (R68, §4.5), and a "this turn" modifier made while
+// cleanup's own events are answered ends with that turn rather than lasting for good (§2.2, R62).
+//
 // No Core card answers a summon or a change of control, and no Core trap asks its controller
 // anything, so the card that makes each case observable is a fixture (a transient def, the way a
 // fusion's is held, as paused-sequences.test.ts does); every other card is a real one.
@@ -19,6 +23,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, PlayerId, Row } from "@jackioh/shared";
 import {
+  effectiveCost,
   legalActions,
   newInstance,
   placeOnField,
@@ -28,10 +33,12 @@ import {
   type CardInstance,
   type Script,
 } from "@jackioh/engine";
-import { bounceAll, chooseMode, damage } from "@jackioh/engine/effects";
+import { addPlayerModifier, bounceAll, chooseMode, damage } from "@jackioh/engine/effects";
 import { scenario, type Scenario } from "./_harness";
 
 const VANILLA = "core-008"; // Unit, cost 1, no Cry
+const SUPPRESSIVE_AURA = "core-046"; // radiant: enemy units -4/-4
+const LUNAR_ECLIPSE = "core-035"; // 3 damage; the next Spell you play this turn costs 1 less
 const TEMPO_TIMMY = "core-011"; // 3/3 Rush, First Strike
 const BREAD_AND_BUTTER = "core-018"; // Field Trap in the end-of-turn window (R62)
 const ECHOES = "core-040"; // Start of your turn: damage to the enemy hero = cards in your exile
@@ -317,5 +324,107 @@ describe("R62, §10.3: cleanup's events are answered before the turn-cap check a
       s.events.some((event) => event.type === "turnStarted" && event.player === "p2"),
       "p2's turn started before the trigger answering p1's cleanup resolved",
     ).toBe(false);
+  });
+});
+
+describe("R68, §4.5: a delayed effect's check is answered before the next delayed effect", () => {
+  it("R68 a trap answering a death the first start-of-turn delayed effect caused fires before the second delayed effect (§10.3, §4.5)", () => {
+    // p2's radiant Suppressive Aura shrinks p2's enemies by -4/-4. p1's two Kpop Fanatics take p2's
+    // Tempo Timmy and then p2's Mr. Vanilla at the start of p1's next turn, in that order (R68).
+    // Timmy (3/3) stolen onto p1's side is -1 health there and dies in the check after the first
+    // steal. p2's fixture trap answers one of p2's own units dying by returning p2's units to hand.
+    const s = scenario({
+      p1: { hand: [KPOP_FANATIC, KPOP_FANATIC, RENO], mana: 5, library: [RENO, RENO, RENO] },
+      p2: {
+        field: [TEMPO_TIMMY, VANILLA],
+        backrow: [{ def: SUPPRESSIVE_AURA, radiant: true }],
+        hand: [RENO],
+        library: [RENO, RENO, RENO],
+      },
+    });
+    fixture(s, "edge-r8-mourner", "Trap", {
+      triggers: [
+        {
+          id: "edge-r8-mourn",
+          on: ["destroyed"],
+          when: (ctx) => ctx.event.type === "destroyed" && ctx.event.owner === ctx.controller,
+          run: () => [bounceAll({ side: "self" })],
+        },
+      ],
+    });
+    placeFixture(s, "edge-r8-mourner", "p2", "backrow", 3);
+    const timmy = must(s.unit("p2", 1), "p2's Tempo Timmy");
+    const vanilla = must(s.unit("p2", 2), "p2's Mr. Vanilla");
+    s.play(KPOP_FANATIC, { targets: [{ pick: "instance", instanceId: timmy.id }] });
+    s.play(KPOP_FANATIC, { targets: [{ pick: "instance", instanceId: vanilla.id }] });
+
+    // p1 keeps 3 mana for Reno, so the turn does not end by itself (R82); p2 passes.
+    s.endTurn();
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+
+    // The first steal takes Timmy, which dies in the check that follows that whole delayed effect
+    // (§4.5, R59). §10.3: a trap is a response and fires at once, and R68 has each delayed effect's
+    // consequences answered before the next delayed effect resolves, as settle dispatches a check's
+    // deaths before anything else pops. So p2's trap returns Mr. Vanilla to p2's hand, and the
+    // second steal fizzles on a target that has left the field (R76, R174).
+    expect(s.events.some((event) => event.type === "destroyed" && event.instanceId === timmy.id)).toBe(true);
+    expect(s.events.some((event) => event.type === "trapFired")).toBe(true);
+    expect(
+      s.events.some((event) => event.type === "controlChanged" && event.instanceId === vanilla.id),
+      "the second delayed steal ran before the trap answered the death the first one caused",
+    ).toBe(false);
+    s.expectInZone(vanilla, "hand");
+  });
+});
+
+describe("§2.2, R62: a 'this turn' effect made after cleanup ends with that turn", () => {
+  it("R62 a 'this turn' discount made while cleanup's events are answered ends with that turn instead of lasting for good (§2.2)", () => {
+    // p1 plays Lunar Eclipse on turn N and plays no Spell after it, so cleanup expires its discount
+    // (§2.2) and reports the removal. p1's fixture unit answers one of p1's modifiers ending, on turn
+    // N only, with "this turn your cards cost 1 less" (/fullsend's rider) for the turn that is ending.
+    // Round 7 made cleanup's events answered at the end of turn N (R62), which is where it lands.
+    const s = scenario({
+      p1: { hand: [LUNAR_ECLIPSE, RENO, RENO], library: [RENO, RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO, RENO, RENO] },
+    });
+    const turnN = s.state.turn;
+    fixture(s, "edge-r8-afterglow", "Unit", {
+      triggers: [
+        {
+          id: "edge-r8-afterglow",
+          on: ["modifierChanged"],
+          run: (ctx) =>
+            ctx.event.type === "modifierChanged" &&
+            ctx.event.player === ctx.controller &&
+            !ctx.event.added &&
+            ctx.state.turn === turnN
+              ? [
+                  addPlayerModifier({
+                    player: "self",
+                    mod: { kind: "costDiscount", amount: 1, expiry: { until: "thisTurn", turn: ctx.state.turn } },
+                  }),
+                ]
+              : [],
+        },
+      ],
+    });
+    placeFixture(s, "edge-r8-afterglow", "p1", "units", 3);
+
+    s.play(LUNAR_ECLIPSE, { targets: [{ pick: "hero", player: "p2" }] });
+    // p1 keeps 3 mana for Reno (no R82 auto-end), ends turn N; p2 ends turn N+1.
+    s.endTurn();
+    expect(s.state.turn).toBe(turnN + 1);
+    s.endTurn();
+    expect({ turn: s.state.turn, active: s.state.active }).toEqual({ turn: turnN + 2, active: "p1" });
+
+    // §2.2: "Cleanup expires every 'this turn' effect". Whatever was made for turn N lasts at most
+    // to the end of turn N — two turns on, p1's Reno costs its printed 3, and no turn-N rider is left.
+    const leftover = s.state.players.p1.mods.filter(
+      (mod) => mod.kind === "costDiscount" && mod.expiry.until === "thisTurn" && mod.expiry.turn === turnN,
+    );
+    expect(leftover, "a turn-N 'this turn' discount is still live on turn N+2").toEqual([]);
+    const reno = must(s.hand("p1").find((card) => card.defId === RENO), "p1's Reno");
+    expect(effectiveCost(s.state, reno)).toBe(3);
   });
 });

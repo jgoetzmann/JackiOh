@@ -11,8 +11,11 @@
 // Both rolls go through the seeded `ctx.rng` (CLAUDE.md rule 4), the base one roll at 0.3 and the
 // radiant `lucky(1, …)` — two rolls at 0.4, keeping a success, which is §6.1's Lucky X read on a
 // yes/no roll. No effect verb gates on a probability, so the hook does the roll and returns either
-// the effect or nothing; see the report for the `chanceOf` verb this wants. With no non-Radiant card
-// left in the hand the effect has nothing to do, so it rolls nothing (R129, R60).
+// the effect or nothing; see the report for the `chanceOf` verb this wants. With an empty hand the
+// effect has nothing to do, so it rolls nothing (R129, R60). A hand that is all Radiant is rolled
+// like any other: whether the hand holds a base-face card is the hand's (§9.1), so neither the roll
+// nor the cue may hang on it — a success over it cues the pick it could not make on a Radiant card
+// (R177's `cueUnpicked`), and the hand's size, which decides the roll, is public (R177).
 //
 // §5.1: "Spells with 'End of turn: add this back to your hand' are flagged
 // `returnToHandAtEndOfTurn` when played and return from the graveyard at the end of that turn, as
@@ -35,9 +38,13 @@ function makeOneRadiant(): Effect[] {
   return [setRadiantRandom({ zones: "hand", count: 1 })];
 }
 
-/** R129: the roll is only taken when R60's pick has a non-Radiant hand card to find. */
+/**
+ * R129: the roll is taken only when the pick has a hand to look in. The hand's size is public; which
+ * of its cards are Radiant is not (§9.1), so an all-Radiant hand is rolled too and its success is
+ * cued on a Radiant card (R177).
+ */
 function anyToMakeRadiant(ctx: EffectContext): boolean {
-  return zoneCards(ctx.state, ctx.controller, "hand").some((card) => !card.radiant);
+  return zoneCards(ctx.state, ctx.controller, "hand").length > 0;
 }
 
 /**

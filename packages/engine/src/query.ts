@@ -28,7 +28,7 @@
 
 import type { PlayerId } from "@jackioh/shared";
 import type { EffectContext } from "./script";
-import type { CardInstance, GameState } from "./state";
+import { findInstance, type CardInstance, type GameState } from "./state";
 import { partMemoryKey } from "./work";
 import type { OffFieldZone } from "./zones";
 
@@ -101,6 +101,24 @@ export function cardsPlayedThisTurn(state: GameState, player: PlayerId): number 
  */
 export function playedIdsThisTurn(state: GameState, player: PlayerId): readonly string[] {
   return [...state.players[player].turnLog.playedIds];
+}
+
+/**
+ * §6.2 Combo X: how many cards this player played earlier this turn than this card's play — its
+ * place in the turn's log, which §10.5 step 4 wrote as it played the card ("`turnLog.cardsPlayed`
+ * checked at play time", §8 #10). A card the play itself goes on to cast (a cast-on-draw card that
+ * /fullsend's Combo draw takes at step 5, R70) is played after it, never earlier, so the count does
+ * not move while the play resolves. A card played twice this turn is counted from its latest play.
+ * A card still in a hand, or one the log does not hold, has not been played: every play this turn
+ * is earlier than the one it would be.
+ */
+export function playedEarlier(state: GameState, player: PlayerId, card: CardInstance | string): number {
+  const log = state.players[player].turnLog;
+  const id = typeof card === "string" ? card : card.id;
+  const instance = typeof card === "string" ? findInstance(state, card) : card;
+  if (instance?.zone.z === "hand") return log.cardsPlayed;
+  const at = log.playedIds.lastIndexOf(id);
+  return at >= 0 ? at : log.cardsPlayed;
 }
 
 /**

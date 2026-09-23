@@ -166,6 +166,8 @@ const CARDS_TURN_CLOCK_TEST = "../../cards/test/turn-clock-and-legality.test.ts"
 const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
 /** R224's proofs: the hunt's seventh round. */
 const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
+/** R225 and R226's proofs: the hunt's eighth round, where it was halted. */
+const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1668,6 +1670,19 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // question; the mulligan's answer names its prompt.
   it("R224 has setup wait for a cast's question before it goes on", () => {
     provenIn(224, CARDS_SETUP_TEST);
+  });
+
+  // Proved by setup-and-mulligan.test.ts "R225 …": two games whose decks differ only in whether one
+  // seat holds a Quickdraw card give the other seat the same view — #100's price after the
+  // mulligans, the deal's events, and the counts while setup waits on a cast's question.
+  it("R225 deals a Quickdraw card as the last of the opening draws it replaces, counted as a draw", () => {
+    provenIn(225, CARDS_SETUP_TEST);
+  });
+
+  // Proved by paused-sequences.test.ts "R226 …": a Tribute whose Death asks its controller to discard
+  // a card, answered with the card being played, leaves that card in the graveyard alone.
+  it("R226 plays no card that left its owner's hand before §10.5 step 4", () => {
+    provenIn(226, CARDS_PAUSED_SEQUENCES_TEST);
   });
 });
 

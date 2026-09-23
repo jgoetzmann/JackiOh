@@ -23,7 +23,7 @@
 // applies — CLAUDE.md rule 5) and R43's power mechanics (`subsystems/heroPower.ts`).
 
 import type { ActionBody, PlayerId, Selection } from "@jackioh/shared";
-import { opponentOf } from "@jackioh/shared";
+import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import { dealDamage } from "./damage";
 import { draw } from "./draw";
@@ -44,6 +44,7 @@ import {
   declaredModes,
   declaredTargets,
   giftedMakesRadiant,
+  inDeclaredOrder,
   legalSelectionsFor,
   playsOnStack,
   resolvingFace,
@@ -72,6 +73,7 @@ import {
   type Resume,
   type WorkItem,
 } from "./state";
+import { playedEarlier } from "./query";
 import { flagsOf } from "./scripts";
 import { sacrificeTogether, stateCheck } from "./stateCheck";
 import { settle } from "./triggers";
@@ -149,9 +151,19 @@ export type PlayRun = {
   /**
    * Step 6: the repeat being re-resolved, with the fresh answers collected so far, and `partAt`,
    * its cursor into `RESOLVE_PARTS` once the answers are in — a repeat is step 5 again, granted
-   * Combo parts included, and #78's Combo draw can pause it before its script runs.
+   * Combo parts included, and #78's Combo draw can pause it before its script runs. `exitsFrom` is
+   * the field's departures once the answers were in (R174): the repeat's script is aimed at the
+   * stays its fresh picks were made on, so a target the repeat's own Combo draw killed is gone for
+   * it, Reborn body or not, as a play's declared target is gone for its Cry (R81, R83).
    */
-  repeat: null | { targets: Selection[]; modes: string[]; declAt: number; modeAt: number; partAt?: number };
+  repeat: null | {
+    targets: Selection[];
+    modes: string[];
+    declAt: number;
+    modeAt: number;
+    partAt?: number;
+    exitsFrom?: number;
+  };
   /** Set while a prompt this pipeline opened is waiting; says which bucket the answer fills. */
   awaiting: null | "echoTarget" | "echoMode";
   /**
@@ -199,6 +211,20 @@ export type PlayRun = {
    * that body has no Cry to resolve (R1, R118) and is not in play for step 7 (R61).
    */
   placedFrom?: number;
+  /**
+   * R119: every card on the field once step 4 had announced the play, by id, with the field's
+   * departures then (`standingFrom`). A permanent the play puts onto the field after that — its Cry
+   * recruits it (#98), summons it (#95), or brings a body back through Reborn — does not answer the
+   * play's `cardResolved` at step 7 (`arrivedDuring`), as the played card itself does not.
+   */
+  standing?: string[];
+  standingFrom?: number;
+  /**
+   * R226, §10.5 step 4, §10.1: the card left its owner's hand before step 4 could move it — a
+   * Tribute's Death at step 2, or an `onPlayHook` at step 3, had it discarded — so it is not played:
+   * no placement, no `cardPlayed`, no resolution. What steps 2 and 3 did stands, and step 8 settles it.
+   */
+  lost?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -284,8 +310,10 @@ export function validatePlay(
     if (zone === null) return { error: "no free zone" };
   }
 
-  const targets = [...(action.targets ?? [])];
   const modes = [...(action.modes ?? [])];
+  // R221, R90: each declaration's picks are a set, taken in the order it offers them, so a listing
+  // `legalActions` never offers resolves as the offered one does. The face is step 5's (R214).
+  const targets = inDeclaredOrder(state, player, resolvingFace(state, player, card, cost), action.targets ?? [], modes);
   return {
     run: {
       instanceId: card.id,
@@ -501,9 +529,14 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
  * arrives at 0 or less health is not collected before its own Cry (R118).
  */
 function placeStep(sink: EngineSink, run: PlayRun): void {
-  if (run.placed !== true) {
+  // Re-entered after a pause: the answer has resolved what asked — a trap, or a trigger whose
+  // answered step and tail ran in the answer's own drain — so §4.5's check is due before anything
+  // else moves (R59), as the loop runs it after a trigger it resolves itself. The unit that
+  // trigger killed has died before step 5's Cry counts the board (R118, R113).
+  const resumed = run.placed === true;
+  if (!resumed) {
     run.placed = true;
-    placeCard(sink, run);
+    if (!placeCard(sink, run)) run.lost = true;
   }
   // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
   // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`). The play has
@@ -515,16 +548,45 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   // R118). So the step owes itself, and the answer brings it back to this loop rather than on to
   // step 5: a Sheepish owed the play's `cardPlayed` behind a trap that asked still turns the unit
   // into a Sheep before its Cry (R17).
-  if (run.cast !== true) settle(sink, { holdCheck: true });
+  if (run.cast !== true) settle(sink, { holdCheck: !resumed });
 }
 
-/** Step 4's placement and announcement, once. */
-function placeCard(sink: EngineSink, run: PlayRun): void {
+/** Every card on the field, both sides, dormant cards under a Stack included (§3.2). */
+function fieldCardIds(state: GameState): string[] {
+  const out: string[] = [];
+  for (const player of PLAYER_IDS) {
+    const side = state.players[player];
+    for (const pile of side.units) for (const card of pile ?? []) out.push(card.id);
+    for (const card of side.backrow) if (card !== null && card !== undefined) out.push(card.id);
+  }
+  return out;
+}
+
+/**
+ * R119: the permanents on the field now that were not there when step 4 announced the play, or have
+ * left the field since and stand there again (a Reborn body, R83) — what the play put onto the field
+ * while it resolved. The played card is its own case (`traps.isOwnArrival`, #33's own check).
+ */
+function arrivedDuring(state: GameState, run: PlayRun): string[] {
+  if (run.standing === undefined) return [];
+  const standing = new Set(run.standing);
+  const from = run.standingFrom;
+  return fieldCardIds(state).filter(
+    (id) =>
+      id !== run.instanceId && (!standing.has(id) || (from !== undefined && leftFieldAfter(state, from, id))),
+  );
+}
+
+/**
+ * Step 4's placement and announcement, once. False when the card is no longer the hand's to move
+ * (`PlayRun.lost`), which ends the play.
+ */
+function placeCard(sink: EngineSink, run: PlayRun): boolean {
   const state = sink.state;
   // R210: step 2 held the named zone for this play; it is released here, whatever happens next.
   if (run.zone !== null) releaseZone(state, run.zone);
   const card = findInstance(state, run.instanceId);
-  if (card === undefined) return;
+  if (card === undefined) return false;
   const side = state.players[run.player];
 
   if (run.cast === true) {
@@ -536,8 +598,12 @@ function placeCard(sink: EngineSink, run: PlayRun): void {
     const type = defOf(state, card.defId).type;
     run.zone = type === "Spell" ? null : firstFreeZone(state, run.player, type === "Unit" ? "units" : "backrow");
   } else {
+    // §10.1, §10.5 step 4: the card leaves the hand for the field or the resolving zone. One that is
+    // no longer in its owner's hand — a Tribute's Death had it discarded at step 2 — is where that
+    // move put it, in one zone, and is not played (R226): placing it too would leave it in two.
     const at = side.hand.findIndex((held) => held.id === card.id);
-    if (at >= 0) side.hand.splice(at, 1);
+    if (at < 0) return false;
+    side.hand.splice(at, 1);
   }
 
   // §3.2/§6.2 Stack: step 1 already accepted an occupied unit zone for a Stack card, so the
@@ -556,6 +622,10 @@ function placeCard(sink: EngineSink, run: PlayRun): void {
     side.resolving.push(card);
   }
 
+  // R119: the board the play was announced on, which step 7 reads its arrivals against.
+  run.standing = fieldCardIds(state);
+  run.standingFrom = exitMark(state);
+
   side.turnLog.playedIds.push(card.id);
   side.turnLog.cardsPlayed += 1;
   // R213: what this play paid, which the next play's Gifted Program check counts (R56, R70).
@@ -571,15 +641,19 @@ function placeCard(sink: EngineSink, run: PlayRun): void {
   // The repeats still resolve at step 6, which only takes what is queued.
   run.echoQueued = true;
   queueEchoRepeats(sink, card, run.player);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
 // Step 5 — resolve the card (§10.5 step 5)
 // ---------------------------------------------------------------------------
 
-/** §6.2 Combo X: "cards you played earlier this turn", so the card being played does not count. */
-export function playedEarlierThisTurn(state: GameState, player: PlayerId): number {
-  return Math.max(0, state.players[player].turnLog.cardsPlayed - 1);
+/**
+ * §6.2 Combo X: "cards you played earlier this turn", so the card being played does not count, and
+ * nor does a card its own step 5 casts — the count is the one at play time (`query.playedEarlier`).
+ */
+function playedEarlierThisTurn(state: GameState, run: PlayRun): number {
+  return playedEarlier(state, run.player, run.instanceId);
 }
 
 /**
@@ -628,7 +702,7 @@ function quickstrikerGrants(state: GameState, player: PlayerId, played: CardInst
  */
 function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): void {
   const state = sink.state;
-  const amount = playedEarlierThisTurn(state, run.player);
+  const amount = playedEarlierThisTurn(state, run);
   if (amount <= 0) return;
   const grants =
     quickstrikerGrants(state, run.player, card) +
@@ -651,7 +725,7 @@ function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): 
  */
 function comboDrawStep(sink: EngineSink, run: PlayRun): void {
   const state = sink.state;
-  if (playedEarlierThisTurn(state, run.player) < 1) return;
+  if (playedEarlierThisTurn(state, run) < 1) return;
   let draws = 0;
   for (const mod of state.players[run.player].mods) {
     if (mod.kind === "comboDraw" && modifierIsLive(state, mod)) draws += Math.max(0, mod.amount);
@@ -678,7 +752,7 @@ function standingTargets(run: PlayRun): Selection[] {
 /**
  * §10.5 step 5: "Resolve Combo checks, Quickstriker, /fullsend's Combo draw, then the card's own
  * Cry or spell script (targets already chosen)". An ordinary card's own Combo check is part of its
- * own script, which reads `playedEarlierThisTurn`; what the engine owes is the two Combo abilities
+ * own script, which reads `query.playedEarlier`; what the engine owes is the two Combo abilities
  * another permanent grants everything you play, and they come first.
  */
 function resolveStep(sink: EngineSink, run: PlayRun): void {
@@ -932,6 +1006,8 @@ function resolveEchoRepeats(sink: EngineSink, run: PlayRun): void {
 function resolveRepeat(sink: EngineSink, run: PlayRun): boolean {
   const repeat = run.repeat;
   if (repeat === null) return true;
+  // R174: the stays the repeat's fresh picks were made on, taken once, as its answers are all in.
+  repeat.exitsFrom ??= exitMark(sink.state);
   for (let at = repeat.partAt ?? 0; at < RESOLVE_PARTS.length; at += 1) {
     repeat.partAt = at + 1;
     const card = stillResolving(sink.state, run);
@@ -949,6 +1025,7 @@ function resolveRepeat(sink: EngineSink, run: PlayRun): boolean {
           controller: run.player,
           targets: repeat.targets,
           modes: repeat.modes,
+          exitsFrom: repeat.exitsFrom,
         });
         break;
       default:
@@ -988,6 +1065,7 @@ function finishStep(sink: EngineSink, run: PlayRun): void {
     radiant: run.radiant ?? false,
     // R174, R61: whether the card is still in play is asked of the stay step 4 put it on.
     ...(run.placedFrom === undefined ? {} : { placedFrom: run.placedFrom }),
+    arrivedDuring: arrivedDuring(sink.state, run),
   });
   flagReturnToHandAtEndOfTurn(sink.state, run.instanceId);
 }
@@ -1046,6 +1124,9 @@ function drive(sink: EngineSink, run: PlayRun): boolean {
     // own place inside the record — and the record is read when the pause is parked, after the step
     // has moved that cursor, never before.
     const next = step.repeats === true ? at : at + 1;
+    // A card lost at step 4 is not played (R226): nothing resolves, and step 8 settles what steps 2
+    // and 3 did (`PlayRun.lost`).
+    if (run.lost === true && step.name !== "settle") continue;
     step.run(sink, run);
 
     if (sink.state.result !== null) return true;

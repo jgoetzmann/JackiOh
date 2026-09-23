@@ -20,7 +20,8 @@ import { opponentOf } from "@jackioh/shared";
 import { forceAttacksOn, type AttackTarget } from "../combat";
 import { summonedSoFar } from "../prompts";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, type CardInstance } from "../state";
+import type { CardInstance } from "../state";
+import { exitMark } from "../stays";
 import { playOutTurn } from "../subsystems/aiPolicy";
 import { activeUnitsOf } from "../zones";
 import { playerOf, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
@@ -94,10 +95,9 @@ function freshlySummoned(ctx: EffectContext): Set<string> {
 export type ForcedTarget = { instanceId: string } | { spec: TargetSpec };
 
 function targetOf(ctx: EffectContext, target: ForcedTarget): AttackTarget | null {
-  if ("instanceId" in target) {
-    const found = findInstance(ctx.state, target.instanceId);
-    return found === undefined ? null : { kind: "unit", instance: found };
-  }
+  // R174: the played unit #60 names by the id its trigger read is aimed at its stay as the run
+  // began, so a unit the list took off the field before this effect is gone, Reborn body or not.
+  if ("instanceId" in target) return resolveTarget(ctx, { of: "instance", instanceId: target.instanceId });
   return resolveTarget(ctx, target.spec);
 }
 
@@ -120,7 +120,9 @@ export function forcedAttacks(args: { attackers: ForcedAttackerFilter; target: F
         return fresh === null || fresh.has(unit.id);
       });
 
-      forceAttacksOn(ctx, attackers, target);
+      // R174, R53: the run is the list's, so its stays are the ones the list began with — the tokens
+      // it summoned are on them, and a target it took off the field is gone (`forceAttacksOn`).
+      forceAttacksOn(ctx, attackers, target, ctx.exitsFrom ?? exitMark(ctx.state));
     },
   };
 }

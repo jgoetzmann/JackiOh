@@ -114,6 +114,8 @@ export type ResumeOptions = {
   controller?: PlayerId;
   targets?: readonly Selection[];
   modes?: readonly string[];
+  /** R174, §10.6: when `targets` were picked — an answer's picks, as its prompt offered them. */
+  chosenFrom?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -344,6 +346,9 @@ export function answerPrompt(sink: EngineSink, answer: AnswerInput): string | nu
   runResume(sink, resumeOf(pending), {
     controller: pending.playerId,
     targets: inOfferedOrder(pending, answer.selection),
+    // R174, §10.6: the picks are cards as the prompt offered them, on the stays they stand on now —
+    // whatever the list that asked did to the board before it asked.
+    chosenFrom: exitMark(sink.state),
   });
   drainWork(sink);
   return null;
@@ -532,6 +537,7 @@ export function runResumableList(
       modes: [...ctx.modes],
       ...(stack.length > 1 ? { part: stack.slice(0, -1).map((frame) => frame.at), memo: [...memos] } : {}),
       ...marks,
+      ...(ctx.chosenFrom === undefined ? {} : { chosenFrom: ctx.chosenFrom }),
     });
     return "parked";
   }
@@ -555,6 +561,8 @@ export function runResume(
   // R113: an answered step (`resumeSelf`) and a parked tail (`PausedStep`) are the run continued.
   const run = runMarksOf(resume.data);
   const exitsFrom = paused?.exitsFrom ?? run?.exitsFrom;
+  // The picks a tail carries were chosen when its list's were; fresh picks, when the answer made them.
+  const chosenFrom = options.targets === undefined ? paused?.chosenFrom : options.chosenFrom;
   const summoned = paused?.summoned ?? run?.summoned;
   const data = cardData(resume.data);
   const instance =
@@ -576,6 +584,7 @@ export function runResume(
     defId: resume.defId,
     // R174, R113: a paused list is the same run continued, so it keeps the mark it began with.
     ...(exitsFrom === undefined ? {} : { exitsFrom }),
+    ...(chosenFrom === undefined ? {} : { chosenFrom }),
     // R136: and it reads the units its head summoned, in whichever action that happened.
     ...(summoned === undefined || summoned.length === 0 ? {} : { summoned }),
   };

@@ -10,7 +10,7 @@ import type { PlayerId, Row } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
 import { enterNewSide, isActiveOnField } from "../combat";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, type CardInstance } from "../state";
+import type { CardInstance } from "../state";
 import {
   cardAt,
   firstFreeZone,
@@ -21,7 +21,7 @@ import {
   slotsOf,
   type ZoneSlot,
 } from "../zones";
-import { resolveTarget, type TargetSpec } from "./targets";
+import { instanceOnItsStay, resolveTarget, type TargetSpec } from "./targets";
 
 /**
  * Which card to steal: the pick the play or a prompt carried (R81), or an instance id a script
@@ -31,7 +31,8 @@ import { resolveTarget, type TargetSpec } from "./targets";
 export type StealTarget = { target?: TargetSpec; instanceId?: string };
 
 function instanceOf(ctx: EffectContext, args: StealTarget): CardInstance | null {
-  if (args.instanceId !== undefined) return findInstance(ctx.state, args.instanceId) ?? null;
+  // R174: a card named by id is aimed at the stay it had when the run began (`instanceOnItsStay`).
+  if (args.instanceId !== undefined) return instanceOnItsStay(ctx, args.instanceId);
   const target = resolveTarget(ctx, args.target ?? { of: "chosen" });
   if (target === null || target.kind !== "unit") return null;
   return target.instance;

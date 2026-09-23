@@ -87,6 +87,8 @@ export type PausedStep = {
   memo?: unknown[];
   /** R174: the field's departures when the list began (`EffectContext.exitsFrom`). */
   exitsFrom?: number;
+  /** R174, §10.6: when the list's `targets` were picked, if later (`EffectContext.chosenFrom`). */
+  chosenFrom?: number;
   /**
    * R136: the units the list summoned before the pause (`EffectContext.summoned`), since the events
    * that say so belong to the action that paused and the tail resumes in a later one.
@@ -168,6 +170,7 @@ export function pausedOf(data: Record<string, unknown>): PausedStep | null {
     ...(Array.isArray(step.part) ? { part: step.part.filter((at): at is number => typeof at === "number") } : {}),
     ...(Array.isArray(step.memo) ? { memo: step.memo } : {}),
     ...(typeof step.exitsFrom === "number" ? { exitsFrom: step.exitsFrom } : {}),
+    ...(typeof step.chosenFrom === "number" ? { chosenFrom: step.chosenFrom } : {}),
     ...(Array.isArray(step.summoned)
       ? { summoned: step.summoned.filter((id): id is string => typeof id === "string") }
       : {}),

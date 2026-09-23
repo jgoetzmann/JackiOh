@@ -18,6 +18,7 @@
 import type { PlayerId, Row } from "@jackioh/shared";
 import { enterNewSide } from "../combat";
 import { addToHand } from "../draw";
+import { effectiveCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import type { CardInstance, GameState } from "../state";
 import {
@@ -125,7 +126,11 @@ function bounceHome(sink: EngineSink, card: CardInstance, costOverride?: number)
   // §8 #52 radiant: "bounced to their owner's hand costing 0" is a rider on a card that reaches the
   // hand. A full hand burns it instead (§2.4, R4), and a burned card is an ordinary graveyard card
   // that R78 would otherwise have carry the 0 into every later zone.
-  if (costOverride !== undefined && card.zone.z === "hand") card.costOverride = costOverride;
+  if (costOverride === undefined || card.zone.z !== "hand") return;
+  card.costOverride = costOverride;
+  // §10.3: the new price is a visible change, announced as #31's +1 and #72r's 0 are once the card has
+  // landed (R215), with what the card costs now (R65). A view redacts it for the other seat (R177).
+  sink.events.push({ type: "costChanged", instanceId: card.id, cost: effectiveCost(sink.state, card) });
 }
 
 /**

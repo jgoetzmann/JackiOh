@@ -44,6 +44,7 @@ import type {
   Row,
   SideView,
   UnitView,
+  Zone,
 } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf, findDef } from "./catalog";
@@ -466,8 +467,10 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     // not identity fields and never travel redacted; `permanent` is R61's "still in play" answer,
     // which #85 keys on. The face that resolved (`radiant`) is the card's, so it goes with the id.
     case "cardResolved": {
-      if (!hidden(event.instanceId)) return event;
-      const { radiant: _face, ...rest } = event;
+      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95).
+      const { arrivedDuring: _arrivals, ...shown } = event;
+      if (!hidden(event.instanceId)) return shown;
+      const { radiant: _face, ...rest } = shown;
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
@@ -494,10 +497,19 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     // R177: a Make Radiant on a card in a library (#42's roll over every card, top down) is one nobody
     // could read where it happened (§3), and read openly once the card does, its place in the batch
     // would say where it lay. The event's `zone` is where it happened, so it stays unread for good.
-    case "radiantSet":
-      return event.zone.z === "library" || hidden(event.instanceId)
-        ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID }
-        : event;
+    //
+    // And a cue on the other player's card this viewer may not read says only whose it was: a random
+    // pick over several hidden zones (#28's hand, library and field) picks among non-Radiant cards
+    // only (R60), so a cue located in the hand, or at a face-down trap's lane, would tell this viewer
+    // that the hand still held a base-face card, or that the trap was base-face (R33). The zone is
+    // given as that player's hand, the region this viewer is shown the player's unread cards in.
+    case "radiantSet": {
+      const unread = event.zone.z === "library" || hidden(event.instanceId);
+      if (!unread) return event;
+      const owner = event.zone.player;
+      const zone: Zone = owner === viewer ? event.zone : { z: "hand", player: owner };
+      return { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID, zone };
+    }
 
     /**
      * R154: the one identity R97's "judged by where the card sits now" cannot decide, so the row

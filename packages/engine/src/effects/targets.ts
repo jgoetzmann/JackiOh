@@ -39,8 +39,8 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
   if (spec.of === "selfHero") return { kind: "hero", player: ctx.controller };
   if (spec.of === "enemyHero") return { kind: "hero", player: opponentOf(ctx.controller) };
   if (spec.of === "instance") {
-    const instance = findInstance(ctx.state, spec.instanceId);
-    return instance === undefined ? null : { kind: "unit", instance };
+    const instance = instanceOnItsStay(ctx, spec.instanceId);
+    return instance === null ? null : { kind: "unit", instance };
   }
 
   const selection = ctx.targets[spec.index ?? 0];
@@ -55,11 +55,27 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
     // or a hand, reset (R78), where a buff or an exile aimed at the unit on the field has nothing to
     // land on (§8 Conventions). The same holds when a prompt split the list across actions (R113),
     // and for a play's declared target a trap answering the play took off the field at §10.5 step 4
-    // (the play's Cry runs with the mark step 1 checked the choices at).
-    if (leftFieldSince(ctx, instance.id)) return null;
+    // (the play's Cry runs with the mark step 1 checked the choices at). A pick an answer made is
+    // chosen as its prompt offered it (`ctx.chosenFrom`, §10.6): a Reborn body the list's own
+    // sacrifice put back before it asked is the stay that was picked.
+    if (leftFieldAfter(ctx.state, ctx.chosenFrom ?? ctx.exitsFrom ?? exitMark(ctx.state), instance.id)) return null;
     return { kind: "unit", instance };
   }
   return null;
+}
+
+/**
+ * R174: a card a script names by its id — captured in a continuation's data, read off the event a
+ * trigger answers, or enumerated by the list itself — on the stay it had when the run began. An
+ * effect later in the list is aimed at the card the list named, and a card an earlier effect of the
+ * same list took off the field is gone for it wherever it is now, a Reborn body included (R83);
+ * naming it by id rather than as "the chosen one" changes nothing, and neither does a prompt that
+ * split the list (R113). Null when there is no such card.
+ */
+export function instanceOnItsStay(ctx: EffectContext, instanceId: string): CardInstance | null {
+  const instance = findInstance(ctx.state, instanceId);
+  if (instance === undefined) return null;
+  return leftFieldSince(ctx, instance.id) ? null : instance;
 }
 
 /**

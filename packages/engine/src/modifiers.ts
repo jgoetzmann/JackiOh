@@ -118,7 +118,10 @@ export function expireModifiers(sink: EngineSink, player: PlayerId): void {
   for (const side of PLAYER_IDS) {
     const state = sink.state.players[side];
     const kept = state.mods.filter((mod) => {
-      if (mod.expiry.until === "thisTurn") return mod.expiry.turn !== sink.state.turn;
+      // §2.2: a "this turn" effect lasts to the end of its turn. One made after its turn's cleanup
+      // had run — a trigger answering cleanup's own events, which resolve inside that turn (R62) — is
+      // over by the next cleanup, whoever's it is, and dead from the next turn on (`modifierIsLive`).
+      if (mod.expiry.until === "thisTurn") return mod.expiry.turn > sink.state.turn;
       // R48: it covers that player's *next* turn, so it survives the turn it was created on.
       if (mod.expiry.until === "nextTurnOf") {
         return !(mod.expiry.player === player && sink.state.turn > mod.expiry.fromTurn);

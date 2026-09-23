@@ -31,6 +31,12 @@ export type GameEvent =
       permanent: boolean;
       costPaid: number;
       radiant?: boolean;
+      /**
+       * R119: the permanents this play put onto the field while it resolved — a Recruit by its Cry
+       * (#98), #95's backrow, a Reborn body its own Cry brought back — which do not answer it, as the
+       * played card does not answer its own play. Engine bookkeeping: a view never forwards it.
+       */
+      arrivedDuring?: string[];
     }
   | { type: "summoned"; player: PlayerId; instanceId: string; defId: string; row: Row; lane: number }
   | { type: "damage"; sourceId: string | null; targetId: string; amount: number; combat: boolean }

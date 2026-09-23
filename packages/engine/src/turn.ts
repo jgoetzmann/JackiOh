@@ -109,10 +109,18 @@ function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId, 
  * trap's question or a Death hook's paused the stage, or the game ended.
  */
 function checkAfterDelayed(sink: EngineSink): boolean {
-  dispatchPending(sink);
-  if (isPaused(sink)) return false;
-  stateCheck(sink);
-  return !isPaused(sink);
+  // The check's own events — the deaths it collects, their Death hooks, a Reborn body — are the
+  // delayed effect's consequences too, so the traps answer them before the next delayed effect
+  // resolves (§10.3: `settle` dispatches a check's events before anything else), and what those
+  // traps did is checked in turn, until nothing more is said (§4.5, R59).
+  for (;;) {
+    dispatchPending(sink);
+    if (isPaused(sink)) return false;
+    const emitted = sink.events.length;
+    stateCheck(sink);
+    if (isPaused(sink)) return false;
+    if (sink.events.length === emitted) return true;
+  }
 }
 
 /**

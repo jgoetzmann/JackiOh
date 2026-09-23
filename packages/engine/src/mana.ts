@@ -65,6 +65,9 @@ export function isXCost(state: GameState, instance: CardInstance): boolean {
  * at the cleanup of that player's next turn, which is why this is a separate question from expiry.
  */
 export function modifierIsLive(state: GameState, mod: PlayerModifier): boolean {
+  // §2.2: "this turn" is the turn it names, and no later one — even when it was made after that
+  // turn's cleanup had run and so outlives it until the next cleanup (`expireModifiers`).
+  if (mod.expiry.until === "thisTurn") return mod.expiry.turn >= state.turn;
   if (mod.expiry.until !== "nextTurnOf") return true;
   return state.turn > mod.expiry.fromTurn && state.active === mod.expiry.player;
 }

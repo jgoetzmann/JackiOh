@@ -63,8 +63,12 @@ function openMulligan(sink: EngineSink, player: PlayerId): void {
  */
 export const SETUP_WORK = "@setup";
 
-/** Which part of setup is owed: the opening deal from a seat on, or the end of one mulligan. */
+/**
+ * Which part of setup is owed: the opening deal from a seat on, a seat's Quickdraw cards and then
+ * the seats after it, or the end of one mulligan.
+ */
 const DEAL_STEP = "deal";
+const QUICKDRAW_STEP = "quickdraw";
 const MULLIGAN_STEP = "mulligan";
 
 /**
@@ -75,38 +79,52 @@ export function beginSetup(sink: EngineSink): void {
   dealFrom(sink, 0);
 }
 
-/** §2.1 steps 1 and 2 for each seat from `seat` on, then the first mulligan. */
+function isQuickdraw(card: CardInstance): boolean {
+  return flagsOf(card).quickdraw === true;
+}
+
+/**
+ * §2.1 steps 1 and 2 for each seat from `seat` on, then the first mulligan.
+ *
+ * R225: each Quickdraw card "replaces one of these draws" (§2.1, §6.2) — the last ones. The seat
+ * draws its other opening cards first, off the top of a library whose Quickdraw cards wait at the
+ * bottom (the order among the rest is the shuffle's), and then each Quickdraw card goes to the hand
+ * as the draw it replaces: counted by R55's draw counter and reported as a draw. So the opponent can
+ * tell from none of it — #100's price, the deal's events, the hand and library counts while a cast
+ * the opening draw made is asking (R224) — whether the opening hand holds one (§9.1).
+ */
 function dealFrom(sink: EngineSink, seat: number): void {
   const state = sink.state;
 
   for (let at = seat; at < PLAYER_IDS.length; at += 1) {
     const player = PLAYER_IDS[at] as PlayerId;
     const side = state.players[player];
-    side.library = sink.rng.shuffle(side.library);
+    const shuffled = sink.rng.shuffle(side.library);
+    const quickdraw = shuffled.filter(isQuickdraw);
+    side.library = [...shuffled.filter((card) => !isQuickdraw(card)), ...quickdraw];
 
-    // Quickdraw cards start in hand and each replaces one of the opening draws (§6.2).
-    const quickdraw = side.library.filter((card) => flagsOf(card).quickdraw === true);
-    for (const card of quickdraw) {
-      moveToZone(state, card, "hand");
-      sink.events.push({
-        type: "addedToHand",
-        player,
-        instanceId: card.id,
-        defId: card.defId,
-      });
-    }
-
-    const remaining = Math.max(0, openingDrawFor(player) - quickdraw.length);
-    draw(sink, player, remaining);
-    // A cast the opening draw made is asking (R158: the draw has owed its own remainder), so the
-    // seats after this one and the mulligan wait behind it.
+    draw(sink, player, Math.max(0, openingDrawFor(player) - quickdraw.length));
+    // A cast the opening draw made is asking (R158: the draw has owed its own remainder), so this
+    // seat's Quickdraw cards, the seats after it and the mulligan wait behind it.
     if (paused(sink)) {
-      if (state.result === null) oweSetup(sink, { step: DEAL_STEP, seat: at + 1 });
+      if (state.result === null) oweSetup(sink, { step: QUICKDRAW_STEP, seat: at });
       return;
     }
+    dealQuickdraw(sink, player);
   }
 
   openMulligan(sink, PLAYER_IDS[0] as PlayerId);
+}
+
+/** R225: the seat's Quickdraw cards, each as the opening draw it replaces, in the library's order. */
+function dealQuickdraw(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+  for (const card of state.players[player].library.filter(isQuickdraw)) {
+    moveToZone(state, card, "hand");
+    state.counters.drawn += 1;
+    sink.events.push({ type: "drawn", player, instanceId: card.id, defId: card.defId });
+    sink.events.push({ type: "addedToHand", player, instanceId: card.id, defId: card.defId });
+  }
 }
 
 /**
@@ -174,6 +192,7 @@ function finishMulligan(sink: EngineSink, player: PlayerId, returned: readonly C
 
 type OwedSetup =
   | { step: typeof DEAL_STEP; seat: number }
+  | { step: typeof QUICKDRAW_STEP; seat: number }
   | { step: typeof MULLIGAN_STEP; player: PlayerId; returned: CardInstance[] };
 
 function oweSetup(sink: EngineSink, owed: OwedSetup): void {
@@ -187,6 +206,12 @@ function runOwedSetup(sink: EngineSink, item: WorkItem): void {
   const owed = raw as Partial<{ step: string; seat: number; player: PlayerId; returned: CardInstance[] }>;
   if (owed.step === DEAL_STEP && typeof owed.seat === "number") {
     dealFrom(sink, owed.seat);
+    return;
+  }
+  if (owed.step === QUICKDRAW_STEP && typeof owed.seat === "number") {
+    const player = PLAYER_IDS[owed.seat];
+    if (player !== undefined) dealQuickdraw(sink, player);
+    dealFrom(sink, owed.seat + 1);
     return;
   }
   if (owed.step === MULLIGAN_STEP && (owed.player === "p1" || owed.player === "p2")) {

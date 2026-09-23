@@ -16,6 +16,8 @@
 //  - R155 (round 7, lens L8): a return Spell cast on the other player's turn (a cast on draw, R70) is
 //    flagged and cleared at that turn's cleanup — §6.2's "End of turn" is its controller's own — so it
 //    does not come back at the end of a later turn it was not played on.
+//  - R215 (round 8, lens "engine invariants"): radiant #52's "costing 0" is announced with a
+//    `costChanged` once the card has landed, as #31's +1 and #72r's 0 are (§10.3).
 
 import type { CardDef, CardType, GameEvent } from "@jackioh/shared";
 import {
@@ -287,5 +289,29 @@ describe("R155, §5.1: an end-of-turn return belongs to the turn the Spell was p
       (event) => (event.type === "bounced" || event.type === "addedToHand") && event.instanceId === cod.id,
     );
     expect(returned, "the Spell came back at the end of a turn it was not played on").toBe(false);
+  });
+});
+
+describe("R215, §10.3: a price given as a card reaches a hand is announced", () => {
+  it("R215 radiant #52's bounce at cost 0 emits costChanged for the card it prices, as #31's +1 and #72r's 0 do (§10.3)", () => {
+    const silas = "core-052";
+    const s = scenario({
+      p1: { hand: [silas], field: [{ def: RENO, lane: 5 }] },
+    });
+    s.card(silas).radiant = true;
+    const reno = s.unit("p1", 5)?.id;
+    if (reno === undefined) throw new Error("expected p1's Reno in lane 5");
+
+    // Rotating right would move Reno from p1's lane 5 to p2's, so radiant #52 bounces it to its
+    // owner's hand costing 0 instead (§8 #52, R14).
+    s.play(silas, { zone: 1, modes: ["right"] });
+
+    s.expectInZone(reno, "hand");
+    expect(s.card(reno).costOverride).toBe(0);
+    // Reno's price in its owner's hand went from its printed 3 to 0, a visible change (§10.3), which
+    // is announced once the card has landed, as #31's +1 and #72r's 0 are.
+    const bounced = s.lastEvents.findIndex((event) => event.type === "bounced" && event.instanceId === reno);
+    expect(bounced).toBeGreaterThanOrEqual(0);
+    expect(s.lastEvents.slice(bounced)).toContainEqual({ type: "costChanged", instanceId: reno, cost: 0 });
   });
 });

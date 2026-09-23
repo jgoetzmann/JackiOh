@@ -540,6 +540,65 @@ export function storedDeclarationSlices(data: Record<string, unknown>): number[]
   return raw as number[];
 }
 
+/**
+ * R221, R90: a play's picks for each declaration, in the order the declaration offers its options.
+ * `legalActions` offers each set of picks once, in that order (`subsetsFor`), and step 1 accepts
+ * any listing of an offered set, so step 5 must never resolve a listing no offered play means: one
+ * declaration's picks are a set, as an answer's are (`prompts.inOfferedOrder`). The slices are the
+ * ones step 1 read the play with, and a pick no option names keeps its place after the others.
+ */
+export function inDeclaredOrder(
+  state: GameState,
+  player: PlayerId,
+  card: CardInstance,
+  selections: readonly Selection[],
+  modes: readonly string[],
+): Selection[] {
+  const decls = activeTargetDecls(declaredTargets(card), modes);
+  if (decls.length === 0) return [...selections];
+  const offered = decls.map((decl) => legalSelectionsFor(state, player, card, decl));
+  return splitSelections(decls, offered, selections).flatMap((slice, index) => {
+    const order = (offered[index] ?? []).map(selectionKey);
+    const rank = (selection: Selection): number => {
+      const at = order.indexOf(selectionKey(selection));
+      return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+    };
+    return slice
+      .map((selection, at) => ({ selection, at, rank: rank(selection) }))
+      .sort((a, b) => a.rank - b.rank || a.at - b.at)
+      .map((entry) => entry.selection);
+  });
+}
+
+/**
+ * R123: a `tribute` declaration with an `amount` is one Tribute written in two lists — the units the
+ * play pays with (`tributes`, sacrificed at §10.5 step 2) and the picks its script reads as units it
+ * tributed (`targets`) — so every pick is one of the units the play tributes. A pick may name fewer
+ * units than the cost takes (one pick of a Tribute 2, or the one Sheep Token that pays it, §3.2), but
+ * never a unit the play keeps. True when the picks agree, or when the card declares no such Tribute.
+ */
+function tributePicksAgree(
+  state: GameState,
+  player: PlayerId,
+  card: CardInstance,
+  selections: readonly Selection[],
+  modes: readonly string[],
+  tributes: readonly string[],
+): boolean {
+  const decls = activeTargetDecls(declaredTargets(card), modes);
+  const at = decls.findIndex((decl) => decl.kind === "tribute" && decl.amount !== undefined);
+  if (at < 0) return true;
+  const offered = decls.map((decl) => legalSelectionsFor(state, player, card, decl));
+  const slice = splitSelections(decls, offered, selections)[at] ?? [];
+  const paid = new Set(tributes);
+  return slice.every((selection) => selection.pick === "instance" && paid.has(selection.instanceId));
+}
+
+/** Whether the card declares a Tribute that travels in both lists (R123), which binds them. */
+function declaresBoundTribute(card: CardInstance): boolean {
+  return declaredTargets(card).some((decl) => decl.kind === "tribute" && decl.amount !== undefined);
+}
+
 function splitSelections(
   decls: readonly TargetDecl[],
   offered: readonly Selection[][],
@@ -679,9 +738,14 @@ export function playActionsFor(state: GameState, player: PlayerId, card: CardIns
       if (cost > state.players[player].mana.current) continue;
       // R214: the choices of the face step 5 will resolve, which this price decides (#64).
       const face = resolvingFace(state, player, card, cost);
+      const bound = declaresBoundTribute(face);
       for (const tributes of tributeSets) {
         for (const zone of zones) {
           for (const choices of playChoiceCombinations(state, player, face)) {
+            // R123: the declared Tribute's pick names the units this play tributes, and no others.
+            if (bound && !tributePicksAgree(state, player, face, choices.targets ?? [], choices.modes ?? [], tributes)) {
+              continue;
+            }
             out.push({
               type: "play",
               instanceId: card.id,
@@ -868,8 +932,13 @@ export function whyChoicesRefused(
   // R214: the targets and modes are the resolving face's, so they are read against it. The Tribute
   // above is paid at step 2, before step 3 can change the face, so it is the face in hand's.
   const face = resolvingFace(state, player, card, costWith(state, card, action.x, action.embiggen));
-  return (
+  const choices =
     refuseTargets(state, player, face, action.targets ?? [], action.modes ?? []) ??
-    refuseModes(state, face, action.modes ?? [])
-  );
+    refuseModes(state, face, action.modes ?? []);
+  if (choices !== null) return choices;
+  // R123: a Tribute declared with an amount names the same units in `targets` and `tributes`.
+  if (!tributePicksAgree(state, player, face, action.targets ?? [], action.modes ?? [], action.tributes ?? [])) {
+    return `${defOf(state, face.defId).name}'s Tribute pick must be a unit it tributes`;
+  }
+  return null;
 }

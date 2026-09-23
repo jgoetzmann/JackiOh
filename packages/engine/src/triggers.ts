@@ -58,7 +58,14 @@ import {
   type QueuedTrigger,
   type Resume,
 } from "./state";
-import { fireTrap, fireTrapsFor, isTrapWindowEvent, standingEvent, trapsWatching } from "./traps";
+import {
+  isTrapWindowEvent,
+  offerEventToTraps,
+  resumeEventToTraps,
+  trapControllersOf,
+  type ImmediateDispatch,
+  type TrapControllers,
+} from "./traps";
 import { drainWork } from "./work";
 import { activeUnitsOf, cardAt, slotsOf } from "./zones";
 
@@ -375,7 +382,14 @@ export function runHooksInTriggerOrder(sink: SettleSink, hook: HookName, only?: 
  * see it, so a resume neither re-fires one that already fired nor wakes a Field Trap twice (§5.1).
  * It goes in front of every queued card trigger, because a trap is a response (§10.3).
  */
-function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[], mark: number): QueuedTrigger {
+function owedToTraps(sink: EngineSink, event: GameEvent, run: ImmediateDispatch): QueuedTrigger | null {
+  const owed = run.owed;
+  if (owed.length === 0) return null;
+  const controllers: TrapControllers = {};
+  for (const id of owed) {
+    const player = run.controllers[id];
+    if (player !== undefined) controllers[id] = player;
+  }
   const state = sink.state;
   // R177: whether this entry exists at all hangs on which traps are still owed the event, and a
   // face-down one is read by its controller alone (R33) — a second #96 watches a declaration where
@@ -391,7 +405,7 @@ function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]
       hook: OWED_TO_TRAPS,
       step: TRIGGER_STEP,
       radiant: false,
-      data: { event, owed: [...owed], exitsFrom: mark },
+      data: { event, owed: [...owed], exitsFrom: run.mark, controllers },
     },
   };
   const at = state.triggerQueue.findIndex((queued) => queued.hook !== OWED_TO_TRAPS);
@@ -403,21 +417,19 @@ function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]
 /**
  * §10.3 step C: the traps see the event first and fire immediately, to completion. A prompt for a
  * trap's owner stops that dispatch — "pauses the opponent's action until answered" (BUILD M3-T2) —
- * so whatever the other traps are still owed is parked in state for the answer to finish.
+ * so whatever the other traps are still owed is parked in state for the answer to finish: exactly
+ * the traps the dispatch never reached (`traps.offerEventToTraps`), in its order. One that met the
+ * event and declined it has had its look (R99), and is not owed it again.
  * R62's end-of-turn window is not an immediate dispatch at all: `turn.ts` fires those traps with
  * `traps.runTrapWindow` at the scheduled point, so `turnEnded` is passed over here.
  */
 function offerToTraps(sink: EngineSink, event: GameEvent): QueuedTrigger | null {
   if (isTrapWindowEvent(event)) return null;
-  // R174: the stays the dispatch begins with, which the traps it still owes meet the event against.
-  const mark = exitMark(sink.state);
-  const dispatched = fireTrapsFor(sink, event);
+  // R212: the board the event happened on, read off the events owed behind it.
+  const run = offerEventToTraps(sink, event, () => movesIn(eventsAfterDispatched(sink)));
   if (sink.state.result !== null) return null;
   if (sink.state.pending === null) return null;
-  const owed = trapsWatching(sink.state, event)
-    .map((match) => match.trap.id)
-    .filter((id) => !dispatched.fired.includes(id));
-  return owed.length === 0 ? null : owedToTraps(sink, event, owed, mark);
+  return owedToTraps(sink, event, run);
 }
 
 /**
@@ -426,22 +438,16 @@ function offerToTraps(sink: EngineSink, event: GameEvent): QueuedTrigger | null 
  * an earlier trap's question killed is no longer in play for the next one, even though it died in a
  * later action than the dispatch began in (#85 fuses nothing out of a graveyard, R61).
  */
-function runOwedTraps(sink: EngineSink, event: GameEvent, owed: readonly string[], mark: number): void {
-  let left = [...owed];
-  for (const match of trapsWatching(sink.state, event)) {
-    if (!left.includes(match.trap.id)) continue;
-    if (sink.state.result !== null) return;
-    if (sink.state.pending !== null) {
-      owedToTraps(sink, event, left, mark);
-      return;
-    }
-    left = left.filter((id) => id !== match.trap.id);
-    // A trap the previous one destroyed, bounced or fused away never fires (R61).
-    if (match.trap.zone.z !== "field") continue;
-    const met = standingEvent(sink, event, mark);
-    if (met === null) continue;
-    fireTrap(sink, match, met);
-  }
+function runOwedTraps(sink: EngineSink, event: GameEvent, entry: QueuedTrigger): void {
+  const run = resumeEventToTraps(
+    sink,
+    event,
+    owedTrapsOf(entry),
+    owedMarkOf(sink.state, entry),
+    trapControllersOf(entry.resume.data.controllers),
+  );
+  if (sink.state.result !== null || sink.state.pending === null) return;
+  owedToTraps(sink, event, run);
 }
 
 /**
@@ -483,6 +489,8 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
     if (defs.length === 0) continue;
     later ??= movesIn(eventsAfterDispatched(sink));
     if (later.moved.has(holder.card.id)) continue;
+    // R119: a permanent the play put onto the field while it resolved does not answer that play.
+    if (event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(holder.card.id)) continue;
     const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
     for (const def of defs) {
       queued.push(queueTrigger(sink, { ...holder, controller }, def, event));
@@ -503,7 +511,7 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
 export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   const event = eventOfQueued(entry);
   if (entry.hook === OWED_TO_TRAPS) {
-    if (event !== null) runOwedTraps(sink, event, owedTrapsOf(entry), owedMarkOf(sink.state, entry));
+    if (event !== null) runOwedTraps(sink, event, entry);
     return;
   }
 
@@ -529,7 +537,7 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
     return;
   }
 
-  const def = holder.triggers.find((candidate) => candidate.id === entry.hook);
+  const def = queuedTriggerDef(holder, entry);
   if (def === undefined || !def.on.includes(event.type)) return;
   // R212: an event trigger answers for the player who controlled its card when the event happened,
   // which is what its entry captured — a change of control since does not hand the answer over.
@@ -548,8 +556,23 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   // and a paused list goes on in the list it began, so its tail is rebuilt from that same face and
   // definition — not the ones the entry recorded when it was queued, which an earlier trigger in the
   // same queue can have made Radiant since.
-  const plan = { ...entry.resume, defId: card.defId, radiant: card.radiant, owner: controller };
+  const plan = { ...entry.resume, hook: def.id, defId: card.defId, radiant: card.radiant, owner: controller };
   applyResumable(sink, ctx, plan, def.run(ctx));
+}
+
+/**
+ * The trigger a queue entry names, on the card as it stands now. R77 keeps the instance a Fuse
+ * lands on — same card, same stay (`stays.movesIn` counts it as unmoved) — and R102 keeps its text,
+ * but the fused definition namespaces each ingredient's trigger ids (`<ingredientDefId>:<id>`), so
+ * an entry the card queued before the Fuse, under its old definition, is found under that
+ * definition's namespace: Fed Fauci hit by the Cry that Unlicensed Experimentation then fused onto
+ * it still owes its Plague Token (R212).
+ */
+function queuedTriggerDef(holder: TriggerHolder, entry: QueuedTrigger): TriggerDef | undefined {
+  const exact = holder.triggers.find((candidate) => candidate.id === entry.hook);
+  if (exact !== undefined) return exact;
+  const namespaced = `${entry.resume.defId}:${entry.hook}`;
+  return holder.triggers.find((candidate) => candidate.id === namespaced);
 }
 
 /**

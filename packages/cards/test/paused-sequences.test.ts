@@ -26,6 +26,13 @@
 // and a list a prompt split still reads what its head summoned (R136) and the stays it began with,
 // in the step the answer re-enters as much as in its tail (R174).
 //
+// Round 8 (lens L7) added the last cases: an Echo repeat's fresh pick is aimed at the stay it was
+// made on (R174); a trap that declined an event is not offered it again, and the traps a question
+// kept waiting meet it in the order the dispatch had (R99, R113); a card named by id after the
+// list's own sacrifice is gone, while one picked at a prompt after it is picked on the stay offered
+// (R174, §10.6); a played card a Tribute's question discarded is not placed too (R226); and the
+// check follows a trigger that asked at step 4 before the Cry (R59, R118).
+//
 // No Core card opens a prompt from a delayed effect, a cast on draw, a trap's list or a Death hook,
 // so each case builds the prompting continuation out of engine verbs on a fixture card (a transient
 // def, the way a fusion's is held) and uses real cards for everything else.
@@ -33,6 +40,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, Keyword, PlayerId, Row, TargetDecl } from "@jackioh/shared";
 import {
+  activeUnitsOf,
   createRng,
   newInstance,
   placeOnField,
@@ -49,13 +57,16 @@ import {
 import {
   bounce,
   buff,
+  chooseFromHand,
   chooseMode,
   chooseTarget,
   damage,
   damageAll,
   delay,
   destroy,
+  discard,
   forcedAttacks,
+  rotate,
   sacrifice,
   setRadiant,
   steal,
@@ -1118,5 +1129,570 @@ describe("R174, R113: the step a prompt's answer re-enters reads the stays the r
     // the body that came back, as it is not when a fused card's parts do the same (re-entry.test.ts).
     const scheduled = s.state.delayed.filter((effect) => effect.resume.defId === "edge-r7-l7-sac-then-steal");
     expect(scheduled).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 8 (lens L7): an Echo repeat's fresh picks, the traps a paused dispatch still owes and their
+// order, a card named by id or picked at a prompt after the list's own sacrifice, a played card a
+// Tribute's question discarded, and the check after a trigger that asked at step 4.
+// ---------------------------------------------------------------------------
+
+const FULLSEND = "core-078";
+
+function same(script: Script): { base: Script; radiant: Script } {
+  return { base: script, radiant: script };
+}
+
+function inHand(s: Scenario, defId: string, player: PlayerId): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  s.state.players[player].hand.push(card);
+  return card;
+}
+
+function onLibraryTop(s: Scenario, defIds: readonly string[], player: PlayerId): CardInstance[] {
+  const cards = defIds.map((defId) => newInstance(s.state, defId, player, { z: "library", player }));
+  s.state.players[player].library.unshift(...cards);
+  return cards;
+}
+
+// ---------------------------------------------------------------------------------------------
+// 1. An Echo repeat's fresh choices and the stays they were made on (R174, §10.5 step 6)
+// ---------------------------------------------------------------------------------------------
+
+describe("R174, §10.5 step 6: an Echo repeat's fresh target is aimed at the stay it was chosen on", () => {
+  /** p2's 5/5 Reborn unit in lane 1, a p1 Spell "deal 1 damage to target enemy unit", and /fullsend. */
+  function board(echo: number): { s: Scenario; victim: CardInstance; spell: CardInstance } {
+    const s = scenario({
+      p1: { hand: [FULLSEND], library: [RENO, RENO, RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    fixtureFaces(s.state, "edge-r8-reborn-5-5", "Unit", same({}), {
+      stats: { attack: 5, health: 5 },
+      keywords: [{ kind: "Reborn" }],
+    });
+    const victim = placeFixture(s, "edge-r8-reborn-5-5", "p2", "units", 1);
+    const id = `edge-r8-ping-echo-${echo}`;
+    fixtureFaces(
+      s.state,
+      id,
+      "Spell",
+      same({
+        staticFlags: { echo },
+        targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit"] } }],
+        cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+      }),
+    );
+    const spell = inHand(s, id, "p1");
+    // A cast-on-draw Spell that destroys the victim.
+    fixtureFaces(
+      s.state,
+      "edge-r8-cod-destroyer",
+      "Spell",
+      same({ staticFlags: { castOnDraw: true }, cry: () => [destroy({ target: { of: "instance", instanceId: victim.id } })] }),
+    );
+    return { s, victim, spell };
+  }
+
+  it("R174 a target chosen at the repeat's prompt that the repeat's Combo draw killed is gone for the repeat's script, Reborn body or not (R81, R83)", () => {
+    // Control, no Echo: the play's own Combo draw (step 5, before the script) casts the destroyer, and
+    // the script's damage, aimed at the stay step 1 checked, fizzles on the Reborn body.
+    const control = board(0);
+    onLibraryTop(control.s, ["edge-r8-cod-destroyer"], "p1");
+    control.s.play(FULLSEND);
+    control.s.play(control.spell, { targets: [{ pick: "instance", instanceId: control.victim.id }] });
+    expect(control.s.card(control.victim).rebornSpent).toBe(true);
+    control.s.expectInZone(control.victim, "field");
+    control.s.expectStats(control.victim, { health: 1 });
+
+    // Echo 1. The first resolution's Combo draw takes a Reno; the repeat's takes the destroyer.
+    const { s, victim, spell } = board(1);
+    onLibraryTop(s, [RENO, "edge-r8-cod-destroyer"], "p1");
+    // /fullsend: "this turn your cards gain 'Combo: draw 1'", and it is the card played earlier.
+    s.play(FULLSEND);
+    s.play(spell, { targets: [{ pick: "instance", instanceId: victim.id }] });
+    // The first resolution hit the 5/5 for 1; the repeat asks for a fresh target (R81).
+    expect(s.card(victim).damage).toBe(1);
+    const pending = must(s.state.pending, "the Echo repeat's target prompt");
+    expect(pending.prompt).toContain("Echo");
+    s.answer(victim.id);
+
+    // The repeat is step 5 again: its Combo draw casts the destroyer, which kills the victim, and
+    // Reborn puts a new body in lane 1 (§4.5 step 4, R83) before the repeat's script runs.
+    const events = s.lastEvents;
+    const reborn = events.findIndex((event) => event.type === "summoned" && event.instanceId === victim.id);
+    expect(reborn, "the victim's Reborn body came back during the repeat").toBeGreaterThanOrEqual(0);
+    // R174: the repeat's damage was aimed at the stay chosen at its prompt, which the cast ended, as
+    // the control's was aimed at step 1's. The body is a new arrival and stands at 1 health; before
+    // the fix the repeat's damage landed on it and it died a second time.
+    s.expectInZone(victim, "field");
+    s.expectStats(victim, { health: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2. The traps an event is still owed after a question are the ones not yet offered it (§10.3, R99)
+// ---------------------------------------------------------------------------------------------
+
+/** p2's trap in `lane`: when the opponent plays a card, and only once p1's hero is below 30, deal it 5. */
+function conditionalTrap(s: Scenario, id: string, lane: number): CardInstance {
+  fixtureFaces(
+    s.state,
+    id,
+    "Trap",
+    same({
+      triggers: [
+        {
+          id: `${id}:hits`,
+          on: ["cardPlayed"],
+          when: (ctx) =>
+            ctx.event.type === "cardPlayed" &&
+            ctx.event.player !== ctx.controller &&
+            ctx.state.players.p1.hero.health < 30,
+          run: () => [damage({ to: { of: "enemyHero" }, amount: 5 })],
+        },
+      ],
+    }),
+  );
+  return placeFixture(s, id, "p2", "backrow", lane);
+}
+
+describe("§10.3, R99: a trap that declined an event is not offered it again because a later trap asked", () => {
+  it("R99 the lane-1 trap that declined the play is still armed after the lane-2 trap's question is answered, as it is with no question (R113, §10.3)", () => {
+    // Control: the lane-2 trap pings p1 at once. The lane-1 trap met the play first, with p1 at 30,
+    // declined it, and is not offered it again after the ping.
+    const control = scenario({ p1: { hand: [TEMPO_TIMMY], mana: 4 }, p2: { hand: [RENO] } });
+    const controlGuard = conditionalTrap(control, "edge-r8-guard-control", 1);
+    fixtureFaces(
+      control.state,
+      "edge-r8-pinger-now",
+      "Trap",
+      same({
+        triggers: [
+          {
+            id: "edge-r8-pinger-now:pings",
+            on: ["cardPlayed"],
+            when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player !== ctx.controller,
+            run: () => [damage({ to: { of: "enemyHero" }, amount: 1 })],
+          },
+        ],
+      }),
+    );
+    placeFixture(control, "edge-r8-pinger-now", "p2", "backrow", 2);
+    control.play(TEMPO_TIMMY, { zone: 1 });
+    control.expectHealth("p1", 29);
+    control.expectInZone(controlGuard, "field");
+
+    // The same board, but the lane-2 trap asks p2 something before it pings.
+    const s = scenario({ p1: { hand: [TEMPO_TIMMY], mana: 4 }, p2: { hand: [RENO] } });
+    const guard = conditionalTrap(s, "edge-r8-guard", 1);
+    fixtureFaces(
+      s.state,
+      "edge-r8-pinger-asks",
+      "Trap",
+      same({
+        triggers: [
+          {
+            id: "edge-r8-pinger-asks:asks",
+            on: ["cardPlayed"],
+            when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player !== ctx.controller,
+            run: () => [chooseMode({ options: ["ok"], step: "ok", prompt: "a question" })],
+          },
+        ],
+        resume: { ok: () => [damage({ to: { of: "enemyHero" }, amount: 1 })] },
+      }),
+    );
+    placeFixture(s, "edge-r8-pinger-asks", "p2", "backrow", 2);
+    s.play(TEMPO_TIMMY, { zone: 1 });
+    expect(must(s.state.pending, "the lane-2 trap's question").playerId).toBe("p2");
+    s.answer("ok");
+
+    // §10.3: the traps check the event as it is dispatched, each once. The lane-1 trap was offered
+    // the play before the lane-2 trap fired and declined it; the question only paused the dispatch
+    // after that (R113 resumes where it stopped), so it does not get a second look at the same play.
+    s.expectHealth("p1", 29);
+    s.expectInZone(guard, "field");
+    expect(s.card(guard).faceUp ?? false).toBe(false);
+  });
+});
+
+describe("§10.3, R113: the traps still owed an event after a question meet it in the order the dispatch had", () => {
+  /** A trap that answers every `cardPlayed` and does nothing else (R61: it fires and is consumed). */
+  function silentTrap(s: Scenario, id: string, player: PlayerId, lane: number): CardInstance {
+    fixtureFaces(s.state, id, "Trap", same({ triggers: [{ id: `${id}:fires`, on: ["cardPlayed"], run: () => [] }] }));
+    return placeFixture(s, id, player, "backrow", lane);
+  }
+
+  /** p1's lane-1 trap: on any play, rotate the rings (p1's seat) — at once, or after a question. */
+  function rotatingTrap(s: Scenario, asks: boolean): void {
+    const turn = rotate({ direction: "left" });
+    fixtureFaces(
+      s.state,
+      asks ? "edge-r8-rotor-asks" : "edge-r8-rotor-now",
+      "Trap",
+      same({
+        triggers: [
+          {
+            id: asks ? "edge-r8-rotor-asks:fires" : "edge-r8-rotor-now:fires",
+            on: ["cardPlayed"],
+            run: () => (asks ? [chooseMode({ options: ["ok"], step: "ok", prompt: "a question" })] : [turn]),
+          },
+        ],
+        resume: { ok: () => [turn] },
+      }),
+    );
+    placeFixture(s, asks ? "edge-r8-rotor-asks" : "edge-r8-rotor-now", "p1", "backrow", 1);
+  }
+
+  function crossedToP1(s: Scenario, id: string): boolean {
+    return s.events.some((event) => event.type === "controlChanged" && event.instanceId === id && event.controller === "p1");
+  }
+
+  function firedOrder(s: Scenario, ids: readonly string[]): string[] {
+    return s.events.flatMap((event) => (event.type === "trapFired" && ids.includes(event.instanceId) ? [event.instanceId] : []));
+  }
+
+  it("R113 p2's lane-4 and lane-5 traps fire in the order the play's dispatch offered them, though the answer rotated the lane-5 one onto p1's side (§10.3, R68)", () => {
+    // Control: the rotation happens at once. The dispatch offers the play to p1's rotor, then to
+    // p2's lane-4 and lane-5 traps in the order it read as it began (R68), whichever side the
+    // rotation has put them on by then.
+    const control = scenario({ p1: { hand: [TEMPO_TIMMY], mana: 4 }, p2: { hand: [RENO] } });
+    rotatingTrap(control, false);
+    const a0 = silentTrap(control, "edge-r8-silent-a0", "p2", 4);
+    const b0 = silentTrap(control, "edge-r8-silent-b0", "p2", 5);
+    control.play(TEMPO_TIMMY, { zone: 2 });
+    expect(crossedToP1(control, b0.id), "the rotation carried the lane-5 trap across to p1").toBe(true);
+    expect(firedOrder(control, [a0.id, b0.id])).toEqual([a0.id, b0.id]);
+
+    // The same, with the rotor asking p1 first and rotating on the answer.
+    const s = scenario({ p1: { hand: [TEMPO_TIMMY], mana: 4 }, p2: { hand: [RENO] } });
+    rotatingTrap(s, true);
+    const a = silentTrap(s, "edge-r8-silent-a", "p2", 4);
+    const b = silentTrap(s, "edge-r8-silent-b", "p2", 5);
+    s.play(TEMPO_TIMMY, { zone: 2 });
+    must(s.state.pending, "the rotor's question");
+    s.answer("ok");
+    expect(crossedToP1(s, b.id)).toBe(true);
+
+    // R113: the dispatch the question paused resumes where it stopped — the traps it still owed, in
+    // the order it had (as the end-of-turn window's remainder keeps its owed list's order). Before
+    // the fix the remainder was re-read from a fresh scan in which p1's side comes first, so the
+    // lane-5 trap the rotation moved fired ahead of the lane-4 one.
+    expect(firedOrder(s, [a.id, b.id])).toEqual([a.id, b.id]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 3. A card named by id later in a list a prompt split is still aimed at its stay (R174, R113)
+// ---------------------------------------------------------------------------------------------
+
+describe("R174, R113: an effect naming a card by id after a prompt meets the stay the run began with", () => {
+  it("R174 the Rush Token a trap's list summoned does not attack the Reborn body of the played unit the answer sacrificed (R53, §8 #60)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // p1's 0-cost 2/2 Reborn unit.
+    fixtureFaces(s.state, "edge-r8-played-reborn", "Unit", same({}), { keywords: [{ kind: "Reborn" }] });
+    const played = inHand(s, "edge-r8-played-reborn", "p1");
+    // p2's trap, #60 Bear Honeypot's list with a question in it: when the opponent's permanent
+    // resolves, summon a Rush Token and ask p2; the answer sacrifices the played unit; then the
+    // tokens this list summoned attack the played unit.
+    fixtureFaces(
+      s.state,
+      "edge-r8-honeypot-sacrifices",
+      "Trap",
+      same({
+        triggers: [
+          {
+            id: "edge-r8-honeypot-sacrifices:fires",
+            on: ["cardResolved"],
+            when: (ctx) => ctx.event.type === "cardResolved" && ctx.event.player !== ctx.controller && ctx.event.permanent,
+            run: (ctx) => {
+              const id = ctx.event.type === "cardResolved" ? ctx.event.instanceId : "";
+              return [
+                summon({ defId: RUSH_TOKEN }),
+                chooseMode({ options: ["ok"], step: "ok", prompt: "a question", data: { played: id } }),
+                forcedAttacks({
+                  attackers: { side: "self", defId: RUSH_TOKEN, summonedThisScript: true },
+                  target: { instanceId: id },
+                }),
+              ];
+            },
+          },
+        ],
+        resume: {
+          ok: (ctx) => [sacrifice({ target: { of: "instance", instanceId: String(ctx.data.played) }, allowEnemy: true })],
+        },
+      }),
+    );
+    placeFixture(s, "edge-r8-honeypot-sacrifices", "p2", "backrow", 1);
+
+    s.play(played, { zone: 1 });
+    must(s.state.pending, "the trap's question");
+    const token = must(s.unit("p2", 1), "the Rush Token the trap summoned");
+    s.answer("ok");
+
+    // The answer's sacrifice is a death in full: the played unit's Reborn body came back in lane 1
+    // (R83) before the tail ran.
+    const events = s.lastEvents;
+    const died = events.findIndex((event) => event.type === "destroyed" && event.instanceId === played.id);
+    const reborn = events.findIndex((event) => event.type === "summoned" && event.instanceId === played.id);
+    expect(died, "the answer sacrificed the played unit").toBeGreaterThanOrEqual(0);
+    expect(reborn, "Reborn brought its body back").toBeGreaterThan(died);
+    // R174: "they attack it" is aimed at the played unit's stay, which the answer ended before the
+    // tail ran — the list is one run whether or not a prompt split it (R113), and the answered step
+    // and the tail share its mark. #60's tokens do not attack a Reborn body; before the fix the
+    // token attacked it and the 1-health body died a second time.
+    const attacked = events.some(
+      (event) => event.type === "attackDeclared" && event.forced && event.targetId === played.id,
+    );
+    expect(attacked, "the token was made to attack the Reborn body").toBe(false);
+    expect(s.card(token).damage).toBe(0);
+    s.expectInZone(played, "field");
+    s.expectStats(played, { health: 1 });
+  });
+
+  it("R174 damage the answered step aims by id at a unit its own list sacrificed before the prompt misses the Reborn body (R83, R113)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    fixtureFaces(s.state, "edge-r8-enemy-reborn", "Unit", same({}), {
+      stats: { attack: 2, health: 3 },
+      keywords: [{ kind: "Reborn" }],
+    });
+    const victim = placeFixture(s, "edge-r8-enemy-reborn", "p2", "units", 1);
+    // A 0-cost Spell: sacrifice the chosen enemy unit, ask something, then (the answered step) deal
+    // 5 damage to that unit, named by the id the Cry carried into the prompt.
+    fixtureFaces(
+      s.state,
+      "edge-r8-sac-ask-hit-by-id",
+      "Spell",
+      same({
+        targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit"] } }],
+        cry: (ctx) => {
+          const chosen = ctx.targets[0];
+          const id = chosen?.pick === "instance" ? chosen.instanceId : "";
+          return [
+            sacrifice({ target: { of: "chosen" }, allowEnemy: true }),
+            chooseMode({ options: ["ok"], step: "ok", prompt: "a question", data: { victim: id } }),
+          ];
+        },
+        resume: {
+          ok: (ctx) => [damage({ to: { of: "instance", instanceId: String(ctx.data.victim) }, amount: 5 })],
+        },
+      }),
+    );
+    const spell = inHand(s, "edge-r8-sac-ask-hit-by-id", "p1");
+
+    s.play(spell, { targets: [{ pick: "instance", instanceId: victim.id }] });
+    must(s.state.pending, "the Spell's question");
+    expect(s.card(victim).rebornSpent).toBe(true);
+    s.answer("ok");
+
+    // R174: the damage is aimed at the stay the play chose, which the sacrifice ended before the
+    // question; the answered step continues the same resolution (R113), and naming the card by id
+    // rather than as "the chosen one" does not make the Reborn body the card it was aimed at.
+    s.expectInZone(victim, "field");
+    s.expectStats(victim, { health: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 4. A target picked at a prompt is aimed at the stay it was picked on (R174, §10.6)
+// ---------------------------------------------------------------------------------------------
+
+describe("R174, §10.6: a card picked at a prompt is aimed at the stay the prompt offered", () => {
+  /** p2's 2/3 Reborn unit in lane 1 and Tempo Timmy in lane 2; p1's Spell: sacrifice the chosen
+   * enemy unit, then ask for an enemy unit and deal it 5. */
+  function board(): { s: Scenario; victim: CardInstance; spell: CardInstance } {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { field: [{ def: TEMPO_TIMMY, lane: 2 }], hand: [RENO] },
+    });
+    fixtureFaces(s.state, "edge-r8-enemy-reborn-2", "Unit", same({}), {
+      stats: { attack: 2, health: 3 },
+      keywords: [{ kind: "Reborn" }],
+    });
+    const victim = placeFixture(s, "edge-r8-enemy-reborn-2", "p2", "units", 1);
+    fixtureFaces(
+      s.state,
+      "edge-r8-sac-then-pick",
+      "Spell",
+      same({
+        targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit"] } }],
+        cry: () => [
+          sacrifice({ target: { of: "chosen" }, allowEnemy: true }),
+          chooseTarget({ step: "hit", scope: { side: "enemy", of: ["unit"] }, prompt: "deal 5 to an enemy unit" }),
+        ],
+        resume: { hit: () => [damage({ to: { of: "chosen" }, amount: 5 })] },
+      }),
+    );
+    return { s, victim, spell: inHand(s, "edge-r8-sac-then-pick", "p1") };
+  }
+
+  it("R174 the Reborn body a prompt offered after the list's own sacrifice takes the answered step's damage when it is picked (R83, R113)", () => {
+    // Control: picking the unit that never left, the answered step's 5 lands and kills it.
+    const control = board();
+    control.s.play(control.spell, { targets: [{ pick: "instance", instanceId: control.victim.id }] });
+    const timmy = must(control.s.unit("p2", 2), "p2's Tempo Timmy");
+    control.s.answer(timmy.id);
+    control.s.expectInZone(timmy, "graveyard");
+
+    const { s, victim, spell } = board();
+    s.play(spell, { targets: [{ pick: "instance", instanceId: victim.id }] });
+    // The sacrifice is a death in full, and Reborn has put the body back before the prompt opened:
+    // the prompt offers it, a unit on the field now (R83).
+    expect(s.card(victim).rebornSpent).toBe(true);
+    const pending = must(s.state.pending, "the Spell's target prompt");
+    const offered = pending.options.some(
+      (option) => option.selection.pick === "instance" && option.selection.instanceId === victim.id,
+    );
+    expect(offered, "the prompt offers the Reborn body").toBe(true);
+    s.answer(victim.id);
+
+    // §10.6: the answer re-invokes the script with the selection, and the selection is a card on
+    // the field as the prompt offered it. R174 aims an effect at the stay it was chosen on — here,
+    // the body's — so the 5 damage lands and kills it. Before the fix the answered step judged the
+    // pick against the mark the Cry began with, before the sacrifice, called the body "gone", and
+    // the offered option did nothing.
+    const hit = s.lastEvents.some((event) => event.type === "damage" && event.targetId === victim.id);
+    expect(hit, "the picked Reborn body takes the answered step's damage").toBe(true);
+    s.expectInZone(victim, "graveyard");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 5. A Tribute's Death that asks while the played card is between the hand and the field (§10.5)
+// ---------------------------------------------------------------------------------------------
+
+/** Every pile holding this id, in every zone of both sides (§10.1: a card is in exactly one). */
+function pilesHolding(state: GameState, id: string): string[] {
+  const out: string[] = [];
+  for (const player of ["p1", "p2"] as const) {
+    const side = state.players[player];
+    const piles: [string, readonly (CardInstance | null)[]][] = [
+      ["hand", side.hand],
+      ["library", side.library],
+      ["graveyard", side.graveyard],
+      ["exile", side.exile],
+      ["resolving", side.resolving],
+      ["backrow", side.backrow],
+      ["units", side.units.flatMap((pile) => pile ?? [])],
+    ];
+    for (const [name, cards] of piles) {
+      if (cards.some((card) => card?.id === id)) out.push(`${player}.${name}`);
+    }
+  }
+  return out;
+}
+
+describe("R226, §10.1: a card being played is never left in two zones by a question its Tribute asks", () => {
+  it("R226 a Tribute whose Death has its controller discard the card being played does not also put that card on the field (§10.1, §10.5, R113)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // p1's 1/1 in lane 1 whose Death asks its controller to discard a card.
+    fixtureFaces(
+      s.state,
+      "edge-r8-discarding-death",
+      "Unit",
+      same({
+        death: () => [chooseFromHand({ step: "gone", prompt: "discard a card" })],
+        resume: { gone: () => [discard({ target: { of: "chosen" } })] },
+      }),
+      { stats: { attack: 1, health: 1 } },
+    );
+    const fodder = placeFixture(s, "edge-r8-discarding-death", "p1", "units", 1);
+    // p1's 0-cost 3/3 with Tribute 1.
+    fixtureFaces(s.state, "edge-r8-tribute-one", "Unit", same({ staticFlags: { tribute: 1 } }), { stats: { attack: 3, health: 3 } });
+    const played = inHand(s, "edge-r8-tribute-one", "p1");
+
+    s.play(played, { zone: 2, tributes: [fodder.id] });
+    const pending = must(s.state.pending, "the tributed unit's Death question");
+    const offersPlayed = pending.options.some(
+      (option) => option.selection.pick === "instance" && option.selection.instanceId === played.id,
+    );
+    if (offersPlayed) s.answer(played.id);
+    else s.answer(must(pending.options[0], "a hand card to discard").key);
+
+    // §10.1: every card is in exactly one zone. Offered while it waits between step 2 and step 4 in
+    // its owner's hand, the card being played is discarded to the graveyard by the answer; step 4
+    // then puts it on the field too, so it stands in lane 2 and lies in the graveyard at once.
+    // Either the question does not offer the card being played (it is leaving the hand, as R90 says
+    // of the play's own choices), or a card discarded that way is not played.
+    expect(pilesHolding(s.state, played.id), "the card being played is in exactly one pile").toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 6. The step-4 loop a trigger's question interrupted still checks before the Cry (R59, R118)
+// ---------------------------------------------------------------------------------------------
+
+describe("R59, §10.5 step 4: a trigger that answered the play and asked is followed by the check before the Cry", () => {
+  /** p1's 0-cost unit whose Cry deals the enemy hero 1 per enemy unit on the field. */
+  function counter(s: Scenario): CardInstance {
+    fixtureFaces(
+      s.state,
+      "edge-r8-counting-cry",
+      "Unit",
+      same({ cry: (ctx) => [damage({ to: { of: "enemyHero" }, amount: activeUnitsOf(ctx.state, "p2").length })] }),
+    );
+    return inHand(s, "edge-r8-counting-cry", "p1");
+  }
+
+  /** p1's lane-1 unit: whenever its controller plays another card, deal 5 to `victim` — at once, or on the answer to a question. */
+  function striker(s: Scenario, victimId: string, asks: boolean): void {
+    const id = asks ? "edge-r8-striker-asks" : "edge-r8-striker-now";
+    const hit = damage({ to: { of: "instance", instanceId: victimId }, amount: 5 });
+    fixtureFaces(
+      s.state,
+      id,
+      "Unit",
+      same({
+        triggers: [
+          {
+            id: `${id}:fires`,
+            on: ["cardPlayed"],
+            run: (ctx) =>
+              ctx.event.type === "cardPlayed" && ctx.event.player === ctx.controller && ctx.event.instanceId !== ctx.self?.id
+                ? asks
+                  ? [chooseMode({ options: ["ok"], step: "ok", prompt: "a question" })]
+                  : [hit]
+                : [],
+          },
+        ],
+        resume: { ok: () => [hit] },
+      }),
+    );
+    placeFixture(s, id, "p1", "units", 1);
+  }
+
+  it("R59 the unit the trigger's answer killed has died before the played card's Cry counts the board, as it has when nothing asks (R118, R113)", () => {
+    // Control: the trigger deals its 5 at once. §10.5 step 4's loop runs it, then the check (R59),
+    // and Tempo Timmy has died before the Cry counts the enemy's units: 0 damage.
+    const control = scenario({ p1: { hand: [RENO], mana: 4 }, p2: { field: [TEMPO_TIMMY], hand: [RENO] } });
+    const timmy0 = must(control.unit("p2", 1), "p2's Tempo Timmy");
+    striker(control, timmy0.id, false);
+    control.play(counter(control), { zone: 2 });
+    control.expectInZone(timmy0, "graveyard");
+    control.expectHealth("p2", 30);
+
+    // The same trigger, asking p1 first and dealing its 5 on the answer.
+    const s = scenario({ p1: { hand: [RENO], mana: 4 }, p2: { field: [TEMPO_TIMMY], hand: [RENO] } });
+    const timmy = must(s.unit("p2", 1), "p2's Tempo Timmy");
+    striker(s, timmy.id, true);
+    s.play(counter(s), { zone: 2 });
+    must(s.state.pending, "the trigger's question");
+    s.answer("ok");
+
+    // R59: the check follows the whole trigger, answered step included, and step 4's loop is where
+    // the play left it (R113, R118) — so Timmy, at -2, dies before step 5. Before the fix the
+    // re-entered loop held the check (`holdCheck`) because nothing had resolved inside it yet, and
+    // the Cry counted a dead unit still on the field: p2 took 1.
+    s.expectInZone(timmy, "graveyard");
+    s.expectHealth("p2", 30);
   });
 });

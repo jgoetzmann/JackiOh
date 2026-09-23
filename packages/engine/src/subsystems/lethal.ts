@@ -131,6 +131,12 @@ function fallsToFirstStrike(state: GameState, attacker: CardInstance, defender: 
  * one the attack's Trample reaches. Nothing strikes back for a hero, a defender an attacker with First
  * Strike destroys first (§4.3 step 1), or a hit the attacker's Divine Shield, Indestructible or Armor
  * stops.
+ *
+ * Lifesteal heals the damage actually dealt, which is the hit as §4.4 splits it. A strike back with
+ * Trample counts on the attacker only up to its health (step 5, R63), and the rest is its own
+ * instance on the attacking hero, through that hero's Armor and cap (step 9) — so Going Long's Armor
+ * can stop it at 0, and a 0 heals nothing. Counting the whole strike as healed called a swing
+ * survivable that leaves the defending hero at 0.
  */
 function strikeBackHeal(state: GameState, attacker: CardInstance, target: AttackTarget): number {
   if (target.kind !== "unit") return 0;
@@ -141,7 +147,10 @@ function strikeBackHeal(state: GameState, attacker: CardInstance, target: Attack
   const mine = unitView(state, attacker);
   if (hasKeyword(mine.keywords, "Divine Shield") && attacker.divineShieldSpent !== true) return 0;
   if (hasKeyword(mine.keywords, "Indestructible")) return 0;
-  return Math.max(0, theirs.attack - armorOf(mine.keywords));
+  const strike = Math.max(0, theirs.attack - armorOf(mine.keywords));
+  if (strike <= 0 || !hasKeyword(theirs.keywords, "Trample") || strike <= mine.health) return strike;
+  const onUnit = Math.max(0, mine.health);
+  return onUnit + projectedHeroDamage(state, attacker.controller, strike - onUnit);
 }
 
 /**

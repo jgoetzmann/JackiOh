@@ -31,9 +31,11 @@ export function exitMark(state: GameState): number {
 }
 
 /**
- * R174: a card has just left the field — died, bounced, exiled, returned to a library. Called from
- * `zones.moveToZone`, the one funnel every such move goes through. A card that ceases to exist on
- * the field (a Replace, a Fuse) is in no pile afterwards, so no reader finds it to ask.
+ * R174: a card has just left the field — died, bounced, exiled, returned to a library, or ceased to
+ * exist there (replaced by a Transform, fused away). Called from `zones.moveToZone` and
+ * `zones.ceaseToExist`, the two funnels every such move goes through, so a reader that names the
+ * card by the id an event carried — a trap owed the play of a unit the first Sheepish turned into a
+ * Sheep — finds it gone.
  */
 export function noteFieldExit(state: GameState, instanceId: string): void {
   const exits = state.fieldExits ?? { count: 0, last: {} };

@@ -6,9 +6,9 @@
 import type { PlayerId } from "@jackioh/shared";
 import { defOf } from "../catalog";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, type CardInstance } from "../state";
+import type { CardInstance } from "../state";
 import { cardAt, slotsOf } from "../zones";
-import { playerOf, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
+import { playerOf, instanceOnItsStay, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
 
 /**
  * Which card becomes Radiant: the pick the play or a prompt carried (#26 Glowy Jelly Bean's hand
@@ -21,7 +21,8 @@ export type RadiantTarget = { target?: TargetSpec; instanceId?: string };
 export type RadiantZone = "hand" | "library" | "field";
 
 function instanceOf(ctx: EffectContext, args: RadiantTarget): CardInstance | null {
-  if (args.instanceId !== undefined) return findInstance(ctx.state, args.instanceId) ?? null;
+  // R174: a card named by id is aimed at the stay it had when the run began (`instanceOnItsStay`).
+  if (args.instanceId !== undefined) return instanceOnItsStay(ctx, args.instanceId);
   const target = resolveTarget(ctx, args.target ?? { of: "chosen" });
   if (target === null || target.kind !== "unit") return null;
   return target.instance;

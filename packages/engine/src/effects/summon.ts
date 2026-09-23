@@ -14,6 +14,7 @@ import { runHook } from "../resolve";
 import type { Effect, EffectContext } from "../script";
 import { scriptOf } from "../scripts";
 import { newInstance, type CardInstance } from "../state";
+import { exitMark } from "../stays";
 import {
   fillBoardZones,
   firstFreeZone,
@@ -166,7 +167,10 @@ function summonExisting(
  */
 function rollRandomKeywords(ctx: EffectContext, card: CardInstance, count: number | undefined): void {
   if (count === undefined || count <= 0) return;
-  grantRandomKeywords({ target: { of: "instance", instanceId: card.id }, count }).apply(ctx);
+  // R174: the roll is aimed at the stay the card has just arrived on, so it is named from a mark
+  // taken now — a unit the same list sent to the graveyard and has just summoned back is this one.
+  const now = { ...ctx, exitsFrom: exitMark(ctx.state) };
+  grantRandomKeywords({ target: { of: "instance", instanceId: card.id }, count }).apply(now);
 }
 
 /**

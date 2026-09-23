@@ -3,13 +3,28 @@
 // §9.3, §10.2, R36, R43, R79, R103). Found by the polish-4 edge-case hunt
 // (docs/polish/4-edge-cases.md, lenses L8 and L9, and in round 4 the engine-invariants lens, which
 // found two target options sharing one key, and in round 5 a play naming a lane between two lanes,
-// and in round 6 an answer listed in an order no offered answer has, R221); every case here but the
-// known gap failed before its fix.
+// and in round 6 an answer listed in an order no offered answer has, R221, and in round 8 a play's
+// Tribute pick that names a unit the play keeps, R123, and a play's picks listed in an order no
+// offered play has, R221); every case here but the known gap failed before its fix. No Core card
+// declares a Tribute with an amount or one declaration whose two picks are made in a public order,
+// so round 8's cases build the card as a fixture.
 
 import { describe, expect, it } from "vitest";
-import type { Action, ActionInput, GameEvent, Selection } from "@jackioh/shared";
-import { hashState, legalActions, reduce, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
-import { scenario } from "./_harness";
+import type { Action, ActionBody, ActionInput, CardDef, CardType, GameEvent, PlayerId, Selection } from "@jackioh/shared";
+import {
+  hashState,
+  legalActions,
+  newInstance,
+  reduce,
+  registerScripts,
+  registeredScripts,
+  subsystems,
+  type CardInstance,
+  type GameState,
+  type Script,
+} from "@jackioh/engine";
+import { exile } from "@jackioh/engine/effects";
+import { scenario, type Scenario } from "./_harness";
 
 const SCARAB = "core-007"; // Cry: Discover a 2-cost card — one prompt
 const VANILLA = "core-008";
@@ -340,5 +355,123 @@ describe("R221, §10.2, §10.6: every answer reduce accepts is one legalActions 
           `does (offered: ${[...meanings.values()].join(" | ")})`,
       ).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 8 (lens "legality-agreement"): a play's own choices, as legalActions offers them
+// ---------------------------------------------------------------------------------------------
+
+const EDGE_VANILLA = "core-008";
+
+type PlayBody = Extract<ActionBody, { type: "play" }>;
+
+/** A test-only card, registered the way the other hunt cases register theirs. */
+function fixture(s: Scenario, id: string, type: CardType, script: Script): void {
+  const face = type === "Unit" ? { attack: 2, health: 2, keywords: [], text: id } : { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+function inHand(s: Scenario, defId: string, player: PlayerId): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  s.state.players[player].hand.push(card);
+  return card;
+}
+
+function playsOf(s: Scenario, player: PlayerId, card: CardInstance): PlayBody[] {
+  return legalActions(s.state, player).filter(
+    (action): action is PlayBody => action.type === "play" && action.instanceId === card.id,
+  );
+}
+
+describe("R123: a declared Tribute names the same units in targets and tributes", () => {
+  it("R123 legalActions offers, and reduce accepts, no play whose declared Tribute pick is a unit the play does not tribute", () => {
+    const s = scenario({ p1: { field: [EDGE_VANILLA, EDGE_VANILLA], hand: [EDGE_VANILLA] }, p2: { hand: [EDGE_VANILLA] } });
+    // R123's shape: one `tribute` declaration with a pick AND an amount. The tributed unit travels
+    // in `tributes` (§6.3's cost, paid at §10.5 step 2) and in `targets` (what the script reads as
+    // the unit it tributed): "a card that declares both therefore names its units in both lists".
+    fixture(s, "edge-r8-devourer", "Unit", { targets: [{ kind: "tribute", amount: 1, min: 1, max: 1 }] });
+    const devourer = inHand(s, "edge-r8-devourer", "p1");
+    const a = must(s.unit("p1", 1), "p1's first unit");
+    const b = must(s.unit("p1", 2), "p1's second unit");
+
+    const plays = playsOf(s, "p1", devourer);
+    expect(plays.length).toBeGreaterThan(0);
+    const mismatched = plays.filter((play) =>
+      (play.targets ?? []).some((pick) => pick.pick === "instance" && !(play.tributes ?? []).includes(pick.instanceId)),
+    );
+    // Offered before the fix: tributes [a] with the pick b, and tributes [b] with the pick a — the unit
+    // sacrificed and the unit the script is told it sacrificed are two different units.
+    expect
+      .soft(
+        mismatched.map((play) => ({ tributes: play.tributes, targets: play.targets })),
+        "offered plays whose declared Tribute pick is not a unit they tribute",
+      )
+      .toEqual([]);
+
+    const result = reduce(s.state, {
+      type: "play",
+      playerId: "p1",
+      nonce: "edge-r8-r123",
+      instanceId: devourer.id,
+      zone: { row: "units", lane: 3 },
+      tributes: [a.id],
+      targets: [{ pick: "instance", instanceId: b.id }],
+    } as Action);
+    expect(result.error, "a play that tributes one unit and names another as its Tribute pick").toBeDefined();
+  });
+});
+
+describe("R221, R90, §10.2: a play's picks for one declaration are a set", () => {
+  it("R221 a play listing one declaration's two picks the other way round means the same as the play legalActions offers (R90, §3)", () => {
+    const s = scenario({ p1: { hand: [EDGE_VANILLA] }, p2: { field: [EDGE_VANILLA, EDGE_VANILLA], hand: [EDGE_VANILLA] } });
+    // One declaration that picks two enemy units, exiled in turn. The exile pile is public and
+    // chronological (§3), so the order the picks are exiled in is on the table for both seats.
+    fixture(s, "edge-r8-exile-two", "Spell", {
+      targets: [{ kind: "target", min: 2, max: 2, filter: { side: "enemy", of: ["unit"] } }],
+      cry: () => [exile({ target: { of: "chosen", index: 0 } }), exile({ target: { of: "chosen", index: 1 } })],
+    });
+    const spell = inHand(s, "edge-r8-exile-two", "p1");
+    const a = must(s.unit("p2", 1), "p2's lane-1 unit");
+    const b = must(s.unit("p2", 2), "p2's lane-2 unit");
+
+    // legalActions offers the set {a, b} once, in the order the declaration offers its options.
+    expect(
+      playsOf(s, "p1", spell).map((play) => (play.targets ?? []).map((pick) => (pick.pick === "instance" ? pick.instanceId : "?"))),
+    ).toEqual([[a.id, b.id]]);
+
+    const play = (targets: readonly string[], nonce: string) =>
+      reduce(s.state, {
+        type: "play",
+        playerId: "p1",
+        nonce,
+        instanceId: spell.id,
+        targets: targets.map((instanceId) => ({ pick: "instance", instanceId })),
+      } as Action);
+    const offered = play([a.id, b.id], "edge-r8-order-offered");
+    const reversed = play([b.id, a.id], "edge-r8-order-reversed");
+    expect(offered.error).toBeUndefined();
+
+    // `reduce` may refuse the unoffered listing, or accept it as it accepts an answer's (R221) —
+    // but then it must mean what the offered play means: the same cards, exiled in the same order.
+    if (reversed.error !== undefined) return;
+    expect(
+      reversed.state.players.p2.exile.map((card) => card.id),
+      "the public exile pile after the reversed listing",
+    ).toEqual(offered.state.players.p2.exile.map((card) => card.id));
   });
 });

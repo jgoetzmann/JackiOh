@@ -23,6 +23,10 @@
 //    Reborn body of the unit the Cube's part ate.
 //  - Round 7, lens L2. R174: it holds for "this" card as well — a crafted Silas + Gary that its own
 //    Silas part bounced to hand is not buffed there by its Gary part.
+//  - Round 8, lens L2. R174: a Transform takes the card off the field like any departure, so a
+//    second Sheepish is not offered the play the first turned into a Sheep. R102, R212: a card a
+//    Fuse kept is on the same stay, so a trigger it queued before the Fuse (Fed Fauci's Plague Token
+//    for the Cry that hit it) still resolves under the fused definition's namespaced id.
 
 import type { Selection } from "@jackioh/shared";
 import { createRng, effectiveCost, newInstance, subsystems, type CardInstance } from "@jackioh/engine";
@@ -54,6 +58,10 @@ const SURGERY = "core-063";
 const REMINISCE = "core-072";
 const SAINTESS = "core-081";
 const EXPERIMENTATION = "core-085";
+const HINDER = "core-021";
+const SHEEPISH = "core-041";
+const SHEEP = "core-t-sheep";
+const FAUCI = "core-091";
 const FIENDER = "core-092";
 const RUSH_TOKEN = "core-t-rush";
 const FELINOR_TOKEN = "core-t-felinor";
@@ -594,5 +602,57 @@ describe("R174, R78: a later part of a Cry acting on the card itself, once an ea
     // fizzles"), so the coins buff nothing — least of all a card in a hand, which R78 has just made
     // the printed card again.
     expect(g.card(card).buffs).toEqual({ attack: 0, health: 0 });
+  });
+});
+
+describe("R174: a transformed card has left the field", () => {
+  it("R174 a second Sheepish is not offered the play the first one already turned into a Sheep (R17, R61)", () => {
+    const g = scenario({
+      seed: "edge-r8-sheepish",
+      p1: { hand: [TIMMY, HINDER], mana: 10 },
+      p2: {
+        backrow: [
+          { def: SHEEPISH, lane: 1 },
+          { def: SHEEPISH, lane: 2 },
+        ],
+      },
+    });
+    const first = g.backrow("p2", 1);
+    const second = g.backrow("p2", 2);
+    if (first === null || second === null) throw new Error("setup: two Sheepish");
+
+    g.play(TIMMY, { zone: 1 });
+
+    // The first Sheepish turned the played unit into a Sheep, which is no longer the card played.
+    expect(unitAt(g, "p1", 1).defId).toBe(SHEEP);
+    g.expectInZone(first, "graveyard");
+    // A trap answering the play behind one that took the card off the field is not offered it, so
+    // the second Sheepish stays armed and face-down rather than firing for nothing.
+    expect(g.lastEvents.filter((event) => event.type === "trapFired")).toHaveLength(1);
+    expect(g.backrow("p2", 2)?.id).toBe(second.id);
+  });
+});
+
+describe("R102, R212: a card a Fuse kept is the same card on the same stay", () => {
+  it("R102 Fed Fauci hit by Twisted Sorcerer's Cry and then fused with the Sorcerer by Unlicensed Experimentation still gains its Plague Token (R77, R212)", () => {
+    const g = scenario({
+      seed: "edge-r8-fauci-fuse",
+      p1: { hand: [SORCERER, HINDER], mana: 10 },
+      p2: { field: [{ def: FAUCI, lane: 1 }], backrow: [{ def: EXPERIMENTATION, lane: 1 }] },
+    });
+    const fauci = unitAt(g, "p2", 1);
+
+    g.play(SORCERER, { zone: 1, targets: at(fauci) });
+
+    // The Sorcerer's Cry hit Fauci for 4, and the trap fused the Sorcerer onto Fauci (R77: the
+    // instance is kept, on the same stay, carrying both texts — Fauci's trigger included, R102).
+    expect(g.events.some((event) => event.type === "damage" && event.targetId === fauci.id)).toBe(true);
+    expect(g.events.some((event) => event.type === "fused" && event.resultInstanceId === fauci.id)).toBe(true);
+    const kept = g.card(fauci);
+    expect(kept.zone.z).toBe("field");
+    expect(kept.damage).toBe(4);
+    // "Whenever this takes damage, +1 Plague Token": the hit happened to this card on this stay
+    // (R212), and the Fuse neither moved it nor dropped Fauci's text, so the token lands.
+    expect(kept.counters.plague ?? 0).toBe(1);
   });
 });

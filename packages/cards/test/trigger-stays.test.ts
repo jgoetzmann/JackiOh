@@ -9,9 +9,27 @@
 // since, or a unit a Death has stolen since. R212: a card that has moved zones since the event is on
 // a stay that did not see it, and a card whose controller changed since answers for the player who
 // controlled it then.
+//
+// Round 8 (lens "control-change") carried R212 to the traps, which are an event's first responders:
+// a trap a later effect stole before the event reached the traps — a cast's events wait for the list
+// that cast it (R70), and the end-of-turn window offers `turnEnded` to one trap after another (R62)
+// — answers for the player who held it then, and a trap that arrived since does not answer it. No
+// Core effect steals or summons a trap between an event and its dispatch, so the effect that does is
+// a fixture (a transient def and its script in the registry, as combat-windows.test.ts builds them).
 
-import type { GameEvent, Selection } from "@jackioh/shared";
-import type { CardInstance } from "@jackioh/engine";
+import type { CardDef, CardType, GameEvent, PlayerId, Selection } from "@jackioh/shared";
+import { opponentOf } from "@jackioh/shared";
+import {
+  cardAt,
+  newInstance,
+  placeOnField,
+  registerScripts,
+  registeredScripts,
+  type CardInstance,
+  type EffectContext,
+  type Script,
+} from "@jackioh/engine";
+import { draw, steal, summon } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -28,6 +46,11 @@ const MROW = "core-086";
 const CORPSE_EATER = "core-089";
 const FAUCI = "core-091";
 const RENO = "core-053";
+const BREAD = "core-018";
+const HINDER = "core-021";
+const HONEYPOT = "core-060";
+const BREAD_TOKEN = "core-t-bread";
+const RUSH_TOKEN = "core-t-rush";
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
 const at = (card: CardInstance): Selection[] => [{ pick: "instance", instanceId: card.id }];
@@ -183,5 +206,178 @@ describe("R212: a card answers for the player who controlled it when the event h
     expect(g.card(panther).controller).toBe("p2");
     expect(g.hand("p1")).toHaveLength(p1Hand + 2);
     expect(g.hand("p2")).toHaveLength(p2Hand);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 8: the traps answer an event as the board stood when it happened
+// ---------------------------------------------------------------------------------------------
+
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what}`);
+  return value;
+}
+
+function eventsOf<T extends GameEvent["type"]>(s: Scenario, type: T): Extract<GameEvent, { type: T }>[] {
+  return s.events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
+}
+
+function unitsOf(s: Scenario, player: PlayerId): CardInstance[] {
+  return [1, 2, 3, 4, 5].flatMap((lane) => {
+    const found = s.unit(player, lane);
+    return found === null ? [] : [found];
+  });
+}
+
+/** A fixture card: a transient def in the match state and its script in the registry. */
+function fixture(s: Scenario, id: string, type: CardType, script: Script, cost = 0): void {
+  const face = { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+function inHand(s: Scenario, defId: string, player: PlayerId): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  s.state.players[player].hand.push(card);
+  return card;
+}
+
+/** A face-down trap of `player`'s in a backrow lane (R33). */
+function setTrap(s: Scenario, defId: string, player: PlayerId, lane: number): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  if (!placeOnField(s.state, card, { player, row: "backrow", lane })) throw new Error(`could not place ${defId}`);
+  card.faceUp = false;
+  return card;
+}
+
+/** "The enemy's backrow card in lane 2", read as the hook builds its list. */
+function enemyBackrowLane2(ctx: EffectContext): CardInstance | null {
+  return cardAt(ctx.state, { player: opponentOf(ctx.controller), row: "backrow", lane: 2 });
+}
+
+describe("R212 for traps: a trap answers an event as the board stood when it happened", () => {
+  it("R212 a Bear Honeypot its opponent's Spell stole after a cast in the same list answers that cast for the player who held it then", () => {
+    const s = scenario({
+      seed: "edge-r8-honeypot-lifted",
+      p1: { hand: [VANILLA], field: [{ def: VANILLA, lane: 5 }], library: [HINDER, VANILLA, VANILLA, VANILLA] },
+      p2: {
+        hand: [VANILLA],
+        field: [{ def: VANILLA, lane: 5 }],
+        backrow: [{ def: HONEYPOT, lane: 2, faceUp: false }],
+        library: [...LIBRARY],
+      },
+    });
+    const trap = must(s.backrow("p2", 2), "p2's Bear Honeypot");
+    // A 2-cost Spell (so its own play is no "card costing 1 or less"): "Draw a card, then take
+    // control of the enemy's backrow card in lane 2."
+    fixture(
+      s,
+      "edge-r8-draw-then-lift",
+      "Spell",
+      {
+        cry: (ctx) => {
+          const enemy = enemyBackrowLane2(ctx);
+          return [draw({ count: 1 }), ...(enemy === null ? [] : [steal({ instanceId: enemy.id })])];
+        },
+      },
+      2,
+    );
+    const spell = inHand(s, "edge-r8-draw-then-lift", "p1");
+
+    s.play(spell);
+
+    // The draw cast Hinder (§2.4, R70: a play, paid 0) while the Honeypot was still p2's, and only
+    // then did the Spell take the Honeypot.
+    const cast = eventsOf(s, "cardResolved").filter((event) => event.defId === HINDER);
+    expect(cast).toHaveLength(1);
+    expect(cast[0]).toMatchObject({ player: "p1", costPaid: 0 });
+    expect(eventsOf(s, "controlChanged").some((event) => event.instanceId === trap.id && event.controller === "p1")).toBe(true);
+    // R212: the cast is answered as the board stood when it happened. p2's Honeypot saw its
+    // opponent play a card costing 1 or less, so it fires, and its tokens are p2's (R52's shape:
+    // everything a trap does is its controller's, and that controller is the one the event met).
+    expect(eventsOf(s, "trapFired").filter((event) => event.instanceId === trap.id)).toHaveLength(1);
+    expect(unitsOf(s, "p2").filter((unit) => unit.defId === RUSH_TOKEN)).toHaveLength(2);
+    expect(unitsOf(s, "p1").filter((unit) => unit.defId === RUSH_TOKEN)).toHaveLength(0);
+  });
+
+  it("R212 a Bread and Butter an earlier trap of the end-of-turn window stole answers that turn end for the player who held it when it ended", () => {
+    const s = scenario({
+      seed: "edge-r8-window-lift",
+      p1: { hand: [VANILLA], field: [{ def: VANILLA, lane: 5 }], library: [...LIBRARY] },
+      p2: {
+        hand: [VANILLA],
+        field: [{ def: VANILLA, lane: 5 }],
+        backrow: [{ def: BREAD, lane: 2, faceUp: false }],
+        library: [...LIBRARY],
+      },
+    });
+    const bread = must(s.backrow("p2", 2), "p2's Bread and Butter");
+    // A Trap: "At the end of any turn: take control of the enemy's backrow card in lane 2."
+    fixture(s, "edge-r8-window-lifter", "Trap", {
+      triggers: [
+        {
+          id: "edge-r8-window-lifter",
+          on: ["turnEnded"],
+          run: (ctx) => {
+            const enemy = enemyBackrowLane2(ctx);
+            return enemy === null ? [] : [steal({ instanceId: enemy.id })];
+          },
+        },
+      ],
+    });
+    setTrap(s, "edge-r8-window-lifter", "p1", 1);
+
+    // p1 ends the turn with 4 unspent mana. The window offers the ending player's traps first (R62),
+    // so the lifter takes the Bread and Butter before the Bread and Butter is offered the turn end.
+    s.endTurn();
+
+    expect(s.card(bread).controller).toBe("p1");
+    // R212: the turn end is answered as the board stood when it happened, and the Bread and Butter
+    // was p2's then, so its 4/4 is p2's (R52: "the trap's controller").
+    expect(unitsOf(s, "p2").filter((unit) => unit.defId === BREAD_TOKEN)).toHaveLength(1);
+    expect(unitsOf(s, "p1").filter((unit) => unit.defId === BREAD_TOKEN)).toHaveLength(0);
+  });
+
+  it("R212 a Bear Honeypot that arrived after a cast in the same list does not answer that cast (R174)", () => {
+    const s = scenario({
+      seed: "edge-r8-honeypot-late",
+      p1: { hand: [VANILLA], field: [{ def: VANILLA, lane: 5 }], library: [HINDER, VANILLA, VANILLA, VANILLA] },
+      p2: { hand: [VANILLA], field: [{ def: VANILLA, lane: 5 }], library: [...LIBRARY] },
+    });
+    // A 2-cost Spell: "Draw a card, then summon a Bear Honeypot face-down for the opponent."
+    fixture(
+      s,
+      "edge-r8-draw-then-gift-trap",
+      "Spell",
+      { cry: () => [draw({ count: 1 }), summon({ defId: HONEYPOT, player: "enemy" })] },
+      2,
+    );
+    const spell = inHand(s, "edge-r8-draw-then-gift-trap", "p1");
+
+    s.play(spell);
+
+    expect(eventsOf(s, "cardResolved").filter((event) => event.defId === HINDER)).toHaveLength(1);
+    const honeypot = must(
+      eventsOf(s, "summoned").find((event) => event.defId === HONEYPOT),
+      "the Honeypot's summon",
+    );
+    // The only play costing 1 or less is Hinder's cast, which happened before the Honeypot was on
+    // the field: a stay that did not see it, so it does not answer it and stays armed (R212, R99).
+    expect(eventsOf(s, "trapFired").filter((event) => event.instanceId === honeypot.instanceId)).toHaveLength(0);
+    expect(unitsOf(s, "p2").filter((unit) => unit.defId === RUSH_TOKEN)).toHaveLength(0);
+    expect(s.backrow("p2", honeypot.lane)?.id).toBe(honeypot.instanceId);
   });
 });

@@ -29,11 +29,19 @@ import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
 import { lazyPart, runHook } from "../resolve";
-import type { Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
-import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
+import type { AuraHook, Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
+import {
+  INGREDIENTS_KEY,
+  asIngredient,
+  ingredientPaid,
+  ingredientRecord,
+  registerScripts,
+  registeredScripts,
+  scriptsFor,
+} from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
 import { PART_DEPTH_KEY, PART_KEY, partPathOf } from "../work";
-import { removeFromAnyZone } from "../zones";
+import { ceaseToExist } from "../zones";
 
 /** R77: Craft a Card fuses "two or three cards", and #85 fuses two. Fewer is not a fusion. */
 export const FUSE_MIN_INGREDIENTS = 2;
@@ -250,13 +258,27 @@ type ListFn = (...args: unknown[]) => unknown[];
 const EAGER_KEYS: readonly string[] = ["aura"];
 
 /**
- * The static flags that are an amount of what the text does, not a quality the card has: #79's
- * "the next Spell you play gains Echo +1" and #38's granted Combo. R102: a card fused from two such
- * texts carries both, so its amount is theirs added — a Twinspell fused onto a Twinspell grants
- * Echo +2, as two Twinspells standing apart do — where a quality (`castOnDraw`, `immutable`) is had
- * once and a requirement (`tribute`) takes the stricter. A `true` is one.
+ * §10.4 layer 5: each ingredient's aura, reading "this" as the fused card at the price that
+ * ingredient was played for (R102, `scripts.asIngredient`): #46 Suppressive Aura played for 4 and
+ * fused onto a Mana Well is still "paid 4: −5/−5", though the kept instance's own price is the Mana
+ * Well's.
  */
-const SUMMED_FLAGS: readonly string[] = ["echoGrant", "quickstriker"];
+function fusedAura(faces: readonly Face[]): AuraHook | undefined {
+  const hooks = faces.map((face) => face.script.aura);
+  if (hooks.every((hook) => hook === undefined)) return undefined;
+  return (ctx) =>
+    hooks.flatMap((hook, index) => (hook === undefined ? [] : hook({ ...ctx, self: asIngredient(ctx.self, index) })));
+}
+
+/**
+ * The static flags that are an amount of what the text does, not a quality the card has: #79's
+ * "the next Spell you play gains Echo +1", #38's granted Combo and #84's hero Armor. R102: a card
+ * fused from two such texts carries both, so its amount is theirs added — a Twinspell fused onto a
+ * Twinspell grants Echo +2, and a Going Long onto a Going Long gives Armor twice, as two standing
+ * apart do (R124) — where a quality (`castOnDraw`, `immutable`) is had once and a requirement
+ * (`tribute`) takes the stricter. A `true` is one.
+ */
+const SUMMED_FLAGS: readonly string[] = ["echoGrant", "quickstriker", "heroArmor"];
 
 /**
  * The context ingredient `index`'s text builds and applies with (R102): its place in the fusion
@@ -268,17 +290,28 @@ function partData(data: Record<string, unknown>, index: number): Record<string, 
   return { [PART_KEY]: [...path, index], [PART_DEPTH_KEY]: depth + 1 };
 }
 
+/**
+ * The context an ingredient's text runs in: its place in the fusion (`partData`'s patch), and the
+ * price its card was played for as `embiggened` (R102, `scripts.ingredientPaid`), found by that
+ * place's path — #59's trigger reads it.
+ */
+function inPlace(ctx: EffectContext, patch: Record<string, unknown>): EffectContext {
+  const path = partPathOf(patch) ?? [];
+  const embiggened = ctx.self === null ? ctx.embiggened : ingredientPaid(ctx.self, path);
+  return { ...ctx, embiggened, data: { ...ctx.data, ...patch } };
+}
+
 /** An effect that applies, and builds any part of its own, with its ingredient's place (R102). */
 function inIngredient(effect: Effect, patch: Record<string, unknown>): Effect {
   const expand = effect.expand;
   return {
     ...effect,
-    apply: (ctx) => effect.apply({ ...ctx, data: { ...ctx.data, ...patch } }),
+    apply: (ctx) => effect.apply(inPlace(ctx, patch)),
     ...(expand === undefined
       ? {}
       : {
           expand: (ctx, memo) => {
-            const built = expand({ ...ctx, data: { ...ctx.data, ...patch } }, memo);
+            const built = expand(inPlace(ctx, patch), memo);
             return { ...built, effects: built.effects.map((inner) => inIngredient(inner, patch)) };
           },
         }),
@@ -292,7 +325,7 @@ function inIngredient(effect: Effect, patch: Record<string, unknown>): Effect {
 function ingredientPart(index: number, build: (ctx: EffectContext) => readonly Effect[]): Effect {
   return lazyPart(`fused:part${index}`, (at) => {
     const patch = partData(at.data, index);
-    const effects = build({ ...at, data: { ...at.data, ...patch } });
+    const effects = build(inPlace(at, patch));
     return { effects: effects.map((effect) => inIngredient(effect, patch)) };
   });
 }
@@ -399,7 +432,7 @@ function scriptRecord(script: Script, defId: string, index: number): Record<stri
 function inTriggerIngredient(trigger: TriggerDef, index: number): TriggerDef["run"] {
   return (ctx) => {
     const patch = partData(ctx.data, index);
-    return trigger.run({ ...ctx, data: { ...ctx.data, ...patch } }).map((effect) => inIngredient(effect, patch));
+    return trigger.run({ ...inPlace(ctx, patch), event: ctx.event }).map((effect) => inIngredient(effect, patch));
   };
 }
 
@@ -510,9 +543,11 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
   ) as Script;
   const setStat = fusedSetStat(faces.map((face) => face.script));
   const cry = fusedCry(faces);
+  const aura = fusedAura(faces);
   return {
     ...combined,
     ...(setStat === undefined ? {} : { setStat }),
+    ...(aura === undefined ? {} : { aura }),
     ...(cry === undefined ? {} : { cry }),
   };
 }
@@ -520,15 +555,6 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
 // ---------------------------------------------------------------------------
 // The result.
 // ---------------------------------------------------------------------------
-
-/**
- * R77 and R86: an ingredient that is not kept ceases to exist — no graveyard, no exile pile, no
- * Death trigger and nothing destroyed — which is the `{ z: "gone" }` zone, not a pile.
- */
-function ceaseToExist(state: GameState, card: CardInstance): void {
-  removeFromAnyZone(state, card);
-  card.zone = { z: "gone", player: card.owner };
-}
 
 /**
  * R77's keep-the-instance path. The fused card *is* the target: only its def id, its buffs (the sum
@@ -550,13 +576,20 @@ function keepInstance(
   const granted = unionKeywords(ingredients.flatMap((card) => card.grantedKeywords));
   const before = defOf(state, kept.defId);
 
+  // R102: the price each ingredient's text reads as its own, recorded before any of them ceases to
+  // exist and only when they are not all the kept card's (`scripts.INGREDIENTS_KEY`).
+  const record = ingredientRecord(kept, ingredients);
   gainPrintedKeywords(kept, before, def);
   kept.defId = def.id;
   kept.buffs = { attack, health };
   kept.grantedKeywords = granted;
+  if (record === null) delete kept.memory[INGREDIENTS_KEY];
+  else kept.memory[INGREDIENTS_KEY] = record;
   delete kept.statsOverride;
   delete kept.armorOverride;
 
+  // R77 and R86: an ingredient that is not kept ceases to exist — no graveyard, no exile pile, no
+  // Death trigger and nothing destroyed — and one that stood on the field has left it (R174).
   for (const card of ingredients) {
     if (card.id === kept.id) continue;
     ceaseToExist(state, card);

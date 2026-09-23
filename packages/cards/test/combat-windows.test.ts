@@ -18,9 +18,14 @@
 //  - R212 (round 7): the ordinary triggers on a declaration are queued after the window, and meet
 //    the board as it stood when the attack was declared: a unit a trap in the window stole answers
 //    for the player who controlled it then, and one a trap summoned there answers nothing.
+//  - R176 (round 8): that strike back heals what it really deals — with Trample, only up to the
+//    attacker's health on the unit, and its excess through the attacking hero's Armor.
+//  - R220, §10.3 (round 8): a trap answering what a trap in the window did (its hit on the attacker)
+//    fires inside the window, before step 5, with or without a question first.
 
 import { describe, expect, it } from "vitest";
 import {
+  findInstance,
   newInstance,
   placeOnField,
   registerScripts,
@@ -28,11 +33,12 @@ import {
   type CardInstance,
   type Script,
 } from "@jackioh/engine";
-import { chooseMode, destroy, draw, steal, summon, swapBoard } from "@jackioh/engine/effects";
+import { chooseMode, damage, destroy, draw, steal, summon, swapBoard } from "@jackioh/engine/effects";
 import type { CardDef, CardType, GameEvent, PlayerId, Row, Selection } from "@jackioh/shared";
 import { scenario, type Scenario } from "./_harness";
 
 const TIMMY = "core-011";
+const BIGOT = "core-002";
 const RIGHT_HOUSE = "core-003";
 const SCARAB = "core-007";
 const GARY = "core-004";
@@ -51,6 +57,7 @@ const RENO = "core-053";
 const SORCERER = "core-068";
 const MY_PAWN = "core-096";
 const JILLIAX = "core-056";
+const GOING_LONG = "core-084";
 const WINDOW_LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
 function count(s: Scenario, type: GameEvent["type"]): number {
@@ -688,5 +695,148 @@ describe("R212: a declaration is answered as the board stood when it was declare
     expect(s.hand("p2")).toHaveLength(p2Hand);
     // The attack itself went through.
     s.expectHealth("p2", 25);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 8: the strike back's Trample split, and the window's own chain before step 5
+// ---------------------------------------------------------------------------------------------
+
+describe("R176: a Lifesteal strike back that tramples heals what it really deals", () => {
+  it("R176 a defender's Lifesteal heals only what its Trample strike back really deals, so the swing is lethal (§4.4 steps 2, 8, 9, R63)", () => {
+    // p1's Bigot (6/1) with Trample attacks p2's Jilliax (3/2, Taunt, Lifesteal, shield spent) with
+    // Trample, p2 at 3, and p1's hero behind Going Long (Armor 2). The swing sends 6 - 2 = 4 through
+    // to p2. Jilliax strikes back 3 into a 1-health Bigot: 1 lands and heals p2 for 1, and the 2 that
+    // tramples on is stopped by p1's Armor 2 (the zero rule), so it heals nothing. p2 ends the combat
+    // at 3 - 4 + 1 = 0: the attack is lethal, and My Pawn cancels it.
+    const s = scenario({
+      seed: "cw8-pawn-trample-strikeback",
+      p1: {
+        field: [{ def: BIGOT, lane: 1 }],
+        backrow: [{ def: GOING_LONG, lane: 1 }],
+        hand: [STOCKPILE],
+        library: [GIGA, GIGA, GIGA],
+      },
+      p2: {
+        health: 3,
+        field: [{ def: JILLIAX, lane: 1 }],
+        backrow: [{ def: MY_PAWN, lane: 2, faceUp: false }],
+        hand: [STOCKPILE],
+        library: [GIGA, GIGA],
+      },
+    });
+    const bigot = must(s.unit("p1", 1), "p1's Bigot");
+    const jilliax = must(s.unit("p2", 1), "p2's Jilliax");
+    s.card(bigot).grantedKeywords.push({ kind: "Trample" });
+    s.card(jilliax).grantedKeywords.push({ kind: "Trample" });
+    s.card(jilliax).divineShieldSpent = true;
+
+    s.attack(bigot, jilliax);
+
+    expect(count(s, "attackCancelled")).toBe(1);
+    expect(s.state.result).toBeNull();
+    s.expectHealth("p2", 3);
+  });
+});
+
+/** "When a unit is declared as an attacker (not forced): deal 1 damage to it." */
+const PRICK: Script = {
+  triggers: [
+    {
+      id: "cw8-prick",
+      on: ["attackDeclared"],
+      when: (ctx) => ctx.event.type === "attackDeclared" && !ctx.event.forced,
+      run: (ctx) =>
+        ctx.event.type === "attackDeclared"
+          ? [damage({ to: { of: "instance", instanceId: ctx.event.attackerId }, amount: 1 })]
+          : [],
+    },
+  ],
+};
+
+/** "When an enemy unit takes damage: destroy it." */
+const SNAP: Script = {
+  triggers: [
+    {
+      id: "cw8-snap",
+      on: ["damage"],
+      when: (ctx) => {
+        const event = ctx.event;
+        if (event.type !== "damage" || event.targetId.startsWith("hero-")) return false;
+        const unit = findInstance(ctx.state, event.targetId);
+        return unit !== undefined && unit.zone.z === "field" && unit.controller !== ctx.controller;
+      },
+      run: (ctx) =>
+        ctx.event.type === "damage" ? [destroy({ target: { of: "instance", instanceId: ctx.event.targetId } })] : [],
+    },
+  ],
+};
+
+/** As PRICK, but it asks its controller a question first, so the window pauses (R113). */
+const ASK_PRICK: Script = {
+  triggers: [
+    {
+      id: "cw8-ask-prick",
+      on: ["attackDeclared"],
+      when: (ctx) => ctx.event.type === "attackDeclared" && !ctx.event.forced,
+      run: (ctx) => [
+        chooseMode({
+          options: ["ok"],
+          step: "answered",
+          prompt: "cw8-ask-prick: a question",
+          data: { attackerId: ctx.event.type === "attackDeclared" ? ctx.event.attackerId : "" },
+        }),
+      ],
+    },
+  ],
+  resume: {
+    answered: (ctx) => [damage({ to: { of: "instance", instanceId: String(ctx.data.attackerId) }, amount: 1 })],
+  },
+};
+
+describe("R220, §10.3: a trap answers what a trap in the attack's window did before the combat", () => {
+  it("R220 a trap answering the window trap's hit on the attacker fires before step 5, so the destroyed attacker never swings (§10.3, §4.2 step 4)", () => {
+    // p1's Twisted Sorcerer attacks p2's hero. p2's first trap answers the declaration by dealing
+    // the attacker 1 damage; p2's second trap answers that damage by destroying the unit. Traps are
+    // responses that fire immediately (§10.3), and both resolve inside step 4's window, before any
+    // damage of the attack (§4.2 step 4), so the attacker is gone when step 5 comes.
+    const s = scenario({
+      seed: "cw8-window-chain",
+      p1: { field: [{ def: SORCERER, lane: 1 }], hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+      p2: { hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+    });
+    fixture(s, "cw8-prick", "Trap", PRICK);
+    fixture(s, "cw8-snap", "Trap", SNAP);
+    setTrap(s, "cw8-prick", "p2", 1);
+    setTrap(s, "cw8-snap", "p2", 2);
+    const sorcerer = must(s.unit("p1", 1), "p1's Twisted Sorcerer");
+
+    s.attack(sorcerer, "hero");
+
+    s.expectInZone(sorcerer, "graveyard");
+    s.expectHealth("p2", 30);
+  });
+
+  it("R220 after a window trap's question, a trap answering its hit on the attacker still fires before step 5 (R113, R122, §10.3)", () => {
+    // The same two traps, but the first asks p2 a question before it deals the attacker 1 damage, so
+    // the window pauses and step 5 is owed to the answer (R113). The answer finishes the window: the
+    // second trap is a response to the hit and resolves before the combat the declaration still owes.
+    const s = scenario({
+      seed: "cw8-window-chain-asked",
+      p1: { field: [{ def: SORCERER, lane: 1 }], hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+      p2: { hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+    });
+    fixture(s, "cw8-ask-prick", "Trap", ASK_PRICK);
+    fixture(s, "cw8-snap", "Trap", SNAP);
+    setTrap(s, "cw8-ask-prick", "p2", 1);
+    setTrap(s, "cw8-snap", "p2", 2);
+    const sorcerer = must(s.unit("p1", 1), "p1's Twisted Sorcerer");
+
+    s.attack(sorcerer, "hero");
+    expect(must(s.state.pending, "the window trap's question").playerId).toBe("p2");
+    s.answer("ok");
+
+    s.expectInZone(sorcerer, "graveyard");
+    s.expectHealth("p2", 30);
   });
 });

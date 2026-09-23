@@ -228,6 +228,8 @@ export type ResolvedCard = {
    * played, so #60's tokens do not attack it and #85 does not fuse it away.
    */
   placedFrom?: number;
+  /** R119: the permanents the play put onto the field while it resolved, which do not answer it. */
+  arrivedDuring?: readonly string[];
 };
 
 /**
@@ -282,5 +284,8 @@ export function landAfterResolution(sink: EngineSink, resolved: ResolvedCard): v
     permanent: stillInPlay(sink, resolved),
     costPaid: resolved.costPaid,
     radiant: findInstance(state, resolved.instanceId)?.radiant ?? resolved.radiant,
+    ...(resolved.arrivedDuring === undefined || resolved.arrivedDuring.length === 0
+      ? {}
+      : { arrivedDuring: [...resolved.arrivedDuring] }),
   });
 }

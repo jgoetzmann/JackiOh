@@ -5,7 +5,7 @@ import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { armorOf, hasKeyword, opponentOf } from "@jackioh/shared";
 import { ANTI_ONESHOT_CAP, HERO_ARMOR } from "./config";
 import { unitView } from "./layers";
-import { flagsOf } from "./scripts";
+import { flagsOf, textsOf } from "./scripts";
 import type { CardInstance, GameState } from "./state";
 import { cardAt, slotsOf } from "./zones";
 
@@ -45,9 +45,14 @@ export function heroArmorOf(state: GameState, player: PlayerId): number {
   return slotsOf(player, "backrow")
     .map((ref) => cardAt(state, ref))
     .reduce((sum, card) => {
-      if (card === null || flagsOf(card).heroArmor !== true) return sum;
+      if (card === null) return sum;
       const side = card.radiant ? HERO_ARMOR.radiant : HERO_ARMOR.base;
-      return sum + (card.embiggened === true ? side.embiggen : side.paid);
+      // R124, R102: every Going Long text a card carries grants its own Armor, at the price that
+      // text's card was played for — a Going Long fused onto a Going Long is Armor 4 as two apart are.
+      return textsOf(card).reduce((total, text) => {
+        const grants = text.flags.heroArmor === true ? 1 : typeof text.flags.heroArmor === "number" ? text.flags.heroArmor : 0;
+        return total + Math.max(0, Math.trunc(grants)) * (text.embiggened ? side.embiggen : side.paid);
+      }, sum);
     }, state.players[player].hero.armor);
 }
 

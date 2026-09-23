@@ -24,7 +24,7 @@ import { flagsOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
 import { registerDeclarationCheck, runTrapWindow } from "./traps";
-import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
+import { cardsInTriggerOrder, dispatchPending, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
 import { moveSourcedModifiers } from "./modifiers";
 import { exitMark, leftFieldAfter, movesIn, type LaterMoves } from "./stays";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
@@ -509,10 +509,36 @@ function resolveDeclaredAttack(sink: EngineSink, id: string): void {
   stateCheck(sink);
 }
 
-/** `work.ts`'s handler for a parked attack: the same attack, continued where it stopped (R113). */
+/**
+ * §10.3, §4.2 step 4: the traps answer what the window did before step 5. A trap in the window is an
+ * effect like any other, so its events — the hit it dealt the attacker, the unit it summoned — reach
+ * the traps at once, and a trap answering them fires and resolves inside step 4, before any damage of
+ * the attack: one that destroys the hit attacker leaves no attacker for step 5 (R220). The ordinary
+ * triggers they wake are queued behind the declaration's and wait for the loop after the combat, as
+ * they did before. A trap that asks here pauses step 4 again, and the combat stays owed behind its
+ * answer (R113). False when the combat must not resolve now.
+ */
+function windowAnswered(sink: EngineSink, id: string): boolean {
+  dispatchPending(sink as SettleSink);
+  if (sink.state.result !== null) {
+    closeWindow(sink.state, id);
+    return false;
+  }
+  if (sink.state.pending !== null) {
+    oweDeclaredAttack(sink, id);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * `work.ts`'s handler for a parked attack: the same attack, continued where it stopped (R113) — the
+ * window's own events answered first, the answer's included (`windowAnswered`).
+ */
 function runOwedAttack(sink: EngineSink, item: WorkItem): void {
   const id: unknown = item.resume.data.declaredAttack;
   if (typeof id !== "string") return;
+  if (!windowAnswered(sink, id)) return;
   resolveDeclaredAttack(sink, id);
 }
 
@@ -580,6 +606,7 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
     return {};
   }
 
+  if (!windowAnswered(sink, declared.id)) return {};
   resolveDeclaredAttack(sink, declared.id);
   return {};
 }

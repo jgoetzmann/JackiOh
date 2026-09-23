@@ -286,6 +286,25 @@ function forgetQueuedTriggers(state: GameState, instanceId: string): void {
 }
 
 /**
+ * R86: a card ceases to exist — replaced by a Transform (R35), fused away (R77), or a unit token
+ * leaving the field (R11) — and is in no pile afterwards, which is the `{ z: "gone" }` zone. One
+ * that ceases to exist ON the field has left it, as a destroyed or bounced card has (R174): the
+ * departure is counted, so a trap later in the same dispatch meets a play the first Sheepish turned
+ * into a Sheep as a card no longer in play (`traps.standingEvent`), and the delayed effects and
+ * queued triggers aimed at that stay end with it, as `moveToZone` ends them for a card that lands.
+ */
+export function ceaseToExist(state: GameState, instance: CardInstance): void {
+  const wasOnField = instance.zone.z === "field";
+  removeFromAnyZone(state, instance);
+  if (wasOnField) {
+    noteFieldExit(state, instance.id);
+    forgetWatchers(state, instance.id);
+    forgetQueuedTriggers(state, instance.id);
+  }
+  instance.zone = { z: "gone", player: instance.owner };
+}
+
+/**
  * §2.3: X and the embiggen price are chosen at play time and stored on the played instance, and
  * R65 has an X-cost card cost 0 and an embiggen card its base price everywhere outside play. So the
  * choice ends with the play: a Spell that leaves the resolving zone (to its graveyard, to exile, or

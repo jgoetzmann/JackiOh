@@ -9,16 +9,9 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf } from "../catalog";
 import { unitHas } from "../layers";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, newInstance, type CardInstance } from "../state";
-import {
-  moveToZone,
-  removeFromAnyZone,
-  replaceInZone,
-  slotOf,
-  zoneOf,
-  type OffFieldZone,
-} from "../zones";
-import { resolveTarget, type TargetSpec } from "./targets";
+import { newInstance, type CardInstance } from "../state";
+import { ceaseToExist, moveToZone, replaceInZone, slotOf, zoneOf, type OffFieldZone } from "../zones";
+import { instanceOnItsStay, resolveTarget, type TargetSpec } from "./targets";
 
 /**
  * Which card to rewrite: the pick the play or a prompt carried (R81), or an instance id a trigger
@@ -27,7 +20,8 @@ import { resolveTarget, type TargetSpec } from "./targets";
 export type TransformTarget = { target?: TargetSpec; instanceId?: string };
 
 function instanceOf(ctx: EffectContext, args: TransformTarget): CardInstance | null {
-  if (args.instanceId !== undefined) return findInstance(ctx.state, args.instanceId) ?? null;
+  // R174: a card named by id is aimed at the stay it had when the run began (`instanceOnItsStay`).
+  if (args.instanceId !== undefined) return instanceOnItsStay(ctx, args.instanceId);
   const target = resolveTarget(ctx, args.target ?? { of: "chosen" });
   if (target === null || target.kind !== "unit") return null;
   return target.instance;
@@ -38,18 +32,6 @@ function rowFor(type: CardType): Row | null {
   if (type === "Unit") return "units";
   if (type === "Spell") return null;
   return "backrow";
-}
-
-/**
- * The replaced card ceases to exist: no graveyard, no exile pile, no Death trigger (§6.3, R35).
- * `moveToZone` is for cards that land somewhere, so this takes the card out of its zone and leaves
- * the instance pointing nowhere — the shape R11 gives a vanished token.
- */
-function ceaseToExist(ctx: EffectContext, card: CardInstance): void {
-  removeFromAnyZone(ctx.state, card);
-  // R86: "gone" is the zone for a card that ceased to exist. Tagging it `exile` instead would let
-  // it answer as a card in the exile pile, which it is not — it is in no pile at all.
-  card.zone = { z: "gone", player: card.owner };
 }
 
 /**
@@ -73,7 +55,9 @@ function replaceOnField(ctx: EffectContext, old: CardInstance, def: CardDef, rad
   replacement.summonedTurn = ctx.state.turn;
 
   if (!replaceInZone(ctx.state, old, replacement)) return null;
-  ceaseToExist(ctx, old);
+  // The replaced card ceases to exist: no graveyard, no exile pile, no Death trigger (§6.3, R35) —
+  // and it has left the field, which R174 counts like any departure (`zones.ceaseToExist`).
+  ceaseToExist(ctx.state, old);
   // §3.2: a Field Spell is public where a Trap stays face-down until it fires (R33).
   if (def.type === "Field Spell") replacement.faceUp = true;
   return replacement;
@@ -98,7 +82,7 @@ function replaceOffField(ctx: EffectContext, old: CardInstance, def: CardDef, ra
   const index = pile.findIndex((card) => card.id === old.id);
   if (index < 0) return null;
 
-  ceaseToExist(ctx, old);
+  ceaseToExist(ctx.state, old);
   const replacement = newInstance(ctx.state, def.id, owner, { z: at, player: owner });
   replacement.radiant = radiant;
   moveToZone(ctx.state, replacement, at, { position: index });

@@ -33,6 +33,14 @@ export type EffectContext = {
    */
   exitsFrom?: number;
   /**
+   * R174, §10.6: the field's departures when `targets` were chosen, where that is later than the
+   * run began — the answer to this run's own prompt, picked as the prompt offered the board. A card
+   * the list took off the field before it asked, and that stood there again when the prompt offered
+   * it (a Reborn body, R83), is picked on that new stay, and the answered step's effect lands on it.
+   * Absent reads as `exitsFrom`: a play's declared targets were chosen as its run began.
+   */
+  chosenFrom?: number;
+  /**
    * R136: the units this script's run summoned in the actions before a prompt split it. The window
    * `eventsFrom` opens is the action's own event list, and a list the answer continues resumes in a
    * later action, so what its head summoned is carried here (`work.PausedStep.summoned`,
@@ -155,9 +163,10 @@ export type StaticFlags = {
    * #84 Going Long: while this card is in a backrow it gives that hero Armor from `HERO_ARMOR`,
    * picked by the instance's own `radiant` and `embiggened`, and §4.4 step 2 subtracts it. R124:
    * several sources add up, so this is a layer and not a value — a card carrying its own numbers
-   * would put rules constants in a card file, which BUILD §2 keeps in `config.ts`.
+   * would put rules constants in a card file, which BUILD §2 keeps in `config.ts`. A card fused from
+   * two carries both grants (R102), so a fused face may hold a count.
    */
-  heroArmor?: boolean;
+  heroArmor?: boolean | number;
 };
 
 export type Script = {

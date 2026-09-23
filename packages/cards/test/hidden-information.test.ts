@@ -7,7 +7,9 @@
 // openly (R177), and instance ids numbered in the order the store sorts a deck in (R223). Round 7
 // found a random Make Radiant cueing only the cards it changed, which counted a hidden hand's Radiant
 // cards (R177), and #83's library replacements numbered top down, which located a revealed library
-// card by its id (R223).
+// card by its id (R223). Round 8 found a hidden cue's zone saying where #28's pick landed, and #23
+// rolling only for a hand that held a base-face card, both of which told p2 about p1's hidden faces
+// (R177).
 
 import type { Action, ActionBody, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 import {
@@ -59,6 +61,8 @@ const MOTHS = "core-009";
 const BLOOD_RIDDEN = "core-027";
 const ZEPHYRS = "core-097";
 const HEROIC_POWER = "core-098";
+const DREAM = "core-023";
+const KNOCKOFF = "core-028";
 
 function eventsOf<T extends GameEvent["type"]>(view: PlayerView, type: T): Extract<GameEvent, { type: T }>[] {
   return view.events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
@@ -875,3 +879,111 @@ function inBracket(cost: number, bracket: string): boolean {
   if (bracket === "4+") return cost >= 4;
   return cost === Number(bracket);
 }
+
+// ---------------------------------------------------------------------------
+// #28 Knockoff Temu Glowy Jelly Bean: where a hidden Make Radiant landed
+// ---------------------------------------------------------------------------
+
+describe("R177: where a random Make Radiant over hidden zones landed", () => {
+  /**
+   * p1 plays #28 ("2 random cards among your library, hand and field become Radiant", R60). p1's
+   * hand then holds one Hit Job, Radiant already or not, and the library three 4-mana 7/7s, none
+   * Radiant; p1 has nothing on the field. Neither the hand nor the library is p2's to read (§9.1).
+   * With this seed the base-face Hit Job is one of the two picks.
+   */
+  function knockoffGame(handRadiant: boolean): Scenario {
+    const s = scenario({
+      seed: "r8-l10-knockoff-0",
+      p1: {
+        hand: [KNOCKOFF, { def: HIT_JOB, radiant: handRadiant }],
+        library: [SEVEN_SEVEN, SEVEN_SEVEN, SEVEN_SEVEN],
+      },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(KNOCKOFF);
+    return s;
+  }
+
+  it("R177 #28's cues do not tell p2 whether p1's hidden hand card was already Radiant (§9.1, R60)", () => {
+    const plain = knockoffGame(false);
+    const radiant = knockoffGame(true);
+
+    // Two picks in both games, none of them on a card p2 may read, and the Hit Job ends Radiant in
+    // both: picked in one game, already Radiant in the other.
+    for (const s of [plain, radiant]) {
+      const cues = s.view("p2").events.filter((event) => event.type === "radiantSet");
+      expect(cues).toHaveLength(2);
+      expect(must(s.hand("p1")[0], "p1's Hit Job").radiant).toBe(true);
+    }
+
+    // R177: a cue on a card p2 may not read must not count p1's hidden Radiant cards. The zone a
+    // redacted `radiantSet` carries says whether the pick landed in the hand or the library, so a
+    // "hand" cue tells p2 that p1's hand still held a non-Radiant card.
+    indistinguishable("p2", plain, radiant);
+  });
+
+  /**
+   * The same pick over "field" (§8 #28): p1's lane-2 Sheepish is face-down, so only p1 reads it
+   * (R33), and it is Radiant already or not. With this seed the base-face trap is one of the picks.
+   */
+  function trapGame(trapRadiant: boolean): Scenario {
+    const s = scenario({
+      seed: "r8-l10-knockoff-trap-0",
+      p1: {
+        hand: [KNOCKOFF, STOCKPILE],
+        backrow: [{ def: SHEEPISH, lane: 2, radiant: trapRadiant }],
+        library: [SEVEN_SEVEN, SEVEN_SEVEN, SEVEN_SEVEN],
+      },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(KNOCKOFF);
+    return s;
+  }
+
+  it("R177 #28's cues do not tell p2 whether p1's face-down trap was already Radiant (§9.1, §10.8, R33, R60)", () => {
+    const plain = trapGame(false);
+    const radiant = trapGame(true);
+
+    for (const s of [plain, radiant]) {
+      expect(s.view("p2").opponent.backrow[1]).toEqual({ faceDown: true });
+      expect(s.view("p2").events.filter((event) => event.type === "radiantSet")).toHaveLength(2);
+      expect(must(s.backrow("p1", 2), "p1's trap").radiant).toBe(true);
+    }
+
+    // R60 picks only non-Radiant cards, so a cue whose zone names the face-down trap's lane tells p2
+    // that the trap was base-face: the face R33 keeps from p2 (R177).
+    indistinguishable("p2", plain, radiant);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #23 Reoccurring Dream: the roll on an all-Radiant hand
+// ---------------------------------------------------------------------------
+
+describe("R177: #23's chance on a hidden hand", () => {
+  /** p1 plays #23 with one other card in hand, Radiant or not. With this seed the 30% succeeds. */
+  function dreamGame(handRadiant: boolean): Scenario {
+    const s = scenario({
+      seed: "r8-l10-dream-8",
+      p1: { hand: [DREAM, { def: HIT_JOB, radiant: handRadiant }], library: [SEVEN_SEVEN] },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(DREAM);
+    return s;
+  }
+
+  it("R177 #23's cue does not tell p2 whether p1's hidden hand was already all Radiant (§9.1, R60, R129)", () => {
+    const plain = dreamGame(false);
+    const radiant = dreamGame(true);
+
+    // The roll succeeded in the game with a base-face Hit Job, which became Radiant.
+    expect(must(plain.hand("p1").find((card) => card.defId === HIT_JOB), "p1's Hit Job").radiant).toBe(true);
+    expect(plain.view("p2").events.some((event) => event.type === "radiantSet")).toBe(true);
+
+    // R177 lists #23 among the random picks whose unmade picks are cued on the zone's Radiant cards,
+    // "so an all-Radiant hand … is cued as a hand the pick changed". #23 skips its roll when the
+    // hand holds nothing it could change, so it never cues then, and a cue tells p2 the hand held a
+    // non-Radiant card.
+    indistinguishable("p2", plain, radiant);
+  });
+});

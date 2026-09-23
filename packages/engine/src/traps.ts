@@ -43,7 +43,7 @@ import { makeContext, type EngineSink } from "./resolve";
 import type { TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { exitMark, leftFieldAfter } from "./stays";
+import { exitMark, leftFieldAfter, type LaterMoves } from "./stays";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Resume, type WorkItem } from "./state";
 import { EVENT_KEY, owe, oweUnnumbered, paused as isPaused, registerWorkHandler } from "./work";
 import { slotOf } from "./zones";
@@ -90,6 +90,22 @@ export type TrapDispatch = {
 type TrapRun = TrapDispatch & { owed: string[] };
 
 /**
+ * R212: the player each trap a dispatch offers the event to answers it for — the one who controlled
+ * it when the event happened, read as the dispatch begins and kept, like the owed list, across any
+ * pause. A trap an earlier effect stole between the event and its dispatch — a cast's events wait
+ * for the list that cast it (R70), and the end-of-turn window offers `turnEnded` to one trap after
+ * another (R62) — still answers for the player who held it then, and its tokens are theirs (R52).
+ */
+export type TrapControllers = Record<string, PlayerId>;
+
+/**
+ * An immediate dispatch, as `triggers.ts` parks and resumes it: the traps still owed the event, in
+ * the order the dispatch offered it (R68, fixed as it began), who each answers for, and the stays
+ * it began with (R174).
+ */
+export type ImmediateDispatch = TrapDispatch & { owed: string[]; controllers: TrapControllers; mark: number };
+
+/**
  * R113: the `resume.hook` of the one work item this module parks — the rest of an end-of-turn trap
  * window. It is an engine sequence, not a card's, so the name is one no `Script` can hold, and
  * `runOwedWindow` below is registered for it: `work.runWorkItem` throws on a hook nothing knows,
@@ -105,6 +121,10 @@ export type OwedWindow = {
   event: GameEvent;
   /** Instance ids of the traps the window still has to offer the event to, in R68 order. */
   owed: string[];
+  /** R212: who each of them answers for — its controller when the window opened. */
+  controllers?: TrapControllers;
+  /** R174: the field's departures when the window opened (`stays.exitMark`). */
+  mark?: number;
 };
 
 /**
@@ -168,7 +188,10 @@ const ARRIVAL_EVENTS: readonly GameEventType[] = ["cardPlayed", "summoned", "car
 function isOwnArrival(trap: CardInstance, event: GameEvent): boolean {
   if (!ARRIVAL_EVENTS.includes(event.type)) return false;
   const about: unknown = (event as { instanceId?: unknown }).instanceId;
-  return about === trap.id;
+  if (about === trap.id) return true;
+  // R119: nor the play that put the trap onto the field while it resolved — #95 summoning a Bear
+  // Honeypot face-down does not have that Honeypot answer #95's own `cardResolved`.
+  return event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(trap.id);
 }
 
 /**
@@ -242,9 +265,14 @@ export function endHandedOverTurn(sink: EngineSink): void {
  * (R17, R61). Returns false when no trigger's `when` admitted the event, which leaves the trap
  * armed and face-down (R99) — the one outcome that is not a firing.
  */
-export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): boolean {
+export function fireTrap(
+  sink: EngineSink,
+  match: TrapMatch,
+  event: GameEvent,
+  controller: PlayerId = match.trap.controller,
+): boolean {
   const trap = match.trap;
-  const ctx = makeContext(sink, trap, { controller: trap.controller });
+  const ctx = makeContext(sink, trap, { controller });
   const armed = match.triggers.filter(
     (trigger) => trigger.when === undefined || trigger.when({ ...ctx, event }),
   );
@@ -253,6 +281,8 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
   // R154: the zone is read before the trap resolves, because firing it can move the card — a Trap
   // reaches its owner's graveyard on consumption and would then have no slot to report.
   const at = slotOf(sink.state, trap);
+  // `controller` names the seat that reads the trap's identity (R154), and a trap stolen since the
+  // event is face-down on its new controller's side: the flip is announced to the seat it sits on.
   sink.events.push({
     type: "trapFired",
     instanceId: trap.id,
@@ -267,7 +297,8 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
   trap.faceUp = true;
   runArmedTriggers(sink, {
     trapId: trap.id,
-    controller: trap.controller,
+    // R212, R52: everything the trap does is the player's it answered for.
+    controller,
     triggers: armed.map((trigger) => trigger.id),
     at: 0,
     event,
@@ -461,7 +492,8 @@ function dispatch(
   sink: EngineSink,
   event: GameEvent,
   matches: readonly TrapMatch[],
-  mark: number = exitMark(sink.state),
+  mark: number,
+  controllers: TrapControllers,
 ): TrapRun {
   const fired: string[] = [];
   for (let index = 0; index < matches.length; index += 1) {
@@ -477,11 +509,68 @@ function dispatch(
     if (!declarationStands(sink.state, event)) continue;
     const live = liveMatch(sink.state, match, event);
     if (live === null) continue;
+    // R174, R212: a trap that has left the field since the dispatch began and stands there again is
+    // a new arrival, on a stay that did not see the event.
+    if (leftFieldAfter(sink.state, mark, live.trap.id)) continue;
     const met = standingEvent(sink, event, mark);
     if (met === null) continue;
-    if (fireTrap(sink, live, met)) fired.push(live.trap.id);
+    if (fireTrap(sink, live, met, controllers[live.trap.id] ?? live.trap.controller)) fired.push(live.trap.id);
   }
   return { fired, paused: isPaused(sink), owed: [] };
+}
+
+/** R212: who each trap answers for, read as a dispatch begins — before any of them has fired. */
+function controllersOf(matches: readonly TrapMatch[], later?: LaterMoves): TrapControllers {
+  const out: TrapControllers = {};
+  for (const match of matches) {
+    out[match.trap.id] = later?.controllerBefore.get(match.trap.id) ?? match.trap.controller;
+  }
+  return out;
+}
+
+/**
+ * §10.3: offer one event to the traps, as the resolution loop dispatches it — some time after it
+ * happened, since the loop dispatches an event after whatever ran first. R212 has the traps answer it
+ * as the board stood when it happened, which the events owed behind it say (`later`, read only when
+ * some trap watches the event): a trap that reached the field since — summoned by the rest of the
+ * list whose draw cast the card — is on a stay that did not see it and is not offered it, and one
+ * whose controller has changed since answers for the player who held it then. What a prompt stops
+ * the dispatch from offering is returned owed, in the order the dispatch had (R68, R113).
+ */
+export function offerEventToTraps(sink: EngineSink, event: GameEvent, later: () => LaterMoves): ImmediateDispatch {
+  const mark = exitMark(sink.state);
+  if (isTrapWindowEvent(event)) return { fired: [], paused: false, owed: [], controllers: {}, mark };
+  const watching = trapsWatching(sink.state, event);
+  if (watching.length === 0) return { fired: [], paused: isPaused(sink), owed: [], controllers: {}, mark };
+  const moves = later();
+  const matches = watching.filter((match) => !moves.moved.has(match.trap.id));
+  const controllers = controllersOf(matches, moves);
+  if (isPaused(sink)) {
+    return { fired: [], paused: true, owed: matches.map((match) => match.trap.id), controllers, mark };
+  }
+  return { ...dispatch(sink, event, matches, mark, controllers), controllers, mark };
+}
+
+/**
+ * Finish an immediate dispatch a prompt interrupted: the traps it still owed, in the order it had
+ * (R113 — a fresh scan would put a trap the answer moved onto the active side ahead of one the
+ * dispatch had ordered before it), each for the player it answered for (R212), and each meeting the
+ * event as the board now stands (`standingEvent`, R174). A trap that met the event before the pause
+ * and declined it is not in the list, and is not offered it again (R99).
+ */
+export function resumeEventToTraps(
+  sink: EngineSink,
+  event: GameEvent,
+  owed: readonly string[],
+  mark: number,
+  controllers: TrapControllers,
+): ImmediateDispatch {
+  const matches = owed.flatMap((id) => {
+    const trap = findInstance(sink.state, id);
+    const live = trap === undefined ? null : liveMatch(sink.state, { trap, triggers: [] }, event);
+    return live === null ? [] : [live];
+  });
+  return { ...dispatch(sink, event, matches, mark, controllers), controllers, mark };
 }
 
 /**
@@ -497,7 +586,9 @@ export function fireTrapsFor(sink: EngineSink, event: GameEvent): TrapDispatch {
   if (isPaused(sink)) return { fired: [], paused: true };
   // The remainder of an immediate dispatch is `triggers.ts`'s to park: a trap is a response, so it
   // is owed in front of the trigger queue (`OWED_TO_TRAPS`), not behind the interrupted sequence.
-  const run = dispatch(sink, event, trapsWatching(sink.state, event));
+  // Handed an event with nothing owed behind it, the board it meets is the board it happened on.
+  const matches = trapsWatching(sink.state, event);
+  const run = dispatch(sink, event, matches, exitMark(sink.state), controllersOf(matches));
   return { fired: run.fired, paused: run.paused };
 }
 
@@ -518,11 +609,28 @@ function owedTrapsOf(data: Record<string, unknown>): string[] {
   return Array.isArray(owed) ? owed.filter((id): id is string => typeof id === "string") : [];
 }
 
+/** R212: a parked dispatch's `controllers`, read back defensively (it came through JSON). */
+export function trapControllersOf(raw: unknown): TrapControllers {
+  if (raw === null || typeof raw !== "object") return {};
+  const out: TrapControllers = {};
+  for (const [id, player] of Object.entries(raw as Record<string, unknown>)) {
+    if (player === "p1" || player === "p2") out[id] = player;
+  }
+  return out;
+}
+
 /** What a `TRAP_WINDOW_WORK` item owes, or null when it is not one: the reader for its payload. */
 export function owedWindowOf(resume: Resume): OwedWindow | null {
   if (resume.hook !== TRAP_WINDOW_WORK) return null;
   const event = windowEventOf(resume.data);
-  return event === null ? null : { event, owed: owedTrapsOf(resume.data) };
+  if (event === null) return null;
+  const mark = resume.data.mark;
+  return {
+    event,
+    owed: owedTrapsOf(resume.data),
+    controllers: trapControllersOf(resume.data.controllers),
+    ...(typeof mark === "number" ? { mark } : {}),
+  };
 }
 
 /**
@@ -535,14 +643,25 @@ export function owedWindowOf(resume: Resume): OwedWindow | null {
  * the stack the traps it has not reached are the dispatch's alone, so a `settle` running inside one
  * of them — a trap's own effects can start one — cannot take the traps the window is standing in.
  */
-function oweWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]): void {
+function oweWindow(
+  sink: EngineSink,
+  event: GameEvent,
+  owed: readonly string[],
+  controllers: TrapControllers,
+  mark: number,
+): void {
   if (owed.length === 0) return;
+  const kept: TrapControllers = {};
+  for (const id of owed) {
+    const player = controllers[id];
+    if (player !== undefined) kept[id] = player;
+  }
   const resume: Resume = {
     defId: "",
     hook: TRAP_WINDOW_WORK,
     step: TRAP_WINDOW_STEP,
     radiant: false,
-    data: { event, owed: [...owed] },
+    data: { event, owed: [...owed], controllers: kept, mark },
   };
   // R177: the remainder exists only when a trap still owed the event watches it, and whether a
   // face-down one does is its controller's to know (R33), so it takes no number (`oweUnnumbered`).
@@ -563,16 +682,20 @@ function oweWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]):
 export function runTrapWindow(sink: EngineSink, event: GameEvent): TrapDispatch {
   if (sink.state.result !== null) return { fired: [], paused: true };
   const matches = trapsWatching(sink.state, event);
+  // R212: the window's event has just happened, so each trap answers for its controller now — and
+  // keeps answering for that player when an earlier trap of the window steals it before its turn.
+  const controllers = controllersOf(matches);
+  const mark = exitMark(sink.state);
 
   // A prompt already open when the window opens means the window has delivered nothing at all:
   // every matched trap is owed the event. Returning without parking would lose the whole window.
   if (sink.state.pending !== null) {
-    oweWindow(sink, event, matches.map((match) => match.trap.id));
+    oweWindow(sink, event, matches.map((match) => match.trap.id), controllers, mark);
     return { fired: [], paused: true };
   }
 
-  const run = dispatch(sink, event, matches);
-  if (sink.state.result === null) oweWindow(sink, event, run.owed);
+  const run = dispatch(sink, event, matches, mark, controllers);
+  if (sink.state.result === null) oweWindow(sink, event, run.owed, controllers, mark);
   return { fired: run.fired, paused: run.paused };
 }
 
@@ -583,7 +706,8 @@ export function runTrapWindow(sink: EngineSink, event: GameEvent): TrapDispatch 
  * (R61); the owed list is what keeps a trap that already fired from firing twice, which a Field
  * Trap would otherwise do, since firing leaves it on the field (§5.1, R33, R100).
  */
-function resumeWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]): void {
+function resumeWindow(sink: EngineSink, parked: OwedWindow): void {
+  const { event, owed } = parked;
   const watching = trapsWatching(sink.state, event);
   // The order is the owed list's, not a fresh scan's: R68's sides are read off `state.active`, and
   // the window's order was fixed when it opened (R62 — the ending player's traps, then the
@@ -592,15 +716,17 @@ function resumeWindow(sink: EngineSink, event: GameEvent, owed: readonly string[
     const match = watching.find((candidate) => candidate.trap.id === id);
     return match === undefined ? [] : [match];
   });
-  const run = dispatch(sink, event, matches);
-  if (sink.state.result === null) oweWindow(sink, event, run.owed);
+  const controllers = parked.controllers ?? {};
+  const mark = parked.mark ?? exitMark(sink.state);
+  const run = dispatch(sink, event, matches, mark, controllers);
+  if (sink.state.result === null) oweWindow(sink, event, run.owed, controllers, mark);
 }
 
 /** `work.ts`'s handler for a parked window: the same window, continued where it stopped (R113). */
 function runOwedWindow(sink: EngineSink, item: WorkItem): void {
   const parked = owedWindowOf(item.resume);
   if (parked === null) return;
-  resumeWindow(sink, parked.event, parked.owed);
+  resumeWindow(sink, parked);
 }
 
 registerWorkHandler(TRAP_WINDOW_WORK, runOwedWindow);

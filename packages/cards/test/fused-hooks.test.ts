@@ -25,10 +25,14 @@
 //    behind is its own — an answer comes back to the Mask that asked, each Cube remembers its own
 //    meal, two Twinspells' grants and two Armors add up — and R43, R151: a Heroic Power's text #85
 //    fuses onto a kept Mana Well rolls a power, as a card created later does.
+//  - Round 8, lens "keywords and layers". R102, R124: two Going Longs' hero Armor adds up across a
+//    Fuse, and each ingredient's text reads the price its own card was played for (a Suppressive
+//    Aura paid 4 fused onto a Mana Well stays −5/−5). §8 #65.1: a radiant Spikey Pillow's aura, fused
+//    into another card, still spares every Spikey Pillow.
 
 import { describe, expect, it } from "vitest";
 import type { Selection } from "@jackioh/shared";
-import { createRng, defOf, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
+import { createRng, defOf, heroArmorOf, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
 const JEWELOSCO_SCARAB = "core-007";
@@ -459,5 +463,122 @@ describe("R43, R151, R77: a Heroic Power's text fused onto another permanent has
     g.endTurn();
     expect(g.state.active).toBe("p2");
     expect(subsystems.whyCannotActivate(g.state, "p2", fused.id)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 8: a fused card's layers are each ingredient's
+// ---------------------------------------------------------------------------------------------
+
+const SUPPRESSIVE_AURA = "core-046"; // Field Spell, 2 embiggen 4
+const GOING_LONG = "core-084"; // Field Spell, 2 embiggen 4, Quickdraw — hero Armor 2 (paid 4: 5)
+const BIG_FELINOR = "core-043"; // Unit, 3 — 3/10
+const PILLOW = "core-065-1"; // Unit token — 0/2 → 0/4, the −2 attack aura
+const WEAPONS = "core-014"; // Field Spell, 4 — your units +4 attack, Rush, First Strike
+const LAYER_LIBRARY = [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA];
+
+function backrowAt(g: Scenario, player: "p1" | "p2", lane: number): CardInstance {
+  const card = g.backrow(player, lane);
+  if (card === null) throw new Error(`setup: ${player} should hold a backrow card in lane ${lane}`);
+  return card;
+}
+
+describe("R102: a fused card's layers are each ingredient's", () => {
+  it("R102 a Going Long fused onto a Going Long gives its hero Armor 4, as two Going Longs standing apart do (R124)", () => {
+    // p2 plays Going Long for 2; p1's Unlicensed Experimentation fuses it onto p1's own Going Long,
+    // the only Field Spell p1 controls (R61, R77). The fused card carries both texts, "Your hero has
+    // Armor 2" twice: hero Armor from several sources adds up (R124), and a static flag that is an
+    // amount of what the text does adds up across a Fuse, as a Twinspell's Echo grant does.
+    const g = scenario({
+      active: "p2",
+      p1: {
+        backrow: [{ def: GOING_LONG, lane: 1 }, { def: EXPERIMENTATION, lane: 3 }],
+        hand: [STOCKPILE],
+        library: [...LAYER_LIBRARY],
+      },
+      p2: { hand: [GOING_LONG, STOCKPILE], library: [...LAYER_LIBRARY] },
+    });
+    expect(heroArmorOf(g.state, "p1")).toBe(2);
+
+    g.play(GOING_LONG, { zone: 1, embiggen: false });
+    expect(g.events.some((event) => event.type === "fused")).toBe(true);
+    expect(g.backrow("p2", 1)).toBeNull();
+    expect(backrowAt(g, "p1", 1).defId).toMatch(/^t-\d+:core-084\+core-084$/);
+
+    expect(heroArmorOf(g.state, "p1")).toBe(4);
+  });
+
+  it("R102 a Going Long paid 4 fused onto a Going Long paid 2 gives Armor 5 and 2, each at its own card's price (§6.3 Embiggen, R124)", () => {
+    const g = scenario({
+      active: "p2",
+      p1: {
+        backrow: [{ def: GOING_LONG, lane: 1 }, { def: EXPERIMENTATION, lane: 3 }],
+        hand: [STOCKPILE],
+        library: [...LAYER_LIBRARY],
+      },
+      p2: { hand: [GOING_LONG, STOCKPILE], library: [...LAYER_LIBRARY], mana: 4 },
+    });
+    g.play(GOING_LONG, { zone: 1, embiggen: true });
+    expect(backrowAt(g, "p1", 1).defId).toMatch(/^t-\d+:core-084\+core-084$/);
+    expect(heroArmorOf(g.state, "p1")).toBe(7);
+  });
+
+  it("R102 a Suppressive Aura paid 4 fused onto a Mana Well keeps its −5/−5 (§6.3 Embiggen, R65)", () => {
+    // p2 plays Suppressive Aura at its embiggen price, 4: "all units −5/−5". p1's Unlicensed
+    // Experimentation fuses it onto p1's Mana Well. The fused cost already reads that ingredient at
+    // the price it was played for (R77: the sum of the printed costs per R65), and its text is the
+    // same ingredient's, which §6.3 Embiggen has read the stored choice, so the aura stays −5/−5.
+    const g = scenario({
+      active: "p2",
+      p1: {
+        backrow: [{ def: MANA_WELL, lane: 1 }, { def: EXPERIMENTATION, lane: 3 }],
+        field: [{ def: BIG_FELINOR, lane: 1 }],
+        hand: [STOCKPILE],
+        library: [...LAYER_LIBRARY],
+      },
+      p2: { hand: [SUPPRESSIVE_AURA, STOCKPILE], library: [...LAYER_LIBRARY] },
+    });
+    const felinor = unitAt(g, "p1", 1);
+
+    g.play(SUPPRESSIVE_AURA, { zone: 1, embiggen: true });
+    expect(g.events.some((event) => event.type === "fused")).toBe(true);
+    expect(backrowAt(g, "p1", 1).defId).toMatch(/^t-\d+:core-046\+core-006$/);
+
+    // Big Felinor is 3/10: under −5/−5 it is 0/5, under the base price's −2/−2 it would be 1/8.
+    g.expectStats(felinor, { attack: 0, maxHealth: 5 });
+  });
+
+  it("R102 a radiant Spikey Pillow fused with another card still spares every Spikey Pillow its aura names (§7, §8 #65.1)", () => {
+    // p1's radiant Spikey Pillow prints "Aura: your non-Spikey-Pillow units have −2 attack". p2
+    // plays Tempo Timmy, and p1's Unlicensed Experimentation fuses it onto the Pillow, p1's only
+    // Unit (R61, R77). The fused card carries the Pillow's text in full. On p1's turn its Masochism
+    // Mask summons a second, real Spikey Pillow: a Spikey Pillow, so the fused card's aura does not
+    // reach it. Jlockeed's Weapons gives it +4 attack and its own base aura −2.
+    const g = scenario({
+      active: "p2",
+      p1: {
+        field: [{ def: PILLOW, radiant: true, lane: 1 }],
+        backrow: [
+          { def: MASOCHISM_MASK, lane: 1 },
+          { def: WEAPONS, lane: 2 },
+          { def: EXPERIMENTATION, lane: 3 },
+        ],
+        hand: [STOCKPILE],
+        library: [...LAYER_LIBRARY],
+      },
+      p2: { hand: [TEMPO_TIMMY, STOCKPILE], library: [...LAYER_LIBRARY] },
+    });
+    const kept = unitAt(g, "p1", 1);
+    g.play(TEMPO_TIMMY, { zone: 1 });
+    expect(g.card(kept).defId).toMatch(/^t-\d+:core-011\+core-065-1$|^t-\d+:core-065-1\+core-011$/);
+
+    g.endTurn();
+    expect(g.state.pending?.playerId).toBe("p1");
+    g.answer(["summon Spikey Pillow"]);
+    const pillow = unitAt(g, "p1", 2);
+    expect(pillow.defId).toBe(PILLOW);
+
+    // 0 printed + 4 (Weapons) − 2 (its own base aura), and nothing from the fused radiant aura.
+    g.expectStats(pillow, { attack: 2 });
   });
 });
