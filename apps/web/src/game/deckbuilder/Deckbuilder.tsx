@@ -336,8 +336,8 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   );
 }
 
-/** A drop target has to say so, or the browser never fires `drop`. */
-function allowDrop(event: React.DragEvent<HTMLElement>): void {
+/** A drop target has to say so, or the browser never fires `drop`. Shared with `game/library`. */
+export function allowDrop(event: React.DragEvent<HTMLElement>): void {
   event.preventDefault();
   try {
     event.dataTransfer.dropEffect = "move";
@@ -347,7 +347,7 @@ function allowDrop(event: React.DragEvent<HTMLElement>): void {
 }
 
 /** The dragged card: the id this component recorded, else whatever the DataTransfer carries. */
-function droppedCardId(event: React.DragEvent<HTMLElement>, held: string | null): string | null {
+export function droppedCardId(event: React.DragEvent<HTMLElement>, held: string | null): string | null {
   if (held !== null && held.length > 0) return held;
   for (const mime of [DECK_DRAG_MIME, "text/plain"]) {
     try {

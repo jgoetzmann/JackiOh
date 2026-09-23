@@ -35,7 +35,7 @@ export type SaveLoadoutInput = {
  * §9.4: "stale catalog version is rejected at save and queue". BUILD M6-T2's acceptance item is
  * literally 'a stale `catalogVersion` gets "update required"', so that is the message.
  */
-function assertCurrentCatalog(deps: ServerDeps, catalogVersion: string): void {
+export function assertCurrentCatalog(deps: ServerDeps, catalogVersion: string): void {
   if (catalogVersion !== deps.catalog.version) {
     throw new ApiError("update_required", "update required", {
       expected: deps.catalog.version,

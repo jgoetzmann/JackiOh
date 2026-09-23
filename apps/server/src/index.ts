@@ -23,6 +23,7 @@ import { createAuthRoutes, createSupabaseAuth } from "./api/auth";
 import { createCatalogRoutes, loadCatalog } from "./api/catalog";
 import { createCodesRoutes } from "./api/codes";
 import { createCollectionRoutes } from "./api/collection";
+import { createDeckRoutes } from "./api/decks";
 import { VITE_DEV_ORIGINS, withCors } from "./api/cors";
 import { createHashes, systemIds } from "./api/crypto";
 import { consoleLogger, defaultConfig, defaultLimits } from "./api/deps";
@@ -30,7 +31,7 @@ import { createE2EAuth, seedE2EFixtures } from "./api/e2e";
 import { createE2EStore, type E2EStore } from "./api/e2e-store";
 import { createRouter, type Route } from "./api/http";
 import { createLoadoutRoutes } from "./api/loadouts";
-import { sharedLoadoutValidator } from "./api/loadout-validator";
+import { sharedDeckValidator, sharedLoadoutValidator } from "./api/loadout-validator";
 import type { Logger, ServerDeps, Store } from "./api/ports";
 import { systemTimers } from "./api/ports";
 import { createQueueRoutes, startMatchmaker } from "./api/queue";
@@ -207,6 +208,7 @@ export async function createRuntime(
     limits: overrides.limits ?? defaultLimits(),
     catalog,
     validateLoadout: overrides.validateLoadout ?? sharedLoadoutValidator,
+    validateDeck: overrides.validateDeck ?? sharedDeckValidator,
     // Replaced two lines down; a placeholder rather than a lie, so a mistake is loud.
     matches: {
       start: async () => {
@@ -242,6 +244,7 @@ export function allRoutes(): Route[] {
     ...createCodesRoutes(),
     ...createCollectionRoutes(),
     ...createLoadoutRoutes(),
+    ...createDeckRoutes(),
     ...createQueueRoutes(),
     ...createRoomRoutes(),
   ];

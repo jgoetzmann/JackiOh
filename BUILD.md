@@ -530,6 +530,24 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 
 **M8 gate.** All twelve specs green in CI on Chrome and Electron.
 
+### M9 — Deck library and constructor (`apps/server`, `apps/web`, `packages/validator`)
+
+SPEC §11 R171 and R172. A Hearthstone-style collection manager: an account keeps up to `MAX_LIBRARY_DECKS` named decks beside its §9.4 loadout, builds them by drag and drop, imports them into loadout slots and plays them directly.
+
+**M9-T1 Library store and API.** Files: `validator/src/index.ts` (`validateDeck`, `DeckRules`), migration `0006_decks.sql`, `server/src/api/decks.ts`, `server/src/api/queue.ts`, `server/src/match/rooms.ts`, `server/src/db/store.ts`.
+`GET/POST /api/decks`, `PUT/DELETE /api/decks/:id`, all `active`; a save checks the catalog version, trims and bounds the name (`DECK_NAME_MAX_LENGTH`) and runs `validateDeck` with `allowIncomplete`; the queue and both room endpoints take `{ deckId }` as an alternative to `{ deckIndex }` and freeze the deck (R172).
+Acceptance: the validator's single-deck check never reports L1 or L4 and accepts a short deck only when asked (`it("R171 …")`); each route has a test for its refusals (pending 403, another profile's id 404, the cap 409, a stale version 409, an illegal deck 422 with the validator's messages); the cap holds under concurrent creates in both stores (`test/db/contract.ts`); `decks` has RLS, a client reads only its own rows and cannot write any (`test:sql`); a `deckId` match freezes the library deck, refuses an incomplete or foreign one and needs no loadout, and editing the deck after enqueue does not change the match (`it("R172 …")` in the queue and room tests).
+
+**M9-T2 Constructor.** Files: `web/src/game/library/*` (`Library.tsx`, `CardFace.tsx`, `CardInspector.tsx`, `library.ts`, `library.css`, `testids.ts`).
+Left: pages of full-size cards, as many rows and columns as fit (about 5×3 at 1440×900, 6×2–3 at 1920×1080), turned by arrows at the sides and by ←/→. Right: the deck list, or while editing the decklist as cost-and-name bars sorted by cost. Drag a card onto the decklist or right-click it to add; drag a bar onto the pages or right-click it to remove. Hovering or focusing a bar shows the full card beside the list. Clicking a card opens a full-screen inspector that tilts and rotates the card in 3D (base face in front, Radiant face on the back). `deckSize` and `maxCopies` are props defaulting to `DECK_SIZE` and `MAX_COPIES`, passed through to the validator as `DeckRules`.
+Acceptance: component tests for paging (arrows disable at the ends, the page clamps after a resize), both add paths and both remove paths, the size cap, the hover preview, the inspector opening, rotating on drag and closing on Esc, and every validator sentence rendered verbatim.
+
+**M9-T3 Wiring.** Files: `web/src/routes/library.tsx`, `web/src/main.tsx`, `web/src/game/deckbuilder/Deckbuilder.tsx`, `web/src/routes/decks.tsx`, `web/src/routes/play.tsx`.
+`/library` behind the §9.4 gate; the loadout editor's "Import from library" copies a library deck into a slot (R171); `/play` picks a complete library deck or a loadout deck.
+Acceptance: route tests for each; `e2e/13-deck-library.cy.ts` builds a deck across two pages with right-clicks, saves it, reloads, checks the hover preview and the inspector, imports it into a loadout slot and creates a room with its `deckId`.
+
+**M9 gate.** `e2e/13-deck-library.cy.ts` green, and `05`, `06`, `09` and `10` still green.
+
 ## 4. Test strategy summary
 
 - Unit: every engine module, every effect, every subsystem, every card (base and radiant), every validator rule, every server endpoint.

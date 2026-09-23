@@ -199,6 +199,17 @@ export const API_REQUESTS_PER_MINUTE = 300;
 export const MATCH_REAPER_INTERVAL_SECONDS = 30;
 
 // ---------------------------------------------------------------------------------------------
+// The deck library (R171, BUILD M9).
+// ---------------------------------------------------------------------------------------------
+
+// SPEC §11 R171: how many named decks one account may keep in its library. Generous for any real
+// player, and a bound on what one account can make the server store.
+export const MAX_LIBRARY_DECKS = 100;
+// SPEC §11 R171: the longest deck name the library accepts, after trimming. Long enough for a
+// descriptive name, short enough for one decklist header.
+export const DECK_NAME_MAX_LENGTH = 32;
+
+// ---------------------------------------------------------------------------------------------
 // Derived millisecond helpers, since timers (setTimeout/alarms) take milliseconds.
 // ---------------------------------------------------------------------------------------------
 
@@ -243,6 +254,8 @@ export const SERVER_CONFIG = Object.freeze({
   MATCH_ACTIONS_PER_SECOND,
   API_REQUESTS_PER_MINUTE,
   MATCH_REAPER_INTERVAL_SECONDS,
+  MAX_LIBRARY_DECKS,
+  DECK_NAME_MAX_LENGTH,
   TURN_CLOCK_MS,
   PROMPT_CLOCK_MS,
   DISCONNECT_GRACE_MS,

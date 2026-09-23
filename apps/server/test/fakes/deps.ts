@@ -373,6 +373,8 @@ export function testLimits(overrides: Partial<ApiLimits> = {}): ApiLimits {
     queueWindowUncappedAfterMs: 60_000,
     queueSweepMs: 3_000,
     roomCodeTtlMs: 900_000,
+    libraryDecks: 100,
+    deckNameMaxLength: 32,
     ...overrides,
   };
 }

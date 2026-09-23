@@ -15,6 +15,7 @@ import fc from "fast-check";
 import { DECK_SIZE, MAX_COPIES } from "../src/config";
 import {
   LOADOUT_DECKS,
+  validateDeck,
   validateLoadout,
   type CardId,
   type LoadoutError,
@@ -203,6 +204,62 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
     expect(errorsOf(result).filter((error) => error.rule === "L5").map((error) => error.message)).toEqual([
       `Your loadout uses ${MAX_COPIES + 1} copies of "Archivist" (core-030) but you own 1.`,
     ]);
+  });
+});
+
+describe("the deck rules as overridable limits", () => {
+  it("reads deckSize and maxCopies from `rules` when given, and config otherwise", () => {
+    const legal = legalLoadout();
+    const bigger = DECK_SIZE + 1;
+    // Deck 1 is DECK_SIZE long, so a deckSize one larger makes it one card short under the override.
+    const errors = errorsOf(validateLoadout({ ...legal, rules: { deckSize: bigger } }));
+    expect(errors.find((error) => error.deck === 1)?.message).toBe(
+      `Deck 1 has ${DECK_SIZE} cards; every deck needs exactly ${bigger}.`,
+    );
+    // A second copy of Jelly Bean (owned twice) is legal once two copies are allowed per deck.
+    expect(rulesOf(validateLoadout(duplicateInDeck(legal)))).toEqual(["L3"]);
+    expect(validateLoadout({ ...duplicateInDeck(legal), rules: { maxCopies: MAX_COPIES + 1 } })).toEqual({ ok: true });
+  });
+});
+
+describe("a single library deck (R171)", () => {
+  const input = legalLoadout();
+  const first = input.decks[0];
+  if (first === undefined) throw new Error("fixture error: the legal loadout has no decks");
+  const deckInput = (cards: readonly CardId[], allowIncomplete?: boolean) => ({
+    deck: { name: "Aggro", cards },
+    catalog: input.catalog,
+    collection: input.collection,
+    ...(allowIncomplete === undefined ? {} : { allowIncomplete }),
+  });
+
+  it("R171 accepts a full legal deck, and never reports L1 for a deck that is not a loadout", () => {
+    expect(validateDeck(deckInput(first.cards))).toEqual({ ok: true });
+  });
+
+  it("R171 saves an incomplete deck when asked, and still refuses one over the size", () => {
+    const short = first.cards.slice(0, 5);
+    expect(validateDeck(deckInput(short, true))).toEqual({ ok: true });
+    // Strict (the path a match takes, R172): L2, named by the deck's own label.
+    expect(errorsOf(validateDeck(deckInput(short))).map((error) => error.message)).toEqual([
+      `Aggro has 5 cards; every deck needs exactly ${DECK_SIZE}.`,
+    ]);
+    const spare = input.decks[1]?.cards[0];
+    if (spare === undefined) throw new Error("fixture error: deck 2 is empty");
+    expect(rulesOf(validateDeck(deckInput([...first.cards, spare], true)))).toEqual(["L2"]);
+  });
+
+  it("R171 keeps L3, L5 and L6 on an incomplete deck", () => {
+    const short = first.cards.slice(0, 3);
+    expect(rulesOf(validateDeck(deckInput([...short, short[0] ?? ""], true)))).toContain("L3");
+    expect(rulesOf(validateDeck(deckInput([...short, NOT_IN_CATALOG], true)))).toEqual(["L6"]);
+    expect(rulesOf(validateDeck(deckInput([...short, "core-051.1"], true)))).toEqual(["L3"]);
+  });
+
+  it("R171 never reports L4: a card may sit in any number of library decks", () => {
+    // The same cards in two library decks are two separate checks; neither knows of the other.
+    expect(validateDeck(deckInput(first.cards))).toEqual({ ok: true });
+    expect(validateDeck(deckInput(first.cards))).toEqual({ ok: true });
   });
 });
 

@@ -140,7 +140,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
 
   function onEnqueue(): void {
     run(async () => {
-      const result = (await enqueue(token, DECK_INDEX)) as EnqueueResult;
+      const result = (await enqueue(token, { deckIndex: DECK_INDEX })) as EnqueueResult;
       if (typeof result.matchId === "string" && result.matchId.length > 0) {
         navigate(paths.match(result.matchId));
         return;
@@ -164,7 +164,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
 
   function onCreateRoom(): void {
     run(async () => {
-      const room = await createRoom(token, DECK_INDEX);
+      const room = await createRoom(token, { deckIndex: DECK_INDEX });
       setRoomCode(room.code);
       setWaiting(true);
       setStatus("Give your opponent this code. You will be taken to the board when they join.");
@@ -176,7 +176,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
     run(async () => {
       // R104 normalises input to upper case server-side; sending it that way keeps a typed code
       // and a pasted one identical on the wire.
-      const joined = await joinRoom(token, joinCode.trim().toUpperCase(), DECK_INDEX);
+      const joined = await joinRoom(token, joinCode.trim().toUpperCase(), { deckIndex: DECK_INDEX });
       navigate(paths.match(joined.matchId));
     });
   }

@@ -217,24 +217,62 @@ export function getCatalog(): Promise<CatalogResponse> {
   return apiRequest<CatalogResponse>("/api/catalog");
 }
 
-/** `POST /api/rooms` / `POST /api/rooms/:code/join` (§9.5). */
-export type CreateRoomResponse = { code: string; expiresAt: number; deckIndex: number };
-export type JoinRoomResponse = { matchId: string; code: string; seat: "p1" | "p2" };
+/** R171: one deck in the account's library, as `/api/decks` returns it. */
+export type LibraryDeck = { id: string; name: string; cards: string[]; updatedAt: number };
+export type DeckListResponse = { catalogVersion: string; maxDecks: number; decks: LibraryDeck[] };
+export type DeckResponse = { deck: LibraryDeck };
+/** What a save sends; the server stamps the id and the time. */
+export type DeckDraft = { name: string; cards: readonly string[] };
 
-export function createRoom(token: string, deckIndex: number): Promise<CreateRoomResponse> {
-  return apiRequest<CreateRoomResponse>("/api/rooms", { method: "POST", token, body: { deckIndex } });
+export function listDecks(token: string): Promise<DeckListResponse> {
+  return apiRequest<DeckListResponse>("/api/decks", { token });
 }
 
-export function joinRoom(token: string, code: string, deckIndex: number): Promise<JoinRoomResponse> {
-  return apiRequest<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(code)}/join`, {
-    method: "POST",
+export function createDeck(token: string, catalogVersion: string, draft: DeckDraft): Promise<DeckResponse> {
+  return apiRequest<DeckResponse>("/api/decks", { method: "POST", token, body: { catalogVersion, ...draft } });
+}
+
+export function updateDeck(
+  token: string,
+  catalogVersion: string,
+  deckId: string,
+  draft: DeckDraft,
+): Promise<DeckResponse> {
+  return apiRequest<DeckResponse>(`/api/decks/${encodeURIComponent(deckId)}`, {
+    method: "PUT",
     token,
-    body: { deckIndex },
+    body: { catalogVersion, ...draft },
   });
 }
 
-export function enqueue(token: string, deckIndex: number): Promise<unknown> {
-  return apiRequest<unknown>("/api/queue", { method: "POST", token, body: { deckIndex } });
+export function deleteDeck(token: string, deckId: string): Promise<unknown> {
+  return apiRequest<unknown>(`/api/decks/${encodeURIComponent(deckId)}`, { method: "DELETE", token });
+}
+
+/**
+ * Which deck a match freezes (§9.4, R172): a loadout deck by its 0-based index, or one of this
+ * account's library decks by id. Sent as the request body as-is.
+ */
+export type DeckChoice = { deckIndex: number } | { deckId: string };
+
+/** `POST /api/rooms` / `POST /api/rooms/:code/join` (§9.5). The room echoes the choice it froze. */
+export type CreateRoomResponse = { code: string; expiresAt: number; deckIndex?: number; deckId?: string };
+export type JoinRoomResponse = { matchId: string; code: string; seat: "p1" | "p2" };
+
+export function createRoom(token: string, choice: DeckChoice): Promise<CreateRoomResponse> {
+  return apiRequest<CreateRoomResponse>("/api/rooms", { method: "POST", token, body: choice });
+}
+
+export function joinRoom(token: string, code: string, choice: DeckChoice): Promise<JoinRoomResponse> {
+  return apiRequest<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(code)}/join`, {
+    method: "POST",
+    token,
+    body: choice,
+  });
+}
+
+export function enqueue(token: string, choice: DeckChoice): Promise<unknown> {
+  return apiRequest<unknown>("/api/queue", { method: "POST", token, body: choice });
 }
 
 export function dequeue(token: string): Promise<unknown> {

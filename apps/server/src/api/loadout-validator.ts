@@ -13,22 +13,25 @@
  * membership in the snapshot it is handed, and the endpoint compares versions.
  */
 
-import { validateLoadout } from "@jackioh/validator";
-import type { LoadoutIssue, LoadoutValidateInput, LoadoutValidator } from "./ports";
+import { validateDeck, validateLoadout, type CatalogSnapshot, type LoadoutResult } from "@jackioh/validator";
+import type {
+  CatalogInfo,
+  DeckValidateInput,
+  DeckValidator,
+  LoadoutIssue,
+  LoadoutValidateInput,
+  LoadoutValidator,
+} from "./ports";
 
-/** The port, bound to the shared module. */
-export const sharedLoadoutValidator: LoadoutValidator = (
-  input: LoadoutValidateInput,
-): LoadoutIssue[] => {
-  const result = validateLoadout({
-    decks: input.decks.map((cards) => ({ cards })),
-    catalog: {
-      version: input.catalogVersion,
-      cards: input.catalog.defs,
-      banned: input.catalog.cardIds.filter((cardId) => input.catalog.isBanned(cardId)),
-    },
-    collection: Object.fromEntries(input.owned),
-  });
+function snapshotOf(catalogVersion: string, catalog: CatalogInfo): CatalogSnapshot {
+  return {
+    version: catalogVersion,
+    cards: catalog.defs,
+    banned: catalog.cardIds.filter((cardId) => catalog.isBanned(cardId)),
+  };
+}
+
+function issuesOf(result: LoadoutResult): LoadoutIssue[] {
   if (result.ok) return [];
   return result.errors.map((error) => ({
     rule: error.rule,
@@ -36,7 +39,31 @@ export const sharedLoadoutValidator: LoadoutValidator = (
     ...(error.deck === undefined ? {} : { deck: error.deck }),
     ...(error.cardId === undefined ? {} : { cardId: error.cardId }),
   }));
+}
+
+/** The port, bound to the shared module. */
+export const sharedLoadoutValidator: LoadoutValidator = (
+  input: LoadoutValidateInput,
+): LoadoutIssue[] => {
+  return issuesOf(
+    validateLoadout({
+      decks: input.decks.map((cards) => ({ cards })),
+      catalog: snapshotOf(input.catalogVersion, input.catalog),
+      collection: Object.fromEntries(input.owned),
+    }),
+  );
 };
+
+/** R171: one library deck, through the same module. */
+export const sharedDeckValidator: DeckValidator = (input: DeckValidateInput): LoadoutIssue[] =>
+  issuesOf(
+    validateDeck({
+      deck: input.name === undefined ? { cards: input.cards } : { name: input.name, cards: input.cards },
+      catalog: snapshotOf(input.catalogVersion, input.catalog),
+      collection: Object.fromEntries(input.owned),
+      allowIncomplete: input.allowIncomplete,
+    }),
+  );
 
 /** Kept as a function too, so the composition root reads the same either way. */
 export function loadoutValidator(): LoadoutValidator {

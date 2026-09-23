@@ -40,10 +40,31 @@ export type CatalogSnapshot = {
 /** The profile's entitlements projected to quantities; an absent id means none owned. */
 export type Collection = Readonly<Record<CardId, number>>;
 
+/**
+ * The two deck-shape numbers, for a caller that builds decks to other limits (a deckbuilder
+ * launched for another format, say). Absent fields fall back to the engine's `DECK_SIZE` and
+ * `MAX_COPIES`, and the server never passes this: its verdict is always config's (§9.3).
+ */
+export type DeckRules = {
+  deckSize?: number;
+  maxCopies?: number;
+};
+
 export type LoadoutInput = {
   decks: readonly LoadoutDeck[];
   catalog: CatalogSnapshot;
   collection: Collection;
+  rules?: DeckRules;
+};
+
+/** One library deck (R171), checked on its own rather than as part of a loadout. */
+export type DeckInput = {
+  deck: LoadoutDeck;
+  catalog: CatalogSnapshot;
+  collection: Collection;
+  rules?: DeckRules;
+  /** R171: a library deck saves short of `deckSize`; L2 still refuses one that is over it. */
+  allowIncomplete?: boolean;
 };
 
 export type LoadoutRule = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
@@ -105,6 +126,8 @@ function isToken(def: CardDef): boolean {
  */
 export function validateLoadout(input: LoadoutInput): LoadoutResult {
   const { decks, catalog, collection } = input;
+  const deckSize = input.rules?.deckSize ?? DECK_SIZE;
+  const maxCopies = input.rules?.maxCopies ?? MAX_COPIES;
   const errors: LoadoutError[] = [];
   const banned = new Set<CardId>(catalog.banned ?? []);
   const deckLabels: readonly string[] = decks.map((deck, index) => deckLabel(deck, index));
@@ -131,12 +154,12 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
     const deckNumber = index + 1;
 
     // L2 — exactly DECK_SIZE cards.
-    if (deck.cards.length !== DECK_SIZE) {
+    if (deck.cards.length !== deckSize) {
       errors.push({
         rule: "L2",
         message:
           `${labelAt(index)} has ${deck.cards.length} ${cardWord(deck.cards.length)}; ` +
-          `every deck needs exactly ${DECK_SIZE}.`,
+          `every deck needs exactly ${deckSize}.`,
         deck: deckNumber,
       });
     }
@@ -173,12 +196,12 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
       }
 
       // L3 (copies) — at most MAX_COPIES of a card per deck.
-      if (count > MAX_COPIES) {
+      if (count > maxCopies) {
         errors.push({
           rule: "L3",
           message:
             `${labelAt(index)} has ${count} ${copyWord(count)} of ${label(cardId)}; ` +
-            `at most ${MAX_COPIES} ${copyWord(MAX_COPIES)} of a card is allowed per deck.`,
+            `at most ${maxCopies} ${copyWord(maxCopies)} of a card is allowed per deck.`,
           deck: deckNumber,
           cardId,
         });
@@ -227,5 +250,24 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
     });
   }
 
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+/**
+ * One library deck (R171): `validateLoadout` over a loadout of just this deck, keeping the rules
+ * that are about a deck. L1 (three decks) and L4 (a card in two decks) are loadout rules and never
+ * apply here, and with `allowIncomplete` a deck short of `deckSize` is not an L2 failure. Every
+ * sentence is `validateLoadout`'s own, so the library shows the same words the loadout does.
+ */
+export function validateDeck(input: DeckInput): LoadoutResult {
+  const { deck, allowIncomplete = false, ...rest } = input;
+  const result = validateLoadout({ ...rest, decks: [deck] });
+  if (result.ok) return result;
+  const deckSize = input.rules?.deckSize ?? DECK_SIZE;
+  const short = allowIncomplete && deck.cards.length < deckSize;
+  const errors = result.errors.filter(
+    // L4 cannot fire on a loadout of one deck, so L1 is the only loadout rule to drop.
+    (error) => error.rule !== "L1" && !(short && error.rule === "L2"),
+  );
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }

@@ -50,6 +50,8 @@ export const paths = {
   login: "/login",
   invite: "/invite",
   decks: "/decks",
+  /** R171: the deck library, built in the constructor (BUILD M9-T2). */
+  library: "/library",
   play: "/play",
   account: "/account",
   hotseat: "/dev/hotseat",

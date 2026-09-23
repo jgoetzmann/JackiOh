@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R170, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R172, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -130,6 +130,10 @@ const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
 const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
 const SERVER_LOADOUTS_TEST = "../../../apps/server/test/api/loadouts.test.ts";
 const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
+/** The deck library's proofs (BUILD M9): the validator's single-deck check and the server routes. */
+const VALIDATOR_TEST = "../../validator/test/validator.test.ts";
+const SERVER_DECKS_TEST = "../../../apps/server/test/api/decks.test.ts";
+const SERVER_ROOMS_TEST = "../../../apps/server/test/match/rooms.test.ts";
 
 /** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
 const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
@@ -1476,6 +1480,19 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
 
   it("R170 answers a profile that vanished mid-redemption with a conflict, not a 401", () => {
     provenIn(170, SERVER_CODES_TEST);
+  });
+
+  // Proved by packages/validator validator.test.ts "R171 …" (a single deck saves incomplete and is
+  // never held to L1 or L4) and by apps/server decks.test.ts "R171 …" (the routes, the cap, the
+  // ownership rule and the save-time validation).
+  it("R171 keeps a library of named decks beside the loadout, each validated as a single deck", () => {
+    provenIn(171, VALIDATOR_TEST, SERVER_DECKS_TEST);
+  });
+
+  // Proved by apps/server queue.test.ts and rooms.test.ts "R172 …": a `deckId` freezes the library
+  // deck, an incomplete or foreign deck is refused, and no loadout is needed on that path.
+  it("R172 lets a match use a library deck, validated strictly and frozen like a loadout deck", () => {
+    provenIn(172, SERVER_QUEUE_TEST, SERVER_ROOMS_TEST);
   });
 });
 

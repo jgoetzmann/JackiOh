@@ -103,6 +103,10 @@ export type ApiLimits = {
   queueSweepMs: number;
   /** How long an unclaimed room code stays joinable. */
   roomCodeTtlMs: number;
+  /** R171: the most decks one account's library holds. */
+  libraryDecks: number;
+  /** R171: the longest deck name, after trimming. */
+  deckNameMaxLength: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -144,6 +148,20 @@ export type LoadoutValidateInput = {
 };
 
 export type LoadoutValidator = (input: LoadoutValidateInput) => LoadoutIssue[];
+
+/** R171: one library deck, checked on its own by the same module (`validateDeck`). */
+export type DeckValidateInput = {
+  cards: readonly string[];
+  /** The deck's own name, which the validator's messages use as the deck's label. */
+  name?: string;
+  catalogVersion: string;
+  catalog: CatalogInfo;
+  owned: ReadonlyMap<string, number>;
+  /** R171: true at save (a short deck is fine), false when a match freezes the deck (R172). */
+  allowIncomplete: boolean;
+};
+
+export type DeckValidator = (input: DeckValidateInput) => LoadoutIssue[];
 
 // ---------------------------------------------------------------------------
 // Managed auth (SPEC §9.4: managed auth provider, email and password)
@@ -359,6 +377,43 @@ export type LoadoutStore = {
   ) => Promise<void>;
 };
 
+/** R171: one deck in an account's library. `cards` keeps the order it was saved in. */
+export type StoredDeck = {
+  id: string;
+  name: string;
+  cards: string[];
+  updatedAt: number;
+};
+
+/** What a save writes; the id and the timestamp are the store's. */
+export type DeckDraft = { name: string; cards: readonly string[] };
+
+/**
+ * R171: the deck library. Every method is scoped by `profileId`, so a deck id that belongs to
+ * another profile reads exactly like one that does not exist (R172: not found, never forbidden).
+ */
+export type DeckStore = {
+  /** Most recently updated first. */
+  list: (profileId: string) => Promise<StoredDeck[]>;
+  get: (profileId: string, deckId: string) => Promise<StoredDeck | null>;
+  /**
+   * Null when the profile already holds `max` decks. The count and the insert are one atomic step
+   * (the Postgres store locks the profile row), so two concurrent creates cannot both land the
+   * deck that crosses the cap.
+   */
+  create: (profileId: string, draft: DeckDraft, at: number, max: number) => Promise<StoredDeck | null>;
+  /** Null when the profile has no deck with this id. */
+  update: (profileId: string, deckId: string, draft: DeckDraft, at: number) => Promise<StoredDeck | null>;
+  /** False when the profile has no deck with this id. */
+  delete: (profileId: string, deckId: string) => Promise<boolean>;
+};
+
+/**
+ * Which deck a match freezes (§9.4, R172): a loadout deck by its 0-based index, or one of the
+ * caller's library decks by id.
+ */
+export type DeckChoice = { deckIndex: number } | { deckId: string };
+
 export type MatchStatus = "live" | "finished";
 
 export type MatchRow = {
@@ -520,6 +575,7 @@ export type Store = {
   codes: CodeStore;
   collection: CollectionStore;
   loadouts: LoadoutStore;
+  decks: DeckStore;
   matches: MatchStore;
   rooms: RoomStore;
   tickets: TicketStore;
@@ -581,6 +637,7 @@ export type ServerDeps = {
   limits: ApiLimits;
   catalog: CatalogInfo;
   validateLoadout: LoadoutValidator;
+  validateDeck: DeckValidator;
   matches: MatchDirectory;
   log: Logger;
   /**
