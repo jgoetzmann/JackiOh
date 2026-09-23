@@ -146,6 +146,7 @@ export default function Library(props: LibraryProps): ReactElement {
   const draggedBar = useRef<string | null>(null);
 
   const pool = useMemo(() => sortByCost(poolFrom(catalog, collection), catalog), [catalog, collection]);
+  const offered = useMemo(() => new Set(pool), [pool]);
   const perPage = layout.cols * layout.rows;
   const pages = pageCount(pool.length, perPage);
   const current = clampPage(page, pages);
@@ -211,13 +212,20 @@ export default function Library(props: LibraryProps): ReactElement {
     setInspecting(null);
   }, []);
 
+  /** One more copy, or null: past a limit, or not a card the pages offer (a token, any stray text dropped). */
+  const plusOne = useCallback(
+    (cards: readonly string[], cardId: string) =>
+      offered.has(cardId) ? addCard(cards, cardId, { deckSize, maxCopies }) : null,
+    [offered, deckSize, maxCopies],
+  );
+
   const add = useCallback(
     (cardId: string) => {
       if (editing === null) return;
-      const cards = addCard(editing.cards, cardId, { deckSize, maxCopies });
+      const cards = plusOne(editing.cards, cardId);
       if (cards !== null) edited({ ...editing, cards });
     },
-    [editing, edited, deckSize, maxCopies],
+    [editing, edited, plusOne],
   );
 
   const take = useCallback(
@@ -233,17 +241,27 @@ export default function Library(props: LibraryProps): ReactElement {
     if (editing === null) return;
     const draft: LibraryDraft = { name: editing.name, cards: [...editing.cards] };
     const deckId = editing.id;
+    const sentFrom = editing.stored;
     setBusy(true);
     setSaved(false);
     void Promise.resolve(deckId === null ? create(draft) : save(deckId, draft))
       .then((outcome) => {
         if (outcome.ok) {
-          // Keep editing the stored deck, so the next save is an update of it.
+          // Keep editing the stored deck, so the next save is an update of it: the server's copy
+          // (a trimmed name) when the draft is still what was sent, else the draft as edited since,
+          // dirty against the new baseline. `sentFrom` is the open deck's identity: the answer
+          // never lands in an editor closed, or opened on another deck, while it was in flight.
           const stored = { name: outcome.deck.name, cards: [...outcome.deck.cards] };
-          setEditing({ id: outcome.deck.id, ...stored, stored });
+          const id = outcome.deck.id;
+          setEditing((now) => {
+            if (now?.stored !== sentFrom) return now;
+            const untouched = now.name === draft.name && sameCards(now.cards, draft.cards);
+            return untouched ? { id, ...stored, stored } : { ...now, id, stored };
+          });
           setServerIssues(null);
           setServerMessage(null);
           setSaved(true);
+          setConfirmDiscard(false);
           return;
         }
         setServerIssues(outcome.issues);
@@ -331,7 +349,7 @@ export default function Library(props: LibraryProps): ReactElement {
 
   function inspectorToggle(cardId: string): "add" | "remove" | null {
     if (editing === null) return null;
-    if (addCard(editing.cards, cardId, { deckSize, maxCopies }) !== null) return "add";
+    if (plusOne(editing.cards, cardId) !== null) return "add";
     return copiesIn(editing.cards, cardId) > 0 ? "remove" : null;
   }
 
@@ -636,7 +654,14 @@ export default function Library(props: LibraryProps): ReactElement {
               {confirmDiscard ? (
                 <>
                   <span className="lib-hint">Discard unsaved changes?</span>
-                  <button type="button" className="lib-danger" data-testid={DECK_DISCARD_CONFIRM} onClick={close}>
+                  <button
+                    type="button"
+                    className="lib-danger"
+                    data-testid={DECK_DISCARD_CONFIRM}
+                    // As Back: a save in flight is about to settle whether anything is unsaved.
+                    disabled={busy}
+                    onClick={close}
+                  >
                     Discard
                   </button>
                   <button
@@ -652,7 +677,7 @@ export default function Library(props: LibraryProps): ReactElement {
                 <button
                   type="button"
                   data-testid={DECK_BACK}
-                  // A save in flight would reopen the deck when it lands.
+                  // A save in flight is about to settle whether anything is unsaved.
                   disabled={busy}
                   onClick={() => {
                     if (dirty) setConfirmDiscard(true);
@@ -672,7 +697,8 @@ export default function Library(props: LibraryProps): ReactElement {
               >
                 Save
               </button>
-              {saved ? (
+              {/* Not while edits made during the save's flight are still unsaved. */}
+              {saved && !dirty ? (
                 <span className="lib-saved" data-testid={DECK_SAVED} role="status">
                   Saved
                 </span>
