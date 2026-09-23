@@ -1,5 +1,5 @@
 #!/bin/sh
-# Apply the four migrations to a throwaway Postgres and assert the invariants of
+# Apply the migrations to a throwaway Postgres and assert the invariants of
 # SPEC §9.1 and §9.4 against a real database.
 #
 #   pnpm test:sql            # or: sh apps/server/test/sql/run.sh
@@ -58,7 +58,8 @@ done
 $PSQL -d jackioh -f /tmp/00_supabase_stub.sql >/dev/null
 
 echo "--- migrations ---"
-for f in 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches; do
+for f in 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches \
+  0005_service_role_reads_auth_users 0006_decks; do
   printf '%s: ' "$f"
   out=$($PSQL -d jackioh -f "/tmp/$f.sql" 2>&1 |
     grep -v "does not exist, skipping" | grep -v "^$" || true)

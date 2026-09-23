@@ -20,7 +20,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { Action } from "@jackioh/shared";
-import type { MatchClocks, MatchRow, Profile, Store } from "../../src/api/ports";
+import type { MatchClocks, MatchRow, Profile, Store, StoredDeck } from "../../src/api/ports";
 import type { StoreHarness } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -586,6 +586,94 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
           ),
         ).rejects.toThrow();
         expect(await store.loadouts.get(profile.id)).toBeNull();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // The deck library (SPEC §11 R171, R172)
+    // -----------------------------------------------------------------------
+
+    describe("decks", () => {
+      const draft = (name: string, slot = 0) => ({ name, cards: deckOf(harness, slot) });
+
+      it("creates, reads, updates and deletes decks, most recently updated first", async () => {
+        const profile = await activeProfile();
+        expect(await store.decks.list(profile.id)).toEqual([]);
+
+        const at = harness.now();
+        const first = must(await store.decks.create(profile.id, draft("First"), at, 10), "the first deck");
+        expect(first).toMatchObject({ name: "First", cards: deckOf(harness, 0) });
+        expect(await store.decks.get(profile.id, first.id)).toEqual(first);
+        const second = must(await store.decks.create(profile.id, draft("Second", 1), at + 1, 10), "the second deck");
+        expect((await store.decks.list(profile.id)).map((deck) => deck.id)).toEqual([second.id, first.id]);
+
+        const updated = must(
+          await store.decks.update(profile.id, first.id, draft("First again", 2), at + 2),
+          "the updated deck",
+        );
+        expect(updated).toMatchObject({ id: first.id, name: "First again", cards: deckOf(harness, 2) });
+        expect((await store.decks.list(profile.id)).map((deck) => deck.id)).toEqual([first.id, second.id]);
+
+        expect(await store.decks.delete(profile.id, second.id)).toBe(true);
+        expect(await store.decks.delete(profile.id, second.id)).toBe(false);
+        expect(await store.decks.get(profile.id, second.id)).toBeNull();
+        expect(await store.decks.list(profile.id)).toEqual([updated]);
+      });
+
+      /** R172: "Another profile's deck id is not found, never forbidden." */
+      it("finds a deck only for its own profile, and reads a foreign or unknown id as missing", async () => {
+        const [owner, other] = [await activeProfile(), await activeProfile()];
+        const deck = must(await store.decks.create(owner.id, draft("Owner's"), harness.now(), 10), "the deck");
+
+        expect(await store.decks.get(other.id, deck.id)).toBeNull();
+        expect(await store.decks.update(other.id, deck.id, draft("Taken", 1), harness.now())).toBeNull();
+        expect(await store.decks.delete(other.id, deck.id)).toBe(false);
+        expect(await store.decks.list(other.id)).toEqual([]);
+        expect(await store.decks.get(owner.id, deck.id)).toEqual(deck);
+
+        for (const missing of [id(), "not-a-deck-id"]) {
+          expect(await store.decks.get(owner.id, missing)).toBeNull();
+          expect(await store.decks.update(owner.id, missing, draft("Ghost"), harness.now())).toBeNull();
+          expect(await store.decks.delete(owner.id, missing)).toBe(false);
+        }
+      });
+
+      /** R171: the cap, which `decks.create` counts and enforces itself. */
+      it("returns null at the cap and writes nothing", async () => {
+        const profile = await activeProfile();
+        const max = 2;
+        for (let n = 0; n < max; n += 1) {
+          expect(await store.decks.create(profile.id, draft(`Deck ${String(n)}`), harness.now(), max)).not.toBeNull();
+        }
+        expect(await store.decks.create(profile.id, draft("Over"), harness.now(), max)).toBeNull();
+        expect(await store.decks.list(profile.id)).toHaveLength(max);
+      });
+
+      /**
+       * Two creates at one below the cap, overlapped on purpose: the first runs inside a transaction
+       * that stays open while the second starts on another connection. Counting without the lock,
+       * the second would see only the committed decks and land one past the cap; with it, it waits
+       * for the commit and counts the first. (A plain `Promise.all` of two creates finishes one
+       * before the other starts often enough to pass without the lock, so it proves nothing.)
+       */
+      it("lands exactly one of two concurrent creates at one below the cap", async () => {
+        const profile = await activeProfile();
+        const max = 3;
+        for (let n = 0; n < max - 1; n += 1) {
+          await store.decks.create(profile.id, draft(`Deck ${String(n)}`), harness.now(), max);
+        }
+
+        let outside: Promise<StoredDeck | null> = Promise.resolve(null);
+        const inside = await store.tx(async (t) => {
+          const deck = await t.decks.create(profile.id, draft("Inside"), harness.now(), max);
+          outside = store.decks.create(profile.id, draft("Outside"), harness.now(), max);
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          return deck;
+        });
+
+        expect(inside).not.toBeNull();
+        expect(await outside).toBeNull();
+        expect(await store.decks.list(profile.id)).toHaveLength(max);
       });
     });
 

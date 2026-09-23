@@ -8,18 +8,25 @@
  *  - `codes.claim`, `rooms.claim` and `tickets.claimPair` are single-shot, so a second caller
  *    loses (§9.4 step 6, §9.5);
  *  - `matches.appendActions` refuses a seq that already exists (append-only, §9.3);
- *  - `results.insert` refuses a second row for the same match (§9.5).
+ *  - `results.insert` refuses a second row for the same match (§9.5);
+ *  - `decks.create` returns null at the cap, and a deck id is only ever found by its own profile
+ *    (R171, R172).
  *
  * `redeem` (§9.4's six-step transaction) is not reimplemented here: it is `createInMemoryRedeem`
  * from `src/api/e2e-store.ts`, the same function the end-to-end fixture store uses, so the two
  * in-memory stores cannot answer a redemption differently while only one of them is under
  * `test/db/contract.ts`. It runs through this store's own methods, so `onCall` charges each step
- * and a test can wrap one of them.
+ * and a test can wrap one of them. `decks` is shared the same way (`createInMemoryDecks`).
  *
  * `onCall` is the fault-injection seam: a test throws from it to fail one method mid-transaction.
  */
 
-import { createInMemoryRedeem, type RedemptionSettings } from "../../src/api/e2e-store";
+import {
+  createInMemoryDecks,
+  createInMemoryRedeem,
+  type DeckRow,
+  type RedemptionSettings,
+} from "../../src/api/e2e-store";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -44,6 +51,7 @@ type Tables = {
   collection: { profileId: string; cardId: string; quantity: number }[];
   grants: CollectionGrant[];
   loadouts: { profileId: string; loadout: StoredLoadout }[];
+  decks: DeckRow[];
   matches: MatchRow[];
   matchActions: MatchActionRow[];
   rooms: Room[];
@@ -59,6 +67,7 @@ function emptyTables(): Tables {
     collection: [],
     grants: [],
     loadouts: [],
+    decks: [],
     matches: [],
     matchActions: [],
     rooms: [],
@@ -299,6 +308,8 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
       else row.loadout = loadout;
     },
   };
+
+  store.decks = createInMemoryDecks({ rows: () => tables.decks, call });
 
   store.matches = {
     create: async (match) => {

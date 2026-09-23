@@ -13,6 +13,7 @@ import type {
   AuthSession,
   AuthUser,
   CatalogInfo,
+  DeckValidator,
   Ids,
   Logger,
   LoadoutValidator,
@@ -23,6 +24,7 @@ import type {
   Store,
   Timers,
 } from "../../src/api/ports";
+import { ownedMap } from "../../src/api/collection";
 import { createHashes } from "../../src/api/crypto";
 import { createMemoryStore, type MemoryStore } from "./store";
 
@@ -224,6 +226,39 @@ export function createTestCatalog(version = TEST_CATALOG_VERSION, count = 24): C
 export const permissiveValidator: LoadoutValidator = () => [];
 
 /**
+ * R171's `DeckValidator` default on `createTestDeps`, permissive for the same reason as
+ * `permissiveValidator` above. A test whose subject is a library deck's legality builds deps on the
+ * real catalog with `sharedDeckValidator` (`src/api/loadout-validator.ts`) instead, as
+ * `test/api/decks.test.ts` and the R172 blocks of the queue and room tests do.
+ */
+export const permissiveDeckValidator: DeckValidator = () => [];
+
+/**
+ * A complete library deck that `target`'s own `validateDeck` passes strictly (R172), from the
+ * playable ids after the first `skip`. The size is found, not typed: BUILD §2 keeps `DECK_SIZE` in
+ * the engine's config and nothing restates it, so the slice grows until the validator stops
+ * objecting. Needs the profile's collection in place first (L5).
+ */
+export async function completeDeck(target: ServerDeps, profileId: string, skip = 0): Promise<string[]> {
+  const pool = target.catalog.cardIds
+    .filter((cardId) => !target.catalog.isToken(cardId) && !target.catalog.isBanned(cardId))
+    .slice(skip);
+  const owned = await ownedMap(target, profileId);
+  for (let size = 1; size <= pool.length; size += 1) {
+    const cards = pool.slice(0, size);
+    const issues = target.validateDeck({
+      cards,
+      catalogVersion: target.catalog.version,
+      catalog: target.catalog,
+      owned,
+      allowIncomplete: false,
+    });
+    if (issues.length === 0) return cards;
+  }
+  throw new Error("no complete deck could be built from this catalog");
+}
+
+/**
  * `deck` is 1-based here, exactly as `@jackioh/validator`'s `LoadoutError.deck` is (and as
  * `LoadoutIssue.deck` in ports.ts documents): a 0-based fake would hide an adapter that forgot
  * the conversion. Note that `deckFor(loadout, deckIndex)` takes a 0-based array index instead —
@@ -416,6 +451,7 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
     limits,
     catalog: createTestCatalog(),
     validateLoadout: permissiveValidator,
+    validateDeck: permissiveDeckValidator,
     matches: createFakeMatchDirectory(),
     log: createRecordingLogger(),
   };

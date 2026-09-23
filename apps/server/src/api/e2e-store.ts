@@ -23,7 +23,9 @@
  *  - `tickets.insert` refuses a second open ticket for one profile (`tickets_profile_queued_key`,
  *    which `queue.ts` relies on as the race-proof half of "not already queued");
  *  - `loadouts.replace` refuses a card id that appears in two decks (`loadout_card_unique`, §9.4
- *    L4, "also enforced by a unique index on `(profile_id, card_id)`").
+ *    L4, "also enforced by a unique index on `(profile_id, card_id)`");
+ *  - `decks.create` counts and inserts in one step, so the cap holds (R171), and every `decks`
+ *    method is scoped by profile, so a foreign id reads as missing (R172).
  *
  * R111 IS A DATABASE TRIGGER, so it is implemented here rather than in a handler. SPEC §11 R111:
  * "Becoming `active` grants one copy of every non-token card, written by a trigger on the
@@ -49,6 +51,7 @@ import type {
   CodeAttempt,
   CollectionEntry,
   CollectionGrant,
+  DeckStore,
   InviteCode,
   MatchActionRow,
   MatchRow,
@@ -59,11 +62,13 @@ import type {
   ResultRow,
   Room,
   Store,
+  StoredDeck,
   StoredLoadout,
   Ticket,
 } from "./ports";
 
 type CollectionRow = { profileId: string; cardId: string; quantity: number };
+export type DeckRow = { profileId: string; deck: StoredDeck };
 
 type Tables = {
   profiles: Profile[];
@@ -72,6 +77,7 @@ type Tables = {
   collection: CollectionRow[];
   grants: CollectionGrant[];
   loadouts: { profileId: string; loadout: StoredLoadout }[];
+  decks: DeckRow[];
   matches: MatchRow[];
   matchActions: MatchActionRow[];
   rooms: Room[];
@@ -87,6 +93,7 @@ function emptyTables(): Tables {
     collection: [],
     grants: [],
     loadouts: [],
+    decks: [],
     matches: [],
     matchActions: [],
     rooms: [],
@@ -231,6 +238,73 @@ export function createInMemoryRedeem(deps: {
       await log("ok", "redeemed");
       return "ok";
     });
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SPEC §11 R171's deck library, in memory (`Store.decks`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared by both in-memory stores for the reason `createInMemoryRedeem` is: `test/db/contract.ts`
+ * runs against this module only, so a second copy in `test/fakes/store.ts` could drift unseen.
+ * `rows` is a getter because this store's `tx` replaces its tables on rollback where the unit-test
+ * fake restores them in place, and `call` is that fake's fault-injection hook. Ids are minted
+ * here, from a counter that never restarts, so no id is ever handed out twice.
+ *
+ * Each method finishes without awaiting in between, which is what makes `create`'s count and
+ * insert the one atomic step ports.ts asks for.
+ */
+export function createInMemoryDecks(deps: {
+  rows: () => DeckRow[];
+  call?: (method: string) => void;
+}): DeckStore {
+  let minted = 0;
+  const find = (profileId: string, deckId: string): DeckRow | undefined =>
+    deps.rows().find((row) => row.profileId === profileId && row.deck.id === deckId);
+
+  return {
+    list: async (profileId) => {
+      deps.call?.("decks.list");
+      return deps
+        .rows()
+        .filter((row) => row.profileId === profileId)
+        .map((row) => clone(row.deck))
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    get: async (profileId, deckId) => {
+      deps.call?.("decks.get");
+      const row = find(profileId, deckId);
+      return row === undefined ? null : clone(row.deck);
+    },
+    create: async (profileId, draft, at, max) => {
+      deps.call?.("decks.create");
+      if (deps.rows().filter((row) => row.profileId === profileId).length >= max) return null;
+      minted += 1;
+      const deck: StoredDeck = {
+        id: `deck-${String(minted)}`,
+        name: draft.name,
+        cards: [...draft.cards],
+        updatedAt: at,
+      };
+      deps.rows().push({ profileId, deck });
+      return clone(deck);
+    },
+    update: async (profileId, deckId, draft, at) => {
+      deps.call?.("decks.update");
+      const row = find(profileId, deckId);
+      if (row === undefined) return null;
+      row.deck = { id: deckId, name: draft.name, cards: [...draft.cards], updatedAt: at };
+      return clone(row.deck);
+    },
+    delete: async (profileId, deckId) => {
+      deps.call?.("decks.delete");
+      const rows = deps.rows();
+      const index = rows.findIndex((row) => row.profileId === profileId && row.deck.id === deckId);
+      if (index === -1) return false;
+      rows.splice(index, 1);
+      return true;
+    },
   };
 }
 
@@ -484,6 +558,12 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
       else row.loadout = loadout;
     },
   };
+
+  // -------------------------------------------------------------------------
+  // The deck library (R171)
+  // -------------------------------------------------------------------------
+
+  store.decks = createInMemoryDecks({ rows: () => tables.decks });
 
   // -------------------------------------------------------------------------
   // Matches (§9.3, §9.5)

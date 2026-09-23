@@ -549,4 +549,82 @@ end $$;
 reset role;
 rollback;
 
+\echo '### the deck library: own rows only, and no client write ###'
+begin;
+
+-- Something to hide and something to see: one library deck for each profile, inserted as the
+-- owner (the server's own path). The inserts either land or stop psql, so the counts below
+-- cannot pass on an empty table; the rollback at the end removes both, like every seed here.
+insert into public.decks (profile_id, name, cards) values
+  ('11111111-1111-1111-1111-111111111111', 'P1 deck', array['core-001']),
+  ('22222222-2222-2222-2222-222222222222', 'P2 deck', array['core-002']);
+
+-- CHECK 4's owner control: the owner can run the very insert the client is about to be refused,
+-- so the refusal is about privileges and not about a malformed statement.
+do $$
+begin
+  begin
+    insert into public.decks (profile_id, name, cards)
+    values ('11111111-1111-1111-1111-111111111111', 'Forged', array['core-001']);
+    raise exception 'owner-control-rollback';
+  exception when others then
+    if sqlerrm <> 'owner-control-rollback' then
+      raise exception
+        'FAIL (CHECK 5): the owner could not insert into decks ("%", %) — the refusal below would prove nothing',
+        sqlerrm, sqlstate;
+    end if;
+  end;
+end $$;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+
+\echo '-- decks: must be 1 (own row only)'
+select count(*) as decks_visible from public.decks;
+
+do $$
+declare
+  caller constant uuid := '11111111-1111-1111-1111-111111111111';
+  seen   bigint;
+begin
+  if current_user <> 'authenticated' then
+    raise exception 'FAIL (CHECK 5): running as %, not authenticated — SET LOCAL did not take',
+      current_user;
+  end if;
+
+  -- SPEC §9.1: "Deck library | Server validates and stores | Propose". A profile reads its own
+  -- library and nobody else's.
+  select count(*) into seen from public.decks;
+  if seen <> 1 or exists (select 1 from public.decks where profile_id <> caller) then
+    raise exception
+      'FAIL (CHECK 5): decks showed % row(s), expected only profile 1s one deck — another profiles library leaked',
+      seen;
+  end if;
+
+  -- …and writes none: every deck the server stores has passed the shared validator first.
+  begin
+    insert into public.decks (profile_id, name, cards)
+    values (caller, 'Forged', array['core-001']);
+    raise exception
+      'FAIL (CHECK 5): decks INSERT succeeded — a client saved a deck the validator never saw';
+  exception
+    when insufficient_privilege then
+      if sqlerrm not like '%decks%' then
+        raise exception 'FAIL (CHECK 5): decks INSERT was refused by "%" (%), which does not name the table',
+          sqlerrm, sqlstate;
+      end if;
+      raise notice 'OK (CHECK 5): decks INSERT refused — % (%)', sqlerrm, sqlstate;
+    when others then
+      if sqlerrm like 'FAIL%' then raise; end if;
+      raise exception
+        'FAIL (CHECK 5): decks INSERT raised "%" (%), not insufficient_privilege',
+        sqlerrm, sqlstate;
+  end;
+
+  raise notice 'OK (CHECK 5): profile 1 sees its own deck and not profile 2s, and cannot write one';
+end $$;
+
+reset role;
+rollback;
+
 \echo '### ALL RLS CHECKS RAN ###'

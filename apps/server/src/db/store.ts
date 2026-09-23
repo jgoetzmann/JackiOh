@@ -60,6 +60,7 @@ import type {
   ResultRow,
   Room,
   Store,
+  StoredDeck,
   StoredLoadout,
   Ticket,
   TicketStatus,
@@ -420,6 +421,20 @@ function toResult(row: ResultDbRow): ResultRow {
     ratingAfter: [row.p1_rating_after, row.p2_rating_after],
   };
 }
+
+type DeckRow = { id: string; name: string; cards: string[]; updated_at: Date };
+
+const DECK_COLUMNS = `id, name, cards, updated_at`;
+
+function toDeck(row: DeckRow): StoredDeck {
+  return { id: row.id, name: row.name, cards: row.cards, updatedAt: msOf(row.updated_at) };
+}
+
+/**
+ * A deck id arrives from a URL or a request body, and `decks.id` is a uuid: anything else names no
+ * row, which R172 says reads as not found — not as the cast error Postgres would raise for it.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 type RoomRow = {
   id: string;
@@ -959,6 +974,83 @@ function buildStore(session: Session): Store {
         `select app.save_loadout($1::uuid, $2::text, $3::jsonb)`,
         [profileId, catalogVersion, json(payload)],
       );
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // The deck library (SPEC §11 R171). No `app.*` function: migration 0006 has none, because the
+  // server validates with the shared validator and is the table's only writer. Every statement is
+  // scoped by `profile_id`, so another profile's id is a miss like any other (R172). `at` is not
+  // written: see KNOWN DIVERGENCES (deck timestamps).
+  // -------------------------------------------------------------------------
+
+  store.decks = {
+    list: async (profileId) => {
+      const { rows } = await session.query<DeckRow>(
+        profileId,
+        `select ${DECK_COLUMNS} from public.decks where profile_id = $1::uuid
+          order by updated_at desc, id`,
+        [profileId],
+      );
+      return rows.map(toDeck);
+    },
+
+    get: async (profileId, deckId) => {
+      if (!UUID.test(deckId)) return null;
+      const { rows } = await session.query<DeckRow>(
+        profileId,
+        `select ${DECK_COLUMNS} from public.decks where id = $2::uuid and profile_id = $1::uuid`,
+        [profileId, deckId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toDeck(row);
+    },
+
+    /**
+     * R171's cap, counted under a lock on the profile row: a second create for the same profile
+     * waits at the `for update` until the first commits and then counts its deck, so two racing
+     * creates at `max - 1` land exactly one. One transaction on its own, or the caller's inside
+     * `Store.tx`, where the lock is held to the caller's commit.
+     */
+    create: async (profileId, draft, _at, max) =>
+      session.run(profileId, async (q) => {
+        await q(`select 1 from public.profiles where id = $1::uuid for update`, [profileId]);
+        const { rows } = await q<{ n: number }>(
+          `select count(*)::int as n from public.decks where profile_id = $1::uuid`,
+          [profileId],
+        );
+        if (intOf(rows[0]?.n ?? 0) >= max) return null;
+        const inserted = await q<DeckRow>(
+          `insert into public.decks (profile_id, name, cards) values ($1::uuid, $2::text, $3::text[])
+           returning ${DECK_COLUMNS}`,
+          [profileId, draft.name, [...draft.cards]],
+        );
+        const row = inserted.rows[0];
+        if (row === undefined) throw new Error(`decks.create wrote no row for ${profileId}`);
+        return toDeck(row);
+      }),
+
+    update: async (profileId, deckId, draft, _at) => {
+      if (!UUID.test(deckId)) return null;
+      const { rows } = await session.query<DeckRow>(
+        profileId,
+        `update public.decks set name = $3::text, cards = $4::text[]
+          where id = $2::uuid and profile_id = $1::uuid
+        returning ${DECK_COLUMNS}`,
+        [profileId, deckId, draft.name, [...draft.cards]],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toDeck(row);
+    },
+
+    delete: async (profileId, deckId) => {
+      if (!UUID.test(deckId)) return false;
+      const { rowCount } = await session.query(
+        profileId,
+        `delete from public.decks where id = $2::uuid and profile_id = $1::uuid`,
+        [profileId, deckId],
+      );
+      return affected(rowCount) === 1;
     },
   };
 
@@ -1505,6 +1597,11 @@ function countCards(deck: readonly string[]): { card_id: string; count: number }
 //  * action timestamps. `app.append_match_action` stamps `at` with the database clock and
 //    `match_actions` is append-only, so `MatchActionRow.at` cannot be written by the caller. The
 //    log's order (`seq`) is unaffected, and nothing reads `at` back except a replay tool.
+//  * deck timestamps. `decks.updated_at` is stamped by the `decks_set_updated_at` trigger (migration
+//    0006, `app.set_updated_at`), which overwrites any value an UPDATE supplies, so the database
+//    clock stamps both the insert (the column default) and every update, and the `at` the port
+//    carries is written only by the in-memory stores. Only the list order reads it back, and the
+//    two clocks agree on that order.
 //  * ticket slot. `tickets.slot` is `not null check (slot between 1 and 3)` and `Ticket` carries no
 //    deck index — the frozen deck travels instead — so every ticket is written with slot 1.
 //  * rooms. There is no `rooms` table: a room is a `public.matches` row with `status = 'open'`, and

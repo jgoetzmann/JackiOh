@@ -7,50 +7,37 @@
  * apply here too, because they are the same assertions §9.5 makes about entering a match:
  *
  *  - the account is active (the route's `auth: "active"`, §9.4) and not already in a match;
- *  - the loadout is re-validated at match time, not trusted from save time (§9.4: "checked by one
- *    validator module shared by client and server, at save and again at queue");
- *  - the chosen deck is frozen into the room the moment it is created, so editing the loadout
- *    afterwards cannot change the match (§9.4, §9.5);
+ *  - the deck is re-validated at match time, not trusted from save time (§9.4: "checked by one
+ *    validator module shared by client and server, at save and again at queue"), whether it is a
+ *    loadout deck or, R172, a library deck;
+ *  - the chosen deck is frozen into the room the moment it is created, so editing the loadout or
+ *    the library afterwards cannot change the match (§9.4, §9.5);
  *  - `rooms.claim` is the atomic single-claim, so the loser of a join race gets a 409 and never a
  *    second match.
  */
 
 import { normalizeCode, isWellFormedCode } from "../api/crypto";
+import { deckChoiceOf, frozenDeckFor, type FrozenDeck } from "../api/decks";
 import { ApiError, ok, route, type ApiRequest, type Route } from "../api/http";
 import { seedOverrideOf } from "../api/queue";
 import { ROOM_CODE_LENGTH } from "../config";
-import type { Room, ServerDeps, StoredLoadout } from "../api/ports";
+import type { DeckChoice, Room, ServerDeps } from "../api/ports";
 
 /**
- * `src/api/loadouts.ts` (M6-T3) is another agent's file. Its two exports are taken through this
- * seam so this module typechecks and tests before that file lands, and so a test can drive the
- * room endpoints without a real collection ledger. The signatures are the fixed ones.
+ * The deck a room freezes is taken through this seam so a test can drive the room endpoints without
+ * a real collection ledger. It began as a dynamic import of `src/api/loadouts.ts`, another agent's
+ * file that had not landed yet; since R172 the one function behind it is `frozenDeckFor`
+ * (`src/api/decks.ts`), which runs the loadout path through `loadouts.ts` exactly as before and
+ * adds the library path beside it.
  */
 export type LoadoutsModule = {
-  /** §9.4: re-validate at match time; throws an `ApiError` when the loadout no longer passes. */
-  validateStoredLoadout: (
-    deps: ServerDeps,
-    profileId: string,
-    catalogVersion: string,
-  ) => Promise<StoredLoadout>;
-  deckFor: (loadout: StoredLoadout, deckIndex: number) => string[];
+  /** §9.4: re-validate at match time and copy; throws an `ApiError` when the deck no longer passes. */
+  frozenDeckFor: (deps: ServerDeps, profileId: string, choice: DeckChoice) => Promise<FrozenDeck>;
 };
 
 export type LoadLoadouts = () => Promise<LoadoutsModule>;
 
-let cachedLoadouts: Promise<LoadoutsModule> | null = null;
-
-/**
- * The specifier is held in a variable for the same reason `match/engine.ts` does it: the module it
- * names is not in the tree yet, and nothing here should fail to compile because of that. Make this
- * a static `import { deckFor, validateStoredLoadout } from "../api/loadouts"` the day M6-T3 lands.
- */
-function loadLoadoutsModule(): Promise<LoadoutsModule> {
-  if (cachedLoadouts !== null) return cachedLoadouts;
-  const specifier = "../api/loadouts";
-  cachedLoadouts = import(specifier).then((mod: LoadoutsModule) => mod);
-  return cachedLoadouts;
-}
+const loadLoadoutsModule: LoadLoadouts = async () => ({ frozenDeckFor });
 
 /**
  * SPEC §11 R149: a room code "is minted by retrying a bounded number of times against the codes
@@ -156,15 +143,14 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
   const create = route("POST", "/api/rooms", "active", async (req, deps) => {
     const profileId = profileOf(req);
     assertNotInMatch(req);
-    const deckIndex = deckIndexOf(req.body);
+    const choice = deckChoiceOf(req.body, deckIndexOf);
     // R143: an optional `seed`, accepted only by an end-to-end test server and rejected — never
     // ignored — anywhere else. Read before any work is done, so a production caller that sends one
     // gets the 400 without a room being made.
     const seed = seedOverrideOf(deps, req.body);
 
-    const { validateStoredLoadout, deckFor } = await loadLoadouts();
-    const loadout = await validateStoredLoadout(deps, profileId, deps.catalog.version);
-    const deck = deckFor(loadout, deckIndex);
+    const { frozenDeckFor } = await loadLoadouts();
+    const { deck } = await frozenDeckFor(deps, profileId, choice);
 
     const now = deps.timers.now();
     const expiresAt = now + deps.limits.roomCodeTtlMs;
@@ -189,7 +175,7 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
       // consumed and never dropped (`queue.ts` waits for its insert for the same reason).
       if (seed !== null) rememberSeed(code, seed, expiresAt, now);
       deps.log.info("room.created", { code, hostProfileId: profileId });
-      return ok({ code, expiresAt, deckIndex });
+      return ok({ code, expiresAt, ...choice });
     }
 
     deps.log.alert("room.code.exhausted", { attempts: CODE_ATTEMPTS });
@@ -200,7 +186,7 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
   const join = route("POST", "/api/rooms/:code/join", "active", async (req, deps) => {
     const profileId = profileOf(req);
     assertNotInMatch(req);
-    const deckIndex = deckIndexOf(req.body);
+    const choice = deckChoiceOf(req.body, deckIndexOf);
     // R143 again: both room endpoints accept the field in end-to-end mode and both refuse it
     // outside one. A spec that seeds the join rather than the create still gets its seed.
     const joinerSeed = seedOverrideOf(deps, req.body);
@@ -211,9 +197,8 @@ export function createRoomRoutes(loadLoadouts: LoadLoadouts = loadLoadoutsModule
       throw new ApiError("conflict", "you created that room; wait for someone to join");
     }
 
-    const { validateStoredLoadout, deckFor } = await loadLoadouts();
-    const loadout = await validateStoredLoadout(deps, profileId, deps.catalog.version);
-    const deck = deckFor(loadout, deckIndex);
+    const { frozenDeckFor } = await loadLoadouts();
+    const { deck } = await frozenDeckFor(deps, profileId, choice);
 
     const matchId = deps.ids.uuid();
     const now = deps.timers.now();
