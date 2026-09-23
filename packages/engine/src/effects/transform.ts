@@ -4,23 +4,14 @@
 // (R35). Vanilla is a flag the layers read (§10.4): stats, buffs and damage are other layers and
 // must survive it, and the definition is shared by every copy of the card, so it is never edited.
 
-import type { CardDef, CardType, Row } from "@jackioh/shared";
+import type { CardDef, CardType, PlayerId, Row } from "@jackioh/shared";
+import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf } from "../catalog";
 import { unitHas } from "../layers";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, newInstance, type CardInstance } from "../state";
-import {
-  isLocked,
-  isReserved,
-  moveToZone,
-  placeOnField,
-  removeFromAnyZone,
-  removeFromField,
-  slotOf,
-  zoneOf,
-  type OffFieldZone,
-} from "../zones";
-import { resolveTarget, type TargetSpec } from "./targets";
+import { newInstance, type CardInstance } from "../state";
+import { ceaseToExist, moveToZone, replaceInZone, slotOf, zoneOf, type OffFieldZone } from "../zones";
+import { instanceOnItsStay, resolveTarget, type TargetSpec } from "./targets";
 
 /**
  * Which card to rewrite: the pick the play or a prompt carried (R81), or an instance id a trigger
@@ -29,7 +20,8 @@ import { resolveTarget, type TargetSpec } from "./targets";
 export type TransformTarget = { target?: TargetSpec; instanceId?: string };
 
 function instanceOf(ctx: EffectContext, args: TransformTarget): CardInstance | null {
-  if (args.instanceId !== undefined) return findInstance(ctx.state, args.instanceId) ?? null;
+  // R174: a card named by id is aimed at the stay it had when the run began (`instanceOnItsStay`).
+  if (args.instanceId !== undefined) return instanceOnItsStay(ctx, args.instanceId);
   const target = resolveTarget(ctx, args.target ?? { of: "chosen" });
   if (target === null || target.kind !== "unit") return null;
   return target.instance;
@@ -43,26 +35,18 @@ function rowFor(type: CardType): Row | null {
 }
 
 /**
- * The replaced card ceases to exist: no graveyard, no exile pile, no Death trigger (§6.3, R35).
- * `moveToZone` is for cards that land somewhere, so this takes the card out of its zone and leaves
- * the instance pointing nowhere — the shape R11 gives a vanished token.
+ * §6.3 Replace: the same zone and position, with the old card's owner and controller. The new card
+ * takes the old one's place (`zones.replaceInZone`) rather than being summoned into an emptied zone:
+ * a Transform result is no summon (§6.2), so the Lock §3.2 puts on a zone — "accepts no summons … the
+ * current occupant is unaffected" — does not refuse it, and neither does a reservation (R64). #36
+ * Magic Jammed locks the zone of a Heroic Power it could not destroy (R46), and radiant #36 locks
+ * the zone of a card it could not steal (R15); R35 still replaces either. A Stack pile keeps its
+ * dormant cards beneath the replacement (§3.2).
  */
-function ceaseToExist(ctx: EffectContext, card: CardInstance): void {
-  removeFromAnyZone(ctx.state, card);
-  // R86: "gone" is the zone for a card that ceased to exist. Tagging it `exile` instead would let
-  // it answer as a card in the exile pile, which it is not — it is in no pile at all.
-  card.zone = { z: "gone", player: card.owner };
-}
-
-/** §6.3 Replace: the same zone and position, with the old card's owner and controller. */
 function replaceOnField(ctx: EffectContext, old: CardInstance, def: CardDef, radiant: boolean): CardInstance | null {
   const at = slotOf(ctx.state, old);
   if (at === null) return null;
   if (rowFor(def.type) !== at.row) return null;
-  // Checked before the old card leaves its zone, exactly as a summon does (§3.2): `placeOnField`
-  // refuses a Locked or reserved zone, and a refusal after the removal would delete a card for
-  // nothing. Nothing in Core locks an occupied zone, so no Core transform is stopped by this.
-  if (isLocked(ctx.state, at) || isReserved(ctx.state, at)) return null;
 
   const replacement = newInstance(ctx.state, def.id, old.owner, zoneOf(at));
   replacement.radiant = radiant;
@@ -70,14 +54,10 @@ function replaceOnField(ctx: EffectContext, old: CardInstance, def: CardDef, rad
   // A new body enters the field this turn, so it is summoning sick like a summoned card (§4.1).
   replacement.summonedTurn = ctx.state.turn;
 
-  removeFromField(ctx.state, old);
-  // `stack: true` keeps a Stack pile intact: the replacement becomes the top and the dormant cards
-  // beneath stay where they are (§3.2). The zone is empty in every other case, so it is a no-op.
-  if (!placeOnField(ctx.state, replacement, at, { stack: true })) {
-    placeOnField(ctx.state, old, at, { stack: true });
-    return null;
-  }
-  ceaseToExist(ctx, old);
+  if (!replaceInZone(ctx.state, old, replacement)) return null;
+  // The replaced card ceases to exist: no graveyard, no exile pile, no Death trigger (§6.3, R35) —
+  // and it has left the field, which R174 counts like any departure (`zones.ceaseToExist`).
+  ceaseToExist(ctx.state, old);
   // §3.2: a Field Spell is public where a Trap stays face-down until it fires (R33).
   if (def.type === "Field Spell") replacement.faceUp = true;
   return replacement;
@@ -102,7 +82,7 @@ function replaceOffField(ctx: EffectContext, old: CardInstance, def: CardDef, ra
   const index = pile.findIndex((card) => card.id === old.id);
   if (index < 0) return null;
 
-  ceaseToExist(ctx, old);
+  ceaseToExist(ctx.state, old);
   const replacement = newInstance(ctx.state, def.id, owner, { z: at, player: owner });
   replacement.radiant = radiant;
   moveToZone(ctx.state, replacement, at, { position: index });
@@ -120,11 +100,16 @@ export function transform(args: TransformTarget & { defId: string; radiant?: boo
     apply(ctx): void {
       const old = instanceOf(ctx, args);
       if (old === null) return;
-      if (unitHas(ctx.state, old, "Immutable")) return;
+      // R23: Immutable blocks a Transform, which is what a Replace is on the field (§6.3). Off the
+      // field a Replace is no Transform — the card is not rewritten, it ceases to exist and another
+      // takes its place — so R35's "other zones: any card from the pool, same counts" replaces an
+      // Immutable card too, and a library keeps its count whatever it held (§9.1).
+      if (old.zone.z === "field" && unitHas(ctx.state, old, "Immutable")) return;
 
       const def = defOf(ctx.state, args.defId);
       const radiant = args.radiant === true;
       const fromDefId = old.defId;
+      const hiddenFrom = unreadableBy(ctx, old);
       const replacement =
         old.zone.z === "field"
           ? replaceOnField(ctx, old, def, radiant)
@@ -137,9 +122,25 @@ export function transform(args: TransformTarget & { defId: string; radiant?: boo
         fromDefId,
         toDefId: replacement.defId,
         newInstanceId: replacement.id,
+        ...(hiddenFrom.length === 0 ? {} : { hiddenFrom }),
       });
     },
   };
+}
+
+/**
+ * R177: who could not read this card where it is, read before it ceases to exist there — a library
+ * card is hidden from both players (§9.1), a hand card from the other one, and a face-down trap from
+ * everyone but its controller (R33). A card that ceases to exist leaves no zone of its own to be
+ * judged by later, so the event records this for the view.
+ */
+function unreadableBy(ctx: EffectContext, card: CardInstance): PlayerId[] {
+  const zone = card.zone;
+  if (zone.z === "library") return [...PLAYER_IDS];
+  if (zone.z === "hand") return [opponentOf(zone.player)];
+  if (zone.z !== "field" || zone.row !== "backrow" || card.faceUp === true) return [];
+  const type = defOf(ctx.state, card.defId).type;
+  return type === "Trap" || type === "Field Trap" ? [opponentOf(card.controller)] : [];
 }
 
 /**

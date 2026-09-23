@@ -5,7 +5,8 @@
 // refresh Hinder lowers is a concrete number: 4 − 1 = 3 base, 4 − 2 = 2 radiant. The floor needs a
 // refresh smaller than 2, which only the opening turns have, so that fixture starts at turn 1 and
 // uses `startTurn()` to take p1's draw before p2 has ever refreshed: p2's first refresh is 1, and
-// 1 − 2 floors at 0 rather than going negative (§2.3 `maxManaFor`).
+// 1 − 2 floors at 0 rather than going negative (§2.3 `refreshMana`). Hinder lowers the refresh, not
+// max mana: §2.3's max is min(turns, 4) plus persistent modifiers, and the one-shot rider is not one.
 //
 // Both sides keep a unit on the board and a card in hand throughout, or the engine's "nothing
 // meaningful left" rule would auto-end turns the fixture means to take (harness header).
@@ -68,7 +69,7 @@ describe("#21 Hinder", () => {
 
       expect(s.state.active).toBe("p2");
       s.expectMana("p2", 3);
-      expect(s.view("p2").you.mana.max).toBe(3);
+      expect(s.view("p2").you.mana).toEqual({ current: 3, max: 4 });
     });
 
     it("the modifier is one-shot: the refresh after that is back to 4 (§2.3)", () => {
@@ -93,7 +94,7 @@ describe("#21 Hinder", () => {
       s.endTurn();
 
       s.expectMana("p2", 2);
-      expect(s.view("p2").you.mana.max).toBe(2);
+      expect(s.view("p2").you.mana).toEqual({ current: 2, max: 4 });
     });
 
     it("still casts itself on draw and draws again", () => {
@@ -115,14 +116,14 @@ describe("#21 Hinder", () => {
       s.endTurn(); // p2's first turn: the refresh.
       expect(s.state.active).toBe("p2");
       s.expectMana("p2", 0);
-      expect(s.view("p2").you.mana.max).toBe(0);
+      expect(s.view("p2").you.mana).toEqual({ current: 0, max: 1 });
     });
   });
 
   it("both faces are Cast on draw and declare nothing else (§8.2 Engine)", () => {
     expect(base.staticFlags?.castOnDraw).toBe(true);
     expect(radiant.staticFlags?.castOnDraw).toBe(true);
-    // The repeat draw and the 0 floor belong to `drawOne` and `maxManaFor`, not to this card.
+    // The repeat draw and the 0 floor belong to `drawOne` and `refreshMana`, not to this card.
     expect(base.targets).toBeUndefined();
     expect(base.modes).toBeUndefined();
     expect(radiant.targets).toBeUndefined();

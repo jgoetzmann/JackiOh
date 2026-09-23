@@ -151,7 +151,8 @@ describe("the damage pipeline (§4.4, M2-T3)", () => {
       combat: true,
     });
     expect(target.damage).toBe(3);
-    expect(target.lastDamagedBy).toBe(source.id);
+    // R42: the hit left the unit standing, so it killed nothing and credits no killer.
+    expect(target.lastDamagedBy).toBeUndefined();
 
     state.players.p2.hero.armor = 1;
     expect(hit(sink, null, onHero("p2"), 4)).toBe(3);

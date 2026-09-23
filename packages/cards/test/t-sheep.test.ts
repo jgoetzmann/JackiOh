@@ -1,17 +1,20 @@
 // T-sheep Sheep Token (SPEC §7; §3.2, §6.3, R11, R41, R74). BUILD M4-T4's token row: "Vanish on
 // leaving the field; Sheep counts 2 toward Tribute; … none in random pools".
 //
-// §7 gives this token NO radiant form, so both `describe`s below prove the same behaviour, once on
-// each face, and the data block proves the faces are one face (`def.radiant` equals `def.base`).
+// §7 gives this token a radiant face, 2/2 and worth 3 Tributes, so the `describe`s below prove the
+// base and the radiant behaviour, and the data block proves each face's numbers.
 //
-// The "worth 2 Tributes" rule is the play validator's, not this card's (see `src/scripts/t-sheep.ts`),
-// so it is asserted through the engine's own `tributeValueOf`/`legalTributeUnits` (playChoices.ts).
+// The "worth 2 Tributes" rule is the face's static flag, which the play validator reads (see
+// `src/scripts/t-sheep.ts`), so it is asserted through the engine's own
+// `tributeValueOf`/`legalTributeUnits` (playChoices.ts).
 // §6.3's second half — "a tribute written into a card's script is an ordinary Sacrifice … where the
 // Sheep Token's 2 never applies" — is proved end to end with #22 Carnivorous Cube, the one shipped
 // card that tributes from its own text (R41).
 
 import { describe, expect, it } from "vitest";
 import {
+  RADIANT_SHEEP_TRIBUTE_VALUE,
+  SHEEP_TRIBUTE_VALUE,
   findInstance,
   isUnitToken,
   keywordsOf,
@@ -47,9 +50,9 @@ describe("T-sheep Sheep Token (SPEC §7)", () => {
       expect(def.base.attack, "and the base face is untouched at 1/1").toBe(1);
     });
 
-    it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
-      expect(base).toEqual({});
-      expect(radiant).toBe(base);
+    it("§7 each face's script is its worth toward a Tribute and nothing else (§3.2, R102)", () => {
+      expect(base).toEqual({ staticFlags: { tributeWorth: SHEEP_TRIBUTE_VALUE } });
+      expect(radiant).toEqual({ staticFlags: { tributeWorth: RADIANT_SHEEP_TRIBUTE_VALUE } });
     });
   });
 
@@ -161,8 +164,8 @@ describe("T-sheep Sheep Token (SPEC §7)", () => {
     });
   });
 
-  // §7's "Radiant form" column reads "none", so every case above holds for a radiant instance too:
-  // R74 sets the flag, and the flag selects the same face and the same (empty) Script.
+  // §7's radiant face: R74 sets the flag, and the flag selects the 2/2 face and its Script, whose
+  // worth is 3.
   describe("radiant (§7: 2/2, worth 3 Tributes)", () => {
     it("R74 a radiant Sheep Token is a 2/2 with no keywords", () => {
       const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-sheep", radiant: true }] } });

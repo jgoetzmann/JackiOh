@@ -503,9 +503,12 @@ describe("#93 Combo-Index — step B (R60)", () => {
     s.play(FODDER[1]).play(FODDER[2]).play(FODDER[3]).endTurn();
 
     expect(gradeOf(s)).toBe(B);
-    // Step E copied a Radiant card (R27), so nothing non-Radiant is left for step B to pick.
+    // Step E copied a Radiant card (R27), so nothing non-Radiant is left for step B to pick, and
+    // nothing changes. R177: the pick is still cued once, on a hand card that was Radiant already.
     expect(s.hand("p1").every((card) => card.radiant)).toBe(true);
-    expect(ofType(s, "radiantSet")).toEqual([]);
+    const cues = ofType(s, "radiantSet");
+    expect(cues).toHaveLength(1);
+    expect(s.hand("p1").some((card) => card.id === cues[0]?.instanceId)).toBe(true);
   });
 });
 

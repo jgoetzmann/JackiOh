@@ -6,6 +6,7 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { BACKROW_ZONES, UNIT_ZONES } from "./config";
 import { defOf } from "./catalog";
 import type { CardInstance, GameState, Pile, PlayerState } from "./state";
+import { noteFieldExit } from "./stays";
 
 export type ZoneSlot = { player: PlayerId; row: Row; lane: number };
 
@@ -142,6 +143,31 @@ export function placeOnField(
   return true;
 }
 
+/**
+ * §6.3 Replace on the field: the new card takes the old one's place — the same zone, and the same
+ * place in a Stack pile — under the same controller. That is no summon, so §3.2's Lock ("the zone
+ * accepts no summons … the current occupant is unaffected") and R64's reservation do not refuse it:
+ * the zone was occupied before and is occupied after. Returns false, changing nothing, when the old
+ * card is not on the field. The old card is left pointing at its zone for the caller to retire.
+ */
+export function replaceInZone(state: GameState, old: CardInstance, replacement: CardInstance): boolean {
+  const zone = old.zone;
+  if (zone.z !== "field") return false;
+  const side = state.players[zone.player];
+  if (zone.row === "units") {
+    const pile = side.units[zone.lane - 1] ?? null;
+    if (pile === null || !pile.some((card) => card.id === old.id)) return false;
+    side.units[zone.lane - 1] = pile.map((card) => (card.id === old.id ? replacement : card));
+  } else {
+    if (side.backrow[zone.lane - 1]?.id !== old.id) return false;
+    side.backrow[zone.lane - 1] = replacement;
+  }
+  replacement.controller = zone.player;
+  replacement.zone = { ...zone };
+  if (zone.row === "units") replacement.position ??= "ATK";
+  return true;
+}
+
 /** Take a card off the field; the card beneath a Stack resumes acting (§3.2). */
 export function removeFromField(state: GameState, instance: CardInstance): boolean {
   for (const player of PLAYER_IDS) {
@@ -185,6 +211,10 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
       const at = pile.findIndex((card) => card.id === instance.id);
       if (at >= 0) {
         pile.splice(at, 1);
+        // R155: §5.1's end-of-turn return belongs to the Spell its own play landed in the graveyard
+        // (§10.5 step 7). A card that leaves the graveyard has spent that landing, so whatever puts
+        // it back there this turn — a discard (#76), a burn — is no play of its, and it stays (R153).
+        if (zone === "graveyard") delete instance.returnToHandAtEndOfTurn;
         return;
       }
     }
@@ -199,7 +229,11 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
   }
 }
 
-/** R78: leaving the field resets an instance, while costMod, costOverride and radiant persist. */
+/**
+ * R78: leaving the field resets an instance, while costMod, costOverride and radiant persist. R215
+ * applies the same reset to a hand or library card that reaches a graveyard or exile, and to a card
+ * leaving the resolving zone once its play is over.
+ */
 export function resetInstance(instance: CardInstance): void {
   instance.damage = 0;
   instance.buffs = { attack: 0, health: 0 };
@@ -221,6 +255,65 @@ export function resetInstance(instance: CardInstance): void {
   delete instance.divineShieldSpent;
   delete instance.markedDestroyed;
   delete instance.rebornSpent;
+}
+
+/**
+ * R174: drop the delayed effects aimed at a card that is leaving the field (`DelayedEffect.watch`).
+ * The card that may later stand in the same zone under the same id — bounced and replayed, or back
+ * through Reborn — is a new arrival (R78, R83), and an effect aimed at the old one fizzles (R76).
+ */
+function forgetWatchers(state: GameState, instanceId: string): void {
+  if (!state.delayed.some((effect) => effect.watch === instanceId)) return;
+  state.delayed = state.delayed.filter((effect) => effect.watch !== instanceId);
+}
+
+/** The zones a queue entry names when the card answered from the field (`triggers.queueTrigger`). */
+const FIELD_TRIGGER_ZONES: readonly unknown[] = ["field", "backrow"];
+
+/**
+ * R174: drop the triggers and turn hooks this card queued while it stood on the field. They belong
+ * to that stay: a Reborn body or a replayed card under the same id is a reset instance that has
+ * entered the field again (R78, R83), so an entry queued before it left — #91's Plague Token for the
+ * hit that killed it, #37's start-of-turn hook queued before it died — never acts on what came
+ * back. Without Reborn the entry already fizzled, because a card in a graveyard answers none of
+ * its field triggers (R153); this makes the card that returns answer none of them either.
+ */
+function forgetQueuedTriggers(state: GameState, instanceId: string): void {
+  const owned = (entry: GameState["triggerQueue"][number]): boolean =>
+    entry.instanceId === instanceId && FIELD_TRIGGER_ZONES.includes(entry.resume.data.zone);
+  if (!state.triggerQueue.some(owned)) return;
+  state.triggerQueue = state.triggerQueue.filter((entry) => !owned(entry));
+}
+
+/**
+ * R86: a card ceases to exist — replaced by a Transform (R35), fused away (R77), or a unit token
+ * leaving the field (R11) — and is in no pile afterwards, which is the `{ z: "gone" }` zone. One
+ * that ceases to exist ON the field has left it, as a destroyed or bounced card has (R174): the
+ * departure is counted, so a trap later in the same dispatch meets a play the first Sheepish turned
+ * into a Sheep as a card no longer in play (`traps.standingEvent`), and the delayed effects and
+ * queued triggers aimed at that stay end with it, as `moveToZone` ends them for a card that lands.
+ */
+export function ceaseToExist(state: GameState, instance: CardInstance): void {
+  const wasOnField = instance.zone.z === "field";
+  removeFromAnyZone(state, instance);
+  if (wasOnField) {
+    noteFieldExit(state, instance.id);
+    forgetWatchers(state, instance.id);
+    forgetQueuedTriggers(state, instance.id);
+  }
+  instance.zone = { z: "gone", player: instance.owner };
+}
+
+/**
+ * §2.3: X and the embiggen price are chosen at play time and stored on the played instance, and
+ * R65 has an X-cost card cost 0 and an embiggen card its base price everywhere outside play. So the
+ * choice ends with the play: a Spell that leaves the resolving zone (to its graveyard, to exile, or
+ * straight to a hand) drops it, as R78's reset drops it from a permanent leaving the field. Without
+ * this #24 Efficiency Dividend returned to hand at the X it was last played for.
+ */
+function endPlayChoices(instance: CardInstance): void {
+  delete instance.x;
+  delete instance.embiggened;
 }
 
 export type MoveResult = "moved" | "vanished";
@@ -247,6 +340,14 @@ export function moveToZone(
   const wasOnField = from === "field";
   const token = isUnitToken(state, instance);
   removeFromAnyZone(state, instance);
+  // R174: leaving the field ends every delayed effect aimed at this card and every trigger it
+  // queued there, whatever comes back, and ends the stay every effect aimed at it was aimed at.
+  if (wasOnField) {
+    noteFieldExit(state, instance.id);
+    forgetWatchers(state, instance.id);
+    forgetQueuedTriggers(state, instance.id);
+  }
+  if (from === "resolving") endPlayChoices(instance);
 
   // R11: a unit token ceases to exist when it leaves the field, and a unit-token card ceases to
   // exist when it would reach a graveyard or exile. One may live in a hand or library (#75) and
@@ -266,7 +367,14 @@ export function moveToZone(
     return "vanished";
   }
 
-  if (wasOnField && options.keepState !== true) resetInstance(instance);
+  // R215: a card that reaches a graveyard or an exile pile from a hand or a library is reset too, so
+  // what comes back from there is the printed card (#89's hand buffs, #98's rolled power, R151) —
+  // R78's reset, with `costMod`, `costOverride` and `radiant` kept in every zone as R78 keeps them.
+  // So is a card that lands from the resolving zone (§10.5 step 7): its play is over, and a #95 an
+  // earlier Call to Chaos cast (R87) carries no link of that chain (R28) back into a play of its own.
+  const pileToPile = (from === "hand" || from === "library") && (zone === "graveyard" || zone === "exile");
+  const landed = from === "resolving";
+  if ((wasOnField || pileToPile || landed) && options.keepState !== true) resetInstance(instance);
 
   const side = state.players[instance.owner];
   const pile = pileFor(side, zone);

@@ -21,6 +21,7 @@ import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { DRAW_OFFER_BLOCK_TURNS, TURN_CAP_PLAYER_TURNS } from "./config";
 import { draw } from "./draw";
+import { endGame } from "./gameOver";
 import { manaEvent, refreshMana } from "./mana";
 import { dropDelayed, dueDelayed, expireModifiers } from "./modifiers";
 import { runResume } from "./prompts";
@@ -28,8 +29,8 @@ import type { EngineSink, HookName } from "./resolve";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
-import { runTrapWindow } from "./traps";
-import { queueHooksInTriggerOrder, settle } from "./triggers";
+import { endHandedOverTurn, runTrapWindow } from "./traps";
+import { dispatchPending, queueHooksInTriggerOrder, settle } from "./triggers";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, cardAt, slotsOf } from "./zones";
 
@@ -77,14 +78,60 @@ export function triggerOrder(sink: EngineSink, hook: HookName, only?: PlayerId):
  * `prompts.applyResumable`, the entries still due stay in `state.delayed`, and the caller parks the
  * rest of the turn boundary — which is what brings this function back for them.
  */
-function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId): void {
-  for (const effect of dueDelayed(sink.state, phase, player)) {
+function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId, dueBefore: number): void {
+  // R62, R68: the delayed effects due at this point are the ones that exist as it begins. One made
+  // while the stage is resolving — by the answer to an earlier one's question, say — is due at the
+  // next such point, as it is when nothing asks: `dueBefore` is the creation mark the stage began
+  // at, which a pause carries to the step that picks the stage up (R113).
+  for (const effect of dueDelayed(sink.state, phase, player).filter((due) => due.seq < dueBefore)) {
     // One entry at a time in R68's order: a prompt, or a game that has just ended, stops the run.
     if (isPaused(sink)) return;
+    // R174: an earlier entry's resolution can end a later one — the state check after #50's first
+    // steal kills a second steal's target, and `zones.forgetWatchers` drops the entry aimed at it
+    // even if Reborn brings the card straight back. The list above was read before either ran, so
+    // an entry is run only while `state.delayed` still holds it.
+    if (!sink.state.delayed.some((due) => due.id === effect.id)) continue;
     dropDelayed(sink.state, effect.id);
     runResume(sink, effect.resume, { controller: effect.owner });
-    stateCheck(sink);
+    // R59: the check runs after the whole delayed effect, never between its parts. One that asked
+    // is not whole yet — the answer finishes it — so the check is owed to the step that picks the
+    // boundary up after it (`checkBeforeDelayed`), before the next delayed effect runs (R174).
+    if (isPaused(sink)) return;
+    if (!checkAfterDelayed(sink)) return;
   }
+}
+
+/**
+ * §10.3 after one whole delayed effect: its events go to the traps, which fire at once as responses
+ * (a trap answering #50's first steal resolves before the second steal does), and then the state
+ * check (R59). The other triggers they wake are queued and wait for the stage's own loop, in R68's
+ * order behind every delayed effect due (`startOfTurnSettle`, `endOfTurnDelayedSettle`). False when a
+ * trap's question or a Death hook's paused the stage, or the game ended.
+ */
+function checkAfterDelayed(sink: EngineSink): boolean {
+  // The check's own events — the deaths it collects, their Death hooks, a Reborn body — are the
+  // delayed effect's consequences too, so the traps answer them before the next delayed effect
+  // resolves (§10.3: `settle` dispatches a check's events before anything else), and what those
+  // traps did is checked in turn, until nothing more is said (§4.5, R59).
+  for (;;) {
+    dispatchPending(sink);
+    if (isPaused(sink)) return false;
+    const emitted = sink.events.length;
+    stateCheck(sink);
+    if (isPaused(sink)) return false;
+    if (sink.events.length === emitted) return true;
+  }
+}
+
+/**
+ * The owed `delayed` step of either boundary: a delayed effect (or a trap answering one, or the trap
+ * window before them) paused, and the answer has finished it by the time this runs, so the traps
+ * still owed its events and then its state check come first (§10.3, R59) — a unit it killed has
+ * died before the next delayed effect meets the board (R174: #50's steal fizzles on it). False when
+ * a trap asked again, or that check ended the game or paused on a Death hook's prompt.
+ */
+function checkBeforeDelayed(sink: EngineSink): boolean {
+  return checkAfterDelayed(sink);
 }
 
 /** Exertion and the once-per-turn flags reset at the controller's own turn start (§4.1). */
@@ -107,23 +154,35 @@ export const START_OF_TURN_WORK = "@startOfTurn";
 
 /**
  * Which part of R62's opening is still owed: `delayed` still has start-of-turn delayed effects to
- * finish and owes everything after them; `triggers` has had its effects and owes the rest of the
+ * finish and owes everything after them; `settle` has had them and owes the loop their events wake
+ * (§10.3), then the triggers and the draw; `triggers` has had its effects and owes the rest of the
  * trigger queue and then the draw; `main` has drawn and owes only the phase the turn opens in.
  */
 const START_DELAYED_STEP = "delayed";
+const START_SETTLE_STEP = "settle";
 const START_TRIGGERS_STEP = "triggers";
 const START_MAIN_STEP = "main";
 
 /** Park the rest of the start of a turn (R113), exactly as `oweEndOfTurn` parks the rest of an end. */
-function oweStartOfTurn(sink: EngineSink, player: PlayerId, step: string): void {
-  const resume: Resume = {
+function oweStartOfTurn(sink: EngineSink, player: PlayerId, step: string, dueBefore?: number): void {
+  owe(sink, boundaryResume(START_OF_TURN_WORK, player, step, dueBefore));
+}
+
+/** A parked boundary's record: whose turn, and for a delayed stage the mark it began at. */
+function boundaryResume(hook: string, player: PlayerId, step: string, dueBefore?: number): Resume {
+  return {
     defId: "",
-    hook: START_OF_TURN_WORK,
+    hook,
     step,
     radiant: false,
-    data: { player },
+    data: { player, ...(dueBefore === undefined ? {} : { dueBefore }) },
   };
-  owe(sink, resume);
+}
+
+/** The mark a parked delayed stage began at; a record without one owes every entry due (R68). */
+function dueBeforeOf(data: Record<string, unknown>): number {
+  const mark: unknown = data.dueBefore;
+  return typeof mark === "number" ? mark : Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -145,6 +204,16 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   const side = state.players[player];
   side.turnsStarted += 1;
   side.turnLog = { playedIds: [], cardsPlayed: 0 };
+  // "This turn" is this turn for both players (§6.2 Combo, #38's "cards you played earlier this
+  // turn"): a card the other player casts during it (a cast on draw, R40, R70) counts from zero,
+  // not on top of what they played on their own turn before. `unspentAtEnd` is the close of their
+  // last turn (§2.2 cleanup) and stays.
+  const other = state.players[opponentOf(player)];
+  other.turnLog = {
+    playedIds: [],
+    cardsPlayed: 0,
+    ...(other.turnLog.unspentAtEnd === undefined ? {} : { unspentAtEnd: other.turnLog.unspentAtEnd }),
+  };
   // R152's backstop: the lockout ends at the cleanup of the turn it was set for, so by now it is
   // already false for the player whose turn My Pawn took. This clears one set on the other player.
   side.aiTurn = false;
@@ -154,18 +223,38 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   refreshMana(side);
   sink.events.push(manaEvent(player, side));
 
-  startOfTurnDelayed(sink, player);
+  startOfTurnDelayed(sink, player, state.nextSeq);
 }
 
 /** R62's first stage: the start-of-turn delayed effects, in creation order. */
-function startOfTurnDelayed(sink: EngineSink, player: PlayerId): void {
+function startOfTurnDelayed(sink: EngineSink, player: PlayerId, dueBefore: number): void {
   const state = sink.state;
 
-  runDelayed(sink, "start", player);
+  runDelayed(sink, "start", player, dueBefore);
   if (state.result !== null) return;
   if (state.pending !== null) {
     // The entries still due are in `state.delayed`, so the same step picks them up (R68's order).
-    oweStartOfTurn(sink, player, START_DELAYED_STEP);
+    oweStartOfTurn(sink, player, START_DELAYED_STEP, dueBefore);
+    return;
+  }
+
+  startOfTurnSettle(sink, player);
+}
+
+/**
+ * §10.3 between R62's first two stages: the events the delayed effects emitted reach the traps and
+ * the trigger queue, and what they wake resolves, before the start-of-turn triggers are queued —
+ * §6.2's "Delayed effects first (Kpop Fanatic's steal), then the trigger queue in R68 order". Left to
+ * the triggers' own loop, a trigger answering #50's steal was queued behind every start-of-turn hook,
+ * a backrow one included.
+ */
+function startOfTurnSettle(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweStartOfTurn(sink, player, START_SETTLE_STEP);
     return;
   }
 
@@ -206,7 +295,9 @@ function startOfTurnDraw(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
 
   draw(sink, player, 1);
-  stateCheck(sink);
+  // R59: after the draw as a whole. A cast-on-draw card whose cast is asking something is not
+  // whole yet: the chain it owes runs the check once the answer has finished the cast (§2.4, R158).
+  if (!isPaused(sink)) stateCheck(sink);
   settle(sink);
   if (state.result !== null) return;
   if (state.pending !== null) {
@@ -231,7 +322,17 @@ function runOwedStartOfTurn(sink: EngineSink, item: WorkItem): void {
   if (player === null) return;
 
   if (item.resume.step === START_DELAYED_STEP) {
-    startOfTurnDelayed(sink, player);
+    const dueBefore = dueBeforeOf(item.resume.data);
+    if (!checkBeforeDelayed(sink)) {
+      if (sink.state.result === null) oweStartOfTurn(sink, player, START_DELAYED_STEP, dueBefore);
+      return;
+    }
+    startOfTurnDelayed(sink, player, dueBefore);
+    return;
+  }
+
+  if (item.resume.step === START_SETTLE_STEP) {
+    startOfTurnSettle(sink, player);
     return;
   }
 
@@ -265,13 +366,17 @@ registerWorkHandler(START_OF_TURN_WORK, runOwedStartOfTurn);
  * about. Leaving it set would make the card return from the graveyard on every later turn it
  * happened to be in one, including after it was merely discarded or milled (R153).
  */
-function clearReturnFlags(state: GameState, player: PlayerId): void {
-  // The cards this player played this turn are exactly the ones step 7 could have flagged: it
-  // writes the flag on the card it just landed, and `countAsPlayed` logged that same card on this
-  // player's turn log. `startTurn` empties the log, so this is still that list.
-  for (const id of new Set(state.players[player].turnLog.playedIds)) {
-    const card = findInstance(state, id);
-    if (card?.returnToHandAtEndOfTurn === true) delete card.returnToHandAtEndOfTurn;
+function clearReturnFlags(state: GameState): void {
+  // The cards played this turn are exactly the ones step 7 could have flagged: it writes the flag on
+  // the card it just landed, and step 4 logged that same card on its player's turn log. Both logs:
+  // a Spell cast on the other player's turn (a cast on draw, R70) is flagged too, and §6.2 makes an
+  // "End of turn" its controller's own turn end, which this is not — so its return is over with this
+  // turn as well (R155). `startTurn` empties both logs, so these are still this turn's lists.
+  for (const player of PLAYER_IDS) {
+    for (const id of new Set(state.players[player].turnLog.playedIds)) {
+      const card = findInstance(state, id);
+      if (card?.returnToHandAtEndOfTurn === true) delete card.returnToHandAtEndOfTurn;
+    }
   }
 }
 
@@ -279,8 +384,9 @@ function cleanup(sink: EngineSink, player: PlayerId): void {
   expireModifiers(sink, player);
   const side = sink.state.players[player];
   side.turnLog.unspentAtEnd = side.mana.current;
+  if (side.aiTurn) endHandedOverTurn(sink);
   side.aiTurn = false;
-  clearReturnFlags(sink.state, player);
+  clearReturnFlags(sink.state);
 }
 
 // ---------------------------------------------------------------------------
@@ -300,11 +406,16 @@ export const END_OF_TURN_WORK = "@endOfTurn";
 /**
  * Which part of R62's order is still owed, named so a reader of `state.work` can see it:
  * `triggers` still has the end-of-turn trigger queue to finish before the `turnEnded` event is
- * even emitted; `delayed` has had its window and owes the delayed effects, cleanup, the turn cap
- * and the next turn.
+ * even emitted; `window` has had its trap window and owes the loop the window's events wake
+ * (§10.3), then everything after; `delayed` owes the delayed effects still due; `cleanup` has had
+ * them and owes the loop their events wake, then cleanup and everything after; `next` has had
+ * cleanup and owes the loop its events wake, then the turn cap and the next turn.
  */
 const END_TRIGGERS_STEP = "triggers";
+const END_WINDOW_STEP = "window";
 const END_DELAYED_STEP = "delayed";
+const END_CLEANUP_STEP = "cleanup";
+const END_NEXT_STEP = "next";
 
 /**
  * Whose turn a parked boundary belongs to — the one ending, or the one starting — read back
@@ -327,15 +438,8 @@ function turnPlayerOf(data: Record<string, unknown>): PlayerId | null {
  * take nor re-run the steps it is standing in. Pre-parking a sequence's continuation is what made
  * a played card's Cry fire twice (§10.5's driver, R1).
  */
-function oweEndOfTurn(sink: EngineSink, player: PlayerId, step: string): void {
-  const resume: Resume = {
-    defId: "",
-    hook: END_OF_TURN_WORK,
-    step,
-    radiant: false,
-    data: { player },
-  };
-  owe(sink, resume);
+function oweEndOfTurn(sink: EngineSink, player: PlayerId, step: string, dueBefore?: number): void {
+  owe(sink, boundaryResume(END_OF_TURN_WORK, player, step, dueBefore));
 }
 
 /**
@@ -397,31 +501,83 @@ function endOfTurnAfterTriggers(sink: EngineSink, player: PlayerId): void {
   runTrapWindow(sink, ended);
   if (state.result !== null) return;
   if (state.pending !== null) {
-    oweEndOfTurn(sink, player, END_DELAYED_STEP);
+    oweEndOfTurn(sink, player, END_WINDOW_STEP);
     return;
   }
 
-  endOfTurnAfterWindow(sink, player);
+  endOfTurnWindowSettle(sink, player);
 }
 
-/** R62's tail: the end-of-turn delayed effects, cleanup, the turn cap, the next turn. */
-function endOfTurnAfterWindow(sink: EngineSink, player: PlayerId): void {
+/**
+ * §10.3 after the window: a trap's firing is an effect like any other, so the events it emitted
+ * reach the traps and the trigger queue, and what they wake resolves, before R62 moves on to the
+ * delayed effects — at this turn's end, not in the next turn's opening loop, behind that turn's own
+ * start-of-turn hooks. A trigger answering Bread and Butter's token that finishes the opponent wins
+ * the game at the end of this turn (§4.5 step 2).
+ */
+function endOfTurnWindowSettle(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
 
-  runDelayed(sink, "end", player);
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweEndOfTurn(sink, player, END_WINDOW_STEP);
+    return;
+  }
+
+  endOfTurnAfterWindow(sink, player, state.nextSeq);
+}
+
+/** R62's tail: the end-of-turn delayed effects, then (`endOfTurnDelayedSettle`) the rest. */
+function endOfTurnAfterWindow(sink: EngineSink, player: PlayerId, dueBefore: number): void {
+  const state = sink.state;
+
+  runDelayed(sink, "end", player, dueBefore);
   if (state.result !== null) return;
   if (state.pending !== null) {
     // The entries still due are in `state.delayed`, so the same step picks them up (R68's order).
-    oweEndOfTurn(sink, player, END_DELAYED_STEP);
+    oweEndOfTurn(sink, player, END_DELAYED_STEP, dueBefore);
+    return;
+  }
+
+  endOfTurnDelayedSettle(sink, player);
+}
+
+/** §10.3 after the delayed effects, as after the window; then cleanup, the turn cap, the next turn. */
+function endOfTurnDelayedSettle(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweEndOfTurn(sink, player, END_CLEANUP_STEP);
     return;
   }
 
   cleanup(sink, player);
+  endOfTurnCleanupSettle(sink, player);
+}
+
+/**
+ * §10.3 after cleanup, as after every other stage of the turn: cleanup's own events — My Pawn
+ * reaching its owner's graveyard at the end of the turn it took (R152), the "this turn" modifiers
+ * expiring — reach the traps and the trigger queue, and what they wake resolves, before the turn-cap
+ * check and the next turn (R62's order: cleanup, then the cap, then the opponent's turn). Left to the
+ * next turn's first loop, a trigger answering them resolved after that turn had begun, and at the
+ * cap the game was drawn before it could.
+ */
+function endOfTurnCleanupSettle(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweEndOfTurn(sink, player, END_NEXT_STEP);
+    return;
+  }
 
   if (state.turn >= TURN_CAP_PLAYER_TURNS) {
-    state.result = { winner: "draw", reason: "turn-cap" };
-    state.phase = "over";
-    sink.events.push({ type: "gameOver", winner: "draw", reason: "turn-cap" });
+    endGame(sink, "draw", "turn-cap");
     return;
   }
 
@@ -451,17 +607,34 @@ function runOwedEndOfTurn(sink: EngineSink, item: WorkItem): void {
     return;
   }
 
-  // The only other step this module parks: §2.2's tail, whose window has already had its event.
-  endOfTurnAfterWindow(sink, player);
+  if (item.resume.step === END_WINDOW_STEP) {
+    endOfTurnWindowSettle(sink, player);
+    return;
+  }
+
+  if (item.resume.step === END_CLEANUP_STEP) {
+    endOfTurnDelayedSettle(sink, player);
+    return;
+  }
+
+  if (item.resume.step === END_NEXT_STEP) {
+    endOfTurnCleanupSettle(sink, player);
+    return;
+  }
+
+  // `delayed`: a delayed effect asked, and the answer has finished it.
+  const dueBefore = dueBeforeOf(item.resume.data);
+  if (!checkBeforeDelayed(sink)) {
+    if (sink.state.result === null) oweEndOfTurn(sink, player, END_DELAYED_STEP, dueBefore);
+    return;
+  }
+  endOfTurnAfterWindow(sink, player, dueBefore);
 }
 
 registerWorkHandler(END_OF_TURN_WORK, runOwedEndOfTurn);
 
 export function concede(sink: EngineSink, player: PlayerId): void {
-  const winner = opponentOf(player);
-  sink.state.result = { winner, reason: "concede" };
-  sink.state.phase = "over";
-  sink.events.push({ type: "gameOver", winner, reason: "concede" });
+  endGame(sink, opponentOf(player), "concede");
 }
 
 /** R36: only the active player offers, once per turn, and a declined offer blocks 3 of their turns. */
@@ -478,13 +651,25 @@ export function offerDraw(sink: EngineSink, player: PlayerId): void {
   sink.events.push({ type: "drawOffered", player });
 }
 
+/**
+ * R36: whether `player` has an offer to answer — the active opponent offered this turn and it has
+ * not been answered yet. `legalActions` and the reducer both ask this, so a declined offer is gone
+ * from both at once.
+ */
+export function hasStandingDrawOffer(state: GameState, player: PlayerId): boolean {
+  const offering = opponentOf(player);
+  return state.active === offering && state.players[offering].drawOffer.offeredTurn === state.turn;
+}
+
 export function answerDraw(sink: EngineSink, player: PlayerId, accept: boolean): void {
   sink.events.push({ type: "drawAnswered", player, accept });
   const offering = opponentOf(player);
+  // §2.5, R36: an offer is answered once; afterwards there is nothing standing to accept. The
+  // once-per-turn limit does not need the record: a declined offer blocks its player's next
+  // DRAW_OFFER_BLOCK_TURNS turns, this one included, and an accepted one ends the game.
+  delete sink.state.players[offering].drawOffer.offeredTurn;
   if (accept) {
-    sink.state.result = { winner: "draw", reason: "draw-accepted" };
-    sink.state.phase = "over";
-    sink.events.push({ type: "gameOver", winner: "draw", reason: "draw-accepted" });
+    endGame(sink, "draw", "draw-accepted");
     return;
   }
   // R36: the next DRAW_OFFER_BLOCK_TURNS turns of theirs are blocked, counting from the next one.

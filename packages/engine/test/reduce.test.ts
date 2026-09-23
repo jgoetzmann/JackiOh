@@ -143,10 +143,12 @@ describe("reduce (M1-T3)", () => {
     expect(probes).toBeGreaterThan(200);
   }, 30_000);
 
-  it("lists no actions for a player with an open prompt that is not theirs", () => {
+  it("R211 offers only concede to a player with an open prompt that is not theirs", () => {
     const state = beginGame(newGame("prompt-actions")).state;
-    expect(legalActions(state, "p2")).toEqual([]);
-    expect(legalActions(state, "p1").every((a) => a.type === "mulligan")).toBe(true);
+    expect(legalActions(state, "p2")).toEqual([{ type: "concede" }]);
+    expect(legalActions(state, "p1").every((a) => a.type === "mulligan" || a.type === "concede")).toBe(true);
+    // And `reduce` agrees: a concede is accepted from the seat that holds no prompt.
+    expect(reduce(state, { type: "concede", playerId: "p2", nonce: "r211-concede" }).error).toBeUndefined();
   });
 
   it("offers one play per open zone for a unit", () => {

@@ -358,12 +358,11 @@ describe("Echo and Twinspell (§6.3, §10.5 step 6, R30, R70)", () => {
 
     const sink = sinkFor(state);
     castCard(sink, card);
-    // The repeat is owed in state — `state.echoQueue` and `state.work` — never in the call that
-    // started it, so the cast survives a JSON round trip mid-flight (§9.3, §10.1, R113).
-    expect(echoQueue(state)).toHaveLength(1);
-    const round = JSON.parse(JSON.stringify(state)) as GameState;
-    expect(echoQueue(round)).toEqual(echoQueue(state));
-    expect(round.work.map((item) => item.resume.hook)).toEqual(["castTail"]);
+    // A cast is §10.5's pipeline (R70), so its repeat resolves inside the cast: nothing asked, so
+    // nothing was owed to `state.work` (R117), and the cast is whole when the call returns.
+    expect(echoQueue(state)).toEqual([]);
+    expect(state.work).toEqual([]);
+    expect(state.players.p2.hero.health).toBe(HERO_HEALTH - 4);
     settle(sink);
 
     // Two resolutions, one play, and the card is on the field with nothing left owed.
