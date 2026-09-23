@@ -10,7 +10,7 @@
 
 import { createContext, useContext } from "react";
 
-import type { CardDefs, CardType, Tag } from "@jackioh/shared";
+import type { CardDef, CardDefs, CardType, Tag } from "@jackioh/shared";
 
 export type CardInfo = {
   name: string;
@@ -21,6 +21,8 @@ export type CardInfo = {
   /** Printed attack and health for the face being shown; spells have neither. */
   attack?: number;
   health?: number;
+  /** The whole catalog def, for the card faces (apps/web/src/cards, faceModel). */
+  def?: CardDef;
 };
 
 export type CardLookup = (defId: string, radiant: boolean) => CardInfo | undefined;
@@ -39,6 +41,7 @@ export function lookupFromDefs(defs: CardDefs): CardLookup {
       tags: def.tags,
       attack: face.attack,
       health: face.health,
+      def,
     };
   };
 }

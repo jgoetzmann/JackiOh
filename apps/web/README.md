@@ -27,6 +27,7 @@ enforces rules and never sees hidden information.** In practice:
 src/
   main.tsx              entry and the pathname switch
   index.css             reset and design tokens
+  cards/                card faces, procedural art, inspect and card settings (docs/polish/6-cards.md)
   game/
     engine.ts           the EnginePort: the only seam onto packages/engine
     engine.real.ts      the real binding (see "Blocked on the engine" below)
