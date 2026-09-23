@@ -6,7 +6,7 @@
 // `shuffledIn` carry a `defId` for the animation layer, so this log says "drew a card" rather
 // than naming it, and a redaction slip upstream cannot turn into a leak on screen.
 
-import { useContext, type ReactElement } from "react";
+import { useContext, useLayoutEffect, useRef, type ReactElement } from "react";
 
 import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
@@ -160,8 +160,16 @@ export default function Log({ view }: LogProps): ReactElement {
     seat: (player) => seatLabel(view, player),
   };
 
+  // The newest line is the one worth reading, so a log taller than its box keeps its end in view
+  // (polish task 7: on a desktop the log is a fixed box beside your seat and hand).
+  const listRef = useRef<HTMLOListElement>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list !== null) list.scrollTop = list.scrollHeight;
+  }, [view.events]);
+
   return (
-    <ol className="log" data-testid={testid.log} aria-label="Game log">
+    <ol ref={listRef} className="log" data-testid={testid.log} aria-label="Game log">
       {view.events.map((event, index) => (
         <li key={`${index}-${event.type}`} className="log-line" data-event={event.type}>
           {describe(event, view, name)}

@@ -1,0 +1,328 @@
+/* The settings gear and dialog (docs/polish/7-mobile-ux.md S7, S8).
+   Imported by SettingsButton.tsx and SettingsPanel.tsx. The panel is portalled to <body>, outside
+   `.app-shell`, so it brings its own type and spacing and relies only on index.css's tokens.
+   Every px width here stays at or below 390, like board.css. */
+
+/* B22: the store sets <html data-reduce-motion="true">; this collapses every duration that is
+   scaled by --anim-scale, on top of index.css's prefers-reduced-motion rule. */
+:root[data-reduce-motion="true"] {
+  --anim-scale: 0;
+}
+
+/* --- the gear ------------------------------------------------------------------------------ */
+
+.settings-gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.settings-gear > span {
+  display: block;
+  transition: transform calc(240ms * var(--anim-scale)) ease-out;
+}
+
+.settings-gear:hover > span,
+.settings-gear[aria-expanded="true"] > span {
+  transform: rotate(60deg);
+}
+
+/* BackLink's nav: the gear sits at the far end of the row. */
+.screen-nav .settings-gear {
+  margin-left: auto;
+}
+
+/* Touch sizing (S7's query): 44 px targets, WCAG 2.5.5. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .settings-gear,
+  .screen-nav .settings-gear {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* --- the scrim and the dialog -------------------------------------------------------------- */
+
+.settings-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(5 6 10 / 0.62);
+  animation: settings-fade calc(160ms * var(--anim-scale)) ease-out;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(380px, 100%);
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(
+    180deg,
+    var(--bg-raised),
+    color-mix(in srgb, var(--bg-raised) 72%, var(--bg))
+  );
+  border: 1px solid var(--line-bright);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.55);
+  color: var(--text);
+  font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  outline: none;
+  animation: settings-pop calc(180ms * var(--anim-scale)) ease-out;
+}
+
+.settings-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 6px 18px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.settings-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border-color: transparent;
+  font-size: 18px;
+  color: var(--text-dim);
+}
+
+.settings-close:hover {
+  color: var(--text);
+  border-color: var(--line-bright);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px 8px;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+}
+
+.settings-section h2 {
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The whole row is the switch's label, so the touch target is the row, not just the track. */
+.settings-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.settings-label {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.settings-hint {
+  margin: -3px 0 8px;
+  max-width: 34ch;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+/* A task-owned control mounted through SETTINGS_SLOTS (slots.ts). */
+.settings-slot {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* The switch: a 44 px tall input whose visible track is the 30 px content box. The asymmetric
+   radius (15px horizontal, 22px vertical) leaves the content box a true pill once the 7 px of
+   vertical padding is taken off, and the knob is a background layer, so no pseudo-element is
+   needed on the <input>. */
+.settings-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 56px;
+  height: 44px;
+  margin: 0;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 15px / 22px;
+  background-color: var(--line-bright);
+  background-image: radial-gradient(
+    circle closest-side,
+    var(--text-dim) 0 calc(100% - 4px),
+    transparent calc(100% - 3px)
+  );
+  background-repeat: no-repeat;
+  background-size: 30px 30px;
+  background-origin: content-box;
+  background-clip: content-box;
+  background-position: left center;
+  cursor: pointer;
+  transition:
+    background-position calc(140ms * var(--anim-scale)) ease-out,
+    background-color calc(140ms * var(--anim-scale)) ease-out;
+}
+
+.settings-switch:checked {
+  background-color: color-mix(in srgb, var(--legal) 78%, var(--bg));
+  background-image: radial-gradient(
+    circle closest-side,
+    #fff 0 calc(100% - 4px),
+    transparent calc(100% - 3px)
+  );
+  background-position: right center;
+}
+
+/* Ice blue, the board's selection colour: gold would read as the yellow of a met condition. */
+.settings-switch:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 0;
+}
+
+.settings-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 18px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-reset {
+  min-height: 44px;
+  padding: 0 16px;
+  font-weight: 550;
+}
+
+.settings-reset:hover {
+  border-color: var(--text-dim);
+}
+
+/* --- phones: a bottom sheet ---------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .settings-scrim {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .settings-panel {
+    width: 100%;
+    max-height: 85vh;
+    max-height: 85dvh;
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation-name: settings-sheet;
+  }
+
+  .settings-head {
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+
+  .settings-section,
+  .settings-foot {
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(18px, env(safe-area-inset-right));
+  }
+
+  .settings-reset {
+    flex: 1;
+  }
+}
+
+/* --- phones on their side: a sheet down the right edge, the full height of the screen -------- */
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .settings-scrim {
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 0;
+  }
+
+  .settings-panel {
+    width: min(380px, 100%);
+    max-height: 100%;
+    border-right: 0;
+    border-radius: 16px 0 0 16px;
+    padding-right: env(safe-area-inset-right);
+    animation-name: settings-side;
+  }
+
+  .settings-section {
+    padding-top: 6px;
+    padding-bottom: 4px;
+  }
+}
+
+@keyframes settings-side {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes settings-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes settings-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes settings-sheet {
+  from {
+    transform: translateY(100%);
+  }
+}

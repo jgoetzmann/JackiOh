@@ -7,13 +7,22 @@
 // engine's `legalActions`) and fires `props.onClick` only when that says true. With the default
 // `NO_HIGHLIGHT` the whole board is greyed out, which is the honest default for "the client has
 // not been told what is legal".
+//
+// Polish task 7 (docs/polish/7-mobile-ux.md S6, S11): the green glow is `data-glow`, written from
+// `highlight.glow` (a subset of `legal`); `data-legal` stays the only click gate. The board reads
+// two settings: `dragToPlay` becomes `data-drag` on the root (drag.css keys touch-action off it),
+// and `confirmEndTurn` makes End turn ask twice while something is still playable (Hand.tsx reads
+// the third, `hoverPreviews`). The layout itself is board.css's grid, which keeps the children
+// below in this order. A phone has no room for the log beside the field, so board.css hides it
+// there and shows `log-toggle` instead, which opens it over the top of the board
+// (`data-log="open"`) until it is pressed again.
 
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 
 import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
 import { animTestid } from "./animations.ts";
-import Card, { allowDrop, cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
+import Card, { cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
 import {
   LANES,
   NO_HIGHLIGHT,
@@ -32,8 +41,12 @@ import Hand from "./Hand.tsx";
 import Hero from "./Hero.tsx";
 import Log from "./Log.tsx";
 import Zone from "./Zone.tsx";
+import { glowAttr, hasMovesLeft } from "./glow.ts";
+import { SettingsButton, useSetting } from "../settings/index.ts";
 
+// Order matters: highlights.css paints the glow over board.css's borders (S7).
 import "./board.css";
+import "./highlights.css";
 
 /** Top to bottom in every lane column (BUILD M5-T1). */
 const FIELD_ROWS: readonly { side: Side; row: Row }[] = [
@@ -275,14 +288,17 @@ function ControlButton({
   label,
   highlight,
   animating,
-  onControl,
+  confirm,
+  onPress,
 }: {
   control: BoardControl;
   testId: string;
   label: string;
   highlight: Highlight;
   animating?: AnimatingMap;
-  onControl?: (control: BoardControl) => void;
+  /** `"armed"` while End turn is waiting for its confirming second click (B25). */
+  confirm?: "armed";
+  onPress: () => void;
 }): ReactElement {
   const legal = isLegal(highlight, testId);
   return (
@@ -291,6 +307,8 @@ function ControlButton({
       className={cx("control", `control-${control}`)}
       data-testid={testId}
       data-legal={legalAttr(legal)}
+      data-glow={glowAttr(highlight, testId)}
+      data-confirm={confirm}
       data-selected={isSelected(highlight, testId) ? "true" : undefined}
       data-animating={animating?.get(testId)}
       aria-disabled={legal ? undefined : "true"}
@@ -299,7 +317,7 @@ function ControlButton({
       disabled={!legal}
       onClick={() => {
         if (!legal) return;
-        onControl?.(control);
+        onPress();
       }}
     >
       {label}
@@ -317,6 +335,24 @@ export default function Board({
 }: BoardProps): ReactElement {
   const pops = popsFrom(view, animating, animated);
   const yourHand: CardView[] | { count: number } = view.you.hand;
+  const dragToPlay = useSetting("dragToPlay");
+  const confirmEndTurn = useSetting("confirmEndTurn");
+
+  // B25: the confirm is armed FOR a view. Any new view (the engine moved, the turn changed, an
+  // animation caught up) is a different object, so it disarms without an effect.
+  const [armedFor, setArmedFor] = useState<PlayerView | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const needsConfirm = confirmEndTurn && hasMovesLeft(highlight);
+  const armed = needsConfirm && armedFor === view;
+
+  function pressEndTurn(): void {
+    if (needsConfirm && !armed) {
+      setArmedFor(view);
+      return;
+    }
+    setArmedFor(null);
+    onControl?.("end-turn");
+  }
 
   return (
     <div
@@ -326,7 +362,8 @@ export default function Board({
       data-turn={view.turn}
       data-active={sideOf(view, view.active)}
       data-viewer={view.viewer}
-      onDragOver={allowDrop}
+      data-drag={dragToPlay ? "on" : "off"}
+      data-log={logOpen ? "open" : undefined}
     >
       <Seat
         view={view}
@@ -363,10 +400,54 @@ export default function Board({
       <Hand side="you" hand={yourHand} highlight={highlight} animating={animating} onClick={onClick} />
 
       <div className="control-bar" aria-label="Controls">
-        <ControlButton control="end-turn" testId={testid.endTurn} label="End turn" highlight={highlight} animating={animating} onControl={onControl} />
-        <ControlButton control="offer-draw" testId={testid.offerDraw} label="Offer draw" highlight={highlight} animating={animating} onControl={onControl} />
-        <ControlButton control="concede" testId={testid.concede} label="Concede" highlight={highlight} animating={animating} onControl={onControl} />
+        {/* Whose turn, above End turn wherever the controls have a column of their own (board.css
+            hides it on a phone held upright, where the shell's banner says it). The banner is the
+            live region, so this copy stays out of the accessibility tree. */}
+        <div className="turn-plate" data-side={sideOf(view, view.active)} aria-hidden="true">
+          <span className="turn-plate-number">Turn {view.turn}</span>
+          <span className="turn-plate-whose">
+            {view.phase === "mulligan" ? "Mulligan" : view.active === view.viewer ? "Your turn" : "Opponent's turn"}
+          </span>
+        </div>
+        <ControlButton
+          control="end-turn"
+          testId={testid.endTurn}
+          label={armed ? "Confirm end turn" : "End turn"}
+          highlight={highlight}
+          animating={animating}
+          confirm={armed ? "armed" : undefined}
+          onPress={pressEndTurn}
+        />
+        <ControlButton
+          control="offer-draw"
+          testId={testid.offerDraw}
+          label="Offer draw"
+          highlight={highlight}
+          animating={animating}
+          onPress={() => onControl?.("offer-draw")}
+        />
+        <ControlButton
+          control="concede"
+          testId={testid.concede}
+          label="Concede"
+          highlight={highlight}
+          animating={animating}
+          onPress={() => onControl?.("concede")}
+        />
         {view.clockMs !== null && <span className="clock">{Math.ceil(view.clockMs / 1000)}s</span>}
+        {/* Phones only (board.css): the log's own place on the board is hidden there. */}
+        <button
+          type="button"
+          className="log-toggle"
+          data-testid="log-toggle"
+          aria-expanded={logOpen}
+          aria-label={logOpen ? "Hide the game log" : "Show the game log"}
+          title="Game log"
+          onClick={() => setLogOpen((open) => !open)}
+        >
+          <span className="log-toggle-icon" aria-hidden="true" />
+        </button>
+        <SettingsButton placement="game" />
       </div>
 
       <Log view={view} />

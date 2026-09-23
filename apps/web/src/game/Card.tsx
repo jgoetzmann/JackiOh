@@ -31,6 +31,7 @@ import {
 } from "../cards/index.ts";
 import { useCardInfo } from "./catalog.ts";
 import { NO_HIGHLIGHT, testid, type AnimatingMap, type ClickTarget, type Highlight } from "./contract.ts";
+import { conditionAttr, glowAttr } from "./glow.ts";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join(" ");
@@ -214,6 +215,7 @@ export default function Card(props: CardProps): ReactElement {
     "data-legal": clickable ? legalAttr(legal) : undefined,
     "data-selected": selected ? "true" : undefined,
     "data-animating": animatingEvent,
+    "data-glow": glowAttr(props.highlight, testId),
     "aria-disabled": clickable && !legal ? ("true" as const) : undefined,
     onClick: clickable ? fire : undefined,
     onKeyDown: clickable ? onKeyDown : undefined,
@@ -257,6 +259,7 @@ export default function Card(props: CardProps): ReactElement {
       data-card-type={cardType}
       // animations.css keeps a fired Field Trap on the board with its own flip (trapFired).
       data-field-trap={cardType === "Field Trap" ? "true" : undefined}
+      data-condition-active={conditionAttr(card)}
       data-owner={props.owner ?? unit?.owner}
       data-controller={props.controller ?? unit?.controller}
       data-position={position}

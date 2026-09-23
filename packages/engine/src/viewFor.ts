@@ -49,6 +49,7 @@ import type {
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf, findDef } from "./catalog";
 import { hasExertion } from "./combat";
+import { conditionActive } from "./condition";
 import { heroArmorOf } from "./damage";
 import { echoGrantOf } from "./echo";
 import { unitView as unitLayers } from "./layers";
@@ -191,15 +192,23 @@ function cardView(state: GameState, card: CardInstance): CardView {
 }
 
 /**
+ * R195, §10.8: the yellow glow rides on a card view as `conditionActive: true` or not at all — the
+ * key is never `false`, so a card with no condition met looks exactly as it did before R195.
+ */
+function withCondition<T extends CardView>(view: T, active: boolean): T {
+  return active ? { ...view, conditionActive: true } : view;
+}
+
+/**
  * The card that acts in a unit zone: the top of the pile (§3.2). `buried` is how many dormant cards
  * sit under it (R13) — a count, so no buried identity reaches either player.
  */
-function unitViewOf(state: GameState, pile: Pile): UnitView | null {
+function unitViewOf(state: GameState, pile: Pile, viewer: PlayerId): UnitView | null {
   const top = pile[0];
   if (top === undefined) return null;
   const layers = unitLayers(state, top);
   return {
-    ...cardView(state, top),
+    ...withCondition(cardView(state, top), conditionActive(state, top, viewer, "field")),
     owner: top.owner,
     controller: top.controller,
     attack: layers.attack,
@@ -239,7 +248,7 @@ function backrowView(state: GameState, card: CardInstance | null, viewer: Player
   if (!backrowIsPublic(state, card, viewer)) return { faceDown: true };
   const grade = card.counters.grade;
   return {
-    ...cardView(state, card),
+    ...withCondition(cardView(state, card), conditionActive(state, card, viewer, "field")),
     faceDown: false,
     type: defOf(state, card.defId).type,
     counters: grade === undefined ? {} : { grade },
@@ -368,14 +377,17 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     modifiers: modifierViews(state, player),
     mana: { current: side.mana.current, max: side.mana.max },
     // §10.8: the viewer's own hand in full, the opponent's as a count.
-    hand: player === viewer ? side.hand.map((card) => cardView(state, card)) : { count: side.hand.length },
+    hand:
+      player === viewer
+        ? side.hand.map((card) => withCondition(cardView(state, card), conditionActive(state, card, viewer, "hand")))
+        : { count: side.hand.length },
     // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
     libraryCount: side.library.length,
     graveyard: side.graveyard.map((card) => cardView(state, card)),
     exile: side.exile.map((card) => cardView(state, card)),
     // §10.5 step 4, R98: a Spell between its play and its graveyard. Playing it was public.
     resolving: side.resolving.map((card) => cardView(state, card)),
-    units: side.units.map((pile) => (pile === null ? null : unitViewOf(state, pile))),
+    units: side.units.map((pile) => (pile === null ? null : unitViewOf(state, pile, viewer))),
     backrow: side.backrow.map((card) => backrowView(state, card, viewer)),
     locks: { units: [...side.locks.units], backrow: [...side.locks.backrow] },
     reserved: reservedMask(state, player),

@@ -30,11 +30,17 @@
 //
 // `script.ts`'s `TriggerDef` does not declare `when` (traps.ts reads it structurally and says M3-T2
 // must add it), so the trigger is typed as `TrapTrigger`. Reported.
+//
+// R195, the yellow glow: the card glows in its controller's hand and in their backrow exactly when
+// `libraryIsLarger` holds, the same function the trap's `when` and `run` read, so the glow says
+// "this would recruit if the turn ended now". It asks nothing the controller cannot see (§9.1: both
+// library sizes are public counts), and the opponent never sees the glow on a face-down trap
+// because `viewFor` never asks about a card the viewer does not control.
 
-import type { EffectContext, Script, TrapTrigger } from "@jackioh/engine";
+import type { GameState, Script, TrapTrigger } from "@jackioh/engine";
 import { zoneCount } from "@jackioh/engine";
 import { recruit } from "@jackioh/engine/effects";
-import { opponentOf } from "@jackioh/shared";
+import { opponentOf, type PlayerId } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-071");
@@ -45,9 +51,9 @@ export const def = cardDef("core-071");
  * (engine/src/query.ts, BUILD M3-T1), "yours" being the trap's controller (R62, R52) — and "more
  * cards than" is strictly greater, so an equal count does nothing.
  */
-function libraryIsLarger(ctx: EffectContext): boolean {
-  const mine = zoneCount(ctx.state, ctx.controller, "library");
-  const theirs = zoneCount(ctx.state, opponentOf(ctx.controller), "library");
+function libraryIsLarger(state: GameState, controller: PlayerId): boolean {
+  const mine = zoneCount(state, controller, "library");
+  const theirs = zoneCount(state, opponentOf(controller), "library");
   return mine > theirs;
 }
 
@@ -60,11 +66,15 @@ function internStimmy(maxCost: number): Script {
   const atEndOfAnyTurn: TrapTrigger = {
     id: "intern-stimmy-window",
     on: ["turnEnded"],
-    when: (ctx) => libraryIsLarger(ctx),
-    run: (ctx) => (libraryIsLarger(ctx) ? [recruitUnit] : []),
+    when: (ctx) => libraryIsLarger(ctx.state, ctx.controller),
+    run: (ctx) => (libraryIsLarger(ctx.state, ctx.controller) ? [recruitUnit] : []),
   };
 
-  return { triggers: [atEndOfAnyTurn] };
+  return {
+    triggers: [atEndOfAnyTurn],
+    // R195: hand and field alike — the condition is the board's, not the play's.
+    conditionMet: (ctx) => libraryIsLarger(ctx.state, ctx.controller),
+  };
 }
 
 export const base: Script = internStimmy(1);

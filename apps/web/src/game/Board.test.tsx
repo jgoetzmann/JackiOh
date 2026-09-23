@@ -38,20 +38,6 @@ function setViewport(width: number, height: number): void {
   window.dispatchEvent(new Event("resize"));
 }
 
-/** jsdom has no `DataTransfer`; drag-to-attack only needs set/get/types. */
-function stubDataTransfer(): DataTransfer {
-  const store = new Map<string, string>();
-  return {
-    setData: (format: string, data: string) => void store.set(format, data),
-    getData: (format: string) => store.get(format) ?? "",
-    get types() {
-      return Array.from(store.keys());
-    },
-    effectAllowed: "none",
-    dropEffect: "none",
-  } as unknown as DataTransfer;
-}
-
 afterEach(() => {
   // `globals: false` means @testing-library/react cannot register its own cleanup.
   cleanup();
@@ -247,22 +233,6 @@ describe("Board", () => {
     const id = testid.card(view.you.units[0]?.instanceId ?? "");
     render(<Board view={view} highlight={highlightOf([id], [id])} />);
     expect(screen.getByTestId(id).getAttribute("data-selected")).toBe("true");
-  });
-
-  it("reports a drag as the source click then the drop-target click", () => {
-    const view = fullBoardView();
-    const attacker = view.you.units[0];
-    const onClick = vi.fn<(target: ClickTarget) => void>();
-    render(<Board view={view} highlight={highlightOf([testid.card(attacker?.instanceId ?? "")])} onClick={onClick} />);
-
-    const dataTransfer = stubDataTransfer();
-    fireEvent.dragStart(screen.getByTestId(testid.card(attacker?.instanceId ?? "")), { dataTransfer });
-    fireEvent.drop(screen.getByTestId(testid.hero("opponent")), { dataTransfer });
-
-    expect(onClick.mock.calls.map((call) => call[0])).toEqual([
-      { on: "unit", instanceId: attacker?.instanceId, side: "you", lane: 1 },
-      { on: "hero", side: "opponent" },
-    ]);
   });
 
   it("marks locked zones with data-locked (BUILD M5-T4 `locked`)", () => {
