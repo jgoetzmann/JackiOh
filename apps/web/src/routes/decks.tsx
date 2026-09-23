@@ -14,7 +14,8 @@
 // saved, which opens empty and is not an error), `GET /api/catalog` (names and costs — the
 // deckbuilder runs before any engine is loaded) and `GET /api/collection` (L5's quantities). Only
 // the collection is optional: without it the client verdict is skipped rather than guessed, and
-// `PUT /api/loadout` still refuses an illegal save.
+// `PUT /api/loadout` still refuses an illegal save. `GET /api/decks` (R171's library) is optional
+// too: it only feeds "Import from library…", which a failed read simply hides.
 //
 // THE MESSAGES. A 422 `loadout_invalid` carries the validator's issues in `details` "exactly as
 // the validator reported it" (§9.4). They are handed to the editor unchanged — no renumbering, no
@@ -32,7 +33,9 @@ import {
   getCatalog,
   getCollection,
   getLoadout,
+  listDecks,
   putLoadout,
+  type LibraryDeck,
 } from "../net/api.ts";
 import { useAccount } from "../net/gate.ts";
 import { navigate, paths } from "../net/navigate.ts";
@@ -67,8 +70,11 @@ export function loadoutIssuesFrom(details: unknown): readonly LoadoutError[] {
   return issues;
 }
 
-/** Every refusal, as the editor shows it. The server's words, never this file's. */
-export function saveOutcomeFrom(cause: unknown): SaveOutcome {
+/**
+ * Every refusal, as the editor shows it. The server's words, never this file's. `routes/library.tsx`
+ * relays the library's refusals through it too, since `/api/decks` answers in the same shape.
+ */
+export function saveOutcomeFrom(cause: unknown): Extract<SaveOutcome, { ok: false }> {
   if (cause instanceof ApiRequestError) {
     return {
       ok: false,
@@ -87,6 +93,8 @@ type Loaded = {
   catalog: CatalogSnapshot;
   collection: Collection | null;
   decks: readonly (readonly string[])[] | null;
+  /** R171: the library decks a slot can import; empty when `GET /api/decks` failed. */
+  library: readonly LibraryDeck[];
   /** The version the save is stamped with (§9.4: stale versions are refused at save). */
   catalogVersion: string;
 };
@@ -124,8 +132,12 @@ export default function DecksRoute() {
         (response) => response,
         () => null,
       ),
+      listDecks(token).then(
+        (response) => response.decks,
+        () => [],
+      ),
     ])
-      .then(([loadout, catalog, collection]) => {
+      .then(([loadout, catalog, collection, library]) => {
         if (cancelled) return;
         setScreen({
           kind: "ready",
@@ -134,6 +146,7 @@ export default function DecksRoute() {
             catalog: { version: catalog.version, cards: catalog.defs },
             collection: collection === null ? null : collectionFrom(collection.entries),
             decks: loadout.loadout?.decks ?? null,
+            library,
             catalogVersion: loadout.catalogVersion,
           },
         });
@@ -224,6 +237,7 @@ export default function DecksRoute() {
       collection={screen.data.collection}
       initialDecks={screen.data.decks}
       save={save}
+      library={screen.data.library}
     />
   );
 }

@@ -34,6 +34,8 @@ export const routes = {
   login: () => env("loginRoute", "/login"),
   invite: () => env("inviteRoute", "/invite"),
   deckbuilder: () => env("deckbuilderRoute", "/decks"),
+  /** R171's deck library (BUILD M9), `paths.library` in apps/web/src/net/navigate.ts. */
+  library: () => env("libraryRoute", "/library"),
   play: () => env("playRoute", "/play"),
   /** A networked match; the room-code screen lives here too. */
   match: (matchId: string) => `${env("matchRoute", "/match")}/${matchId}`,

@@ -3,8 +3,9 @@
 // `Deckbuilder.test.tsx` covers the editor itself. This file covers what the route adds: a pending
 // account lands on `/invite` (which is what `10-invite-gate.cy.ts` asserts from the browser), an
 // active one stays and sees its saved decks by name (which is what `09-deckbuilder.cy.ts`'s last
-// `it` asserts), a profile that has never saved opens empty rather than in an error, and the
-// server's `details` reach the screen unchanged.
+// `it` asserts), a profile that has never saved opens empty rather than in an error, the
+// server's `details` reach the screen unchanged, and R171's library is offered for import when
+// `GET /api/decks` answers and quietly absent when it does not.
 
 import { validateLoadout, type LoadoutError } from "@jackioh/validator";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -16,7 +17,15 @@ import {
   fixtureCollection,
   legalDecks,
 } from "../game/deckbuilder/fixtures.ts";
-import { ApiRequestError, getCatalog, getCollection, getLoadout, getMe, putLoadout } from "../net/api.ts";
+import {
+  ApiRequestError,
+  getCatalog,
+  getCollection,
+  getLoadout,
+  getMe,
+  listDecks,
+  putLoadout,
+} from "../net/api.ts";
 import { E2E_SESSION_STORAGE_KEY } from "../net/session.ts";
 import DecksRoute, { loadoutIssuesFrom, saveOutcomeFrom } from "./decks.tsx";
 
@@ -28,11 +37,16 @@ vi.mock("../net/api.ts", async (importOriginal) => {
     getLoadout: vi.fn(),
     getCatalog: vi.fn(),
     getCollection: vi.fn(),
+    listDecks: vi.fn(),
     putLoadout: vi.fn(),
   };
 });
 
 const TOKEN = "e2e-token-p1";
+/** A one-card library deck: short of DECK_SIZE is fine for R171, and the import copies it as is. */
+const SPARE_DECK = [SPARE_CARD_ID];
+/** R171's cap as the fake server reports it. This screen never reads it, so any value will do. */
+const ANY_CAP = 2;
 const catalog = fixtureCatalog();
 const collection = fixtureCollection();
 
@@ -63,6 +77,11 @@ beforeEach(() => {
   vi.mocked(getLoadout).mockResolvedValue({
     catalogVersion: catalog.version,
     loadout: { catalogVersion: catalog.version, decks: legalDecks(), updatedAt: 0 },
+  });
+  vi.mocked(listDecks).mockResolvedValue({
+    catalogVersion: catalog.version,
+    maxDecks: ANY_CAP,
+    decks: [],
   });
   vi.mocked(putLoadout).mockReset();
 });
@@ -165,6 +184,38 @@ describe("what the screen opens with", () => {
     await waitFor(() => {
       expect(screen.getByTestId("deckbuilder-error")).toHaveTextContent("catalog unavailable");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R171: the library, offered for import
+// ---------------------------------------------------------------------------------------------
+
+describe("the library read", () => {
+  const libraryDeck = { id: "deck-1", name: "Aggro", cards: SPARE_DECK, updatedAt: 0 };
+
+  it("offers the account's library decks on every slot", async () => {
+    vi.mocked(listDecks).mockResolvedValue({
+      catalogVersion: catalog.version,
+      maxDecks: ANY_CAP,
+      decks: [libraryDeck],
+    });
+    await mount();
+    expect(listDecks).toHaveBeenCalledWith(TOKEN);
+    for (const deck of [1, 2, 3]) {
+      const picker = screen.getByTestId(`deck-import-${String(deck)}`);
+      expect(picker.querySelector(`option[value="${libraryDeck.id}"]`)).not.toBeNull();
+    }
+
+    fireEvent.change(screen.getByTestId("deck-import-2"), { target: { value: libraryDeck.id } });
+    expect(screen.getByTestId(`deck-card-2-${SPARE_CARD_ID}`)).toBeInTheDocument();
+  });
+
+  it("hides the picker, and still opens the builder, when the read fails", async () => {
+    vi.mocked(listDecks).mockRejectedValue(new Error("library unavailable"));
+    await mount();
+    expect(screen.queryByTestId("deck-import-1")).toBeNull();
+    expect(screen.queryByTestId("deckbuilder-error")).toBeNull();
   });
 });
 

@@ -42,6 +42,7 @@ import {
   deckCardRowId,
   deckCountId,
   deckDropId,
+  deckImportId,
   deckListId,
   deckTabId,
   loadoutErrorId,
@@ -70,6 +71,11 @@ export type DeckbuilderProps = {
   /** `GET /api/loadout`'s `loadout.decks`, or null for a profile that has never saved. */
   initialDecks?: readonly (readonly string[])[] | null;
   save: (decks: readonly (readonly string[])[]) => Promise<SaveOutcome>;
+  /**
+   * R171: the account's library decks, offered on every slot as "Import from library…". Absent or
+   * empty hides the picker: the route's read of `GET /api/decks` is optional.
+   */
+  library?: readonly { id: string; name: string; cards: readonly string[] }[];
 };
 
 function nameOf(def: CardDef | undefined, cardId: string): string {
@@ -86,6 +92,7 @@ export function formatCost(cost: CardCost | undefined): string {
 
 export default function Deckbuilder(props: DeckbuilderProps) {
   const { catalog, collection, save } = props;
+  const library = props.library ?? [];
 
   // `draftFrom` pads a short stored loadout and keeps a long one: L1 is the validator's to report,
   // and quietly dropping a fourth deck would hide it.
@@ -139,6 +146,21 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       edited(move.draft);
     },
     [draft, edited],
+  );
+
+  /**
+   * R171: the slot's draft becomes a COPY of the library deck, never a reference to it. Unlike a
+   * drag, a card another slot already holds is not refused: the player asked for the whole deck,
+   * so the state L4 forbids is created and the validator's own L4 sentence says so (`loadout.ts`).
+   */
+  const importDeck = useCallback(
+    (deck: number, deckId: string) => {
+      const source = library.find((entry) => entry.id === deckId);
+      if (source === undefined) return;
+      setRefusedCardId(null);
+      edited(draft.map((cards, index) => (index === deck - 1 ? [...source.cards] : [...cards])));
+    },
+    [draft, edited, library],
   );
 
   const onSave = useCallback(() => {
@@ -272,6 +294,26 @@ export default function Deckbuilder(props: DeckbuilderProps) {
               putInDeck(deck, cardId);
             }}
           >
+            {library.length === 0 ? null : (
+              <select
+                data-testid={deckImportId(deck)}
+                aria-label={`Import a library deck into Deck ${String(deck)}`}
+                // Always the placeholder: an import is an action, not a setting the slot keeps.
+                value=""
+                onChange={(event) => {
+                  importDeck(deck, event.target.value);
+                }}
+              >
+                <option value="" disabled>
+                  Import from library…
+                </option>
+                {library.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {`${entry.name} (${String(entry.cards.length)}/${String(DECK_SIZE)})`}
+                  </option>
+                ))}
+              </select>
+            )}
             <ul className="db-deck-list" data-testid={deckListId(deck)}>
               {(draft[deck - 1] ?? []).map((cardId) => (
                 <li key={`${String(deck)}:${cardId}`} data-testid={deckCardRowId(deck, cardId)}>
