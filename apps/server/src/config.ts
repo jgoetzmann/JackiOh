@@ -8,6 +8,9 @@
 // `packages/engine/src/config.ts` and are imported directly at the call site once the workspace
 // wiring lands.
 //
+// `apps/web` imports this file by relative path, so it ships to browsers: only public values may
+// ever live here, never a secret (secrets are environment variables, read by `src/env.ts`).
+//
 // Every `SPEC §11 Rnnn` marker below is a value SPEC §9 does not pin down and SPEC §11 now
 // records as a ruling (R104-R112, added per CLAUDE.md rule 3). The comment is the
 // cross-reference between this file and that table.
@@ -55,6 +58,116 @@ export const INVITE_CODE_LENGTH = 16;
 export const INVITE_CODE_GROUP_SIZE = 4;
 /** §9.4: the separator between groups in the formatted invite code. */
 export const INVITE_CODE_SEPARATOR = "-";
+
+// ---------------------------------------------------------------------------------------------
+// How a typed code is read (R191), and the client's sign-in numbers (R192, R194).
+// ---------------------------------------------------------------------------------------------
+
+// PUBLIC VALUES ONLY. `apps/web` imports this file by relative path (the code field, the sign-in
+// screens), so everything in it ships to browsers. It holds no secret and must never hold one: a
+// secret added here later would be in every client bundle. Secrets live in the environment
+// (`src/env.ts`), which the web never imports.
+
+/**
+ * SPEC §11 R191: raw code input longer than this is malformed without being read, so config bounds
+ * the work a redemption does, not the caller. Four times a formatted invite code, which leaves room
+ * for any spacing a person or a mail client adds.
+ */
+export const CODE_INPUT_MAX_LENGTH = 64;
+
+/**
+ * R191: the shape `@jackioh/shared`'s `readCodeInput` reads an invite code with. A plain literal
+ * (structurally a `CodeFormat`), because this file imports nothing.
+ */
+export const INVITE_CODE_FORMAT = {
+  alphabet: CODE_ALPHABET,
+  length: INVITE_CODE_LENGTH,
+  groupSize: INVITE_CODE_GROUP_SIZE,
+  separator: INVITE_CODE_SEPARATOR,
+  maxInputLength: CODE_INPUT_MAX_LENGTH,
+} as const;
+
+/** R191, R79: a room code is one group of `ROOM_CODE_LENGTH` from the same alphabet. */
+export const ROOM_CODE_FORMAT = {
+  alphabet: CODE_ALPHABET,
+  length: ROOM_CODE_LENGTH,
+  groupSize: ROOM_CODE_LENGTH,
+  separator: INVITE_CODE_SEPARATOR,
+  maxInputLength: CODE_INPUT_MAX_LENGTH,
+} as const;
+
+/**
+ * SPEC §11 R190: how many `X-Forwarded-For` entries, counted from the right, the deployment's own
+ * proxies wrote, when `TRUSTED_PROXY_HOPS` does not say. Zero: with no proxy in front (a local or
+ * E2E server) the header is whatever the caller wrote, and trusting it would let a caller choose its
+ * own per-IP bucket. A deployment behind a proxy says so explicitly (`render.yaml` sets 1).
+ */
+export const DEFAULT_TRUSTED_PROXY_HOPS = 0;
+/** R190: the most hops `TRUSTED_PROXY_HOPS` may name; anything above it is a misconfiguration. */
+export const MAX_TRUSTED_PROXY_HOPS = 5;
+/**
+ * R190: an IPv6 client is counted by its first this-many bits. A /64 is only the least a line is
+ * handed: many ISPs delegate a /56 to one home, and a tunnel broker routes a /48 to anyone who asks,
+ * so keying on the /64 gave one host 256 (or 65,536) fresh buckets. A /56 is the usual compromise:
+ * it closes the home delegation, and the price is that IPv6 neighbours sharing a /56 share a bucket.
+ */
+export const IPV6_RATE_LIMIT_PREFIX_BITS = 56;
+
+/**
+ * The largest request body the API reads, in bytes. Every body the API accepts is a small JSON
+ * object (a code, three decks of card ids), so 64 KiB is generous; past it the body is refused
+ * before it is parsed.
+ */
+export const API_MAX_BODY_BYTES = 65_536;
+
+/** The client's sign-up check, mirroring Supabase Auth's default minimum password length. */
+export const AUTH_PASSWORD_MIN_LENGTH = 6;
+/**
+ * The auth provider's bcrypt limit, in UTF-8 BYTES (the provider measures a Go string, and bcrypt
+ * reads bytes), not characters: a letter outside ASCII takes two to four of them.
+ */
+export const AUTH_PASSWORD_MAX_LENGTH = 72;
+/** SPEC §11 R192: the provider's per-address email interval, which the resend button waits out. */
+export const AUTH_EMAIL_RESEND_COOLDOWN_SECONDS = 60;
+/**
+ * SPEC §11 R193: how long this browser remembers the address it signed up with or asked to reset,
+ * for comparing an emailed link against. The provider's email links last at most a day (its email
+ * OTP expiry is capped there), so an older address could only ever be matched by someone else's.
+ */
+export const AUTH_PENDING_ADDRESS_TTL_SECONDS = 86_400;
+/** SPEC §11 R194: a session this close to expiring is renewed before it is used. */
+export const AUTH_SESSION_REFRESH_MARGIN_SECONDS = 60;
+/**
+ * R194: an open screen's token is renewed ahead of its expiry at most once per this many seconds,
+ * so a provider that issues tokens shorter-lived than the margin cannot set off a renewal loop.
+ */
+export const AUTH_SESSION_RENEWAL_FLOOR_SECONDS = 10;
+/**
+ * R194: how long sign-out waits to renew an expired session so it can revoke it, before it loads
+ * the landing page anyway. A live session is revoked without waiting at all.
+ */
+export const AUTH_SIGN_OUT_WAIT_SECONDS = 5;
+/**
+ * SPEC §11 R194: how long the API remembers that an access token's session is still live at the
+ * auth provider. A session the provider has ended (a sign-out, a link's session that was dropped, a
+ * password reset that signed other devices out) stops being honoured here within this many seconds,
+ * not when its access token expires.
+ */
+export const AUTH_SESSION_LIVE_CACHE_SECONDS = 30;
+/** A request to the auth provider that has not answered in this long is a network failure. */
+export const AUTH_PROVIDER_TIMEOUT_SECONDS = 30;
+/**
+ * A request to this server that has not answered in this long is a network failure. Longer than the
+ * provider's, because Render's free tier takes about 50 s to wake a sleeping instance.
+ */
+export const API_REQUEST_TIMEOUT_SECONDS = 75;
+/** How long the gate's "Checking your account…" waits before it offers a way out and says why. */
+export const GATE_SLOW_NOTICE_SECONDS = 5;
+/**
+ * R192: the code screen reads `/api/codes/status` again when a wait it stated runs out, but never
+ * sooner than this after the last read, so a wait that has just lapsed cannot make it poll.
+ */
+export const CODE_STATUS_RECHECK_FLOOR_SECONDS = 1;
 
 // ---------------------------------------------------------------------------------------------
 // Redemption rate limits (§9.4).
@@ -228,6 +341,23 @@ export const SERVER_CONFIG = Object.freeze({
   INVITE_CODE_LENGTH,
   INVITE_CODE_GROUP_SIZE,
   INVITE_CODE_SEPARATOR,
+  CODE_INPUT_MAX_LENGTH,
+  DEFAULT_TRUSTED_PROXY_HOPS,
+  MAX_TRUSTED_PROXY_HOPS,
+  IPV6_RATE_LIMIT_PREFIX_BITS,
+  API_MAX_BODY_BYTES,
+  AUTH_PASSWORD_MIN_LENGTH,
+  AUTH_PASSWORD_MAX_LENGTH,
+  AUTH_EMAIL_RESEND_COOLDOWN_SECONDS,
+  AUTH_PENDING_ADDRESS_TTL_SECONDS,
+  AUTH_SESSION_REFRESH_MARGIN_SECONDS,
+  AUTH_SESSION_RENEWAL_FLOOR_SECONDS,
+  AUTH_SIGN_OUT_WAIT_SECONDS,
+  AUTH_SESSION_LIVE_CACHE_SECONDS,
+  AUTH_PROVIDER_TIMEOUT_SECONDS,
+  API_REQUEST_TIMEOUT_SECONDS,
+  GATE_SLOW_NOTICE_SECONDS,
+  CODE_STATUS_RECHECK_FLOOR_SECONDS,
   CODE_ATTEMPTS_PER_PROFILE_PER_HOUR,
   CODE_ATTEMPTS_PER_IP_PER_HOUR,
   CODE_ATTEMPT_WINDOW_SECONDS,

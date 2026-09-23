@@ -416,6 +416,10 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
     validateLoadout: permissiveValidator,
     matches: createFakeMatchDirectory(),
     log: createRecordingLogger(),
+    // `jsonRequest` writes the `X-Forwarded-For` entry a proxy would, so the tests model the
+    // deployed server behind one proxy hop (`render.yaml`). The server's own default is 0 (R190),
+    // and `client-address.test.ts` covers it by passing `trustedProxyHops: undefined`.
+    trustedProxyHops: 1,
   };
   return { ...base, ...overrides } as TestDeps;
 }

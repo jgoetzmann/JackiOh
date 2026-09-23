@@ -26,6 +26,7 @@
 import { describe, expect, it } from "vitest";
 import { VITE_DEV_ORIGINS, isOriginAllowed, withCors } from "../../src/api/cors";
 import { browserOrigins } from "../../src/index";
+import { DEFAULT_TRUSTED_PROXY_HOPS } from "../../src/config";
 import type { ServerEnv } from "../../src/env";
 import { createRecordingLogger } from "../fakes/deps";
 
@@ -43,6 +44,7 @@ function testEnv(overrides: Partial<ServerEnv> = {}): ServerEnv {
     NODE_ENV: "test",
     E2E: false,
     CATALOG_VERSION: "test-1",
+    TRUSTED_PROXY_HOPS: DEFAULT_TRUSTED_PROXY_HOPS,
     ...overrides,
   };
 }

@@ -7,8 +7,10 @@
  */
 
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { canonicalCode, normalizeCodeText } from "@jackioh/shared";
 import {
   CODE_ALPHABET,
+  INVITE_CODE_FORMAT,
   INVITE_CODE_GROUP_SIZE,
   INVITE_CODE_SEPARATOR,
 } from "../config";
@@ -39,13 +41,23 @@ export function formatCode(raw: string): string {
 }
 
 /**
- * What the client typed, reduced to the canonical form that gets hashed: upper case, separators
- * and whitespace dropped. A string holding characters outside the alphabet is still returned, so
- * a malformed code takes the same path as a lookup miss and no oracle distinguishes
- * "well-formed but unknown" from "malformed" (§9.4).
+ * What the client typed, reduced to the form that gets hashed: SPEC §11 R191's reading, shared with
+ * the client's code field through `@jackioh/shared` (NFKC, upper case one character at a time,
+ * every space, dash and invisible separator removed). A string holding characters outside the
+ * alphabet is still returned, so a malformed code takes the same path as a lookup miss and no
+ * oracle distinguishes "well-formed but unknown" from "malformed" (§9.4).
  */
 export function normalizeCode(input: string): string {
-  return input.toUpperCase().replace(/[\s-]+/gu, "");
+  return normalizeCodeText(input);
+}
+
+/**
+ * R191: the invite code a raw input reads as, or null when it is not exactly one — too short, too
+ * long (`CODE_INPUT_MAX_LENGTH` included, which is refused unread) or holding a character outside
+ * R104's alphabet. Nothing is dropped or mapped on the way.
+ */
+export function canonicalInviteCode(raw: string): string | null {
+  return canonicalCode(raw, INVITE_CODE_FORMAT);
 }
 
 export function isWellFormedCode(normalized: string, length: number): boolean {

@@ -39,9 +39,19 @@
  */
 
 import { INVITE_CODE_LENGTH, REDEMPTION_IDENTICAL_ERROR } from "../config";
-import { formatCode, isWellFormedCode, normalizeCode } from "./crypto";
-import { ApiError, errorResponse, ok, padTo, route, str, type ApiRequest, type Route } from "./http";
-import type { InviteCode, Profile, RedeemResult, ServerDeps } from "./ports";
+import { canonicalInviteCode, formatCode, isWellFormedCode, normalizeCode } from "./crypto";
+import {
+  ApiError,
+  badRequest,
+  errorResponse,
+  ok,
+  padTo,
+  rateLimited,
+  route,
+  type ApiRequest,
+  type Route,
+} from "./http";
+import type { ApiLimits, InviteCode, Profile, RedeemResult, ServerDeps } from "./ports";
 
 // ---------------------------------------------------------------------------
 // Wording and defaults SPEC does not pin down
@@ -223,19 +233,29 @@ export async function redeemCode(deps: ServerDeps, input: RedeemInput): Promise<
     return { ok: false, error: new ApiError("email_unverified", EMAIL_UNVERIFIED_MESSAGE) };
   }
 
-  // §9.4: codes are "stored hashed", so the plaintext is normalized and hashed here and the store
-  // is handed a hash. A code that could never exist — wrong length, or a character outside §9.4's
-  // alphabet — travels as `null` rather than being refused early, because §9.4 logs the attempt
-  // (step 4) before it looks anything up (step 5): a malformed code must cost the same row a
-  // wrong one does, or it would be the one cheap probe in this endpoint.
-  const normalized = normalizeCode(input.plainCode);
-  const codeHash = isWellFormedCode(normalized, INVITE_CODE_LENGTH)
-    ? deps.hashes.code(normalized)
-    : null;
+  // §9.4: codes are "stored hashed", so the plaintext is read and hashed here and the store is
+  // handed a hash. SPEC §11 R191 fixes the reading, shared with the client's code field: NFKC,
+  // upper case, separators removed, and then exactly the code's length in R104's alphabet, with no
+  // character dropped or mapped. Input longer than `CODE_INPUT_MAX_LENGTH` is not read at all. A
+  // code that could never exist travels as `null` rather than being refused early, because §9.4
+  // logs the attempt (step 4) before it looks anything up (step 5): a malformed code must cost the
+  // same row a wrong one does, or it would be the one cheap probe in this endpoint.
+  const canonical = canonicalInviteCode(input.plainCode);
+  const codeHash = canonical === null ? null : deps.hashes.code(canonical);
 
   // §9.4: "Redemption is one server-side transaction." This is it.
   const result = await deps.store.redeem({ profileId: profile.id, codeHash, ipHash: input.ipHash });
-  const outcome = outcomeFor(result);
+  const outcome = outcomeFor(result, deps.limits);
+
+  if (result === "circuit_open") {
+    // The database's own switch (`app.settings.redemption_enabled`) is off, which this process
+    // cannot read ahead of a redemption. Mirrored in the process's breaker for its cooldown, so
+    // `GET /api/codes/status` says "paused" (R192) and the next presses are refused here, before
+    // the store is touched: every redemption the store sees logs an attempt, and the code screen
+    // would otherwise keep Redeem on and spend one of the account's tries on each press. No alert:
+    // an operator flipped the switch, and the breaker's alert is for failures crossing a threshold.
+    breaker.openUntil = Math.max(breaker.openUntil, now + deps.limits.breakerCooldownMs);
+  }
 
   if (!outcome.ok) await noteFailure(deps, breaker, now);
   return outcome;
@@ -246,7 +266,7 @@ export async function redeemCode(deps: ServerDeps, input: RedeemInput): Promise<
  * R145's one identical error; everything else depends only on the caller's own account or on the
  * service's availability, and says so.
  */
-function outcomeFor(result: RedeemResult): RedeemOutcome {
+function outcomeFor(result: RedeemResult, limits: ApiLimits): RedeemOutcome {
   switch (result) {
     case "ok":
       return { ok: true };
@@ -266,7 +286,11 @@ function outcomeFor(result: RedeemResult): RedeemOutcome {
     case "rate_limited_ip":
       // §9.4 steps 2 and 3. Which of the two windows refused is not told apart: the per-IP one
       // would say something about the other accounts behind the same address.
-      return { ok: false, error: new ApiError("rate_limited", RATE_LIMITED_MESSAGE) };
+      //
+      // SPEC §11 R192: reported as a rate limit with its wait, never folded into R145's identical
+      // error. The wait is the whole attempt window, an upper bound: the exact time would depend on
+      // the IP window, and so on other accounts' attempts.
+      return { ok: false, error: rateLimited(RATE_LIMITED_MESSAGE, limits.redeemWindowMs) };
     case "circuit_open":
       return { ok: false, error: new ApiError("unavailable", BREAKER_MESSAGE) };
     case "invalid_code":
@@ -303,6 +327,19 @@ async function noteFailure(
 // Routes
 // ---------------------------------------------------------------------------
 
+/**
+ * The code as sent. Any string is read, the empty one included: `""` holds no code exactly as
+ * `"----"` or `" "` does, so R191's reading calls it malformed and it gets R145's identical error
+ * and its attempt row like them, after the account's own checks, rather than a request-shape
+ * refusal of its own (which `str` gives an empty string). Only a code that is not a string at all
+ * is a malformed request.
+ */
+function plainCodeOf(body: Readonly<Record<string, unknown>>): string {
+  const value = body["code"];
+  if (typeof value !== "string") throw badRequest('"code" must be a string');
+  return value;
+}
+
 /** Never throws an `ApiError`: every rejection comes back as a value, so it can be padded. */
 async function redeemForRequest(
   deps: ServerDeps,
@@ -317,7 +354,7 @@ async function redeemForRequest(
     }
     return await redeemCode(deps, {
       profile,
-      plainCode: str(req.body, "code"),
+      plainCode: plainCodeOf(req.body),
       ipHash: req.ipHash,
       emailVerified: user.emailVerified,
       breaker,
@@ -351,12 +388,36 @@ export function createCodesRoutes(): Route[] {
 
     // Lets the code screen say "redemption is paused" instead of making the player guess after a
     // 503. Readable by a pending account, like the code screen itself.
-    route("GET", "/api/codes/status", "user", async (_req, deps) => {
+    //
+    // `attemptsRemaining` (R192) is how many more tries this account has in §9.4 step 2's window,
+    // so the screen can say so before a try is spent. It counts this profile's attempts only:
+    // another account's attempts from the same address never change it, because reporting them
+    // would tell this caller about the other accounts behind its address. The `+ 1` is config.ts's
+    // reading of step 2's strict "more than": the count excludes the attempt being made, so attempt
+    // `redeemPerProfilePerHour + 2` is the first refused. It is advisory — the per-IP window can
+    // still refuse sooner on a shared network, and that refusal arrives as a 429 with its wait.
+    //
+    // `attemptsRetryAfterMs` (R192) is how long until an account with no tries left gets one back:
+    // its oldest counted attempt leaves the window then. 0 while it has tries. The screen shows the
+    // wait and reads the status again when it runs out, so "no tries left" lifts by itself. Like the
+    // count, it is this profile's own: the per-IP window's wait would describe other accounts.
+    route("GET", "/api/codes/status", "user", async (req, deps) => {
       const now = deps.timers.now();
       const open = now < breaker.openUntil;
+      const since = now - deps.limits.redeemWindowMs;
+      const profileId = req.profile?.id ?? null;
+      const attempts = profileId === null ? 0 : await deps.store.codes.countAttemptsByProfile(profileId, since);
+      const attemptsRemaining = Math.max(0, deps.limits.redeemPerProfilePerHour + 1 - attempts);
+      let attemptsRetryAfterMs = 0;
+      if (attemptsRemaining === 0 && profileId !== null) {
+        const oldest = await deps.store.codes.oldestAttemptAtByProfile(profileId, since);
+        attemptsRetryAfterMs = oldest === null ? 0 : Math.max(0, oldest + deps.limits.redeemWindowMs - now);
+      }
       return ok({
         redemptionEnabled: !open,
         retryAfterMs: open ? breaker.openUntil - now : 0,
+        attemptsRemaining,
+        attemptsRetryAfterMs,
       });
     }),
   ];

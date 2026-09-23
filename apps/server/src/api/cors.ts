@@ -95,14 +95,17 @@ function corsHeaders(origin: string): Record<string, string> {
 /**
  * Wraps a `Request -> Response` handler with CORS. Preflights are answered here and never reach
  * the router, which knows no `OPTIONS` route and would answer 404 for one.
+ *
+ * `context` is whatever the host knows about the connection (the router's `RequestContext`, which
+ * carries the socket's peer address for R190). It is passed through unchanged: CORS never reads it.
  */
-export function withCors<H extends (request: Request) => Promise<Response>>(
-  handler: H,
+export function withCors<C>(
+  handler: (request: Request, context?: C) => Promise<Response>,
   options: CorsOptions,
-): (request: Request) => Promise<Response> {
+): (request: Request, context?: C) => Promise<Response> {
   const origins = options.origins.map(canonicalOrigin).filter((origin) => origin.length > 0);
 
-  return async (request: Request): Promise<Response> => {
+  return async (request: Request, context?: C): Promise<Response> => {
     const origin = request.headers.get("origin");
     const allowed = isOriginAllowed(origins, origin);
 
@@ -129,7 +132,7 @@ export function withCors<H extends (request: Request) => Promise<Response>>(
       });
     }
 
-    const response = await handler(request);
+    const response = await handler(request, context);
     if (!allowed || origin === null) {
       // R162 again: the ordinary response an unlisted or origin-less caller gets is still an answer
       // that depended on the origin, so it is still cacheable-per-origin. Without this a shared

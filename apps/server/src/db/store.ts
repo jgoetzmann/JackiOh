@@ -825,6 +825,16 @@ function buildStore(session: Session): Store {
       return intOf(rows[0]?.n ?? 0);
     },
 
+    oldestAttemptAtByProfile: async (profileId, since) => {
+      const { rows } = await session.query<{ at: unknown }>(
+        profileId,
+        `select min(at) as at from public.code_attempts
+          where profile_id = $1::uuid and at >= ${ts("$2")}`,
+        [profileId, since],
+      );
+      return msOrNull(rows[0]?.at);
+    },
+
     countAttemptsByIp: async (ipHash, since) => {
       const { rows } = await session.query<{ n: number }>(
         null,
