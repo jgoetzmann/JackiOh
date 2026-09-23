@@ -3,8 +3,14 @@
 // NO SPEC DRIVES THIS SCREEN. Spec 06 creates its room over `POST /api/rooms` and joins over
 // `POST /api/rooms/:code/join` precisely because "the room screen has no testids yet", so nothing
 // here is load-bearing for M8. It is kept small and honest on purpose, and it enforces nothing: the
-// queue asserts the account is active, not in a match and holding a valid loadout (§9.5), and this
-// screen only relays what it said.
+// queue asserts the account is active, not in a match and holding a valid deck (§9.5, R172), and
+// this screen only relays what it said.
+//
+// THE DECK PICKER (R172). A match freezes either a loadout deck (`{ deckIndex }`) or one of the
+// account's library decks (`{ deckId }`). The picker offers the library's complete decks, lists the
+// incomplete ones disabled with their count (a count, not a verdict: the server still validates
+// the deck it freezes), and the loadout's decks when one is saved. Before its two reads land, and
+// if both fail, the choice is loadout deck 1, which is what this screen always sent.
 //
 // BOTH GAPS ARE CLOSED, and by the endpoint they asked for rather than by a workaround here.
 //
@@ -22,18 +28,35 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from "react";
 
-import { ApiRequestError, createRoom, dequeue, enqueue, getMe, joinRoom } from "../net/api.ts";
+import { DECK_SIZE } from "../game/deckbuilder/deckSize.ts";
+import { DECK_NUMBERS } from "../game/deckbuilder/loadout.ts";
+import {
+  ApiRequestError,
+  createRoom,
+  dequeue,
+  enqueue,
+  getLoadout,
+  getMe,
+  joinRoom,
+  listDecks,
+  type DeckChoice,
+  type LibraryDeck,
+} from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
 import { BackLink } from "./nav.tsx";
 
-/** Chrome this screen invented; none of it is in `e2e/support/testids.ts` (no spec drives it). */
 /**
  * How often the wait asks whether a match has appeared. R108 sweeps the queue every 3 s, so a
  * shorter poll only adds requests without finding a pairing sooner.
  */
 const MATCH_WATCH_MS = 2_000;
 
+/**
+ * Chrome this screen invented. Only `deck` is mirrored in `e2e/support/testids.ts`; nothing else
+ * here is driven by a spec.
+ */
 export const playTestid = {
+  deck: "play-deck",
   queue: "play-queue",
   leaveQueue: "play-leave-queue",
   createRoom: "play-create-room",
@@ -53,8 +76,25 @@ type EnqueueResult = {
   population?: number;
 };
 
-/** §9.4, §9.5: the deck a match freezes is a loadout index. Deck 0 until a picker exists. */
-const DECK_INDEX = 0;
+/** §9.5: loadout deck 1, the choice this screen made before it had a picker. */
+const FALLBACK: DeckChoice = { deckIndex: 0 };
+
+/** The picker's option values: a `<select>` carries strings, a request carries a `DeckChoice`. */
+function keyOf(choice: DeckChoice): string {
+  return "deckId" in choice ? `library:${choice.deckId}` : `loadout:${String(choice.deckIndex)}`;
+}
+
+function choiceOf(key: string): DeckChoice {
+  const rest = key.slice(key.indexOf(":") + 1);
+  return key.startsWith("library:") ? { deckId: rest } : { deckIndex: Number(rest) };
+}
+
+function isComplete(deck: LibraryDeck): boolean {
+  return deck.cards.length === DECK_SIZE;
+}
+
+/** What the picker offers. `loadout` is true unless `GET /api/loadout` said there is none. */
+type Offer = { library: readonly LibraryDeck[]; loadout: boolean };
 
 function messageOf(cause: unknown): string {
   if (cause instanceof ApiRequestError) return cause.message;
@@ -122,8 +162,36 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
   const [joinCode, setJoinCode] = useState("");
   /** True while this screen is waiting to be paired: queued, or hosting an unclaimed room. */
   const [waiting, setWaiting] = useState(false);
+  const [offer, setOffer] = useState<Offer>({ library: [], loadout: true });
+  const [picked, setPicked] = useState<DeckChoice | null>(null);
 
   useMatchWatch(token, waiting);
+
+  // Both reads are optional. A failed library read offers no library deck; a failed loadout read
+  // still offers the loadout, since deck 1 is the fallback and the server judges it either way.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      listDecks(token).then(
+        (response) => response.decks,
+        () => [],
+      ),
+      getLoadout(token).then(
+        (response) => response.loadout !== null,
+        () => true,
+      ),
+    ]).then(([library, loadout]) => {
+      if (!cancelled) setOffer({ library, loadout });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const firstComplete = offer.library.find(isComplete);
+  const choice: DeckChoice =
+    picked ?? (firstComplete === undefined ? FALLBACK : { deckId: firstComplete.id });
+  const playable = firstComplete !== undefined || offer.loadout;
 
   function run(work: () => Promise<void>): void {
     if (busy) return;
@@ -140,7 +208,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
 
   function onEnqueue(): void {
     run(async () => {
-      const result = (await enqueue(token, { deckIndex: DECK_INDEX })) as EnqueueResult;
+      const result = (await enqueue(token, choice)) as EnqueueResult;
       if (typeof result.matchId === "string" && result.matchId.length > 0) {
         navigate(paths.match(result.matchId));
         return;
@@ -164,7 +232,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
 
   function onCreateRoom(): void {
     run(async () => {
-      const room = await createRoom(token, { deckIndex: DECK_INDEX });
+      const room = await createRoom(token, choice);
       setRoomCode(room.code);
       setWaiting(true);
       setStatus("Give your opponent this code. You will be taken to the board when they join.");
@@ -176,7 +244,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
     run(async () => {
       // R104 normalises input to upper case server-side; sending it that way keeps a typed code
       // and a pasted one identical on the wire.
-      const joined = await joinRoom(token, joinCode.trim().toUpperCase(), { deckIndex: DECK_INDEX });
+      const joined = await joinRoom(token, joinCode.trim().toUpperCase(), choice);
       navigate(paths.match(joined.matchId));
     });
   }
@@ -185,6 +253,46 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
     <div className="app-shell">
       <BackLink />
       <h1>JackiOh — play</h1>
+
+      <section className="form-card">
+        <label htmlFor="play-deck">Deck</label>
+        <select
+          id="play-deck"
+          data-testid={playTestid.deck}
+          value={keyOf(choice)}
+          disabled={busy}
+          onChange={(event) => {
+            setPicked(choiceOf(event.target.value));
+          }}
+        >
+          {playable ? null : (
+            // Nothing to pick: the fallback is still what is sent, and the server says why not.
+            <option value={keyOf(FALLBACK)} disabled>
+              No complete deck
+            </option>
+          )}
+          {offer.library.length === 0 ? null : (
+            <optgroup label="My decks">
+              {offer.library.map((deck) => (
+                <option key={deck.id} value={keyOf({ deckId: deck.id })} disabled={!isComplete(deck)}>
+                  {isComplete(deck)
+                    ? deck.name
+                    : `${deck.name} (${String(deck.cards.length)}/${String(DECK_SIZE)})`}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {offer.loadout ? (
+            <optgroup label="Loadout">
+              {DECK_NUMBERS.map((deck) => (
+                <option key={deck} value={keyOf({ deckIndex: deck - 1 })}>
+                  {`Deck ${String(deck)}`}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+        </select>
+      </section>
 
       <section className="form-card">
         <h2>Ranked queue</h2>

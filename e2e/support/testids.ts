@@ -257,6 +257,14 @@ export function deckListId(oneBased: number): string {
   return `deck-list-${String(oneBased)}`;
 }
 
+/**
+ * A11: "Import from library…" on deck `oneBased` (R171), one option per library deck with the
+ * deck's id as its value. Picking one replaces the slot's draft with a copy of that deck.
+ */
+export function deckImportId(oneBased: number): string {
+  return `deck-import-${String(oneBased)}`;
+}
+
 /** A11: how many cards deck `oneBased` holds, for L2's "exactly DECK_SIZE". */
 export function deckCountId(oneBased: number): string {
   return `deck-count-${String(oneBased)}`;
@@ -322,3 +330,80 @@ export const INVITE_ERROR = "invite-error";
 export const INVITE_PAUSED = "invite-paused";
 /** An active account reached the code screen; redemption is the pending → active transition only. */
 export const INVITE_NOT_NEEDED = "invite-not-needed";
+
+// ---------------------------------------------------------------------------------------------
+// A14: the deck library (BUILD M9, SPEC §11 R171 and R172). Like A11 these mirror, name for name,
+// the screen's own vocabulary — `apps/web/src/game/library/testids.ts` — plus the `/play` deck
+// picker in `apps/web/src/routes/play.tsx` (`playTestid.deck`). Keep the files identical.
+// ---------------------------------------------------------------------------------------------
+
+/** The screen itself. */
+export const LIBRARY = "library";
+/** Rendered instead of the screen while its reads are in flight, or when one it needs failed. */
+export const LIBRARY_LOADING = "library-loading";
+export const LIBRARY_ERROR = "library-error";
+
+/** The saved decks, and one row per deck (`deckId` is the server's, from `/api/decks`). */
+export const LIBRARY_DECKS = "library-decks";
+export function libraryDeckId(deckId: string): string {
+  return `library-deck-${deckId}`;
+}
+/** Two-step delete: the first click arms it, the confirm deletes. */
+export function libraryDeckDeleteId(deckId: string): string {
+  return `library-deck-delete-${deckId}`;
+}
+export function libraryDeckDeleteConfirmId(deckId: string): string {
+  return `library-deck-delete-confirm-${deckId}`;
+}
+/** "New deck", with the `k/max` count beside it; disabled at the cap (R171). */
+export const LIBRARY_NEW_DECK = "library-new-deck";
+export const LIBRARY_DECK_TOTAL = "library-deck-total";
+/** The badge on a deck (list row or editor header) short of the deck size (R171). */
+export const LIBRARY_INCOMPLETE = "library-incomplete";
+
+/** Edit mode: the pages of cards, one card per catalog id, and the arrows that turn them. */
+export const LIBRARY_PAGES = "library-pages";
+export function pageCardId(catalogCardId: string): string {
+  return `library-page-card-${catalogCardId}`;
+}
+export const PAGE_PREV = "library-page-prev";
+export const PAGE_NEXT = "library-page-next";
+/** "Page i / n", with `data-page` (1-based), `data-pages`, `data-rows`, `data-cols`. */
+export const PAGE_INDICATOR = "library-page-indicator";
+
+/** Edit mode: the decklist, which is also the drop target a page card is dragged onto. */
+export const DECKLIST = "library-decklist";
+export function deckBarId(catalogCardId: string): string {
+  return `library-bar-${catalogCardId}`;
+}
+export const DECK_NAME_INPUT = "library-deck-name";
+/** `n/deckSize`, with `data-count` and `data-deck-size`. */
+export const DECK_CARD_COUNT = "library-card-count";
+export const DECK_SAVE = "library-save";
+export const DECK_SAVED = "library-saved";
+export const DECK_BACK = "library-back";
+/** Shown when Back would drop unsaved edits; confirming discards them. */
+export const DECK_DISCARD_CONFIRM = "library-discard-confirm";
+/** Every validator sentence, verbatim, one marker per rule. */
+export const DECK_ERRORS = "library-errors";
+export function deckErrorId(rule: string): string {
+  return `library-error-${rule}`;
+}
+/** A refusal that is not a rule failure (a stale catalog, the cap, a 403): the server's words. */
+export const DECK_SAVE_ERROR = "library-save-error";
+/** The full card shown beside the decklist while a bar is hovered or focused. */
+export const HOVER_PREVIEW = "library-hover-preview";
+
+/** The full-screen inspector. Its card's inline `transform` is what a drag changes. */
+export const INSPECTOR = "library-inspector";
+export const INSPECTOR_CARD = "library-inspector-card";
+export const INSPECTOR_FLIP = "library-inspector-flip";
+export const INSPECTOR_CLOSE = "library-inspector-close";
+/** Add to / remove from the deck: the path that needs no right-click. */
+export const INSPECTOR_TOGGLE = "library-inspector-toggle";
+
+/** A bar dragged out of the decklist carries this MIME: "remove this", not a page card's "add". */
+export const DECK_BAR_MIME = "application/x-jackioh-deck-bar";
+
+/** R172: `/play`'s deck picker; option values are `library:<deckId>` and `loadout:<deckIndex>`. */
+export const PLAY_DECK = "play-deck";

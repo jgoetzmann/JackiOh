@@ -63,6 +63,14 @@ export function deckCardRowId(deck: number, cardId: string): string {
  */
 export const DECK_DRAG_MIME = "application/x-jackioh-card";
 
+/**
+ * "Import from library…" on deck `n` (R171): one option per library deck, keyed by its id. Picking
+ * one replaces the slot's draft with a copy of that deck's cards.
+ */
+export function deckImportId(deck: number): string {
+  return `deck-import-${deck}`;
+}
+
 /** The card count of deck `n`, against `DECK_SIZE` (L2). */
 export function deckCountId(deck: number): string {
   return `deck-count-${deck}`;

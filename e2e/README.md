@@ -1,4 +1,4 @@
-# `e2e/` — the twelve BUILD M8 specs
+# `e2e/` — the twelve BUILD M8 specs, and M9's spec 13
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,7 +16,7 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the twelve specs
+  cypress/e2e/*.cy.ts      the twelve M8 specs and M9's 13-deck-library
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
   support/
     commands.ts            seedGame, playCard, attack, answerPrompt, endTurn (+ the waiting
@@ -77,9 +77,9 @@ pnpm test:e2e --expose wsUrl=ws://127.0.0.1:8787/ws/match --expose apiUrl=http:/
 ```
 
 `support/config.ts` lists every overridable key (`loginRoute`, `inviteRoute`, `deckbuilderRoute`,
-`playRoute`, `matchRoute`, `apiUrl`, `wsUrl`, the fixture accounts and the invite codes). Cypress
-16 replaced `Cypress.env()` with `expose` / `Cypress.expose()`, which is why the flag is
-`--expose`.
+`libraryRoute`, `playRoute`, `matchRoute`, `apiUrl`, `wsUrl`, the fixture accounts and the invite
+codes). Cypress 16 replaced `Cypress.env()` with `expose` / `Cypress.expose()`, which is why the
+flag is `--expose`.
 
 ## What must be true of the app first
 
@@ -126,6 +126,7 @@ place to change.
 | A11 | Deckbuilder testids, which BUILD names none of: `deckbuilder`, `card-pool` + `card-pool-<cardId>`, `deck-tab-<n>`, `deck-drop-<n>`, `deck-list-<n>`, `deck-count-<n>`, `deck-card-<n>-<cardId>` and its row `deck-<n>-card-<cardId>`, `loadout-save` / `-saved` / `-errors` / `loadout-error-<rule>` / `-save-error` (`n` 1-based, as the screen labels the decks), and a drag carrying the catalog id on `application/x-jackioh-card` plus `text/plain`. These mirror `apps/web/src/game/deckbuilder/testids.ts` name for name; keep the two files identical. | `support/testids.ts`, `support/commands.ts` | — |
 | A12 | A one-deck scenario fixture is padded into a loadout §9.4 accepts: L1 wants exactly 3 decks and L4 wants them disjoint, so the other two are the next `DECK_SIZE * 2` Core ids the fixture did not use — inside L5, because R111 grants one copy of every non-token card. `cy.installLoadout` saves all three in one `PUT /api/loadout` against the version `GET` just reported. | `support/commands.ts` | — |
 | A13 | Invite-screen testids, which BUILD names none of either: `invite-code-input`, `invite-submit`, `invite-error`, `invite-paused`, `invite-not-needed`. Like A11 these are documentation rather than an ask — `apps/web/src/routes/invite.tsx` exports and renders all five already; nothing under `e2e/` had ever named them, which is why spec 10's "code screen shown" was a URL redirect and not a screen. Keep the two files identical. | `support/testids.ts` | — |
+| A14 | Deck library testids (BUILD M9, R171/R172): `library`, `library-decks` + `library-deck-<deckId>`, `library-new-deck`, `library-incomplete`, the pages (`library-pages`, `library-page-card-<cardId>`, `library-page-prev` / `-next`, `library-page-indicator` with `data-page`), the decklist (`library-decklist`, `library-bar-<cardId>`, `library-deck-name`, `library-card-count` with `data-count`, `library-save` / `-saved`), `library-hover-preview`, the inspector (`library-inspector`, `library-inspector-card` whose inline `transform` a drag changes), plus the loadout editor's `deck-import-<n>` and `/play`'s `play-deck`. These mirror `apps/web/src/game/library/testids.ts`, `game/deckbuilder/testids.ts` and `routes/play.tsx` name for name; keep them identical. | `support/testids.ts` | — |
 
 ## What `support/` owns, so a spec does not
 
@@ -152,6 +153,7 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 08 | M4 + M5 only: it ends turns until the cap. |
 | 09 | M6-T3 (validator + loadout endpoints) and the deckbuilder UI. |
 | 10 | M6-T1 (auth, invite gate) and the code screen. |
+| 13 | M9 (the `/api/decks` routes, the library constructor, R172's `deckId` on rooms) and the M6 loadout editor. |
 
 ## What the root still needs (not changed from here)
 

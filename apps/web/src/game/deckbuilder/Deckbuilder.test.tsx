@@ -353,3 +353,101 @@ describe("saving", () => {
     expect(screen.queryByTestId("loadout-saved")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// R171: "Import from library…" copies a library deck into a slot
+// ---------------------------------------------------------------------------------------------
+
+describe("importing a library deck", () => {
+  const LIBRARY_DECK_ID = "deck-1";
+
+  function mountWithLibrary(library: { id: string; name: string; cards: readonly string[] }[]) {
+    const save = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <Deckbuilder
+        catalog={catalog}
+        collection={collection}
+        initialDecks={legalDecks()}
+        save={save}
+        library={library}
+      />,
+    );
+    return save;
+  }
+
+  function pick(deck: number, deckId: string): void {
+    fireEvent.change(screen.getByTestId(`deck-import-${String(deck)}`), { target: { value: deckId } });
+  }
+
+  it("offers no picker when the library is absent or empty", () => {
+    mount(legalDecks());
+    expect(screen.queryByTestId("deck-import-1")).toBeNull();
+    cleanup();
+    mountWithLibrary([]);
+    expect(screen.queryByTestId("deck-import-1")).toBeNull();
+  });
+
+  it("R171 replaces the slot with a copy of the deck, which later edits never reach", async () => {
+    // Deck 2's cards, so the import is a real change to slot 1 (and collides; see the next test).
+    const imported = [...(legalDecks()[1] ?? [])];
+    const library = [{ id: LIBRARY_DECK_ID, name: "Aggro", cards: imported }];
+    const save = mountWithLibrary(library);
+
+    pick(1, LIBRARY_DECK_ID);
+    expect(screen.getByTestId("deck-count-1")).toHaveAttribute("data-count", String(DECK_SIZE));
+    for (const cardId of imported) {
+      expect(screen.getByTestId(`deck-card-1-${cardId}`)).toBeInTheDocument();
+    }
+    // The picker is an action, not a setting: it is back on its placeholder.
+    expect(screen.getByTestId("deck-import-1")).toHaveValue("");
+
+    // An edit to the slot leaves the library deck exactly as it was…
+    const first = imported[0] ?? "";
+    fireEvent.click(screen.getByTestId(`deck-card-1-${first}`));
+    expect(library[0]?.cards).toEqual(imported);
+
+    // …and what a save sends is the slot's own list, not the library's array.
+    fireEvent.click(screen.getByTestId("loadout-save"));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    const sent = save.mock.calls[0]?.[0] as string[][];
+    expect(sent[0]).not.toBe(library[0]?.cards);
+    expect(sent[0]).toEqual(imported.slice(1));
+  });
+
+  it("does not refuse a collision: the validator's own L4 sentence is what shows", () => {
+    const decks = legalDecks();
+    const imported = [...(decks[1] ?? [])];
+    mountWithLibrary([{ id: LIBRARY_DECK_ID, name: "Aggro", cards: imported }]);
+
+    pick(1, LIBRARY_DECK_ID);
+    const draft = [imported, decks[1] ?? [], decks[2] ?? []];
+    const want = expected(draft, "L4");
+    expect(want, "every card of the import is also in deck 2").toHaveLength(DECK_SIZE);
+    expect(shown("L4")).toEqual(want);
+  });
+
+  it("goes through the same edit path as a drag: the last save's verdict is retired", async () => {
+    const decks = legalDecks();
+    const serverIssues = issuesFor([decks[0] ?? [], decks[1] ?? []]);
+    render(
+      <Deckbuilder
+        catalog={catalog}
+        collection={collection}
+        initialDecks={decks}
+        save={vi
+          .fn()
+          .mockResolvedValue({ ok: false, message: serverIssues[0]?.message ?? "", issues: serverIssues })}
+        library={[{ id: LIBRARY_DECK_ID, name: "Aggro", cards: decks[0] ?? [] }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("loadout-save"));
+    await waitFor(() => {
+      expect(screen.getByTestId("loadout-error-L1")).toHaveAttribute("data-source", "server");
+    });
+    pick(1, LIBRARY_DECK_ID);
+    expect(screen.queryByTestId("loadout-error-L1")).toBeNull();
+  });
+});

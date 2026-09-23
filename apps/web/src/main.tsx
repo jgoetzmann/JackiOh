@@ -27,6 +27,7 @@ const HotseatRoute = lazy(() => import("./routes/dev/hotseat.tsx"));
 const LoginRoute = lazy(() => import("./routes/login.tsx"));
 const InviteRoute = lazy(() => import("./routes/invite.tsx"));
 const DecksRoute = lazy(() => import("./routes/decks.tsx"));
+const LibraryRoute = lazy(() => import("./routes/library.tsx"));
 const PlayRoute = lazy(() => import("./routes/play.tsx"));
 const AccountRoute = lazy(() => import("./routes/account.tsx"));
 const MatchRoute = lazy(() => import("./routes/match.tsx"));
@@ -71,6 +72,9 @@ function Landing(): ReactElement {
           <a className="button-primary" href={paths.play} role="button">
             Play a match
           </a>
+          <a className="button-secondary" href={paths.library} role="button">
+            My decks
+          </a>
           <a className="button-secondary" href={paths.decks} role="button">
             Build decks
           </a>
@@ -84,9 +88,20 @@ function Landing(): ReactElement {
           <a href={paths.play}>Find a game →</a>
         </section>
         <section className="panel">
-          <h2>Decks</h2>
-          <p>Three decks, twenty cards each, singleton — no card twice and none shared between decks.</p>
-          <a href={paths.decks}>Edit your decks →</a>
+          <h2>My decks</h2>
+          <p>
+            Your library: build decks card by card, save one half-finished and come back to it, and
+            play any finished one.
+          </p>
+          <a href={paths.library}>Open your library →</a>
+        </section>
+        <section className="panel">
+          <h2>Loadout</h2>
+          <p>
+            The three-deck mode: three decks, twenty cards each, singleton — no card twice and none
+            shared between decks. Import them from your library or build them here.
+          </p>
+          <a href={paths.decks}>Edit your loadout →</a>
         </section>
         {DEV_ONLY ? (
           // Dev-only, and it really is absent in production: main.tsx serves NotFound for
@@ -204,6 +219,9 @@ export function App(): ReactElement {
     if (path === paths.login) return <LoginRoute />;
     if (path === paths.invite) return <Gated allowPending>{() => <InviteRoute />}</Gated>;
     if (path === paths.decks) return <Gated>{() => <DecksRoute />}</Gated>;
+    if (path === paths.library) {
+      return <Gated>{(account) => <LibraryRoute token={account.token} />}</Gated>;
+    }
     if (path === paths.play) return <Gated>{(account) => <PlayRoute token={account.token} />}</Gated>;
     // `allowPending`: a pending account still has an email, a status and a way to sign out,
     // and being unable to sign out of the screen that tells you to redeem a code is the trap

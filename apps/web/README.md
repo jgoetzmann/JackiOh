@@ -37,7 +37,9 @@ src/
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
     Game.tsx            board + prompts + animation runner, wired together
+    library/            the deck library's constructor, no I/O: pages, decklist, inspector (M9-T2)
   routes/dev/hotseat.tsx  the dev hotseat route
+  routes/library.tsx    `/library`: the library's reads and saves around `game/library` (M9-T3, R171)
   test/
     setup.ts            jsdom matchers and a matchMedia stub
     fixtures.ts         fixture PlayerViews; every test renders one of these
