@@ -9,7 +9,8 @@
 // cards (R177), and #83's library replacements numbered top down, which located a revealed library
 // card by its id (R223). Round 8 found a hidden cue's zone saying where #28's pick landed, and #23
 // rolling only for a hand that held a base-face card, both of which told p2 about p1's hidden faces
-// (R177).
+// (R177). The last case, R119's, is the one that did not fail first: it pins the strip `viewFor`
+// already made of `cardResolved.arrivedDuring`, which would name a face-down trap if it went out.
 
 import type { Action, ActionBody, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 import {
@@ -19,6 +20,7 @@ import {
   effectiveCost,
   legalActions,
   reduce,
+  subsystems,
   viewFor,
   type GameState,
   type PendingChoice,
@@ -985,5 +987,44 @@ describe("R177: #23's chance on a hidden hand", () => {
     // hand holds nothing it could change, so it never cues then, and a cue tells p2 the hand held a
     // non-Radiant card.
     indistinguishable("p2", plain, radiant);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R119's bookkeeping on `cardResolved`
+// ---------------------------------------------------------------------------
+
+describe("R119: the arrivals a play's cardResolved names stay the engine's", () => {
+  it("R119 cardResolved's arrivedDuring, which can name a face-down trap the play's Recruit set, reaches neither seat's view (§9.1, §10.8, R33, R97)", () => {
+    const s = scenario({
+      seed: "edge-r8-hp-honeypot",
+      p1: { hand: [HEROIC_POWER, MR_VANILLA], library: [HONEYPOT, MR_VANILLA, MR_VANILLA, MR_VANILLA], mana: 8 },
+      p2: { hand: [MR_VANILLA], library: [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA] },
+    });
+    // R43: the power lives on the instance; "(3) Recruit a permanent".
+    const power = must(s.hand("p1")[0], "p1's Heroic Power");
+    power.memory[subsystems.POWER_KEY] = "recruit";
+
+    s.play(power);
+
+    // The Recruit set the Bear Honeypot face-down on p1's backrow while the play resolved, so the
+    // raw cardResolved names it among the play's arrivals.
+    const honeypot = must(
+      [1, 2, 3, 4, 5].map((lane) => s.backrow("p1", lane)).find((card) => card?.defId === HONEYPOT),
+      "the recruited Bear Honeypot",
+    );
+    expect(honeypot.faceUp).not.toBe(true);
+    const resolved = s.events.filter(
+      (event): event is Extract<GameEvent, { type: "cardResolved" }> =>
+        event.type === "cardResolved" && event.instanceId === power.id,
+    );
+    expect(resolved.map((event) => event.arrivedDuring)).toEqual([[honeypot.id]]);
+
+    // Neither seat's view carries the field, and p2's does not name p1's face-down trap through it.
+    for (const seat of ["p1", "p2"] as const) {
+      expect(eventsOf(s.view(seat), "cardResolved").length).toBeGreaterThanOrEqual(1);
+      expect(JSON.stringify(s.view(seat).events)).not.toContain("arrivedDuring");
+    }
+    expect(JSON.stringify(s.view("p2").events)).not.toContain(`"${honeypot.id}"`);
   });
 });

@@ -32,7 +32,17 @@
 
 import { describe, expect, it } from "vitest";
 import type { Selection } from "@jackioh/shared";
-import { createRng, defOf, heroArmorOf, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
+import {
+  createRng,
+  defOf,
+  heroArmorOf,
+  INGREDIENTS_KEY,
+  ingredientsOf,
+  legalActions,
+  subsystems,
+  type CardInstance,
+  type EngineSink,
+} from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
 const JEWELOSCO_SCARAB = "core-007";
@@ -580,5 +590,42 @@ describe("R102: a fused card's layers are each ingredient's", () => {
 
     // 0 printed + 4 (Weapons) − 2 (its own base aura), and nothing from the fused radiant aura.
     g.expectStats(pillow, { attack: 2 });
+  });
+});
+
+describe("R77, R102: a Fuse leaves the kept card's memory as it was, but for the prices its ingredients read", () => {
+  /** p2 plays Going Long, at its embiggen price or not; p1's Unlicensed Experimentation fuses it onto p1's own, played for 2. */
+  function fusedGoingLongs(embiggen: boolean): { g: Scenario; kept: CardInstance; before: Record<string, unknown> } {
+    const g = scenario({
+      active: "p2",
+      p1: {
+        backrow: [{ def: GOING_LONG, lane: 1 }, { def: EXPERIMENTATION, lane: 3 }],
+        hand: [STOCKPILE],
+        library: [...LAYER_LIBRARY],
+      },
+      p2: { hand: [GOING_LONG, STOCKPILE], library: [...LAYER_LIBRARY], mana: 4 },
+    });
+    const kept = backrowAt(g, "p1", 1);
+    // Something the kept card remembers from before the Fuse, which R77 keeps.
+    kept.memory["r77-before"] = "kept";
+    const before = { ...kept.memory };
+    g.play(GOING_LONG, { zone: 1, embiggen });
+    expect(g.card(kept).defId).toMatch(/^t-\d+:core-084\+core-084$/);
+    return { g, kept: g.card(kept), before };
+  }
+
+  it("R77 a Fuse whose ingredients were all played at the kept card's price leaves its memory unchanged", () => {
+    const { kept, before } = fusedGoingLongs(false);
+    expect(kept.memory).toEqual(before);
+  });
+
+  it("R77 a Fuse whose ingredients were played at different prices adds only their prices to the kept card's memory (R102, §6.3 Embiggen)", () => {
+    const { kept, before } = fusedGoingLongs(true);
+    const { [INGREDIENTS_KEY]: prices, ...rest } = kept.memory;
+    // Everything the card remembered before is still there, and the one entry the Fuse added is the
+    // price each ingredient was played for: the kept Going Long's 2, and p2's 4.
+    expect(rest).toEqual(before);
+    expect(prices).toBeDefined();
+    expect((ingredientsOf(kept) ?? []).map((record) => record.embiggened).sort()).toEqual([false, true]);
   });
 });

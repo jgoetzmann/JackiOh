@@ -16,6 +16,7 @@ import { drawOne } from "../src/draw";
 import {
   cardsPlayedThisTurn,
   heroOf,
+  playedEarlier,
   playedIdsThisTurn,
   wasPlayedThisTurn,
   zoneCards,
@@ -55,9 +56,9 @@ function playing(seed: string): GameState {
   return state;
 }
 
-function must(card: CardInstance | undefined, what: string): CardInstance {
-  if (card === undefined) throw new Error(`expected ${what}`);
-  return card;
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what}`);
+  return value;
 }
 
 function events(): GameEvent[] {
@@ -211,6 +212,78 @@ describe("the card-facing read surface (BUILD M3-T1, SPEC §10.9)", () => {
     expect(cardsPlayedThisTurn(state, "p1")).toBe(0);
     expect(playedIdsThisTurn(state, "p1")).toEqual([]);
     expect(wasPlayedThisTurn(state, "p1", card)).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // playedEarlier — §6.2's Combo X "at play time" (#10, and §10.5 step 5's #38 and #78).
+  // -------------------------------------------------------------------------
+
+  it("playedEarlier counts a played card's own place in the log, and every play so far for a card in hand", () => {
+    let state = playing("played-earlier");
+    const first = must(inHand(state, "fx-1", "p1")[0], "a first card");
+    const second = must(inHand(state, "fx-2", "p1")[0], "a second card");
+    const held = must(inHand(state, "fx-3", "p1")[0], "a card kept in hand");
+
+    // Nothing played yet: a card in hand would be the first play.
+    expect(playedEarlier(state, "p1", held)).toBe(0);
+
+    state = act(state, { type: "play", instanceId: first.id, zone: { row: "units", lane: 1 }, playerId: "p1" });
+    state = act(state, { type: "play", instanceId: second.id, zone: { row: "units", lane: 2 }, playerId: "p1" });
+
+    // Its place in the log, by instance or by id: nothing before the first play, one before the second.
+    expect(playedEarlier(state, "p1", first.id)).toBe(0);
+    expect(playedEarlier(state, "p1", must(state.players.p1.units[1]?.[0], "the second card on the field"))).toBe(1);
+    // A card still in hand has not been played: both plays so far are earlier than its would be.
+    expect(playedEarlier(state, "p1", held.id)).toBe(2);
+    // An id the log does not hold is read the same way.
+    expect(playedEarlier(state, "p1", "no-such-card")).toBe(2);
+    // The log is per player: p1's plays are not earlier than anything of p2's.
+    expect(playedEarlier(state, "p2", first.id)).toBe(0);
+  });
+
+  it("playedEarlier counts a card played twice this turn from its latest play", () => {
+    let state = playing("played-earlier-twice");
+    const twice = must(inHand(state, "fx-1", "p1")[0], "the card played twice");
+    const other = must(inHand(state, "fx-2", "p1")[0], "another card");
+
+    state = act(state, { type: "play", instanceId: twice.id, zone: { row: "units", lane: 1 }, playerId: "p1" });
+    state = act(state, { type: "play", instanceId: other.id, zone: { row: "units", lane: 2 }, playerId: "p1" });
+    // Back to the hand (a bounce), and played again: the log holds it twice.
+    moveToZone(state, must(state.players.p1.units[0]?.[0], "the first card on the field"), "hand");
+    expect(playedEarlier(state, "p1", twice.id)).toBe(2);
+    state = act(state, { type: "play", instanceId: twice.id, zone: { row: "units", lane: 3 }, playerId: "p1" });
+
+    expect(playedIdsThisTurn(state, "p1")).toEqual([twice.id, other.id, twice.id]);
+    expect(playedEarlier(state, "p1", twice.id)).toBe(2);
+  });
+
+  it("playedEarlier does not count a card cast while the play resolved, which is played after it (R70)", () => {
+    let state = playing("played-earlier-cast");
+    // Stockpile draws 2, and the top of p1's library is Hinder, which casts on draw (§2.4).
+    setLibrary(state, "p1", ["fx-hinder", "fx-5", "fx-6"]);
+    const stockpile = must(inHand(state, "fx-stockpile", "p1")[0], "Stockpile");
+
+    state = act(state, { type: "play", instanceId: stockpile.id, playerId: "p1" });
+
+    // The cast counts as a play (R70), logged after the play whose draw made it.
+    const log = playedIdsThisTurn(state, "p1");
+    expect(log[0]).toBe(stockpile.id);
+    expect(log).toHaveLength(2);
+    expect(cardsPlayedThisTurn(state, "p1")).toBe(2);
+    // So the play that cast it still has nothing before it, and the cast has the play before it.
+    expect(playedEarlier(state, "p1", stockpile.id)).toBe(0);
+    expect(playedEarlier(state, "p1", must(log[1], "the cast"))).toBe(1);
+  });
+
+  it("playedEarlier with no card takes the latest play as the running script's own (R127)", () => {
+    let state = playing("played-earlier-null");
+    expect(playedEarlier(state, "p1", null)).toBe(0);
+    const first = must(inHand(state, "fx-1", "p1")[0], "a first card");
+    const second = must(inHand(state, "fx-2", "p1")[0], "a second card");
+    state = act(state, { type: "play", instanceId: first.id, zone: { row: "units", lane: 1 }, playerId: "p1" });
+    expect(playedEarlier(state, "p1", null)).toBe(0);
+    state = act(state, { type: "play", instanceId: second.id, zone: { row: "units", lane: 2 }, playerId: "p1" });
+    expect(playedEarlier(state, "p1", null)).toBe(1);
   });
 
   it("playedIdsThisTurn hands back a copy, so a script cannot forge a play", () => {

@@ -489,7 +489,7 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
     if (defs.length === 0) continue;
     later ??= movesIn(eventsAfterDispatched(sink));
     if (later.moved.has(holder.card.id)) continue;
-    // R119: a permanent the play put onto the field while it resolved does not answer that play.
+    // R119: a permanent that arrived on the field while the play resolved does not answer that play.
     if (event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(holder.card.id)) continue;
     const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
     for (const def of defs) {

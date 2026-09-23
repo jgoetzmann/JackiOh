@@ -560,10 +560,12 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
  * R77's keep-the-instance path. The fused card *is* the target: only its def id, its buffs (the sum
  * of every ingredient's) and its granted keywords (their union) change, and the rest of the
  * instance — zone, position, damage, exertion, summonedTurn, counters, memory, the radiant flag and
- * the Vanilla flag — is left exactly as it was. A token's `statsOverride` and `armorOverride` are the
- * one exception: they were its printed face (§7, R175), which `wornFace` has already summed into the
+ * the Vanilla flag — is left exactly as it was. A token's `statsOverride` and `armorOverride` are one
+ * exception: they were its printed face (§7, R175), which `wornFace` has already summed into the
  * fused definition, so they leave the instance with it — kept, §10.4's layer 1 would read them in
- * place of the fused face and a 3/3 Bread Token fused with a 7/7 would still be a 3/3.
+ * place of the fused face and a 3/3 Bread Token fused with a 7/7 would still be a 3/3. The other is
+ * R77's own: the memory gains the ingredients' prices (`scripts.INGREDIENTS_KEY`) when they were not
+ * all the kept card's, so each ingredient's text reads its own (R102).
  */
 function keepInstance(
   state: GameState,

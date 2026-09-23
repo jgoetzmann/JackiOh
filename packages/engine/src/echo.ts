@@ -228,7 +228,7 @@ export type ResolvedCard = {
    * played, so #60's tokens do not attack it and #85 does not fuse it away.
    */
   placedFrom?: number;
-  /** R119: the permanents the play put onto the field while it resolved, which do not answer it. */
+  /** R119: the permanents that arrived on the field while the play resolved, which do not answer it. */
   arrivedDuring?: readonly string[];
 };
 

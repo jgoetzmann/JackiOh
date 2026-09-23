@@ -451,6 +451,9 @@ describe("R220: §4.2 step 5 resolves the attack only as it was declared", () =>
     expect(s.card(sorcerer).controller).toBe("p2");
     // p2's own unit does not attack p2's hero: an attack is made on an enemy (§4.2 step 2).
     s.expectHealth("p2", 20);
+    // The attack is over, but the attacker changed sides: R171 gives it a fresh exertion for p2,
+    // and nothing spends it again as the attack ends.
+    expect(s.card(sorcerer).exertion).toEqual({ attacked: false, switched: false });
   });
 
   it("R220 an attack whose target a trap in the window moved to the attacker's side does not hit it (§4.2 step 2, R173, R171)", () => {
@@ -472,6 +475,10 @@ describe("R220: §4.2 step 5 resolves the attack only as it was declared", () =>
     s.expectInZone(vanilla, "field");
     expect(s.card(vanilla).controller).toBe("p1");
     expect(s.card(sorcerer).damage).toBe(0);
+    // The attacker stayed p1's, so its exertion stays spent (R44); the target that changed sides has
+    // a fresh one (R171).
+    expect(s.card(sorcerer).exertion.attacked).toBe(true);
+    expect(s.card(vanilla).exertion).toEqual({ attacked: false, switched: false });
   });
 
   it("R220 a board swap in the window leaves the declaring player's attacker on the other side: no combat (R73, R171)", () => {
@@ -492,6 +499,9 @@ describe("R220: §4.2 step 5 resolves the attack only as it was declared", () =>
     // p1 declared with a unit it no longer controls: that attack is over, and neither unit strikes.
     expect(s.events.filter((event) => event.type === "damage")).toEqual([]);
     s.expectInZone(vanilla, "field");
+    // Both changed sides, so both have a fresh exertion for their new controller (R171).
+    expect(s.card(sorcerer).exertion).toEqual({ attacked: false, switched: false });
+    expect(s.card(vanilla).exertion).toEqual({ attacked: false, switched: false });
   });
 
   it("R220 an attacker the window's trap stole after a question never strikes its new controller's hero (R113, R173)", () => {

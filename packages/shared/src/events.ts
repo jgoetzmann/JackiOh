@@ -32,9 +32,10 @@ export type GameEvent =
       costPaid: number;
       radiant?: boolean;
       /**
-       * R119: the permanents this play put onto the field while it resolved — a Recruit by its Cry
-       * (#98), #95's backrow, a Reborn body its own Cry brought back — which do not answer it, as the
-       * played card does not answer its own play. Engine bookkeeping: a view never forwards it.
+       * R119: the permanents that arrived on the field while this play resolved, whatever put them
+       * there — a Recruit by its Cry (#98), #95's backrow, a Reborn body its own Cry brought back, a
+       * unit a trap answering the play summoned — which do not answer it, as the played card does not
+       * answer its own play. Engine bookkeeping: a view never forwards it.
        */
       arrivedDuring?: string[];
     }

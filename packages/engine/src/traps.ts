@@ -189,8 +189,8 @@ function isOwnArrival(trap: CardInstance, event: GameEvent): boolean {
   if (!ARRIVAL_EVENTS.includes(event.type)) return false;
   const about: unknown = (event as { instanceId?: unknown }).instanceId;
   if (about === trap.id) return true;
-  // R119: nor the play that put the trap onto the field while it resolved — #95 summoning a Bear
-  // Honeypot face-down does not have that Honeypot answer #95's own `cardResolved`.
+  // R119: nor the play the trap arrived on the field during, whatever put it there — #95 summoning a
+  // Bear Honeypot face-down does not have that Honeypot answer #95's own `cardResolved`.
   return event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(trap.id);
 }
 

@@ -640,10 +640,11 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
 
   // Proved by rulings-b.test.ts "R60 picks different cards among the non-Radiant ones, all of them when fewer
   // exist, and none when none are left"; effects-radiant.test.ts "R60 chooses only among non-Radiant
-  // cards", "R60 does nothing when no non-Radiant card is left", and 1 more; comboIndex.test.ts "R60 grade
-  // D makes 2 different random hand cards cost 1 less", "R60 grade B picks only among non-Radiant hand
-  // cards, and does nothing when none are left".
-  it("R60 picks different cards, all of them when fewer exist, and nothing when none are left", () => {
+  // cards", "R60 changes no card and draws nothing when no non-Radiant card is left, though the hidden
+  // hand is cued", and 1 more; comboIndex.test.ts "R60 grade D makes 2 different random hand cards cost
+  // 1 less", "R60 grade B picks only among non-Radiant hand cards, and changes none when none are left,
+  // though it cues the hand". The cues are R177's: a pick over a hidden zone is cued whatever it changed.
+  it("R60 picks different cards, all of them when fewer exist, and changes none when none are left", () => {
     provenIn(60, "rulings-b.test.ts", "effects-radiant.test.ts", "comboIndex.test.ts");
   });
 
@@ -1114,9 +1115,11 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by 033-unstable-clone-machine.test.ts "R119 a permanent does not answer its own arrival:
-  // it starts counting from the next play".
+  // it starts counting from the next play" and "R119 a Clone Machine a played Heroic Power's Recruit
+  // put on the field does not answer that play", and hidden-information.test.ts "R119 …", which pins
+  // that `cardResolved.arrivedDuring` reaches neither seat's view.
   it("R119 keeps a permanent from answering the play that put it on the field", () => {
-    provenIn(119, "../../cards/test/033-unstable-clone-machine.test.ts");
+    provenIn(119, "../../cards/test/033-unstable-clone-machine.test.ts", CARDS_HIDDEN_INFORMATION_TEST);
   });
 
   // Proved by 041-sheepish.test.ts "R120 an Also clause stands on its own: an Immutable target
@@ -1186,7 +1189,9 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by rulings-c.test.ts "R129 has a fizzling effect draw no randomness, which is why a
-  // whole-hand discard is its own verb".
+  // whole-hand discard is its own verb". What counts as nothing to do over hidden cards is R177's,
+  // proved by hidden-information.test.ts "R177 #42 rolls every remaining library card …" and "R177
+  // #23's cue does not tell p2 whether p1's hidden hand was already all Radiant …".
   it("R129 has a fizzling effect draw no randomness, so rngCursor never depends on the board", () => {
     provenIn(129, "rulings-c.test.ts");
   });

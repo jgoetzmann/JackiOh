@@ -213,9 +213,10 @@ export type PlayRun = {
   placedFrom?: number;
   /**
    * R119: every card on the field once step 4 had announced the play, by id, with the field's
-   * departures then (`standingFrom`). A permanent the play puts onto the field after that — its Cry
-   * recruits it (#98), summons it (#95), or brings a body back through Reborn — does not answer the
-   * play's `cardResolved` at step 7 (`arrivedDuring`), as the played card itself does not.
+   * departures then (`standingFrom`). A permanent that arrives on the field after that, whatever
+   * puts it there — the Cry recruits it (#98), summons it (#95) or brings a body back through Reborn,
+   * or a trap answering the play summons it — does not answer the play's `cardResolved` at step 7
+   * (`arrivedDuring`), as the played card itself does not.
    */
   standing?: string[];
   standingFrom?: number;
@@ -564,8 +565,9 @@ function fieldCardIds(state: GameState): string[] {
 
 /**
  * R119: the permanents on the field now that were not there when step 4 announced the play, or have
- * left the field since and stand there again (a Reborn body, R83) — what the play put onto the field
- * while it resolved. The played card is its own case (`traps.isOwnArrival`, #33's own check).
+ * left the field since and stand there again (a Reborn body, R83) — what arrived on the field while
+ * the play resolved, on either side and whatever put it there. The played card is its own case
+ * (`traps.isOwnArrival`, #33's own check).
  */
 function arrivedDuring(state: GameState, run: PlayRun): string[] {
   if (run.standing === undefined) return [];

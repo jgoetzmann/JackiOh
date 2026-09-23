@@ -379,7 +379,7 @@ describe("Combo-Index (§8 #93, R27, M3-T7)", () => {
     expect(empty.players.p2.exile).toHaveLength(0);
   });
 
-  it("R60 grade B picks only among non-Radiant hand cards, and does nothing when none are left", () => {
+  it("R60 grade B picks only among non-Radiant hand cards, and changes none when none are left, though it cues the hand (R177)", () => {
     const state = game("step-b");
     const sink = sinkFor(state);
     const card = onField(state);

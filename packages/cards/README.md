@@ -107,7 +107,7 @@ from `@jackioh/engine`, and these are all of them:
 | `zoneCount(state, player, zone)` | how many cards are in it (#70's exile, #71's libraries, #76's hand) |
 | `cardsPlayedThisTurn(state, player)` | §10.5 step 4's counter, already counting the card being played (#38) |
 | `playedIdsThisTurn(state, player)` | the instance ids played this turn, in order, copied (#39) |
-| `playedEarlier(state, player, card)` | §6.2's Combo count: the plays before this card's play, at play time, so a card its own resolution casts is not one; for a card in hand, every play so far (#10) |
+| `playedEarlier(state, player, card)` | §6.2's Combo count: the plays before this card's play, at play time, so a card its own resolution casts is not one; for a card in hand, every play so far; for `null` (a `ctx.self` that has ceased to exist), every play but the latest (#10) |
 | `wasPlayedThisTurn(state, player, card)` | the one-shot gate §5.1's "return to hand" spells need (#23, #24, #31) |
 | `activeUnitsOf` / `dormantUnitsOf` / `cardAt` / `slotsOf` / `slotOf` | the field, by lane (§3.2, R13) |
 | `faceOf` / `statsWithBuffs` / `unitView` | a unit through the §10.4 layers — never off the instance |

@@ -110,10 +110,13 @@ export function playedIdsThisTurn(state: GameState, player: PlayerId): readonly 
  * /fullsend's Combo draw takes at step 5, R70) is played after it, never earlier, so the count does
  * not move while the play resolves. A card played twice this turn is counted from its latest play.
  * A card still in a hand, or one the log does not hold, has not been played: every play this turn
- * is earlier than the one it would be.
+ * is earlier than the one it would be. `null` is a script running with no instance (`ctx.self` of a
+ * card that has ceased to exist, R127): its play is taken as the latest one in the log, so every
+ * play but that one is earlier.
  */
-export function playedEarlier(state: GameState, player: PlayerId, card: CardInstance | string): number {
+export function playedEarlier(state: GameState, player: PlayerId, card: CardInstance | string | null): number {
   const log = state.players[player].turnLog;
+  if (card === null) return Math.max(0, log.cardsPlayed - 1);
   const id = typeof card === "string" ? card : card.id;
   const instance = typeof card === "string" ? findInstance(state, card) : card;
   if (instance?.zone.z === "hand") return log.cardsPlayed;

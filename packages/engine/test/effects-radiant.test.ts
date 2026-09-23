@@ -179,7 +179,7 @@ describe("Make Radiant at random (R60, M3-T1)", () => {
     expect(radiantIds(events)).toEqual([hand[1], hand[0], hand[2]].map((card) => (card as CardInstance).id));
   });
 
-  it("R60 does nothing when no non-Radiant card is left", () => {
+  it("R60 changes no card and draws nothing when no non-Radiant card is left, though the hidden hand is cued (R177, R129)", () => {
     const state = game();
     const hand = inHand(state, plain.id, "p1", 2);
     for (const card of hand) (card as CardInstance).radiant = true;

@@ -239,8 +239,9 @@ describe("R225: a Quickdraw card is counted as the draw it replaces", () => {
     expect(withPower.players.p2.hand.some((card) => card.defId === HEROIC_POWER)).toBe(true);
 
     // §2.1: p2's opening hand is 4 cards either way, and whether one of them is a Quickdraw card is
-    // p2's hand (§9.1). The Void's cost counts draws (R55), and a Quickdraw card is no draw, so the
-    // cost p1 reads off its own hand tells p1 how many Quickdraw cards p2 started with.
+    // p2's hand (§9.1). The Void's cost counts draws (R55). Were a Quickdraw card no draw, the cost p1
+    // reads off its own hand would tell p1 how many Quickdraw cards p2 started with; R225 counts it
+    // as the draw it replaces, so the cost is the same in both games.
     sameView(viewFor(withPower, "p1"), viewFor(without, "p1"));
   });
 });
@@ -301,8 +302,9 @@ describe("R225, R224: a Quickdraw card is dealt as the last opening draw", () =>
     }
     expect(withPower.players.p2.hand.some((card) => card.defId === HEROIC_POWER)).toBe(true);
 
-    // The deal's events reach p1's view (R168), redacted (R97): a Quickdraw card's `addedToHand`
-    // among p2's `drawn` events counts p2's Quickdraw cards, which are p2's hand (§9.1).
+    // The deal's events reach p1's view (R168), redacted (R97). Were a Quickdraw card dealt with an
+    // `addedToHand` alone, it would stand out among p2's `drawn` events and count p2's Quickdraw
+    // cards, which are p2's hand (§9.1); R225 reports it as a draw, `drawn` then `addedToHand`.
     const typesOf = (state: GameState): string[] =>
       viewFor(state, "p1").events.map((event) => `${event.type}${"player" in event ? `:${event.player}` : ""}`);
     expect(typesOf(without)).toEqual(typesOf(withPower));
@@ -341,8 +343,9 @@ describe("R225, R224: a Quickdraw card is dealt as the last opening draw", () =>
     expect(withPower.players.p1.library.some((card) => card.defId === HEROIC_POWER)).toBe(true);
 
     // p2 may count p1's hand and library (§10.8), but whether p1's deck holds a Quickdraw card is
-    // p1's to keep (§9.1): the Heroic Power has already left the library for the hand, "instead of"
-    // a draw that has not happened yet, so the counts say so.
+    // p1's to keep (§9.1). Had the Heroic Power left the library for the hand before the other
+    // draws, "instead of" a draw that has not happened yet, the counts would say so; it waits for
+    // the last opening draw (R225), so both games count the same.
     sameView(viewFor(withPower, "p2"), viewFor(without, "p2"));
   });
 });

@@ -45,9 +45,9 @@ export function flagsOf(instance: CardInstance): NonNullable<Script["staticFlags
  * own price (#46's "paid 4: −5/−5", #84's "paid 4: 5", #59's "paid 4: it costs 0") reads the one its
  * card was played for, not the kept instance's. An ingredient that was itself a fused card with such
  * a record keeps it as its `parts`. Absent when every ingredient was played at the kept card's price,
- * which is then every text's (so R77's "every other field unchanged" holds whenever it can). Memory,
- * so R78 resets it with everything else a card leaves the field without: a fused card replayed from
- * a hand paid the fused cost, and no ingredient's embiggen price.
+ * which is then every text's: R77 lets the Fuse add this one entry to the kept memory, and only when
+ * the prices differ. Memory, so R78 resets it with everything else a card leaves the field without:
+ * a fused card replayed from a hand paid the fused cost, and no ingredient's embiggen price.
  */
 export const INGREDIENTS_KEY = "__ingredients";
 

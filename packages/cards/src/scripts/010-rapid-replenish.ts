@@ -19,7 +19,7 @@
 // It is read per player: `ctx.controller`'s own turn log, which is the only per-turn record there
 // is, so a card the opponent cast during this turn counts on their log and not on this one.
 
-import { cardsPlayedThisTurn, playedEarlier, type Script } from "@jackioh/engine";
+import { playedEarlier, type Script } from "@jackioh/engine";
 import { draw } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -35,10 +35,7 @@ function rapidReplenish(count: number): Script {
   return {
     cry: (ctx) => {
       // The plays before this one, at play time: not this spell, and not a card its step 5 cast.
-      const earlier =
-        ctx.self === null
-          ? Math.max(0, cardsPlayedThisTurn(ctx.state, ctx.controller) - 1)
-          : playedEarlier(ctx.state, ctx.controller, ctx.self);
+      const earlier = playedEarlier(ctx.state, ctx.controller, ctx.self);
       return earlier >= COMBO ? [draw({ count })] : [];
     },
   };

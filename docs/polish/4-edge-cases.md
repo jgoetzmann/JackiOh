@@ -1069,6 +1069,32 @@ both seats, `EffectContext` and `PausedStep` an optional `chosenFrom`, `PlayRun`
 `StaticFlags.heroArmor` may be a number. The owed trap entries carry their controllers and mark. No
 existing test changed, and the recorded hotseat game's hash did not move.
 
+#### The review of round 8
+
+A review of the round-8 branch found no new engine bug. Its eleven findings (the Hunt status counts
+were reported twice, and R129 came up in two of them) were rows that no longer said what the code
+did, proofs that were missing, and comments that described the bug as the behaviour. All were
+confirmed and fixed, and none needed a new row:
+
+- **Rows amended to match the code.** R77: the kept instance's memory gains one entry, the
+  ingredients' prices, when they were not all played at the kept card's price (R102), which round 8
+  had left in R102 alone. R119: an arrival is any permanent that arrived on the field while the play
+  resolved, whatever put it there, which is what `playSteps.arrivedDuring` reads (a unit a trap
+  answering the play summons included; no Core card makes that observable). R220: an attacker that
+  changed sides in the window keeps the fresh exertion R171 gives it. R60 and R129 now point to R177
+  for what "nothing to do" means over hidden cards (#42 rolls every library card, #23 rolls for any
+  hand that holds a card, and a pick with none left is still cued). R226 records why the Hearthstone
+  reading, taking the played card out of the hand before step 4, was weighed and not taken.
+- **Proofs added.** `hidden-information.test.ts` pins that `cardResolved.arrivedDuring`, here naming
+  a face-down Bear Honeypot #98's Recruit set, reaches neither seat's view; with the strip removed
+  the test fails. `query.test.ts` tests `playedEarlier` (a card in hand, played, played twice, a
+  card cast during the play, and `null`), and the helper now takes `null`, so #10 makes one call.
+  `combat-windows.test.ts` checks exertion in R220's steal and board-swap cases, and
+  `fused-hooks.test.ts` checks R77's one memory entry both ways.
+- **Wording.** Three comments in `setup-and-mulligan.test.ts` read as R225's bug; they now say what
+  the test guards against. Three R60 test titles said the effect "does nothing"; they now say it
+  changes nothing and is cued. The Hunt status gives one series of counts.
+
 ---
 
 ## Out of scope
@@ -1133,10 +1159,13 @@ existing test changed, and the recorded hotseat game's hash did not move.
 
 The brief asks for loop-until-dry finders. The hunt ran three rounds, was stopped by the schedule,
 was continued past that cap for rounds 4 to 8, and was then **halted at the user's request after
-round 8**. It was not dry when it stopped. The finders reproduced 53, 44 and 43 candidates in rounds 1
-to 3, and then 28, 27, 38, 31 and 28 in rounds 4 to 8. Round 8's 28 were all confirmed and none was
-rejected; they needed two new rows (R225, R226) and nine amended ones. The counts had not fallen, and
-every one of round 8's ten lenses still found something: prompts mid-sequence (L7) the most, eight,
+round 8**. It was not dry when it stopped. The series below counts tests: the tests each round
+added went 53, 44 and 43 in rounds 1 to 3, and then 29, 27, 43, 34 and 32 in rounds 4 to 8, each of
+the later ones a finder's test that failed when it was written. Rounds 1 to 3 did not count their
+findings apart from their tests; counted as confirmed findings, rounds 4 to 8 had 28, 23, 32, 32
+and 28. Round 8's 28 findings were all confirmed and none was rejected; they needed two new rows
+(R225, R226) and nine amended ones. The counts had not fallen, and every one of round 8's ten lenses
+still found something: prompts mid-sequence (L7) the most, eight,
 then the view (L10) four, control change (R212 for the traps, R119) and keywords and layers (Fuse
 compositions) three each, combat windows, re-entry and stays, turn boundaries (L8) and legality
 agreement (L9) two each, and card by card and engine invariants one each.
@@ -1348,7 +1377,8 @@ would keep the two from drifting apart.
 - `script.ts`, round 8: `EffectContext` gained an optional `chosenFrom` (the mark an answer's picks
   were made at, R174), and `StaticFlags.heroArmor` may be a number (a fused card's count, R102).
   Additive. `@jackioh/engine` gained a read helper, `playedEarlier(state, player, card)` (`query.ts`),
-  the plays before a card's play at play time, and the cards README's table lists it.
+  the plays before a card's play at play time (`card` may be `null`, a `ctx.self` that has ceased to
+  exist), and the cards README's table lists it.
 - The hunt also edited, in round 8, #10 (its Combo reads `playedEarlier`, so a card its own step 5
   cast is not one played earlier), #23 (it rolls for any hand that holds a card, R177) and #65.1 (its
   radiant aura spares the Pillow's own definition). **#10 is one of task 7's `conditionMet` cards**:
@@ -1397,8 +1427,11 @@ would keep the two from drifting apart.
 | R174, R176, R177, R212, R221 | Task 4's own rows, amended again: a card named by id, an Echo repeat's fresh pick and a Transform follow R174's stays, and a pick made at a prompt is on the stay offered; a Lifesteal strike back heals what its Trample split deals; a hidden cue gives the other player's hand as its zone, and #23 rolls for any hand that holds a card; the traps answer as the board stood; a play's picks are a set | Round 8 |
 | R68 | The events of the check after a delayed effect reach the traps before the next one | Round 8 |
 | R102 | #84's hero Armor adds up; each ingredient reads its own card's price; a trigger the kept card queued before the Fuse still resolves | Round 8 |
-| R119 | A permanent the play put onto the field while it resolved does not answer that play either, for traps and ordinary triggers alike | Round 8 |
+| R119 | A permanent that arrived on the field while the play resolved, whatever put it there, does not answer that play either, for traps and ordinary triggers alike | Round 8 |
 | R123 | Every pick of a Tribute declared with an amount is a unit the play tributes | Round 8 |
+| R77 | The kept instance's memory gains the ingredients' prices when they were not all played at its price (R102); every other field is still unchanged | Round 8 review |
+| R60, R129 | A random Make Radiant with no non-Radiant card left changes nothing but is still cued, and what counts as nothing to do over hidden cards is R177's (#42, #23) | Round 8 review |
+| R220, R226 | Task 4's own rows, amended: an attacker that changed sides keeps R171's fresh exertion; R226 says why the Hearthstone reading was not taken | Round 8 review |
 
 Rows R209 to R226 come from the overflow range, because R171 to R179 filled up in round 1 (R215 and
 R216 in round 4, R217 to R219 in round 5, R220 to R223 in round 6, R224 in round 7, R225 and R226 in
@@ -1407,8 +1440,8 @@ branch renumbers any collision.
 
 `packages/shared` gained no event type. `cardResolved` gained an optional `radiant`, `transformed`
 an optional `hiddenFrom`, `costChanged` an optional `hiddenFrom` (round 6), and `TargetDecl` an
-optional `forModes`. Round 8 gave `cardResolved` an optional `arrivedDuring` (R119: the permanents the
-play put onto the field while it resolved), which is the engine's bookkeeping and never reaches a
+optional `forModes`. Round 8 gave `cardResolved` an optional `arrivedDuring` (R119: the permanents that
+arrived on the field while the play resolved), which is the engine's bookkeeping and never reaches a
 client: `viewFor`'s `redactEvent` strips it for both seats. It is a field, not a type, so the other
 tasks' total maps over `GameEventType` need no new entry.
 
