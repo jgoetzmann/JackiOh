@@ -37,13 +37,24 @@ src/
     actions.ts Prompt.tsx                                               M5-T2
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
-    Game.tsx            board + prompts + animation runner, wired together
+    Game.tsx            board + prompts + animation runner + effects layer + audio, wired together
   audio/                sound (SPEC §10.11); index.ts is the barrel Game.tsx imports, appAudio.ts
                         the page-wide unlock and UI ticks main.tsx holds, mix.ts the buses and limiter
     engine.ts sfx.ts unlock.ts settings.ts   lazy AudioContext and buses, procedural SFX, gesture unlock, the settings store
     cues.ts director.ts useGameAudio.ts      SOUND_CUES (a total map over GameEventType) and the runner-synced director
     AudioToggle.tsx AudioControls.tsx        the HUD mute button and the full panel
     voice-lines.json voice-manifest.json     every card's lines and personas; the generated hash and size of each file
+  fx/                   the effects layer (docs/polish/1-animations.md; SPEC §10.10, R200–R202)
+    types.ts constants.ts   the cue contract and every FX number
+    settings.ts         effects speed, intensity and motion (localStorage, jackioh.fx.v1)
+    cues.ts memory.ts   the planner: an entry's events → cues, pure (and the killing blow a game over replays)
+    stage.ts            stage cues, pure: a stand-in for a moved card, a hidden card, an aimed lunge (B46–B48)
+    rng.ts presets.ts sprites.ts particles.ts canvasFx.ts surface.ts loop.ts shake.ts   the canvas engine
+    anchors.ts          anchor → viewport box at fire time (a hand: its cards); the board shake sink
+    director.ts         one frame loop: fires cues, steps and draws, expires DOM and stage effects
+    dom.ts fx.css       DOM flourishes (splats, rays, banners, ghosts, stand-ins) and their keyframes
+    FxLayer.tsx         the overlay Game mounts after the board; listens to the runner's signals
+    index.ts            FxLayer, settings and types
   routes/dev/hotseat.tsx  the dev hotseat route
   test/
     setup.ts            jsdom matchers and a matchMedia stub

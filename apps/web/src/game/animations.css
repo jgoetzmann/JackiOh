@@ -5,6 +5,25 @@
  * a class through for a motion to play. Durations are the BUILD table's, scaled by `--anim-scale`
  * (declared in src/index.css, 0 under prefers-reduced-motion), and the media block at the foot
  * zeroes every duration outright so the collapse holds even where `calc()` is ignored.
+ *
+ * Every duration is also multiplied by `--anim-squeeze` (R201). The runner can hand an entry less
+ * time than the table's figure: the effects-speed setting divides the table, and the burst budget
+ * squeezes long bursts. The effects layer (src/fx/FxLayer.tsx) writes the ratio
+ * `entry.durationMs / table duration` on the game root for each entry in flight and removes it when
+ * the runner goes idle, so a shortened entry plays its whole motion instead of being cut off by the
+ * view swap. Without the layer the fallback is 1 and every duration is exactly BUILD's.
+ *
+ * The keyframes keep their BUILD names (animations.ts `ANIMATIONS[type].animation`); the effects
+ * pass enriched what happens inside them (flashes, a hotter burn, a charred edge climbing a dying
+ * card) and left the DEF rotation alone. The lunge is the one motion whose geometry it changes: the
+ * effects layer aims it (`--fx-lunge-x/y` on the attacker, fx/stage.ts, B48), up to FX_LUNGE_MAX_PX
+ * toward whatever it attacks; without the layer it falls back to BUILD's straight
+ * `--lunge-distance` along `--lunge-dir`, and an aimed lunge is never shorter than that (≥ 20 px).
+ *
+ * Every @keyframes animates only what the compositor can run off the main thread: transform,
+ * opacity, and filters that move no pixels (brightness, saturate, sepia, grayscale, hue-rotate;
+ * never drop-shadow or blur). A glow is a static layer faded by opacity. The one exception is
+ * BUILD's own jk-chain-close, whose motion is the inset ring closing. css.test.ts enforces this.
  */
 
 :root {
@@ -29,63 +48,192 @@
   0% {
     transform: translateY(0) scale(1);
     opacity: 1;
+    filter: brightness(1);
   }
   35% {
     transform: translateY(-24px) scale(1.08);
     opacity: 1;
+    /* The card lifts out of the hand wreathed in arcane light, as it is cast. */
+    filter: brightness(1.3);
   }
   100% {
     transform: translateY(-40px) scale(0.86);
     opacity: 0;
+    filter: brightness(1.8);
   }
 }
 
 [data-animating="cardPlayed"] {
   animation-name: jk-card-played;
-  animation-duration: calc(400ms * var(--anim-scale));
+  animation-duration: calc(400ms * var(--anim-scale) * var(--anim-squeeze, 1));
   z-index: 40;
 }
 
 /* --- summoned: card scales in at the zone (250 ms) -------------------------------------- */
 
 @keyframes jk-summon-scale {
+  /* The slam: the unit drops in from a little above, lands heavy with a flash, overshoots and
+     settles. The fx layer puts the dust ring and the board shake on the landing beat. */
   0% {
-    transform: scale(0.55);
+    transform: translateY(-12px) scale(0.55);
     opacity: 0;
+    filter: brightness(1.6);
+  }
+  55% {
+    transform: translateY(2px) scale(1.1);
+    opacity: 1;
+    filter: brightness(1.35);
   }
   70% {
-    transform: scale(1.06);
+    transform: translateY(0) scale(1.06);
     opacity: 1;
+    filter: brightness(1.15);
+  }
+  85% {
+    transform: translateY(0) scale(0.98);
+    opacity: 1;
+    filter: brightness(1);
   }
   100% {
-    transform: scale(1);
+    transform: translateY(0) scale(1);
     opacity: 1;
+    filter: brightness(1);
   }
 }
 
 [data-animating="summoned"] {
   animation-name: jk-summon-scale;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
+}
+
+/* The usual target is the ZONE, not a card: the board still shows the view from before the summon
+   (BUILD M5-T4), so the unit only appears once the burst settles. Scaling the empty zone box read as
+   the lane itself wobbling. Instead the zone glows where the unit lands (a glow drawn once on its
+   ::before and faded in and out by opacity), and a card-sized silhouette of light drops into it on
+   the same jk-summon-scale motion, so the slam (the fx layer's dust ring and shake) has something
+   to land. With the effects layer on, the layer's stand-in (fx/stage.ts) is that card, so the
+   silhouette steps aside and the same card never shows twice. */
+@keyframes jk-zone-landing {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  55% {
+    opacity: 1;
+  }
+}
+
+.zone[data-animating="summoned"] {
+  --jk-land: var(--you, #3b82f6);
+  /* The zone box itself never moves. */
+  animation-name: none;
+}
+
+.zone[data-animating="summoned"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 22px 2px color-mix(in srgb, var(--jk-land) 55%, transparent),
+    0 0 14px 1px color-mix(in srgb, var(--jk-land) 45%, transparent);
+  pointer-events: none;
+  animation-name: jk-zone-landing;
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+.zone[data-side="opponent"][data-animating="summoned"] {
+  --jk-land: var(--opponent, #c0453f);
+}
+
+.zone[data-animating="summoned"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(var(--card-w, 82px), 100%);
+  height: 100%;
+  translate: -50% -50%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--jk-land) 60%, white);
+  border-radius: var(--radius, 7px);
+  background:
+    radial-gradient(ellipse at 50% 35%, rgb(255 255 255 / 55%), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--jk-land) 55%, #232839), #171a24);
+  box-shadow:
+    0 0 16px 3px color-mix(in srgb, var(--jk-land) 70%, transparent),
+    inset 0 0 10px color-mix(in srgb, white 30%, transparent);
+  pointer-events: none;
+  animation-name: jk-summon-scale;
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+/* Played from a hand, the summon rides the 400 ms cardPlayed entry and the fx slam lands at 60% of
+   it, so the silhouette waits for the card to leave the hand before it drops. */
+.game:has([data-animating="cardPlayed"]) .zone[data-animating="summoned"]::after {
+  animation-delay: calc(110ms * var(--anim-scale) * var(--anim-squeeze, 1));
+}
+
+/* The effects layer's stand-in carries the card in (B46); a silhouette as well would be the same card
+   in two places at once. */
+.game:has(> .fx-layer[data-fx="on"]) .zone[data-animating="summoned"]::after {
+  content: none;
 }
 
 /* --- attackDeclared: attacker lunges toward the target and back (350 ms) ---------------- */
 
+/* The attacker rears up (lifts toward the viewer and draws back a touch), rushes the target, hits it
+   at 70% (FX_LUNGE_CONTACT_AT, where the fx layer throws the contact spark) and recoils home before
+   the damage entry shakes the defender. The effects layer aims it: it writes `--fx-lunge-x/y` on the
+   attacker, most of the way to whatever it attacks (fx/stage.ts). Without the layer the lunge falls
+   back to BUILD's straight `--lunge-distance` along `--lunge-dir`. */
 @keyframes jk-lunge {
   0% {
-    transform: translateY(0);
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.5, 1);
   }
-  45% {
-    transform: translateY(calc(var(--lunge-distance) * var(--lunge-dir)));
+  24% {
+    transform:
+      translate(
+        calc(var(--fx-lunge-x, 0px) * -0.08),
+        calc(var(--fx-lunge-y, calc(var(--lunge-distance) * var(--lunge-dir))) * -0.08)
+      )
+      scale(1.14);
+    filter: brightness(1.12);
+    animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.7);
+  }
+  70% {
+    transform:
+      translate(var(--fx-lunge-x, 0px), var(--fx-lunge-y, calc(var(--lunge-distance) * var(--lunge-dir))))
+      scale(1.08, 0.97);
+    filter: brightness(1.45);
+    animation-timing-function: linear;
+  }
+  /* A beat in contact, so the hit reads before the recoil. */
+  77% {
+    transform:
+      translate(
+        calc(var(--fx-lunge-x, 0px) * 0.96),
+        calc(var(--fx-lunge-y, calc(var(--lunge-distance) * var(--lunge-dir))) * 0.96)
+      )
+      scale(1.03);
+    filter: brightness(1.2);
+    animation-timing-function: cubic-bezier(0.3, 0.6, 0.4, 1);
   }
   100% {
-    transform: translateY(0);
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1);
   }
 }
 
 [data-animating="attackDeclared"] {
   animation-name: jk-lunge;
-  animation-duration: calc(350ms * var(--anim-scale));
-  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
   z-index: 30;
 }
 
@@ -105,38 +253,44 @@
 
 [data-animating="attackCancelled"] {
   animation-name: jk-snap-back;
-  animation-duration: calc(350ms * var(--anim-scale));
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 [data-animating="attackCancelled"] .cancel-tag {
   animation-name: jk-fade-in;
-  animation-duration: calc(350ms * var(--anim-scale));
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- damage: target shakes, red number pops (300 ms) ----------------------------------- */
 
 @keyframes jk-damage-shake {
+  /* The shake plus a white-hot impact flash on the first beat, cooling back to normal. */
   0%,
   100% {
     transform: translateX(0);
+    filter: brightness(1) saturate(1);
   }
   15% {
     transform: translateX(-5px) rotate(-1.5deg);
+    filter: brightness(1.9) saturate(1.3);
   }
   35% {
     transform: translateX(5px) rotate(1.5deg);
+    filter: brightness(1.35) saturate(1.2);
   }
   55% {
     transform: translateX(-3px);
+    filter: brightness(1.1) saturate(1);
   }
   75% {
     transform: translateX(3px);
+    filter: brightness(1) saturate(1);
   }
 }
 
 [data-animating="damage"] {
   animation-name: jk-damage-shake;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* The floating numbers the BUILD table names by class. The component renders the element with
@@ -171,7 +325,7 @@
   animation-name: jk-number-pop;
   animation-fill-mode: both;
   animation-timing-function: ease-out;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 .damage-pop {
@@ -188,45 +342,48 @@
 
 /* --- healed: green number pops (300 ms) ------------------------------------------------ */
 
+/* The target brightens as it mends; the fx layer's holy column, sparkles and splat carry the glow. */
 @keyframes jk-heal-pop {
   0% {
-    box-shadow: 0 0 0 0 rgb(78 201 138 / 0%);
+    filter: brightness(1) saturate(1);
   }
   40% {
-    box-shadow: 0 0 12px 4px rgb(78 201 138 / 55%);
+    filter: brightness(1.35) saturate(1.25);
   }
   100% {
-    box-shadow: 0 0 0 0 rgb(78 201 138 / 0%);
+    filter: brightness(1) saturate(1);
   }
 }
 
 [data-animating="healed"] {
   animation-name: jk-heal-pop;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- healthLost: purple number pops on the hero, no shake (300 ms) --------------------- */
 
+/* The target dims as the life drains out; the fx layer's void motes and splat carry the colour. */
 @keyframes jk-loss-pop {
   0% {
-    box-shadow: 0 0 0 0 rgb(139 92 246 / 0%);
+    filter: brightness(1);
   }
   40% {
-    box-shadow: 0 0 14px 5px rgb(139 92 246 / 55%);
+    filter: brightness(0.75);
   }
   100% {
-    box-shadow: 0 0 0 0 rgb(139 92 246 / 0%);
+    filter: brightness(1);
   }
 }
 
 [data-animating="healthLost"] {
   animation-name: jk-loss-pop;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- divineShieldLost: shield shatter (250 ms) ----------------------------------------- */
 
 @keyframes jk-shield-shatter {
+  /* The bubble pops: a gold flare that bursts outward and is gone. */
   0% {
     filter: brightness(2.2);
     transform: scale(1);
@@ -236,39 +393,95 @@
     transform: scale(1.08);
   }
   100% {
-    filter: none;
+    filter: brightness(1);
     transform: scale(1);
   }
 }
 
 [data-animating="divineShieldLost"] {
   animation-name: jk-shield-shatter;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- destroyed: card dissolves, then slides to the GY count (350 ms) ------------------- */
 
 @keyframes jk-dissolve {
+  /* A death needs its own beat: a white-hot flash as the card cracks, then it greys, sags and
+     burns away (the fx layer draws the crack, the embers and the smoke over it). */
   0% {
     opacity: 1;
     transform: scale(1) rotate(0deg);
-    filter: none;
+    filter: brightness(1) sepia(0%) grayscale(0%);
   }
-  60% {
-    opacity: 0.45;
-    transform: scale(0.92) rotate(-3deg);
-    filter: grayscale(80%);
+  12% {
+    opacity: 1;
+    transform: scale(1.04) rotate(0.5deg);
+    filter: brightness(2.4) sepia(40%) grayscale(0%);
+  }
+  /* Cracked but whole for a beat, so the crack reads on the card; then the burn climbs (the
+     ::before below), slow at first and faster as it catches. */
+  35% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1.3) sepia(60%) saturate(1.4) grayscale(10%);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.7);
+  }
+  70% {
+    opacity: 0.85;
+    transform: scale(0.97) rotate(-2deg);
+    filter: brightness(1) sepia(70%) saturate(1.6) grayscale(40%);
   }
   100% {
     opacity: 0;
-    transform: scale(0.7) rotate(-6deg);
-    filter: grayscale(100%);
+    transform: scale(0.9) rotate(-4deg);
+    filter: brightness(0.5) sepia(0%) grayscale(100%);
+  }
+}
+
+/* The burn front: a band two card-heights tall, charred (the zone's own colour, so the card reads
+   as gone) below a glowing ember edge and clear above it. It starts a card-height below the card
+   and climbs by transform; the card clips it (board.css: .card is overflow: hidden). */
+@keyframes jk-burn-climb {
+  0%,
+  35% {
+    transform: translateY(50%);
+  }
+  100% {
+    transform: translateY(-45%);
   }
 }
 
 [data-animating="destroyed"] {
   animation-name: jk-dissolve;
-  animation-duration: calc(350ms * var(--anim-scale));
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
+}
+
+/* A dying card burns away from the bottom up: jk-burn-climb raises the charred front through it
+   while the fx layer's crack, embers and smoke play over it. Piles and heroes keep the plain fade.
+   (The Divine Shield cocoon owns the card's ::after, so the burn takes the ::before.) */
+[data-testid^="card-"][data-animating="destroyed"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 200%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--bg-sunken, #0b0d13) 0%,
+    var(--bg-sunken, #0b0d13) 36%,
+    #2a0e05 40%,
+    #d9480f 43%,
+    color-mix(in srgb, var(--radiant, #ffd24a) 80%, white) 45%,
+    color-mix(in srgb, #ff7a1a 40%, transparent) 47%,
+    transparent 50%
+  );
+  animation-name: jk-burn-climb;
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.7);
+  animation-fill-mode: both;
 }
 
 /* --- enteredGraveyard: GY pile pulses (150 ms) ---------------------------------------- */
@@ -285,7 +498,7 @@
 
 [data-animating="enteredGraveyard"] {
   animation-name: jk-pile-pulse;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- cardResolved: §10.5 step 7, the card has finished resolving (150 ms) ------------------ */
@@ -304,7 +517,7 @@
 
 [data-animating="cardResolved"] {
   animation-name: jk-card-resolved;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- exiled: card fades to black and shrinks (350 ms) --------------------------------- */
@@ -315,6 +528,11 @@
     transform: scale(1);
     filter: brightness(1);
   }
+  35% {
+    opacity: 0.85;
+    transform: scale(0.9);
+    filter: brightness(0.6);
+  }
   100% {
     opacity: 0;
     transform: scale(0.55);
@@ -324,7 +542,7 @@
 
 [data-animating="exiled"] {
   animation-name: jk-exile-fade;
-  animation-duration: calc(350ms * var(--anim-scale));
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- bounced: card flies to its owner's hand (350 ms) --------------------------------- */
@@ -342,37 +560,39 @@
 
 [data-animating="bounced"] {
   animation-name: jk-bounce-to-hand;
-  animation-duration: calc(350ms * var(--anim-scale));
+  animation-duration: calc(350ms * var(--anim-scale) * var(--anim-squeeze, 1));
   z-index: 35;
 }
 
 /* --- burned: card flips face-up above the hand and burns away (400 ms) ---------------- */
 
 @keyframes jk-burn-away {
+  /* Flip face-up above the hand, then catch: the card scorches through gold and orange to a
+     charred red-black as it burns out (the fx layer's fire and embers rise off it). */
   0% {
     transform: rotateY(180deg) translateY(-30px);
     opacity: 0;
-    filter: none;
+    filter: sepia(0%) saturate(1) hue-rotate(0deg) brightness(1);
   }
   25% {
     transform: rotateY(0deg) translateY(-30px);
     opacity: 1;
-    filter: none;
+    filter: sepia(0%) saturate(1) hue-rotate(0deg) brightness(1.1);
   }
   60% {
-    filter: sepia(70%) saturate(3) brightness(1.4);
+    filter: sepia(80%) saturate(5) hue-rotate(-18deg) brightness(1.65);
     opacity: 1;
   }
   100% {
     transform: rotateY(0deg) translateY(-20px) scale(0.8);
-    filter: sepia(100%) saturate(4) brightness(0.4);
+    filter: sepia(100%) saturate(6) hue-rotate(-30deg) brightness(0.3);
     opacity: 0;
   }
 }
 
 [data-animating="burned"] {
   animation-name: jk-burn-away;
-  animation-duration: calc(400ms * var(--anim-scale));
+  animation-duration: calc(400ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- discarded: card drops from hand to GY (300 ms) ----------------------------------- */
@@ -390,7 +610,7 @@
 
 [data-animating="discarded"] {
   animation-name: jk-discard-drop;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- drawn: card slides from the library to the hand (250 ms) ------------------------- */
@@ -409,7 +629,7 @@
 
 [data-animating="drawn"] {
   animation-name: jk-draw-slide;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- addedToHand: card appears at the hand edge (250 ms) ------------------------------ */
@@ -427,7 +647,7 @@
 
 [data-animating="addedToHand"] {
   animation-name: jk-hand-edge;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- shuffledIn: card flies into the library, library pulses (300 ms) ----------------- */
@@ -446,7 +666,7 @@
 
 [data-animating="shuffledIn"] {
   animation-name: jk-shuffle-in;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- buffed: stat numbers flash and tick (250 ms) ------------------------------------- */
@@ -465,7 +685,7 @@
 
 [data-animating="buffed"] {
   animation-name: jk-stat-tick;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- keywordGranted: keyword icon pops in (200 ms) ------------------------------------ */
@@ -488,7 +708,7 @@
 [data-animating="keywordGranted"] .keyword-icon:last-child,
 [data-animating="keywordGranted"] {
   animation-name: jk-icon-pop;
-  animation-duration: calc(200ms * var(--anim-scale));
+  animation-duration: calc(200ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- counterChanged: counter badge ticks (200 ms) ------------------------------------- */
@@ -505,7 +725,7 @@
 
 [data-animating="counterChanged"] {
   animation-name: jk-badge-tick;
-  animation-duration: calc(200ms * var(--anim-scale));
+  animation-duration: calc(200ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- costChanged: cost gem flashes and ticks (200 ms) --------------------------------- */
@@ -524,7 +744,7 @@
 
 [data-animating="costChanged"] {
   animation-name: jk-gem-tick;
-  animation-duration: calc(200ms * var(--anim-scale));
+  animation-duration: calc(200ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- modifierChanged: player modifier badge appears or fades (200 ms) ----------------- */
@@ -542,29 +762,31 @@
 
 [data-animating="modifierChanged"] {
   animation-name: jk-badge-fade;
-  animation-duration: calc(200ms * var(--anim-scale));
+  animation-duration: calc(200ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- radiantSet: gold glow pulse, stats swap (400 ms) -------------------------------- */
 
 @keyframes jk-radiant-pulse {
+  /* The golden flare: the card flares hot and settles to the Radiant look; the fx layer's sheen,
+     gold burst and rays draw the halo around it. */
   0% {
-    box-shadow: 0 0 0 0 rgb(255 210 74 / 0%);
-    filter: none;
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
   }
   45% {
-    box-shadow: 0 0 22px 8px rgb(255 210 74 / 85%);
-    filter: brightness(1.5);
+    transform: scale(1.05);
+    filter: brightness(1.7) saturate(1.4);
   }
   100% {
-    box-shadow: 0 0 8px 2px rgb(255 210 74 / 45%);
-    filter: none;
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
   }
 }
 
 [data-animating="radiantSet"] {
   animation-name: jk-radiant-pulse;
-  animation-duration: calc(400ms * var(--anim-scale));
+  animation-duration: calc(400ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- transformed: card spins and shows its new face (400 ms) ------------------------- */
@@ -583,7 +805,7 @@
 
 [data-animating="transformed"] {
   animation-name: jk-spin-face;
-  animation-duration: calc(400ms * var(--anim-scale));
+  animation-duration: calc(400ms * var(--anim-scale) * var(--anim-squeeze, 1));
   backface-visibility: hidden;
 }
 
@@ -592,7 +814,7 @@
 @keyframes jk-fuse-merge {
   0% {
     transform: scale(1) translateX(0);
-    filter: none;
+    filter: brightness(1);
   }
   55% {
     transform: scale(1.14) translateX(0);
@@ -600,13 +822,13 @@
   }
   100% {
     transform: scale(1) translateX(0);
-    filter: none;
+    filter: brightness(1);
   }
 }
 
 [data-animating="fused"] {
   animation-name: jk-fuse-merge;
-  animation-duration: calc(500ms * var(--anim-scale));
+  animation-duration: calc(500ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- positionSwitched: rotate 90 deg / back (250 ms) --------------------------------- */
@@ -622,7 +844,7 @@
 
 [data-animating="positionSwitched"] {
   animation-name: jk-rotate-def;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- controlChanged: card slides across the centre line (450 ms) --------------------- */
@@ -640,9 +862,33 @@
 
 [data-animating="controlChanged"] {
   animation-name: jk-cross-centre;
-  animation-duration: calc(450ms * var(--anim-scale));
+  animation-duration: calc(450ms * var(--anim-scale) * var(--anim-squeeze, 1));
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 45;
+}
+
+/* With the effects layer on, a stand-in of the stolen card flies to its new zone (fx/stage.ts), so
+   the zone itself stays put and only glows where the card lands, as a summon's zone does. */
+.game:has(> .fx-layer[data-fx="on"]) .zone[data-animating="controlChanged"] {
+  --jk-land: var(--plague, #8b5cf6);
+  animation-name: none;
+  /* Under the effects layer, so the stand-in lands on the zone rather than behind it. */
+  z-index: auto;
+}
+
+.game:has(> .fx-layer[data-fx="on"]) .zone[data-animating="controlChanged"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 22px 2px color-mix(in srgb, var(--jk-land) 55%, transparent),
+    0 0 14px 1px color-mix(in srgb, var(--jk-land) 45%, transparent);
+  pointer-events: none;
+  animation-name: jk-zone-landing;
+  animation-duration: calc(450ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
 }
 
 /* --- rotated: all cards slide one lane (500 ms) -------------------------------------- */
@@ -658,7 +904,7 @@
 
 [data-animating="rotated"] {
   animation-name: jk-lane-slide;
-  animation-duration: calc(500ms * var(--anim-scale));
+  animation-duration: calc(500ms * var(--anim-scale) * var(--anim-squeeze, 1));
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -676,7 +922,7 @@
 
 [data-animating="swapped"] {
   animation-name: jk-swap-cross;
-  animation-duration: calc(500ms * var(--anim-scale));
+  animation-duration: calc(500ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- locked: chain icon closes over the zone (250 ms) -------------------------------- */
@@ -694,34 +940,39 @@
 
 [data-animating="locked"] {
   animation-name: jk-chain-close;
-  animation-duration: calc(250ms * var(--anim-scale));
+  animation-duration: calc(250ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- trapFired: backrow card flips face-up, holds, then dissolves (700 ms) ----------- */
 
 @keyframes jk-trap-flip {
+  /* The reveal carries the arcane violet of a Secret going off. */
   0% {
     transform: rotateY(180deg) scale(1);
     opacity: 1;
+    filter: brightness(1);
   }
   20% {
-    transform: rotateY(0deg) scale(1.06);
+    transform: rotateY(0deg) scale(1.12);
     opacity: 1;
+    filter: brightness(1.9);
   }
   /* The hold: BUILD wants the trap's name readable through the middle of the motion. */
   75% {
     transform: rotateY(0deg) scale(1.06);
     opacity: 1;
+    filter: brightness(1.1);
   }
   100% {
     transform: rotateY(0deg) scale(0.9);
     opacity: 0.15;
+    filter: brightness(1);
   }
 }
 
 [data-animating="trapFired"] {
   animation-name: jk-trap-flip;
-  animation-duration: calc(700ms * var(--anim-scale));
+  animation-duration: calc(700ms * var(--anim-scale) * var(--anim-squeeze, 1));
   z-index: 50;
 }
 
@@ -734,12 +985,15 @@
 @keyframes jk-trap-flip-hold {
   0% {
     transform: rotateY(180deg) scale(1);
+    filter: brightness(1);
   }
   20% {
-    transform: rotateY(0deg) scale(1.06);
+    transform: rotateY(0deg) scale(1.12);
+    filter: brightness(1.9);
   }
   100% {
     transform: rotateY(0deg) scale(1);
+    filter: brightness(1);
   }
 }
 
@@ -748,16 +1002,27 @@
 @keyframes jk-crystal-fill {
   0%,
   100% {
-    filter: none;
+    filter: brightness(1);
   }
   50% {
-    filter: brightness(1.8);
+    filter: brightness(2);
   }
 }
 
 [data-animating="manaChanged"] {
   animation-name: jk-crystal-fill;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
+}
+
+/* Each filled crystal lights up on its own while the tray animates (`.mana-crystal` and
+   `data-filled` are e2e contracts, so they are safe hooks); the fx layer's sparkles run left to
+   right across the crystals that just filled. */
+[data-animating="manaChanged"] .mana-crystal[data-filled="true"] {
+  animation-name: jk-crystal-fill;
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-fill-mode: both;
+  animation-timing-function: ease-out;
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--mana) 75%, white);
 }
 
 /* --- turnStarted / turnAutoEnded: the turn banner (600 ms) --------------------------- */
@@ -784,7 +1049,7 @@
 [data-animating="turnStarted"],
 [data-animating="turnAutoEnded"] {
   animation-name: jk-banner;
-  animation-duration: calc(600ms * var(--anim-scale));
+  animation-duration: calc(600ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- turnEnded: end-turn button greys out (150 ms) ----------------------------------- */
@@ -802,7 +1067,7 @@
 
 [data-animating="turnEnded"] {
   animation-name: jk-grey-out;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- promptOpened / promptAnswered: the modal fades (150 ms each) -------------------- */
@@ -827,12 +1092,12 @@
 
 [data-animating="promptOpened"] {
   animation-name: jk-fade-in;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 [data-animating="promptAnswered"] {
   animation-name: jk-fade-out;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- drawOffered / drawAnswered: the offer toast (150 ms / 300 ms) ------------------- */
@@ -862,12 +1127,12 @@
 
 [data-animating="drawOffered"] {
   animation-name: jk-toast-in;
-  animation-duration: calc(150ms * var(--anim-scale));
+  animation-duration: calc(150ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 [data-animating="drawAnswered"] {
   animation-name: jk-toast-resolve;
-  animation-duration: calc(300ms * var(--anim-scale));
+  animation-duration: calc(300ms * var(--anim-scale) * var(--anim-squeeze, 1));
 }
 
 /* --- gameOver: result overlay (BUILD duration "—", so 0 ms) -------------------------- */
@@ -885,11 +1150,43 @@
 
 /* The overlay is terminal: nothing waits on it, so the queue gives it no time and this block
    never sees a `data-animating="gameOver"`. It is attached to the overlay's own testid instead,
-   so the result still fades in without the runner holding the stream open. */
+   so the result still fades in without the runner holding the stream open.
+
+   It is also the game-over state that stays: the effects layer's Victory / Defeat sequence is gone
+   after FX_RESULT_MS, and an overlay left in the flow sat below the fold (y 874 of 720 at 1280x720).
+   So it is a panel fixed in the middle of the screen, under the sequence's word, above the effects
+   layer (38) and below the prompt scrim (40). */
 [data-testid="result-overlay"] {
+  position: fixed;
+  left: 50%;
+  top: 66%;
+  translate: -50% -50%;
+  z-index: 39;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 32px);
+  padding: 12px 24px 14px;
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-sunken, #0b0d13) 92%, transparent);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 60%);
+  text-align: center;
   animation-name: jk-result-overlay;
-  animation-duration: calc(220ms * var(--anim-scale));
+  animation-duration: calc(220ms * var(--anim-scale) * var(--anim-squeeze, 1));
   animation-fill-mode: both;
+}
+
+[data-testid="result-overlay"] > strong {
+  font-size: 1.6em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A finished game has no turn: the status line would still say whose turn the last view gave. */
+.game:has(> [data-testid="result-overlay"]) > [data-testid="turn-banner"] {
+  visibility: hidden;
 }
 
 /* --- prefers-reduced-motion: every duration collapses to 0 (BUILD M5-T4) ------------- */

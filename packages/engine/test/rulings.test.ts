@@ -177,6 +177,15 @@ const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
 /** R203's and R204's proofs (SPEC §10.11): the client's sound cue table, and the director that plays it. */
 const WEB_AUDIO_CUES_TEST = "../../../apps/web/src/audio/cues.test.ts";
 const WEB_AUDIO_DIRECTOR_TEST = "../../../apps/web/src/audio/director.test.ts";
+/** The effects layer's proofs (R200 to R202): the cue planner, the director, the layer and the runner. */
+const WEB_FX_CUES_TEST = "../../../apps/web/src/fx/cues.test.ts";
+const WEB_FX_DIRECTOR_TEST = "../../../apps/web/src/fx/director.test.ts";
+const WEB_FX_LAYER_TEST = "../../../apps/web/src/fx/FxLayer.test.tsx";
+const WEB_FX_STAGE_TEST = "../../../apps/web/src/fx/stage.test.tsx";
+const WEB_FX_CSS_TEST = "../../../apps/web/src/fx/css.test.ts";
+const WEB_FX_CANVAS_TEST = "../../../apps/web/src/fx/canvasFx.test.ts";
+const WEB_FX_PARTICLES_TEST = "../../../apps/web/src/fx/particles.test.ts";
+const WEB_ANIMATIONS_FX_TEST = "../../../apps/web/src/game/animations.fx.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1746,6 +1755,38 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
       WEB_RESET_PASSWORD_TEST,
       SERVER_AUTH_TEST,
     );
+  });
+
+  // Proved in each part of the layer. cues.test.ts "R200 …" bounds every planned cue inside its entry
+  // plus FX_MAX_TAIL_MS for every recipe and duration, and bounds the killing blow's replay;
+  // director.test.ts "R200 …" fires cues on frames and leaves nothing behind after D +
+  // FX_MAX_TAIL_MS, even across a stalled frame; canvasFx.test.ts and particles.test.ts "R200 …" age
+  // on real time; FxLayer.test.tsx "R200 …" shows mounting the layer changes no `schedule` call, the
+  // reduce setting zeroes --anim-scale and the killing blow plays before the result; stage.test.tsx
+  // "R200 …" bounds the stage effects (a stand-in, a hidden card, an aimed lunge) by the entry and
+  // FX_HOLD_MAX_MS; css.test.ts "R200 …" draws the Divine Shield cocoon only while the layer is on.
+  it("R200 keeps the effects layer from pacing anything: effects decorate the table and trail off within its tail", () => {
+    provenIn(
+      200,
+      WEB_FX_CUES_TEST,
+      WEB_FX_DIRECTOR_TEST,
+      WEB_FX_LAYER_TEST,
+      WEB_FX_STAGE_TEST,
+      WEB_FX_CSS_TEST,
+      WEB_FX_CANVAS_TEST,
+      WEB_FX_PARTICLES_TEST,
+    );
+  });
+
+  // Proved by animations.fx.test.ts "R201 …": the runner's `schedule` spy at speeds 2, 0.5 and 5.
+  it("R201 scales the animation table and the burst budget by the viewer's effects speed", () => {
+    provenIn(201, WEB_ANIMATIONS_FX_TEST);
+  });
+
+  // Proved by cues.test.ts "R202 …": hidden ids and defIds plan identical cues, and no cue carries a
+  // defId or a card name.
+  it("R202 draws effects from the redacted stream only", () => {
+    provenIn(202, WEB_FX_CUES_TEST);
   });
 
   // R203 and R204 are client rulings (SPEC §10.11): the engine makes neither, and the proofs live in
