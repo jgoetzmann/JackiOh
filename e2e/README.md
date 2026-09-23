@@ -17,6 +17,9 @@ everywhere in here:
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
   cypress/e2e/*.cy.ts      the twelve specs
+  cypress/e2e/14-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
+  cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
+  cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
   support/
     commands.ts            seedGame, playCard, attack, answerPrompt, endTurn (+ the waiting

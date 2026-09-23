@@ -37,10 +37,18 @@ src/
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
     Game.tsx            board + prompts + animation runner, wired together
+  audio/                sound (SPEC §10.11); index.ts is the barrel Game.tsx imports, appAudio.ts
+                        the page-wide unlock and UI ticks main.tsx holds, mix.ts the buses and limiter
+    engine.ts sfx.ts unlock.ts settings.ts   lazy AudioContext and buses, procedural SFX, gesture unlock, the settings store
+    cues.ts director.ts useGameAudio.ts      SOUND_CUES (a total map over GameEventType) and the runner-synced director
+    AudioToggle.tsx AudioControls.tsx        the HUD mute button and the full panel
+    voice-lines.json voice-manifest.json     every card's lines and personas; the generated hash and size of each file
   routes/dev/hotseat.tsx  the dev hotseat route
   test/
     setup.ts            jsdom matchers and a matchMedia stub
     fixtures.ts         fixture PlayerViews; every test renders one of these
+scripts/
+  gen-voice.mjs         renders voice-lines.json to public/audio/voice/<card-id>-<play|death|cast>.m4a
 ```
 
 ## Commands

@@ -250,4 +250,6 @@ if (import.meta.env.MODE !== "test") {
       <App />
     </StrictMode>,
   );
+  // Polish 2: UI ticks and the audio unlock on every screen, off the first paint (audio/appAudio.ts).
+  void import("./audio/appAudio.ts").then((audio) => audio.retainAppAudio());
 }
