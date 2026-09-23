@@ -2,6 +2,10 @@
 // the client shows (a server sentence, a provider error, an emailed link's parameters) goes through
 // React's text escaping, so a crafted `error_description` or code can never become markup.
 //
+// The scan covers what ships. Test files (`*.test.ts`, `*.test.tsx`) are left out: they are never
+// bundled, and the effects layer's tests build fixed fixture DOM, and clear it, through innerHTML
+// to measure anchors, which renders nothing a player sees.
+//
 // The sources are read with Vite's `import.meta.glob(..., { query: "?raw" })`, because the web
 // tsconfig has no Node types and `node:fs` is not available here. The two patterns are built from
 // pieces so this file does not match itself.
@@ -20,11 +24,11 @@ const RAW_PROP = new RegExp(["dangerously", "Set", "Inner", "HTML"].join(""));
 /** An assignment (or `+=`) to innerHTML, but not a read or a comparison. */
 const ASSIGNS_INNER = new RegExp(`\\b${["inner", "HTML"].join("")}\\s*\\+?=(?!=)`);
 
-/** This file names both patterns in pieces; leave it out rather than trusting the pieces. */
-const SELF = /no-raw-html\.test\.ts$/;
+/** A test file, this one included (it names both patterns in pieces): never bundled, so not scanned. */
+const TEST_FILE = /\.test\.tsx?$/;
 
 function scanned(): [string, string][] {
-  return Object.entries(SOURCES).filter(([path]) => !SELF.test(path));
+  return Object.entries(SOURCES).filter(([path]) => !TEST_FILE.test(path));
 }
 
 describe("B36 no raw HTML", () => {
@@ -46,6 +50,9 @@ describe("B36 no raw HTML", () => {
       ).toBe(true);
     }
     for (const source of Object.values(SOURCES)) expect(typeof source).toBe("string");
+    // Every shipped file is scanned; only test files are left out.
+    const kept = new Set(scanned().map(([path]) => path));
+    for (const path of Object.keys(SOURCES)) expect(kept.has(path), path).toBe(!/\.test\.tsx?$/.test(path));
   });
 
   it("B36 the patterns catch what they are meant to catch", () => {
