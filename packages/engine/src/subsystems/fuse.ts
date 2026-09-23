@@ -39,13 +39,16 @@ export const FUSE_MIN_INGREDIENTS = 2;
 export const CRAFTED_CARD_COST = 0;
 
 /**
- * The two `Script` members that are functions but return no list, so the generic concatenation
+ * The three `Script` members that are functions but return no list, so the generic concatenation
  * below cannot combine them and each is handled on its own: `cost` is dropped, because R77 fixes
- * the fused cost at min(sum, 4), and `setStat` is summed like every other stat R77 sums. A new
- * member of `Script` that returns something other than a list belongs in this pair.
+ * the fused cost at min(sum, 4); `setStat` is summed like every other stat R77 sums; and
+ * `conditionMet`, R195's yellow glow, answers a boolean, so the ingredients' hooks are or-ed
+ * (R196). A new member of `Script` that returns something other than a list belongs in this set:
+ * left to `combineValues`, two such hooks become one that returns an array of their answers.
  */
 const COST_KEY = "cost";
 const SET_STAT_KEY = "setStat";
+const CONDITION_MET_KEY = "conditionMet";
 
 /** The script keys whose entries carry an `id` that has to stay unique across the ingredients. */
 const TRIGGER_KEYS = ["triggers", "handTriggers"] as const;
@@ -245,6 +248,7 @@ function scriptRecord(script: Script, defId: string): Record<string, unknown> {
   const out: Record<string, unknown> = { ...script };
   delete out[COST_KEY];
   delete out[SET_STAT_KEY];
+  delete out[CONDITION_MET_KEY];
   for (const key of TRIGGER_KEYS) {
     const list = out[key];
     if (!Array.isArray(list)) continue;
@@ -281,16 +285,36 @@ function fusedSetStat(scripts: readonly Script[]): Script["setStat"] | undefined
   };
 }
 
+/**
+ * R196: a fusion's yellow glow. Its Cry, Death and triggers run every ingredient's list, so each
+ * ingredient's printed condition still picks its own branch when the fused card resolves, and the
+ * fused card glows when any of them holds. Each hook is asked with the fused card's own context
+ * (the fused instance as `self`, the face it runs), and only an answer of exactly `true` counts,
+ * as `conditionActive` counts it. One hooked ingredient's hook is the fusion's unchanged.
+ */
+function fusedConditionMet(scripts: readonly Script[]): Script["conditionMet"] | undefined {
+  const hooks = scripts.flatMap((script) => (script.conditionMet === undefined ? [] : [script.conditionMet]));
+  if (hooks.length === 0) return undefined;
+  if (hooks.length === 1) return hooks[0];
+  return (ctx) => hooks.some((hook) => hook(ctx) === true);
+}
+
 function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
   const faces = defs.map((def) => {
     const pair = scriptsFor(def.id);
     return { defId: def.id, script: radiant ? pair.radiant : pair.base };
   });
+  const scripts = faces.map((face) => face.script);
   const combined = combineObjects(
     faces.map((face) => scriptRecord(face.script, face.defId)),
   ) as Script;
-  const setStat = fusedSetStat(faces.map((face) => face.script));
-  return setStat === undefined ? combined : { ...combined, setStat };
+  const setStat = fusedSetStat(scripts);
+  const conditionMet = fusedConditionMet(scripts);
+  return {
+    ...combined,
+    ...(setStat === undefined ? {} : { setStat }),
+    ...(conditionMet === undefined ? {} : { conditionMet }),
+  };
 }
 
 // ---------------------------------------------------------------------------

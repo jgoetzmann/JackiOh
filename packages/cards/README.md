@@ -81,10 +81,15 @@ export const radiant: Script = {
   flag (SPEC §5.2), so write `export const radiant = base;` and say so in a comment.
 - The `Script` shape is `{ cost?, cry?, death?, startOfGame?, resume?, delayed?, setStat?,
   startOfTurn?, endOfTurn?, aura?, triggers?, activate?, onPlayHook?, handTriggers?, staticFlags?,
-  targets?, modes? }` (`packages/engine/src/script.ts`, SPEC §10.9). `resume` is the named
+  targets?, modes?, conditionMet? }` (`packages/engine/src/script.ts`, SPEC §10.9). `resume` is the named
   continuation a prompt answer re-enters (R113), `delayed` the hook a scheduled effect lands on
   (R126), and `setStat` layer 2's stat hook (R116) — 13 card files already export one of them. A spell's script hangs off `cry`: that is the
   on-resolve hook for a Spell as well as the Cry of a permanent.
+- `conditionMet` is R195's yellow glow: a pure read of `{ state, self, controller, radiant, zone,
+  yourTurn }` that returns whether the card's printed condition holds now (`zone: "hand"` as if
+  played now, `"field"` as the card in play reads it), built on the same local predicate the card's
+  own resolution uses so the two cannot disagree; it never writes, never draws from `rng` and never
+  reads `state.active` (use `yourTurn`).
 
 **Purity (CLAUDE.md rules 4 and 5).** A hook is `(ctx: EffectContext) => Effect[]`. It reads
 `ctx` and returns effects; it never assigns to `ctx.state`, never calls an engine mutator, never
@@ -322,6 +327,13 @@ For **base and radiant separately**: one case per behaviour named in the card's 
 every must-pass case in the BUILD M4-T4 table row for that card. Name a test after the ruling it
 pins down when there is one — `it("R64 the copy lands in the leftmost free zone", …)` — so a
 ruling change has a failing test with its name on it (CLAUDE.md rule 3).
+
+A card whose script declares `conditionMet` (R195's yellow glow) also proves both answers of its
+hook against the branch its own resolution then takes (SPEC §10.9). Those proofs live together in
+`test/condition-active.test.ts`, not in the card's own file, because they share one harness for
+reading `conditionActive` off `s.view(...)`; the card's own test file names that file in its header.
+The same file pins the set of cards that declare the hook to R195's list, so a card that adds one
+fails `pnpm test` until its proof and the ruling's list are updated.
 
 A card is done when its tests are green, `pnpm lint` and `pnpm typecheck` are clean, and the fuzz
 gate still passes with the card in the pool.

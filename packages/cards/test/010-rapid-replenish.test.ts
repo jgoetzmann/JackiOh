@@ -11,6 +11,9 @@
 // that finds three earlier plays.
 //
 // Nothing in the libraries here is cast-on-draw (#21, #27, #90.1 are), so a draw is just a draw.
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";

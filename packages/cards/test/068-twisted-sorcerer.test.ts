@@ -8,6 +8,9 @@
 // §8's Conventions: "target" is any legal unit or hero on either side, "your" is the controller, and
 // a Cry whose target set is empty fizzles while the unit still enters. R81: the pick travels in the
 // `play` action.
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import { scenario, type ScenarioOptions } from "./_harness";

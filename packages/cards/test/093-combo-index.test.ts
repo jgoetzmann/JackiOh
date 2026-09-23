@@ -30,6 +30,9 @@
 // of the controller's own turns is the same arithmetic with four cascades of side effects in the
 // way, so the boundary tests drive the counter naturally (E→D, D→C) and the deep-cascade tests
 // seed it.
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import type { GameEvent } from "@jackioh/shared";

@@ -9,6 +9,12 @@ export type CardView = {
   radiant: boolean;
   /** Cost as it stands now (§6.3 Cost, R65); "X" cards show 0 until X is chosen. */
   cost: number;
+  /**
+   * R195, §10.8: Hearthstone's yellow glow. Present, and `true`, only on the viewer's own card
+   * whose printed condition holds now. Absent otherwise: never `false`, never on the opponent's
+   * cards. `UnitView` and the public `BackrowView` inherit it.
+   */
+  conditionActive?: true;
 };
 
 export type UnitView = CardView & {
