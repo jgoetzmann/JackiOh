@@ -1,6 +1,6 @@
 // What `viewFor` hands each seat about cards it may not read (SPEC §9.1, §10.8, R33, R35, R97,
 // R177). Found by the polish-4 edge-case hunt (docs/polish/4-edge-cases.md, lens L10, rounds 1 to
-// 3); every case here failed before its fix. Where a leak is a difference between two games that
+// 4); every case here failed before its fix. Where a leak is a difference between two games that
 // differ only in hidden cards, the test builds both and asserts the viewer cannot tell them apart.
 
 import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
@@ -31,6 +31,9 @@ const CORPSE_EATER = "core-089";
 const COMBO_INDEX = "core-093";
 const CALL_TO_CHAOS = "core-095";
 const MY_PAWN = "core-096";
+const GLOWY = "core-026";
+const GIGA = "core-029";
+const GIFTED = "core-064";
 
 function eventsOf<T extends GameEvent["type"]>(view: PlayerView, type: T): Extract<GameEvent, { type: T }>[] {
   return view.events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
@@ -39,6 +42,12 @@ function eventsOf<T extends GameEvent["type"]>(view: PlayerView, type: T): Extra
 function must<T>(value: T | null | undefined, what: string): T {
   if (value === null || value === undefined) throw new Error(`missing ${what}`);
   return value;
+}
+
+/** The viewer's two views are identical, event list first so a failure names the extra event. */
+function indistinguishable(viewer: PlayerId, a: Scenario, b: Scenario): void {
+  expect(b.view(viewer).events.map((event) => event.type)).toEqual(a.view(viewer).events.map((event) => event.type));
+  expect(b.view(viewer)).toEqual(a.view(viewer));
 }
 
 describe("R177: a prompt option that offers a face-down card", () => {
@@ -367,5 +376,61 @@ describe("R177: a number the view carries is never taken by a hidden card", () =
     expect(eventsOf(eater.view("p1"), "buffed")).toHaveLength(0);
     expect(eater.view("p1").you.modifiers).toHaveLength(1);
     expect(eater.view("p1")).toEqual(plain.view("p1"));
+  });
+});
+
+describe("R177: Make Radiant on a hidden card that is already Radiant", () => {
+  it("R177 #29 GIGA and #26 Glowy Jelly Bean do not tell the opponent which hidden hand cards were already Radiant (§9.1, §10.8, R97)", () => {
+    // #29: "Every card in your hand becomes Radiant". Afterwards both hands are wholly Radiant, so
+    // the games differ only in the face p1's 4-mana 7/7 had while p2 could not read it.
+    const giga = (radiant: boolean): Scenario => {
+      const s = scenario({
+        seed: "hunt-r4-giga",
+        p1: { hand: [GIGA, { def: SEVEN_SEVEN, radiant }, BIGOT], mana: 10, library: [HIT_JOB] },
+        p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+      });
+      s.play(GIGA);
+      return s;
+    };
+    const gigaBase = giga(false);
+    const gigaRadiant = giga(true);
+    expect(gigaBase.hand("p1").every((card) => card.radiant)).toBe(true);
+    expect(gigaRadiant.hand("p1").every((card) => card.radiant)).toBe(true);
+    // A cue only for the cards that changed would count, for p2, how many were Radiant before.
+    indistinguishable("p2", gigaBase, gigaRadiant);
+
+    // #26: "Choose a card in your hand; it becomes Radiant". The same no-op on the chosen card.
+    const glowy = (radiant: boolean): Scenario => {
+      const s = scenario({
+        seed: "hunt-r4-glowy",
+        p1: { hand: [GLOWY, { def: SEVEN_SEVEN, radiant }, BIGOT], mana: 10, library: [HIT_JOB] },
+        p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+      });
+      const chosen = must(s.hand("p1").find((card) => card.defId === SEVEN_SEVEN), "p1's 7/7");
+      s.play(GLOWY, { targets: [{ pick: "instance", instanceId: chosen.id }] });
+      expect(s.card(chosen).radiant).toBe(true);
+      return s;
+    };
+    indistinguishable("p2", glowy(false), glowy(true));
+  });
+
+  it("R177 #64 Gifted Program does not tell the opponent that a face-down trap was already Radiant (§9.1, §10.8, R33, R97, R213)", () => {
+    // The trap is p1's first card costing 1 or less this turn, so §10.5 step 3 makes it Radiant
+    // (R213). It lands face-down and Radiant in both games; only its face in hand differed.
+    const game = (radiant: boolean): Scenario => {
+      const s = scenario({
+        seed: "hunt-r4-gifted",
+        p1: { backrow: [GIFTED], hand: [{ def: SHEEPISH, radiant }, STOCKPILE], mana: 4, library: [HIT_JOB] },
+        p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+      });
+      s.play(SHEEPISH, { zone: 2 });
+      return s;
+    };
+    const base = game(false);
+    const radiant = game(true);
+    expect(base.backrow("p1", 2)?.radiant).toBe(true);
+    expect(radiant.backrow("p1", 2)?.radiant).toBe(true);
+    expect(base.view("p2").opponent.backrow[1]).toEqual({ faceDown: true });
+    indistinguishable("p2", base, radiant);
   });
 });

@@ -7,7 +7,7 @@
 // `addToHand`, so §2.4's hand cap and R4's burn apply once, in one place, and R11's unit-token card
 // ceases to exist instead of reaching the graveyard.
 
-import { defOf, query, type CatalogQueryArgs } from "../catalog";
+import { defOf, excludingIndex, query, type CatalogQueryArgs } from "../catalog";
 import { addToHand as putInHand } from "../draw";
 import type { Effect, EffectContext } from "../script";
 import { newInstance, type CardInstance } from "../state";
@@ -108,8 +108,7 @@ export function addToHand(args: {
  */
 function poolQuery(ctx: EffectContext, args: CatalogQueryArgs = {}): CatalogQueryArgs {
   const self = ctx.self;
-  const excludeIndex = self === null ? undefined : defOf(ctx.state, self.defId).index;
-  return { ...args, ...(excludeIndex === undefined ? {} : { excludeIndex }) };
+  return excludingIndex(args, self === null ? undefined : defOf(ctx.state, self.defId).index);
 }
 
 /**

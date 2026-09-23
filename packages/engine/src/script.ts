@@ -46,6 +46,14 @@ export type EffectContext = {
 export type Effect = {
   readonly kind: string;
   apply: (ctx: EffectContext) => void;
+  /**
+   * Which part of a composed list this effect came from: a fused hook runs every ingredient's list
+   * (R77, R102), and tags each effect with its ingredient's index — a path, since a fused card can be
+   * fused again. A pause records the parts' lengths, so the list rebuilt on resume is continued part
+   * by part (`work.resumeIndex`, R113) even when a part rebuilt against the board it now finds is
+   * shorter or longer than it was. A card's own effects carry none.
+   */
+  readonly segment?: readonly number[];
 };
 
 export type Hook = (ctx: EffectContext) => Effect[];

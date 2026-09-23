@@ -36,11 +36,14 @@ import type { Effect, EffectContext, Hook, Script } from "./script";
 import { scriptsFor } from "./scripts";
 import { findInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
 import {
+  beginWorkCascade,
   cardData,
   drainWork,
   parkWork,
   pausedOf,
   registerDefaultWorkHandler,
+  resumeIndex,
+  segmentsOf,
   type WorkPlan,
 } from "./work";
 
@@ -300,6 +303,10 @@ export function answerPrompt(sink: EngineSink, answer: AnswerInput): string | nu
   if (refused !== null) return refused;
 
   closePrompt(sink);
+  // R113, R122: answering re-enters the step the prompt paused, which is taking that step up again —
+  // so the cursor resets, and a pause inside it parks its own tail ahead of everything still owed,
+  // not behind it at whatever place the action before this one left the cursor.
+  beginWorkCascade(sink);
   runResume(sink, resumeOf(pending), {
     controller: pending.playerId,
     targets: [...answer.selection],
@@ -382,6 +389,9 @@ export function applyResumable(
   from = 0,
 ): boolean {
   for (let index = Math.max(0, from); index < effects.length; index += 1) {
+    // R216: the game ended inside this list (a state check a draw's cast ran), so the rest of it
+    // never resolves, and nothing is parked for a game that is over.
+    if (sink.state.result !== null) return false;
     const before = sink.state.pending;
     effects[index]?.apply(ctx);
 
@@ -389,10 +399,12 @@ export function applyResumable(
     if (pending === null || pending === before) continue;
 
     if (index + 1 < effects.length) {
+      const segments = segmentsOf(effects);
       parkWork(sink, plan, {
         from: index + 1,
         targets: [...ctx.targets],
         modes: [...ctx.modes],
+        ...(segments === undefined ? {} : { segments }),
       });
     }
     return false;
@@ -433,7 +445,9 @@ export function runResume(
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };
-  return applyResumable(sink, ctx, plan, hook(ctx), paused?.from ?? 0);
+  const effects = hook(ctx);
+  // A composed list (a fused hook, R102) continues part by part, whatever the board did to it.
+  return applyResumable(sink, ctx, plan, effects, resumeIndex(effects, paused));
 }
 
 /**

@@ -7,7 +7,11 @@
 //    its cost, as radiant #52's "costing 0" already did (re-entry.test.ts).
 //  - R155: the end-of-turn return belongs to the Spell its own play landed in the graveyard, so a
 //    card that left the graveyard and came back some other way the same turn stays there (R153).
+//  - R215 (round 4, lens L2): a hand card that reaches a graveyard is reset as a card leaving the
+//    field is (R78), so it comes back as the printed card; and #99's crafted card, like every price
+//    a card is given as it reaches a hand, takes its "costs 0" only in that hand.
 
+import type { GameEvent } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -20,6 +24,11 @@ const KY_MATH = "core-031";
 const GRAVEDIGGER = "core-037";
 const REMINISCE = "core-072";
 const FIELD_OF_DREAMS = "core-076";
+const POINTMASTER = "core-020";
+const TWINSPELL = "core-079";
+const ZAO_GAO = "core-080";
+const CORPSE_EATER = "core-089";
+const CRAFT = "core-099";
 
 const AT_P2 = [{ pick: "hero", player: "p2" } as const];
 
@@ -93,5 +102,59 @@ describe("R155: the end-of-turn return belongs to the landing the Spell's own pl
 
     // What lies in the graveyard now arrived by a discard, not by its own play's step 7.
     g.expectInZone(dream, "graveyard");
+  });
+});
+
+describe("R215: a hand card that reaches a graveyard is the printed card again", () => {
+  it("R215 a Corpse Eater that fed in hand, was discarded by Zao Gao and came back by Reminisce is a fresh 2/2 (§8 #89, R78)", () => {
+    const g = scenario({
+      p1: {
+        hand: [CORPSE_EATER, ZAO_GAO, REMINISCE, STOCKPILE],
+        field: [{ def: POINTMASTER, lane: 1 }],
+        library: [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA],
+      },
+      p2: { hand: [STOCKPILE], field: [{ def: VANILLA, lane: 1 }], library: [VANILLA, VANILLA, VANILLA] },
+    });
+    const eater = g.card(CORPSE_EATER);
+    const filler = g.card(STOCKPILE);
+    const prey = g.unit("p2", 1);
+    if (prey === null) throw new Error("setup: p2's lane-1 unit");
+
+    // A 3/3 dies while the Eater is in hand: it gains +3/+3 (§8 #89).
+    g.attack(POINTMASTER, prey);
+    g.expectInZone(prey, "graveyard");
+    expect(g.stats(eater).attack).toBe(5);
+
+    // Zao Gao discards it; Reminisce brings it back from the graveyard.
+    g.play(ZAO_GAO).answer([eater.id, filler.id]);
+    g.expectInZone(eater, "graveyard");
+    g.play(REMINISCE).answer(eater.id);
+    g.expectInZone(eater, "hand");
+
+    // The card that went to the graveyard and came back is the printed card, not the one that fed.
+    expect(g.card(eater).buffs).toEqual({ attack: 0, health: 0 });
+    expect(g.stats(eater).attack).toBe(2);
+    expect(g.stats(eater).maxHealth).toBe(2);
+  });
+
+  it("R215 a crafted card a full hand burns does not keep the cost 0 it was to have in hand (§8 #99, R4, R77)", () => {
+    const fillers = Array.from({ length: 8 }, () => VANILLA);
+    const g = scenario({
+      p1: { hand: [TWINSPELL, CRAFT, ...fillers], library: [VANILLA, VANILLA, VANILLA] },
+      p2: { hand: [VANILLA], library: [VANILLA, VANILLA, VANILLA] },
+    });
+    g.play(TWINSPELL, { zone: 1 });
+    g.endTurn();
+    g.endTurn();
+    expect(g.state.active).toBe("p1");
+    expect(g.hand("p1")).toHaveLength(10);
+    g.play(CRAFT);
+    // Twinspell's Echo +1: two crafts. The first lands in the hand, which is then full again.
+    for (let i = 0; i < 4 && g.state.pending !== null; i += 1) g.answer(g.state.pending.options[0]?.key ?? "");
+    const burned = g.events.filter((event): event is Extract<GameEvent, { type: "burned" }> => event.type === "burned");
+    expect(burned).toHaveLength(1);
+    const crafted = g.card(burned[0]?.instanceId ?? "");
+    expect(crafted.zone.z).toBe("graveyard");
+    expect(crafted.costOverride).toBeUndefined();
   });
 });

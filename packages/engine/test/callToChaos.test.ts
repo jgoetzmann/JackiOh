@@ -224,8 +224,14 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
     run(sink, makeHandRadiant());
 
     expect(state.players.p1.hand.every((card) => card.radiant)).toBe(true);
-    // §6.3: the flag is set once, so only the two non-Radiant cards emit the event.
-    expect(eventsOfType(events, "radiantSet").map((event) => event.instanceId)).toEqual([first.id, second.id]);
+    // §6.3: the flag is set once and never unset; the cue goes out for all three, because a hand
+    // card is hidden from the opponent and a cue only for the changed ones would give away its face
+    // (R177, R97).
+    expect(eventsOfType(events, "radiantSet").map((event) => event.instanceId)).toEqual([
+      first.id,
+      second.id,
+      third.id,
+    ]);
     expect(enemy?.radiant).toBe(false);
   });
 

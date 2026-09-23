@@ -20,7 +20,7 @@
 import type { PlayerId } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import { modifierIsLive } from "./mana";
-import { removeModifier } from "./modifiers";
+import { installLastingModifiers, removeModifier } from "./modifiers";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import {
@@ -108,10 +108,10 @@ export function printedEcho(card: CardInstance): number {
  * How much Echo one rider grants now. A rider a permanent installed (`sourceId`, #79 Twinspell) is
  * that permanent's lasting effect (§5.1, R209), so it grants only while the permanent is on the
  * field under the rider's player, and it grants what the permanent's face says NOW: §5.2 has a card
- * made Radiant on the field run its radiant text from then on, without its Cry firing again, so a
- * Twinspell #49 radiant steals says "Echo +2" (`staticFlags.echoGrant`) whatever its base Cry
- * installed. A rider with no source (an engine or test fixture) grants its own `amount`. Returns 0
- * for a rider whose permanent has gone, which the state check would end anyway (R209).
+ * made Radiant on the field run its radiant text from then on, so a Twinspell #49 radiant steals
+ * says "Echo +2" (`staticFlags.echoGrant`) whatever its base face installed. A rider with no source
+ * (an engine or test fixture) grants its own `amount`. Returns 0 for a rider whose permanent has
+ * gone, which the state check would end anyway (R209).
  */
 export function echoGrantOf(state: GameState, player: PlayerId, mod: PlayerModifier): number {
   if (mod.kind !== "echoNextSpell") return 0;
@@ -134,6 +134,9 @@ export function echoGrantOf(state: GameState, player: PlayerId, mod: PlayerModif
 export function grantedEcho(sink: EngineSink, player: PlayerId, card: CardInstance): number {
   const state = sink.state;
   if (defOf(state, card.defId).type !== "Spell") return 0;
+  // R209: a Twinspell that arrived since the last state check — summoned mid-effect ahead of a cast
+  // on draw — already stands on the field, so its rider is installed before the Spell reads them.
+  installLastingModifiers(sink);
 
   let granted = 0;
   const spent = new Set<string>();

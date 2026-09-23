@@ -142,6 +142,31 @@ export function placeOnField(
   return true;
 }
 
+/**
+ * §6.3 Replace on the field: the new card takes the old one's place — the same zone, and the same
+ * place in a Stack pile — under the same controller. That is no summon, so §3.2's Lock ("the zone
+ * accepts no summons … the current occupant is unaffected") and R64's reservation do not refuse it:
+ * the zone was occupied before and is occupied after. Returns false, changing nothing, when the old
+ * card is not on the field. The old card is left pointing at its zone for the caller to retire.
+ */
+export function replaceInZone(state: GameState, old: CardInstance, replacement: CardInstance): boolean {
+  const zone = old.zone;
+  if (zone.z !== "field") return false;
+  const side = state.players[zone.player];
+  if (zone.row === "units") {
+    const pile = side.units[zone.lane - 1] ?? null;
+    if (pile === null || !pile.some((card) => card.id === old.id)) return false;
+    side.units[zone.lane - 1] = pile.map((card) => (card.id === old.id ? replacement : card));
+  } else {
+    if (side.backrow[zone.lane - 1]?.id !== old.id) return false;
+    side.backrow[zone.lane - 1] = replacement;
+  }
+  replacement.controller = zone.player;
+  replacement.zone = { ...zone };
+  if (zone.row === "units") replacement.position ??= "ATK";
+  return true;
+}
+
 /** Take a card off the field; the card beneath a Stack resumes acting (§3.2). */
 export function removeFromField(state: GameState, instance: CardInstance): boolean {
   for (const player of PLAYER_IDS) {
@@ -203,7 +228,10 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
   }
 }
 
-/** R78: leaving the field resets an instance, while costMod, costOverride and radiant persist. */
+/**
+ * R78: leaving the field resets an instance, while costMod, costOverride and radiant persist. R215
+ * applies the same reset to a hand or library card that reaches a graveyard or exile.
+ */
 export function resetInstance(instance: CardInstance): void {
   instance.damage = 0;
   instance.buffs = { attack: 0, health: 0 };
@@ -317,7 +345,11 @@ export function moveToZone(
     return "vanished";
   }
 
-  if (wasOnField && options.keepState !== true) resetInstance(instance);
+  // R215: a card that reaches a graveyard or an exile pile from a hand or a library is reset too, so
+  // what comes back from there is the printed card (#89's hand buffs, #98's rolled power, R151) —
+  // R78's reset, with `costMod`, `costOverride` and `radiant` kept in every zone as R78 keeps them.
+  const pileToPile = (from === "hand" || from === "library") && (zone === "graveyard" || zone === "exile");
+  if ((wasOnField || pileToPile) && options.keepState !== true) resetInstance(instance);
 
   const side = state.players[instance.owner];
   const pile = pileFor(side, zone);

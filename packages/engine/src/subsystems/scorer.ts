@@ -20,7 +20,7 @@ import { canAttack } from "../combat";
 import { heroArmorOf, heroDamageCap } from "../damage";
 import { unitView } from "../layers";
 import type { CardInstance, GameState } from "../state";
-import { activeUnitsOf } from "../zones";
+import { activeUnitsOf, firstFreeZone, isLocked, isReserved, slotsOf } from "../zones";
 
 /**
  * The weights, in one place so they can be tuned without touching the scoring functions (§10.7:
@@ -103,8 +103,9 @@ export function projectedBoardDamage(state: GameState, viewer: PlayerId): number
 /**
  * §10.7 priority 1. The printed signal for "this card enables lethal" is a Unit with Charge: it is
  * the only printed data that says a card can hit the hero on the turn it arrives (§6.1, and Rush
- * explicitly may not). A card must also be affordable, or the lethal is not available this turn,
- * and it must contribute damage of its own, so "enables" means the card is part of the kill.
+ * explicitly may not). A card must also be affordable, have a zone to be played into and a clear
+ * path to the hero (no enemy Taunt), or the lethal is not available this turn, and it must
+ * contribute damage of its own, so "enables" means the card is part of the kill.
  *
  * Out of reach from printed data: a damage spell, a Taunt-remover or a buff that would also make
  * the swing lethal. All three live in card text.
@@ -113,7 +114,21 @@ function lethalContribution(state: GameState, viewer: PlayerId, def: CardDef, fa
   if (def.type !== "Unit") return 0;
   if (!hasKeyword(face.keywords, "Charge")) return 0;
   if (queryCost(def) > state.players[viewer].mana.current) return 0;
-  return heroHit(state, opponentOf(viewer), face.attack ?? 0);
+  // It must reach the field this turn: §3.2 plays a Unit into an empty, unlocked zone, or a Stack
+  // card onto an occupied one (#92), so a full row keeps anything else off the board.
+  if (!hasRoomToPlay(state, viewer, face)) return 0;
+  // And it must reach the hero: §4.2 step 3 makes any enemy Taunt unit the only legal target, which
+  // is the same check `projectedBoardDamage` makes through `canAttack` for the units already there.
+  const enemy = opponentOf(viewer);
+  if (activeUnitsOf(state, enemy).some((unit) => hasKeyword(unitView(state, unit).keywords, "Taunt"))) return 0;
+  return heroHit(state, enemy, face.attack ?? 0);
+}
+
+/** §3.2: whether a Unit with this face could be played into the viewer's unit row now. */
+function hasRoomToPlay(state: GameState, viewer: PlayerId, face: CardFace): boolean {
+  if (firstFreeZone(state, viewer, "units") !== null) return true;
+  if (!hasKeyword(face.keywords, "Stack")) return false;
+  return slotsOf(viewer, "units").some((ref) => !isLocked(state, ref) && !isReserved(state, ref));
 }
 
 /**

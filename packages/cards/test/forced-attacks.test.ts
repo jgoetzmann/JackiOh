@@ -6,7 +6,9 @@
 //    Flame's strike back and its Death steals Moths, the rest of the run is on Moths's new side and
 //    does not attack it; radiant #60 Bear Honeypot's tokens do not attack a played unit that #52
 //    Silly Silas has already rotated onto their own side.
-//  - R174: a run stops once its target has left the field, even when Reborn puts it straight back.
+//  - R174: a run stops once its target has left the field, even when Reborn puts it straight back;
+//    and (round 4, lens L2) an attacker the run named that died in an earlier combat of the run and
+//    is back through Reborn is passed over, like one that is gone (R96).
 
 import type { GameEvent } from "@jackioh/shared";
 import type { CardInstance } from "@jackioh/engine";
@@ -22,6 +24,10 @@ const SILAS = "core-052";
 const HONEYPOT = "core-060";
 const SAINTESS = "core-081";
 const MROW = "core-086";
+const BIG_FELINOR = "core-043";
+const SURGERY = "core-063";
+const FIENDER = "core-092";
+const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
 function unitAt(g: Scenario, player: "p1" | "p2", lane: number): CardInstance {
   const card = g.unit(player, lane);
@@ -95,5 +101,40 @@ describe("R174: a forced run and a target that left the field", () => {
     const saintess = unitAt(g, "p2", 1);
     expect(saintess.defId).toBe(SAINTESS);
     g.expectStats(saintess, { health: 1 });
+  });
+  it("R174 a Felinor Fiender that dies mid-run to Moths to the Flame and comes back through Reborn does not attack in that run (R96, R83)", () => {
+    // On this seed Plastic Surgery's random keyword for the Fiender is Reborn (§6.1's pool, R21).
+    const g = scenario({
+      seed: "r4-fiender-reborn-7",
+      active: "p2",
+      turn: 10,
+      p1: { field: [{ def: MOTHS, lane: 1 }], hand: [STOCKPILE], library: [...LIBRARY] },
+      p2: {
+        hand: [SURGERY, STOCKPILE],
+        // Big Felinor feeds the Fiender's layer 2 (§10.4) and dies to Moths' strike back; the
+        // Fiender's damage is then more than it has without it.
+        field: [
+          { def: BIG_FELINOR, lane: 1, damage: 9 },
+          { def: FIENDER, lane: 2, damage: 12 },
+        ],
+        library: [...LIBRARY],
+      },
+    });
+    const fiender = unitAt(g, "p2", 2);
+    g.play(SURGERY, { targets: [{ pick: "instance", instanceId: fiender.id }] });
+    expect(g.stats(fiender).keywords.map((k) => k.kind)).toContain("Reborn");
+
+    // p1's start of turn: every p2 unit attacks Moths, in lane order (R53). Big Felinor dies in
+    // its combat, the Fiender dies in the check after it and comes back at 1 health (§4.5 step 4).
+    g.endTurn();
+    const back = g.events.findIndex((event) => event.type === "summoned" && event.instanceId === fiender.id);
+    expect(back).toBeGreaterThanOrEqual(0);
+
+    // The body that came back is a new arrival (R83, R174): the run named the unit that died, so
+    // the body is passed over like any attacker that is gone (R96), and stands at 1 health.
+    expect(declared(g.events.slice(back)).filter((event) => event.attackerId === fiender.id)).toEqual([]);
+    g.expectInZone(fiender, "field");
+    expect(g.card(fiender).rebornSpent).toBe(true);
+    g.expectStats(fiender, { health: 1 });
   });
 });

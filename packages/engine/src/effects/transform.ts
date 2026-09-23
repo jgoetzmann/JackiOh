@@ -11,12 +11,9 @@ import { unitHas } from "../layers";
 import type { Effect, EffectContext } from "../script";
 import { findInstance, newInstance, type CardInstance } from "../state";
 import {
-  isLocked,
-  isReserved,
   moveToZone,
-  placeOnField,
   removeFromAnyZone,
-  removeFromField,
+  replaceInZone,
   slotOf,
   zoneOf,
   type OffFieldZone,
@@ -55,15 +52,19 @@ function ceaseToExist(ctx: EffectContext, card: CardInstance): void {
   card.zone = { z: "gone", player: card.owner };
 }
 
-/** §6.3 Replace: the same zone and position, with the old card's owner and controller. */
+/**
+ * §6.3 Replace: the same zone and position, with the old card's owner and controller. The new card
+ * takes the old one's place (`zones.replaceInZone`) rather than being summoned into an emptied zone:
+ * a Transform result is no summon (§6.2), so the Lock §3.2 puts on a zone — "accepts no summons … the
+ * current occupant is unaffected" — does not refuse it, and neither does a reservation (R64). #36
+ * Magic Jammed locks the zone of a Heroic Power it could not destroy (R46), and radiant #36 locks
+ * the zone of a card it could not steal (R15); R35 still replaces either. A Stack pile keeps its
+ * dormant cards beneath the replacement (§3.2).
+ */
 function replaceOnField(ctx: EffectContext, old: CardInstance, def: CardDef, radiant: boolean): CardInstance | null {
   const at = slotOf(ctx.state, old);
   if (at === null) return null;
   if (rowFor(def.type) !== at.row) return null;
-  // Checked before the old card leaves its zone, exactly as a summon does (§3.2): `placeOnField`
-  // refuses a Locked or reserved zone, and a refusal after the removal would delete a card for
-  // nothing. Nothing in Core locks an occupied zone, so no Core transform is stopped by this.
-  if (isLocked(ctx.state, at) || isReserved(ctx.state, at)) return null;
 
   const replacement = newInstance(ctx.state, def.id, old.owner, zoneOf(at));
   replacement.radiant = radiant;
@@ -71,13 +72,7 @@ function replaceOnField(ctx: EffectContext, old: CardInstance, def: CardDef, rad
   // A new body enters the field this turn, so it is summoning sick like a summoned card (§4.1).
   replacement.summonedTurn = ctx.state.turn;
 
-  removeFromField(ctx.state, old);
-  // `stack: true` keeps a Stack pile intact: the replacement becomes the top and the dormant cards
-  // beneath stay where they are (§3.2). The zone is empty in every other case, so it is a no-op.
-  if (!placeOnField(ctx.state, replacement, at, { stack: true })) {
-    placeOnField(ctx.state, old, at, { stack: true });
-    return null;
-  }
+  if (!replaceInZone(ctx.state, old, replacement)) return null;
   ceaseToExist(ctx, old);
   // §3.2: a Field Spell is public where a Trap stays face-down until it fires (R33).
   if (def.type === "Field Spell") replacement.faceUp = true;

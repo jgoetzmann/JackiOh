@@ -1,12 +1,14 @@
-// A permanent's lasting effect lasts while it is on the field (SPEC §5.1, §5.2, R30, R209). Found by
-// the polish-4 edge-case hunt, round 2 (docs/polish/4-edge-cases.md, lenses L1, L2 and L8); every
-// case here failed before its fix.
+// A permanent's lasting effect lasts while it is on the field (SPEC §5.1, §5.2, R30, R169, R209).
+// Found by the polish-4 edge-case hunt, rounds 2 and 4 (docs/polish/4-edge-cases.md, lenses L1, L2
+// and L8); every case here failed before its fix.
 //
-// #79 Twinspell's "the next Spell you play gains Echo +1" is a player modifier its Cry installs,
-// which the engine used to end only by consuming it. So a Twinspell that left the field — bounced by
-// radiant #52, destroyed by #36 — kept echoing its old controller's next Spell, and one bounced and
-// replayed stacked a second rider. And the rider's amount was fixed by the face that installed it,
-// so a Twinspell radiant #49 stole and made Radiant still granted +1.
+// #79 Twinspell's "the next Spell you play gains Echo +1" is a player modifier, which the engine used
+// to end only by consuming it. So a Twinspell that left the field — bounced by radiant #52, destroyed
+// by #36 — kept echoing its old controller's next Spell, and one bounced and replayed stacked a
+// second rider. And the rider's amount was fixed by the face that installed it, so a Twinspell
+// radiant #49 stole and made Radiant still granted +1. Round 4: the rider was installed by a Cry,
+// which #79 does not print (R169), so a Twinspell summoned onto the field (§6.2: no Cry) granted
+// nothing, and neither did Twinspell's text fused by #85 onto the other player's Field Spell.
 
 import type { GameEvent } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
@@ -18,6 +20,10 @@ const MAGIC_JAMMED = "core-036";
 const MIND_CONTROL = "core-049";
 const SILAS = "core-052";
 const TWINSPELL = "core-079";
+const MANA_WELL = "core-006";
+const HIT_JOB = "core-016";
+const CUBE = "core-022";
+const UNLICENSED = "core-085";
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
 function echoRiders(g: Scenario, player: "p1" | "p2"): unknown[] {
@@ -71,7 +77,7 @@ describe("R209: Twinspell's grant ends when Twinspell leaves the field", () => {
     g.play(SILAS, { zone: 1, modes: ["right"] });
     g.expectInZone(twin, "hand");
 
-    // Replayed (costing 0): its Cry installs the one grant this Twinspell now has.
+    // Replayed (costing 0): standing on the field again, it has the one grant this Twinspell now has.
     g.play(twin, { zone: 4 });
     expect(echoRiders(g, "p1")).toHaveLength(1);
 
@@ -142,5 +148,60 @@ describe("R209: Twinspell's grant follows its current face", () => {
     expect(stockpileResolutions(g.lastEvents)).toBe(3);
     expect(g.hand("p1").length).toBe(before - 1 + 6);
     g.expectInZone(twin, "graveyard");
+  });
+});
+
+describe("R209: Twinspell's grant is the permanent's, however it came to stand on the field", () => {
+  it("R209 Twinspells summoned by #22's Death grant their Echo like played ones, so the next Spell resolves three times (§6.2, R41, R169)", () => {
+    const g = scenario({
+      p1: { hand: [TWINSPELL, CUBE, HIT_JOB, STOCKPILE, VANILLA], mana: 10, library: [...LIBRARY] },
+      p2: { hand: [VANILLA], field: [{ def: VANILLA, lane: 3 }], library: [...LIBRARY] },
+    });
+    g.play(TWINSPELL, { zone: 1 });
+    const eaten = g.backrow("p1", 1);
+    if (eaten === null) throw new Error("setup: p1's Twinspell");
+    g.play(CUBE, { zone: 1, targets: [{ pick: "instance", instanceId: eaten.id }] });
+    const cube = g.unit("p1", 1);
+    if (cube === null) throw new Error("setup: p1's Cube");
+    g.expectInZone(eaten, "graveyard");
+
+    // Hit Job kills the Cube, whose Death summons two copies of the Twinspell it ate into p1's
+    // backrow (R41, R64). A summon fires no Cry (§6.2).
+    g.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: cube.id }] });
+    expect([g.backrow("p1", 1)?.defId, g.backrow("p1", 2)?.defId]).toEqual([TWINSPELL, TWINSPELL]);
+    expect(echoRiders(g, "p1")).toHaveLength(2);
+
+    // Each Twinspell standing on p1's side says "the next Spell you play gains Echo +1", and that
+    // text is no Cry: Stockpile gains Echo +2 and resolves three times.
+    g.play(STOCKPILE);
+    expect(stockpileResolutions(g.lastEvents)).toBe(3);
+  });
+
+  it("R209 Twinspell fused by #85 onto the trap controller's Field Spell grants its Echo to that controller (R77, §8 Conventions)", () => {
+    const g = scenario({
+      active: "p2",
+      p1: {
+        backrow: [{ def: UNLICENSED, lane: 3 }, { def: MANA_WELL, lane: 1 }],
+        hand: [STOCKPILE, VANILLA],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [TWINSPELL, VANILLA], mana: 10, library: [...LIBRARY] },
+    });
+    const well = g.backrow("p1", 1);
+    if (well === null) throw new Error("setup: p1's Mana Well");
+
+    // p2 plays Twinspell; after its arrival (R61) p1's #85 fuses it onto p1's Mana Well, which keeps
+    // its instance on p1's side and now carries Twinspell's text as well (R77).
+    g.play(TWINSPELL, { zone: 2 });
+    expect(g.card(well).zone).toMatchObject({ z: "field", player: "p1" });
+    expect(g.card(well).defId).not.toBe(MANA_WELL);
+    expect(echoRiders(g, "p2")).toEqual([]);
+
+    // "The next Spell you play gains Echo +1" now stands on p1's side, and "you" is its controller
+    // (§8 Conventions): p1's next Spell, Stockpile, resolves twice.
+    g.endTurn();
+    expect(g.state.active).toBe("p1");
+    g.play(STOCKPILE);
+    expect(stockpileResolutions(g.lastEvents)).toBe(2);
   });
 });

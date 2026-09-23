@@ -53,7 +53,7 @@
 // Reading is not mutation either way (CLAUDE.md rule 5 bans writing, and nothing here writes).
 
 import type { CardInstance, Effect, EffectContext, Script } from "@jackioh/engine";
-import { cardAt, defOf, slotsOf, zoneCards } from "@jackioh/engine";
+import { cardAt, defOf, slotsOf, unitHas, zoneCards } from "@jackioh/engine";
 import { transform } from "@jackioh/engine/effects";
 import type { CardDef, CardType } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
@@ -77,12 +77,17 @@ function sameTypeLegendaries(type: CardType): CardDef[] {
   return legendaries(type === "Trap" || type === "Field Trap" ? TRAP_TYPES : type);
 }
 
-/** §3.2 and R13: "your board" is the card acting in each zone — the top of a pile, not the pile. */
+/**
+ * §3.2 and R13: "your board" is the card acting in each zone — the top of a pile, not the pile.
+ * R35 and R23: an Immutable board card stays, since on the field a Replace is a Transform, so it is
+ * left out here rather than handed to `transform` to refuse: R129 has an effect that finds nothing
+ * to do draw no random number, and a pick rolled for a card that stays would be exactly that.
+ */
 function boardCards(ctx: EffectContext): CardInstance[] {
   return (["units", "backrow"] as const).flatMap((row) =>
     slotsOf(ctx.controller, row).flatMap((ref) => {
       const card = cardAt(ctx.state, ref);
-      return card === null ? [] : [card];
+      return card === null || unitHas(ctx.state, card, "Immutable") ? [] : [card];
     }),
   );
 }

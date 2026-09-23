@@ -259,10 +259,9 @@ describe("#95 Call to Chaos — base, the ten effects", () => {
     const hand = s.hand("p1");
     expect(hand).toHaveLength(2); // #95 left the hand to resolve
     expect(hand.every((card) => card.radiant)).toBe(true);
-    // The already-Radiant #53 is untouched: the flag is never unset and never set twice.
-    expect(eventsOf(s, "radiantSet").map((event) => event.instanceId)).toEqual([
-      must(hand.find((card) => card.defId === MENACE), "the #19 in hand").id,
-    ]);
+    // The already-Radiant #53 keeps its flag, which is never unset; both hand cards are cued all the
+    // same, because a hidden card's cue must not depend on its face (R177, R97).
+    expect(eventsOf(s, "radiantSet").map((event) => event.instanceId)).toEqual(hand.map((card) => card.id));
   });
 
   it("§8.4 6/10 summons five RADIANT Rush Tokens (§7's 6/6), not a bespoke 5/5", () => {

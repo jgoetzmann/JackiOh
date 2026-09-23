@@ -265,6 +265,9 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
   for (const trigger of armed) {
     applyEffects(trigger.run({ ...ctx, event }), ctx);
   }
+  // R216: the trap's effect ended the game (#96's AI turn ran to an end-of-turn hit that killed a
+  // hero), and nothing happens after the game is over — the trap is not consumed afterwards.
+  if (sink.state.result !== null) return true;
 
   // R52: everything the trap did belongs to the trap's controller, whoever caused the event.
   //

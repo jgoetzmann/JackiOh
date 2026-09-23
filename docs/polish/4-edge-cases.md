@@ -260,6 +260,10 @@ instance, def and turn, and cites the SPEC reference, so `signatureOf` groups it
   - (b) If `exertion.attacked` is true, then `lastAttack(id)` holds the current stint. An exertion
     left spent across an entry, which is the second half of the bug, trips (b).
 
+- **I5: nothing happens after the game is over** (§2.5, R216), added in round 4. `gameOver` is the
+  last event of the action that emits it. Round 4's engine-invariants lens found the rest of an
+  effect list, and a trap's consumption, resolving after the check that ended the game.
+
 The fuzz gets one new failure stage, `"invariant"`: `FailureStage` gains the member, the summary line
 gains `N invariant violation(s)`, and the first violation of a seed throws
 `FuzzFailure("invariant", message, at)`. The monitor is exported for the hunters to reuse:
@@ -268,7 +272,7 @@ gains `N invariant violation(s)`, and the first violation of a seed throws
 export type InvariantMonitor = {
   /** I1 and I3 on the state the next action is chosen in. [] when clean. */
   before(state: GameState, player: PlayerId, action: ActionBody): string[];
-  /** Feeds one action's events into the shadow, then I2 and I4 against the resulting state. */
+  /** Feeds one action's events into the shadow, then I2, I4 and I5 against the resulting state. */
   after(events: readonly GameEvent[], state: GameState): string[];
 };
 export function createInvariantMonitor(start: GameState): InvariantMonitor;
@@ -722,6 +726,57 @@ what each play paid, and a hand card's queued trigger no longer takes a number f
 Folding the committed log before and after differs in p1's `costsPaid` and in `nextSeq` and the two
 frontier ids it numbers, and nowhere else.
 
+### Round 4: what the hunt found
+
+Round 4 ran past the three-round cap, with two new lenses beside L1, L2, L3, L7, L8 and L10: "card
+by card" (the Epic, Legendary and Mythic cards and every radiant face that changes behaviour, each
+driven into an interaction its own test file does not cover) and "engine invariants" (seeded random
+games checked after every action against properties that must hold in every reachable state). Its
+29 failing tests were 28 findings, all confirmed against SPEC and none rejected, and they are in
+topic files now; the scratch files are gone. Two rows were needed, R215 and R216, and four rows
+were amended: R77, R174, R177 and R209.
+
+| Topic file | Findings | Rule |
+|---|---|---|
+| `hand-returns.test.ts` | A #89 that fed in hand, was discarded and came back by #72 kept its buffs; #99's crafted card a full hand burned kept its cost 0 | R215 (new) |
+| `forced-attacks.test.ts` | A forced attacker that died mid-run and came back through Reborn still attacked in that run | R174 (amended) |
+| `after-resolution.test.ts` | A unit played at 0 or less health (#2 under #46) died in step 4's check and lost its Cry | §4.5, R118 |
+| `re-entry.test.ts` | A Fuse onto a token summoned X/X kept the token's `statsOverride` and `armorOverride`, so a 3/3 Bread Token fused with a 7/7 was a 3/3 and the 7/7's Armor 7 read as the token's X; a Transform refused a card in a Locked zone (#98 that #36 could not destroy) | R77 (amended), R175, R35, §3.2 |
+| `fused-hooks.test.ts` | A fused Cry resumed after a pause by rebuilding every ingredient's list and skipping by index, which dropped the next ingredient's effects once #22's half had shrunk; a fused Cry split the play's choices against the board at step 5; an answer parked a pause's tail at the cursor the last action left | R113, R122, R90, R102 |
+| `costs-and-mana.test.ts` | Two live #77 discounts read each other's result; #69's Recruit filter and #51's brackets read the printed cost, not the library card's R65 cost; the refresh wrote #24's and #21's one-shot rider into max mana | R65, R24, R66, §2.3 |
+| `pools-and-randomness.test.ts` | #95's "add 3 random cards" could add #95; a crafted card with #54's text could add #54; #23, #83, #67 and #95's Unit summons drew randomness with nothing to do; the #97 scorer called a Charge unit lethal behind an enemy Taunt or with no zone to enter | §5.1, R129, §10.7 |
+| `lasting-effects.test.ts` | #79's grant came from a Cry, so a Twinspell summoned by #22's Death, or fused by #85 onto the other player's Field Spell, granted nothing | R209 (amended), R169 |
+| `hidden-information.test.ts` | Make Radiant on a hidden card that was already Radiant (#26, #29, #95, #64's step 3 on a face-down trap) emitted no cue, so the other seat could count the Radiant ones | R177 (amended), R97 |
+| `game-over.test.ts` | The rest of #5's effect list resolved after the cast its draw made ended the game; #96 was consumed after the AI turn it handed over ended the game | R216 (new) |
+| `turn-clock-and-legality.test.ts` | A target prompt keyed its options by card name, so two #12 Felinors shared one key and one could not be picked | §10.6, §10.8 |
+| `030-archivist.test.ts` | #30 added a fresh copy of the library card instead of drawing it, the `it.fails` its own file pinned | §6.3 Draw, R24 |
+
+The engine changes that carry most of this:
+
+- **A composed list resumes part by part.** A fused hook tags each effect with its ingredient
+  (`Effect.segment`), a pause records the parts' lengths (`PausedStep.segments`), and
+  `work.resumeIndex` continues the part the pause stood in and every part after it, however the
+  board has since reshaped the others. A fused Cry reads the slices §10.5 step 1 checked, which the
+  pipeline carries in its `data` (`playChoices.DECLARATION_SLICES_KEY`). `prompts.answerPrompt` and
+  `playSteps.answerPlayPrompt` reset the work cursor as they take the paused step up again.
+- **A lasting effect is the permanent's.** `modifiers.installLastingModifiers` gives every
+  permanent with `staticFlags.echoGrant` its rider on the side it stands on, in the state check and
+  before a Spell takes the grant; #79 lost its Cry.
+- **Step 4's loop holds the check** (`triggers.settle`'s `holdCheck`) until something in it has
+  resolved: a trap, owed work or a queued trigger.
+- **The game ends at the check that ends it.** `resolve.applyEffects`, `prompts.applyResumable` and
+  `traps.fireTrap` stop once `state.result` is set.
+- **Smaller ones.** `zones.moveToZone` resets a hand or library card reaching a graveyard or exile;
+  `zones.replaceInZone` lets a Transform take a card's place without a summon; `mana.refreshMana`
+  moves current mana only, and `effectiveCost` tests every Curvature against one number;
+  `summonRandom` checks for a zone before it draws; pool queries add the running card's index to the
+  exclusions (`catalog.excludingIndex`) instead of replacing them; Make Radiant and #64 always cue a
+  hidden card; target prompt keys are built from the selection.
+
+No event type was added. `Effect` gained an optional `segment`, and `PausedStep` an optional
+`segments`, both additive. SPEC changed only in §11: R215 and R216 are new, and R77, R174, R177 and
+R209 gained a sentence each (see "Merge notes").
+
 ---
 
 ## Out of scope
@@ -784,20 +839,23 @@ frontier ids it numbers, and nowhere else.
 
 ## Hunt status
 
-The brief asks for loop-until-dry finders. The hunt ran three rounds and was then stopped by the
-schedule, so it is **capped at three rounds and not dry**. Round 3 still confirmed about twenty
-findings across seven topic files and needed three new rows (R212 to R214), and the number of tests
-each round added was not falling toward zero (53, 44 and 43). More edge cases very likely remain,
-most likely in the lenses round 3 was still finding in: re-entry and stays (L2), prompts
-mid-sequence (L7), turn boundaries (L8) and `viewFor` (L10). The PR should say so in those words
-rather than call the hunt complete.
+The brief asks for loop-until-dry finders. The hunt ran three rounds, was stopped by the schedule,
+and was then continued for a fourth round past that cap. It is **still not dry**. Round 4 confirmed
+28 findings from 29 failing tests and needed two new rows (R215, R216) and four amended ones. The
+number of tests each round added fell for the first time (53, 44, 43, then 29), but the number of
+confirmed findings did not (about twenty in round 3, twenty-eight in round 4), and the two new lenses
+("card by card" and "engine invariants") found twelve of them between them. More edge cases very
+likely remain, most likely where round 4 was still finding them: re-entry and zone moves (L2, six),
+fused cards and prompts mid-sequence (L7 and the fused half of L2, six), the rarer cards' own text
+(nine), and costs read outside play (three). The PR should say so in those words rather than call
+the hunt complete.
 
 The brief's headline is the one part with evidence of being dry. After the R171 slice, no round
 found a unit that could attack while sick. The findings that touch a change of control are about
 what else travels with the card: a Twinspell's grant, a queued trigger or turn hook, a forced run's
 target, and radiant #52's bounce. The fuzz invariants that check sickness directly (I1 to I4) hold on
-every `pnpm fuzz` seed (1 to 1000), and on seeds 1001 to 2000, run once for this note (1000 passed, 0
-invariant violations).
+every `pnpm fuzz` seed (1 to 1000), as does round 4's I5, and I1 to I4 held on seeds 1001 to 2000,
+run once for this note after round 3 (1000 passed, 0 invariant violations).
 
 ---
 
@@ -818,7 +876,8 @@ finding, and a test named after its rule proves it.
 | `draw.ts` | `continueChain`: the state check between cast-on-draw casts, in `completeDraw` and in the owed-chain handler | §4.5, R59: a hero a cast brought to 0 ends the game before the draw repeats, and a unit it killed has died before the next cast. Task 3's extra draws call `draw(sink, player, N)`, which runs every draw's chain through this, so R183's separate chains get the check with no further change |
 | `config.ts` | `TIMEOUT_ANSWER_CAP`, placed with the §2.5 constants rather than at the end of the file, where task 3 appends its table | R79 and CLAUDE.md rule 9: the most prompts one `timeout` answers |
 | `state.ts` | `TurnLog.costsPaid` (R213), `DelayedEffect.watch` (R174), and the doc of `lastDamagedBy` (R42) | Bookkeeping the fixes read. No handicap field is touched |
-| `subsystems/fuse.ts` | R179: a fused def's id is `t-<n>:<a>+<b>`, and a fused Cry resolves each ingredient with its own slice of the play's choices (R102, R90) | The first is the same bug task 3 fixed with `syncFusedScripts`: two matches in one process shared `t-1`'s scripts |
+| `subsystems/fuse.ts` | R179: a fused def's id is `t-<n>:<a>+<b>`, and a fused Cry resolves each ingredient with its own slice of the play's choices (R102, R90). Round 4: the slices are the ones §10.5 step 1 checked (`storedDeclarationSlices`); every combined hook tags its effects with their ingredient (`inPart`, `Effect.segment`); an ingredient's face is read with its `statsOverride`/`armorOverride` (`wornFace`) and the kept instance drops them; a crafted card takes its cost 0 only if it reaches the hand | The first is the same bug task 3 fixed with `syncFusedScripts`: two matches in one process shared `t-1`'s scripts. Round 4: R113, R90, R77 (amended), R215 |
+| `mana.ts` (round 4) | `maxManaFor` leaves out `nextTurnMod`, which `refreshMana` adds to current mana only (floored at 0); `effectiveCost` tests every Curvature against the cost the flat discounts leave | §2.3: max mana is min(turns, 4) plus persistent modifiers, and #24's next-turn mana is temporary mana. R65, R48: two Curvatures do not read each other's result |
 
 `git merge-tree` against `polish/3-ai`, after this fix stage, reports textual conflicts in:
 
@@ -829,8 +888,11 @@ finding, and a test named after its rule proves it.
   3's `FusedDef` return type and this branch's `nextTransientId(state, defs)`).
 - `SPEC.md` and `rulings.test.ts`, where every task inserts after R170.
 
-`config.ts` no longer conflicts, and `draw.ts` and `mana.ts` are untouched by task 3. `mana.ts` is
-back to `main`: `choosesX` moved to `playChoices.ts`, which calls it.
+`config.ts` no longer conflicts, and `draw.ts` and `mana.ts` are untouched by task 3. `mana.ts` was
+back to `main` after round 3 (`choosesX` moved to `playChoices.ts`, which calls it); round 4 edits
+it again, in `maxManaFor`, `refreshMana` and `effectiveCost`'s Curvature loop, none of which task 3
+changes. Task 3's AI reads max mana nowhere it plans with, so the refresh change reaches it only
+through `mana.current`, which is unchanged.
 
 `fuse.ts` needs a decision as well as a textual merge. Both fixes can stay, since task 3's
 `fusedFrom` rebuilds a registry from the state alone and content-addressed ids do not. But two
@@ -870,8 +932,16 @@ would keep the two from drifting apart.
   - `giftedMakesRadiant(state, controller, cost)` says whether a play paying `cost` now would be
     made Radiant. It is not yet in the cards README's table of read helpers, so the change that
     first reads it from a card file adds it there.
+- `script.ts`, round 4: `Effect` gained an optional `segment` (the ingredient an effect of a fused
+  hook came from, R113). Additive, and no card file sets it.
 - The hunt also edited these card scripts: #22, #24, #31, #33, #37, #50, #52, #60, #72, #79 and
-  #85. None is one of task 7's `conditionMet` cards (#10, #53, #68, #71, #93).
+  #85, and in round 4 #21 (a comment), #23, #30, #51 and #83, and #79 again (its Cry is gone: the
+  grant is the engine's, from `staticFlags.echoGrant`). None is one of task 7's `conditionMet`
+  cards (#10, #53, #68, #71, #93).
+- Round 4 changed two things the client sees. A target prompt's option keys are now built from the
+  selection (`instance:<id>`, `hero:<player>`) instead of the card's name, so the client must go on
+  treating a key as opaque. And `radiantSet` now also goes out for a hidden card that was already
+  Radiant (R177), so the glow can play on a card whose face did not change.
 - `apps/web/src/game/actions.ts` `highlightFor`: the guard that drops an in-flight selection now
   fires when nothing but concede is legal, because R211 lists concede while the other seat holds a
   prompt, and it keeps concede lit. The hunk sits above task 7's `glow` edits.
@@ -897,9 +967,11 @@ would keep the two from drifting apart.
 | R155 | The return flag clears when the card leaves the graveyard (#72, #76) | Round 3 |
 | R174, R175, R177 | Task 4's own rows, amended. R177 now also records the known limit below | Rounds 2 and 3, fix stage |
 | BUILD M4-T4, #52 row | Radiant bounces only the cards that would cross to the opponent (R14) | Round 2 |
+| R77 | A token's `statsOverride` and `armorOverride` are its printed face, so a Fuse sums them and they leave the kept instance; it used to say `statsOverride` stayed unchanged | Round 4 |
+| R174, R177, R209 | Task 4's own rows, amended again: a forced attacker back through Reborn is passed over; Make Radiant always cues a hidden card; a Twinspell has its grant however it came to stand on the field | Round 4 |
 
-Rows R209 to R214 come from the overflow range, because R171 to R179 filled up in round 1. The
-integration branch renumbers any collision.
+Rows R209 to R216 come from the overflow range, because R171 to R179 filled up in round 1 (R215 and
+R216 in round 4). The integration branch renumbers any collision.
 
 `packages/shared` gained no event type. `cardResolved` gained an optional `radiant`, `transformed`
 an optional `hiddenFrom`, and `TargetDecl` an optional `forModes`.

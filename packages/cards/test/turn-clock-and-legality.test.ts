@@ -1,8 +1,9 @@
 // The clock, the draw offer, Heroic Power's action, and "this turn" on the opponent's turn: what
 // `legalActions` offers and `reduce` accepts must agree with SPEC and with each other (§2.3, §2.5,
 // §9.3, §10.2, R36, R43, R79, R103). Found by the polish-4 edge-case hunt
-// (docs/polish/4-edge-cases.md, lenses L8 and L9); every case here but the known gap at the end
-// failed before its fix.
+// (docs/polish/4-edge-cases.md, lenses L8 and L9, and in round 4 the engine-invariants lens, which
+// found two target options sharing one key); every case here but the known gap at the end failed
+// before its fix.
 
 import { describe, expect, it } from "vitest";
 import type { Action, ActionInput, GameEvent, Selection } from "@jackioh/shared";
@@ -25,6 +26,7 @@ const REMINISCE = "core-072";
 const FIENDER = "core-092";
 const HEROIC = "core-098";
 const CRAFT = "core-099"; // two chained Discovers
+const FELINORS = "core-012";
 const CHAOS_GOLEM = "core-095-1"; // a Token: no random pool or Discover may ever offer it (§5.1)
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
@@ -217,6 +219,30 @@ describe("§6.2: 'this turn' on the opponent's turn", () => {
 
     // p1 played nothing earlier on this turn, so the cast deals 0.
     expect(g.state.players.p2.hero.health).toBe(29);
+  });
+});
+
+describe("§10.6: a prompt's options can each be picked through the view", () => {
+  it("§10.6 a target prompt's options have distinct keys, so each of two same-named units can be picked (§10.8, R81, R103)", () => {
+    // Two Duplicating Felinors — #12's own copy makes this an ordinary board — and #98's ping power
+    // with no target named, which opens the power's target prompt (R81, R103).
+    const s = scenario({
+      seed: "inv-r4-prompt-keys",
+      p1: { hand: [RENO], mana: 8, backrow: [HEROIC] },
+      p2: { field: [FELINORS, FELINORS] },
+    });
+    const power = must(s.backrow("p1", 1), "p1's Heroic Power");
+    withPower(power, "ping");
+    s.activate(power);
+
+    const pending = must(s.view("p1").pending, "the ping's target prompt");
+    if (!pending.forYou) throw new Error("the prompt should be p1's");
+    expect(pending.options.filter((option) => option.defId === FELINORS)).toHaveLength(2);
+    // The view's contract (`PendingOption.key` in packages/shared/src/view.ts) is that the key is
+    // what the client sends back, so one key names one option; two options sharing a key leave one
+    // of them unpickable (the web client maps picked keys back to options through a Map).
+    const keys = pending.options.map((option) => option.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 

@@ -4,6 +4,7 @@
 // stay and no Cry re-fires, because setting a flag is not an entry to the field (R22).
 
 import type { PlayerId } from "@jackioh/shared";
+import { defOf } from "../catalog";
 import type { Effect, EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import { cardAt, slotsOf } from "../zones";
@@ -26,9 +27,33 @@ function instanceOf(ctx: EffectContext, args: RadiantTarget): CardInstance | nul
   return target.instance;
 }
 
-/** §5.2: the flag is never unset, so a card that is already Radiant is untouched (§6.3). */
+/**
+ * R97, R177: whether some player may not read this card where it sits — a hand is its owner's alone
+ * and a library nobody's (§9.1), and a face-down trap is read by its controller only (R33, §10.8).
+ */
+function hiddenFromSomeone(ctx: EffectContext, card: CardInstance): boolean {
+  const zone = card.zone;
+  if (zone.z === "hand" || zone.z === "library") return true;
+  if (zone.z !== "field" || zone.row !== "backrow" || card.faceUp === true) return false;
+  const type = defOf(ctx.state, card.defId).type;
+  return type === "Trap" || type === "Field Trap";
+}
+
+/**
+ * §5.2: the flag is never unset, so a card that is already Radiant is untouched (§6.3). The cue is
+ * another matter on a card someone may not read: R97 keeps a hidden card's event in the other seat's
+ * stream, redacted but present, so a cue only for the cards that changed would count, for the
+ * opponent, which of #29's hand or #26's chosen card were Radiant already — the face R177 hides. So a
+ * named Make Radiant on a hidden card is always reported, changed or not; the random picks only ever
+ * pick non-Radiant cards (R60), and a public card's face is public either way.
+ */
 function makeRadiant(ctx: EffectContext, card: CardInstance): boolean {
-  if (card.radiant) return false;
+  if (card.radiant) {
+    if (hiddenFromSomeone(ctx, card)) {
+      ctx.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });
+    }
+    return false;
+  }
   card.radiant = true;
   ctx.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });
   return true;

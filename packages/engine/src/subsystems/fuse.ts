@@ -27,7 +27,7 @@ import { addToHand } from "../draw";
 import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
-import { activeTargetDecls, selectionsPerDeclaration } from "../playChoices";
+import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
 import type { Effect, Hook, Script } from "../script";
 import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
@@ -102,9 +102,30 @@ function sumDefined(values: readonly (number | undefined)[]): number | null {
   return defined.length === 0 ? null : defined.reduce((sum, value) => sum + value, 0);
 }
 
+/**
+ * One ingredient's face as its instance wears it. §7 and R175: a token summoned X/X carries its X as
+ * `statsOverride`, and the Bread Token its "Armor X" as `armorOverride`, because neither number can
+ * be printed — they ARE its printed face, §10.4's layer 1. So a Fuse sums that X/X, not the printed
+ * 0/0 it stands in for, and the X replaces only that token's own Armor, never an Armor another
+ * ingredient prints (#85 fusing a 7/7 onto #18's Bread Token keeps the 7/7's Armor 7).
+ */
+function wornFace(def: CardDef, card: CardInstance | undefined, radiant: boolean): CardFace {
+  const face = radiant ? def.radiant : def.base;
+  const stats = card?.statsOverride;
+  const armor = card?.armorOverride;
+  return {
+    ...face,
+    ...(stats === undefined ? {} : { attack: stats.attack, health: stats.health }),
+    keywords:
+      armor === undefined
+        ? face.keywords
+        : face.keywords.map((keyword) => (keyword.kind === "Armor" ? { kind: "Armor" as const, n: armor } : keyword)),
+  };
+}
+
 /** R77: one face of the fusion — summed stats, united keywords, both texts. */
-function fusedFace(defs: readonly CardDef[], radiant: boolean): CardFace {
-  const faces = defs.map((def) => (radiant ? def.radiant : def.base));
+function fusedFace(ingredients: readonly CardInstance[], defs: readonly CardDef[], radiant: boolean): CardFace {
+  const faces = defs.map((def, at) => wornFace(def, ingredients[at], radiant));
   const attack = sumDefined(faces.map((face) => face.attack));
   const health = sumDefined(faces.map((face) => face.health));
   return {
@@ -198,8 +219,8 @@ function buildDef(
     // gives a result that no longer ceases to exist off the field (R11).
     token: defs.every((def) => def.token),
     cost: fusedCost(state, ingredients),
-    base: fusedFace(defs, false),
-    radiant: fusedFace(defs, true),
+    base: fusedFace(ingredients, defs, false),
+    radiant: fusedFace(ingredients, defs, true),
   };
 }
 
@@ -228,13 +249,24 @@ function combineValues(values: readonly unknown[]): unknown {
   if (defined.every((value) => Array.isArray(value))) return (defined as unknown[][]).flat();
   if (defined.every((value) => typeof value === "function")) {
     const fns = defined as ListFn[];
-    return (...args: unknown[]): unknown[] => fns.flatMap((fn) => fn(...args));
+    return (...args: unknown[]): unknown[] => fns.flatMap((fn, part) => fn(...args).map((item) => inPart(item, part)));
   }
   if (defined.every((value) => typeof value === "boolean")) return defined.some((value) => value === true);
   if (defined.every((value) => typeof value === "number")) return Math.max(...(defined as number[]));
   if (defined.every((value) => isPlainObject(value))) return combineObjects(defined as Record<string, unknown>[]);
   // Nothing in `Script` mixes kinds under one key; the last ingredient wins if one ever does.
   return defined[defined.length - 1];
+}
+
+/**
+ * Tag an effect with the part of a composed list it came from (`Effect.segment`), so a pause inside
+ * the list resumes part by part (`work.resumeIndex`, R113). Anything a hook returns that is not an
+ * effect (an aura's entries) is left as it is.
+ */
+function inPart(item: unknown, part: number): unknown {
+  if (!isPlainObject(item) || typeof item.apply !== "function") return item;
+  const inner = Array.isArray(item.segment) ? (item.segment as number[]) : [];
+  return { ...item, segment: [part, ...inner] };
 }
 
 function combineObjects(objects: readonly Record<string, unknown>[]): Record<string, unknown> {
@@ -307,9 +339,17 @@ function withChoices(effect: Effect, targets: readonly Selection[], modes: reado
  * first slot: a crafted Bigot + Twisted Sorcerer aimed the Sorcerer's 4 damage at the unit Bigot
  * destroyed, and an Archivist + Silly Silas rotated by Archivist's "highest". Modes split by each
  * ingredient's count of mode declarations; targets split by R90's rule over the declarations that
- * the ingredient's own modes make active (`forModes`), measured against the board as it stands.
+ * the ingredient's own modes make active (`forModes`) — with the lengths §10.5 step 1 read the play
+ * with, which the pipeline hands over in `data` (`DECLARATION_SLICES_KEY`), because the board at
+ * resolution is not the one the play was checked against: by step 5 a crafted Postdoc + Sorcerer
+ * stands on the field and is itself a Human the Postdoc's declaration could take. Only a Cry run
+ * with no play behind it measures against the board as it stands.
+ *
  * Every effect an ingredient's Cry returns is bound to that slice, because an effect reads
- * `ctx.targets` when it applies, and the context applying it is the fused card's.
+ * `ctx.targets` when it applies, and the context applying it is the fused card's; and it is tagged
+ * with its ingredient (`Effect.segment`), so a pause inside one ingredient's list resumes into the
+ * rest of that list and then every ingredient after it, however the board has since reshaped the
+ * lists of the ones before (R113).
  */
 function fusedCry(faces: readonly Face[]): Hook | undefined {
   if (!faces.some((face) => face.script.cry !== undefined)) return undefined;
@@ -322,10 +362,14 @@ function fusedCry(faces: readonly Face[]): Hook | undefined {
       modeAt += count;
     }
     const declsOf = faces.map((face, index) => activeTargetDecls(face.script.targets ?? [], modesOf[index] ?? []));
+    const decls = declsOf.flat();
+    const stored = storedDeclarationSlices(ctx.data);
     const slices =
-      ctx.self === null
-        ? declsOf.flat().map(() => [])
-        : selectionsPerDeclaration(ctx.state, ctx.controller, ctx.self, declsOf.flat(), ctx.targets);
+      stored !== null && stored.length === decls.length
+        ? cutSlices(ctx.targets, stored)
+        : ctx.self === null
+          ? decls.map(() => [])
+          : selectionsPerDeclaration(ctx.state, ctx.controller, ctx.self, decls, ctx.targets);
 
     let declAt = 0;
     return faces.flatMap((face, index) => {
@@ -335,9 +379,22 @@ function fusedCry(faces: readonly Face[]): Hook | undefined {
       const cry = face.script.cry;
       if (cry === undefined) return [];
       const modes = modesOf[index] ?? [];
-      return cry({ ...ctx, targets, modes }).map((effect) => withChoices(effect, targets, modes));
+      return cry({ ...ctx, targets, modes }).map((effect) => ({
+        ...withChoices(effect, targets, modes),
+        segment: [index, ...(effect.segment ?? [])],
+      }));
     });
   };
+}
+
+/** The flat list cut into consecutive slices of these lengths; the last takes the remainder (R90). */
+function cutSlices(selections: readonly Selection[], lengths: readonly number[]): Selection[][] {
+  let at = 0;
+  return lengths.map((length, index) => {
+    const slice = index === lengths.length - 1 ? selections.slice(at) : selections.slice(at, at + length);
+    at += slice.length;
+    return slice;
+  });
 }
 
 function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
@@ -373,8 +430,11 @@ function ceaseToExist(state: GameState, card: CardInstance): void {
 /**
  * R77's keep-the-instance path. The fused card *is* the target: only its def id, its buffs (the sum
  * of every ingredient's) and its granted keywords (their union) change, and the rest of the
- * instance — zone, position, damage, exertion, summonedTurn, counters, memory, the radiant flag,
- * `statsOverride` and the Vanilla flag — is left exactly as it was.
+ * instance — zone, position, damage, exertion, summonedTurn, counters, memory, the radiant flag and
+ * the Vanilla flag — is left exactly as it was. A token's `statsOverride` and `armorOverride` are the
+ * one exception: they were its printed face (§7, R175), which `wornFace` has already summed into the
+ * fused definition, so they leave the instance with it — kept, §10.4's layer 1 would read them in
+ * place of the fused face and a 3/3 Bread Token fused with a 7/7 would still be a 3/3.
  */
 function keepInstance(
   state: GameState,
@@ -389,6 +449,8 @@ function keepInstance(
   kept.defId = def.id;
   kept.buffs = { attack, health };
   kept.grantedKeywords = granted;
+  delete kept.statsOverride;
+  delete kept.armorOverride;
 
   for (const card of ingredients) {
     if (card.id === kept.id) continue;
@@ -401,13 +463,15 @@ function keepInstance(
  * R77's Craft a Card path: "a fresh, non-Radiant hand card with `costOverride` 0". The ingredients
  * went into it, so they cease to exist here too — #99's are Discovered definitions that were never
  * cards on a board, and for anything else a consumed ingredient is what a fusion means.
- * A full hand burns the result like any other card reaching it (§2.4, R4).
+ * A full hand burns the result like any other card reaching it (§2.4, R4), and the 0 goes with the
+ * hand: §8 #99's "the result costs 0 and goes to your hand" is a price for the card in that hand,
+ * the reading `addToHand`'s cost riders have (R4), so a burned result is an ordinary graveyard card
+ * that R78 would otherwise carry the price for into every later zone (a Reminisce, a Gravedigger).
  */
 function craftInHand(sink: EngineSink, def: CardDef, player: PlayerId, ingredients: readonly CardInstance[]): CardInstance {
   const card = newInstance(sink.state, def.id, player, { z: "hand", player });
-  card.costOverride = CRAFTED_CARD_COST;
   for (const ingredient of ingredients) ceaseToExist(sink.state, ingredient);
-  addToHand(sink, card);
+  if (addToHand(sink, card) === "hand") card.costOverride = CRAFTED_CARD_COST;
   return card;
 }
 

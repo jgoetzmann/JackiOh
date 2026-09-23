@@ -588,7 +588,10 @@ function isEnemyOf(attacker: CardInstance, target: AttackTarget): boolean {
  * R53: the named units attack the named target one at a time, in the order given (lane order, as
  * `activeUnitsOf` reports it), each its own combat with its own state check, and the sequence stops
  * as soon as the target is no longer on the field — and R174 has a target that left and came back
- * (a Reborn body) count as gone, since what is standing there now is a new arrival (R83).
+ * (a Reborn body) count as gone, since what is standing there now is a new arrival (R83). The same
+ * holds for each attacker the run named: one that died in an earlier combat of the run and came back
+ * through Reborn before its turn is not the unit the run named, so it is passed over in silence like
+ * any attacker that is gone (R96).
  */
 export function forceAttacksOn(sink: EngineSink, attackers: readonly CardInstance[], target: AttackTarget): void {
   const from = sink.events.length;
@@ -598,6 +601,7 @@ export function forceAttacksOn(sink: EngineSink, attackers: readonly CardInstanc
       if (!isActiveOnField(sink.state, target.instance)) return;
       if (leftFieldSince(sink.events, from, target.instance.id)) return;
     }
+    if (leftFieldSince(sink.events, from, attacker.id)) continue;
     forceAttack(sink, attacker, target);
   }
 }

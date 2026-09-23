@@ -5,10 +5,13 @@
 // there is none, and `state.pending` is asserted to stay null.
 //
 // The harness default board is turn 9, so p1 has 4 mana and their next refresh is MAX_MANA 4; a
-// positive `mana.nextTurnMod` shows up as a refresh above that (§2.3: MAX_MANA caps the base, the
-// modifier is added on top). Both sides keep a unit and a card in hand so no turn auto-ends.
+// positive `mana.nextTurnMod` shows up as current mana above that, while max mana stays 4: §2.3 lists
+// Efficiency Dividend as temporary mana, which "adds to current mana and can exceed 4", and max mana
+// is min(turns, 4) plus persistent modifiers only. Both sides keep a unit and a card in hand so no
+// turn auto-ends.
 
 import { describe, expect, it } from "vitest";
+import { MAX_MANA } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 import { base, radiant } from "../src/scripts/024-efficiency-dividend";
 
@@ -28,11 +31,12 @@ function dividendIn(seed: string, isRadiant: boolean, health?: number): Scenario
   });
 }
 
-/** p1's mana at their next refresh, two turn hand-overs away. */
+/** p1's mana at their next refresh, two turn hand-overs away; max mana is untouched (§2.3). */
 function nextRefresh(s: Scenario): number {
   s.endTurn(); // p2's turn.
   s.endTurn(); // p1's turn: the refresh.
-  return s.state.players.p1.mana.max;
+  expect(s.state.players.p1.mana.max).toBe(MAX_MANA);
+  return s.state.players.p1.mana.current;
 }
 
 describe("#24 Efficiency Dividend", () => {

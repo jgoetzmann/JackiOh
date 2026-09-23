@@ -600,7 +600,10 @@ function dispatchNewEvents(sink: SettleSink): void {
  * previous action left mid-dispatch: `dispatched` keeps this sink from copying an event twice, and
  * `state.dispatch` holds the events still owed, so nothing is offered twice and nothing is skipped.
  */
-export function settle(sink: SettleSink): void {
+export function settle(sink: SettleSink, options: SettleOptions = {}): void {
+  // §4.5: the check follows something that resolved. Held, it waits until this loop has resolved a
+  // piece of owed work or a queued trigger (a trap runs its own check as it fires, `traps.fireTrap`).
+  let checkDue = options.holdCheck !== true;
   for (let pass = 0; pass < SETTLE_PASS_CAP; pass += 1) {
     // First, so a pause below leaves nothing owed on the sink (§9.3).
     dispatchNewEvents(sink);
@@ -613,18 +616,35 @@ export function settle(sink: SettleSink): void {
     if (sink.state.work.length > 0) {
       const parked = sink.state.work.length;
       drainWork(sink);
+      checkDue = true;
       if (sink.state.work.length < parked) continue;
     }
 
-    const emitted = sink.events.length;
-    stateCheck(sink);
-    if (sink.state.result !== null) return;
-    // Deaths, Reborn and Death triggers spoke: their events are dispatched before anything pops.
-    if (sink.events.length > emitted) continue;
+    if (checkDue) {
+      const emitted = sink.events.length;
+      stateCheck(sink);
+      if (sink.state.result !== null) return;
+      // Deaths, Reborn and Death triggers spoke: their events are dispatched before anything pops.
+      if (sink.events.length > emitted) continue;
+    }
 
     const next = sink.state.triggerQueue.shift();
     if (next === undefined) return;
     runQueuedTrigger(sink, next);
+    checkDue = true;
   }
   throw new Error(`the resolution loop did not settle in ${SETTLE_PASS_CAP} passes (§10.3)`);
 }
+
+export type SettleOptions = {
+  /**
+   * §10.5 step 4's loop, which runs so that a trap answering the play (Sheepish) fires before the
+   * Cry (R17). Nothing has resolved yet when it starts — the play resolves at step 5 — and §4.5 runs
+   * the state check "after every resolved action, every fully resolved effect or trigger … and every
+   * combat", so this loop runs it only once something has: a trap (which checks as it fires), owed
+   * work, or a queued trigger. A card that arrives at 0 or less health — a 6/1 Bigot under #46
+   * Suppressive Aura — therefore still resolves its Cry, and the check after step 6 collects it:
+   * R118 loses the Cry only where a trap has taken the card off the field.
+   */
+  holdCheck?: boolean;
+};

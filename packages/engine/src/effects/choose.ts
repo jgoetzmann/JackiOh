@@ -1,12 +1,13 @@
 // Effects that ask the controller something: Choose one, a target, a card in hand, and Discover
 // (SPEC §6.3, §10.6). Each opens a prompt and hands the answer to a named resume step.
 
-import type { CardDef, CardType, PlayerId, Selection } from "@jackioh/shared";
+import type { CardType, PlayerId, Selection } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
-import { defOf, query, queryCost, type CatalogQueryArgs } from "../catalog";
+import { defOf, excludingIndex, query, type CatalogQueryArgs } from "../catalog";
 import { openPrompt, resumeSelf } from "../prompts";
 import type { Effect, EffectContext } from "../script";
-import type { CardInstance } from "../state";
+import { effectiveCost } from "../mana";
+import type { CardInstance, GameState } from "../state";
 import { activeUnitsOf, cardAt, slotsOf } from "../zones";
 import { playerOf, type PlayerSpec } from "./targets";
 
@@ -72,6 +73,27 @@ function label(ctx: EffectContext, selection: Selection): string {
   return "nothing";
 }
 
+/**
+ * §10.6, §10.8: an option's key is what the client sends back, so one key names one option — two
+ * Duplicating Felinors in reach are two options, and a key built from the label (the card's name)
+ * gave both the same one. The key is built from the selection itself, which is unique among the
+ * options by construction, and never from a name (R177 keeps names off what a view may not read).
+ */
+function keyOf(selection: Selection): string {
+  switch (selection.pick) {
+    case "instance":
+      return `instance:${selection.instanceId}`;
+    case "hero":
+      return `hero:${selection.player}`;
+    case "mode":
+      return `mode:${selection.option}`;
+    case "zone":
+      return `zone:${selection.player}:${selection.row}:${selection.lane}`;
+    default:
+      return "none";
+  }
+}
+
 function findOnBoard(ctx: EffectContext, instanceId: string): CardInstance | null {
   for (const player of PLAYER_IDS) {
     const side = ctx.state.players[player];
@@ -128,7 +150,7 @@ export function chooseTarget(args: {
         kind: "target",
         prompt: args.prompt ?? "Choose a target",
         options: options.map((selection) => ({
-          key: `${selection.pick}:${label(ctx, selection)}`,
+          key: keyOf(selection),
           label: label(ctx, selection),
           selection,
         })),
@@ -183,12 +205,10 @@ export function discoverFromCatalog(args: {
     kind: "discoverFromCatalog",
     apply(ctx): void {
       const self = ctx.self;
-      const excludeIndex = self === null ? undefined : defOf(ctx.state, self.defId).index;
-      const pool = query({
-        ...(args.query ?? {}),
-        // §5.1: a random pool never offers the card that generated it.
-        ...(excludeIndex === undefined ? {} : { excludeIndex }),
-      });
+      // §5.1: a random pool never offers the card that generated it.
+      const pool = query(
+        excludingIndex(args.query ?? {}, self === null ? undefined : defOf(ctx.state, self.defId).index),
+      );
       if (pool.length === 0) return;
 
       const offered = ctx.rng.shuffle(pool).slice(0, args.count ?? 3);
@@ -232,12 +252,17 @@ function filterTypes(filter: LibraryFilter): CardType[] | undefined {
   return asked.flatMap((type) => (type === "Trap" ? [...TRAP_TYPES] : [type]));
 }
 
-/** R65: a card in a library is out of play, so `queryCost` reads X as 0 and embiggen at its base. */
-function matchesFilter(def: CardDef, filter: LibraryFilter): boolean {
+/**
+ * R65: a library card's cost is R65's one calculation for that instance (`effectiveCost`), which is
+ * what #30 Archivist and #94 Genn's Greed read (R24, R66): a card never played has no X (so an X-cost
+ * card reads 0) and no embiggen price (its base), and its `costMod` and `costOverride` travel with
+ * it into every zone (R78), so #95's "every card in your library costs 2 less" moves its bracket.
+ */
+function matchesFilter(state: GameState, card: CardInstance, filter: LibraryFilter): boolean {
   const types = filterTypes(filter);
-  if (types !== undefined && !types.includes(def.type)) return false;
+  if (types !== undefined && !types.includes(defOf(state, card.defId).type)) return false;
 
-  const cost = queryCost(def);
+  const cost = effectiveCost(state, card);
   const range = filter.costRange;
   if (range?.min !== undefined && cost < range.min) return false;
   if (range?.max !== undefined && cost > range.max) return false;
@@ -277,9 +302,7 @@ export function discoverFromLibrary(args: {
     apply(ctx): void {
       const player = playerOf(ctx, args.player ?? "self");
       const filter = args.filter ?? {};
-      const pool = ctx.state.players[player].library.filter((card) =>
-        matchesFilter(defOf(ctx.state, card.defId), filter),
-      );
+      const pool = ctx.state.players[player].library.filter((card) => matchesFilter(ctx.state, card, filter));
       if (pool.length === 0) return;
 
       const offered = ctx.rng.shuffle(pool).slice(0, args.count ?? 3);

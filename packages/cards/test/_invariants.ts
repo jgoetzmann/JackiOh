@@ -11,7 +11,7 @@
 //     side or a Stack card resuming emits nothing and changes nothing;
 //   - `lastAttack`, the turn and stint of each instance's latest declared (not forced) attack.
 //
-// The four checks:
+// The five checks:
 //   I1 no sick attack is ever offered (§4.1, §6.1, R83, R171). In the main phase with no prompt
 //      open, a unit of the acting player that entered on this turn has no attack target unless it
 //      has Rush or Charge, and no hero target unless it has Charge; the chosen `attack`, if any, is
@@ -22,6 +22,9 @@
 //   I4 the bookkeeping matches the shadow (white-box R171): (a) `summonedTurn` is the turn of the
 //      latest entry; (b) a spent attack exertion belongs to the current stint, so an exertion left
 //      spent across an entry trips it.
+//   I5 nothing happens after the game is over (§2.5, R216): `gameOver` is the last event an action
+//      emits. Added in the hunt's fourth round, whose engine-invariants lens found the rest of an
+//      effect list, and a trap's consumption, resolving after the check that ended the game.
 //
 // Every message leads with its id, names the instance, its def and the turn, and cites the SPEC
 // reference, so the fuzz report's `signatureOf` groups one bug into one entry.
@@ -33,7 +36,7 @@ import { activeUnitsOf, attackTargets, findInstance, unitView, type CardInstance
 export type InvariantMonitor = {
   /** I1 and I3 on the state the next action is chosen in. [] when clean. */
   before(state: GameState, player: PlayerId, action: ActionBody): string[];
-  /** Feeds one action's events into the shadow, then I2 and I4 against the resulting state. */
+  /** Feeds one action's events into the shadow, then I2, I4 and I5 against the resulting state. */
   after(events: readonly GameEvent[], state: GameState): string[];
 };
 
@@ -119,6 +122,13 @@ export function createInvariantMonitor(start: GameState): InvariantMonitor {
 
     after(events, state): string[] {
       const found: string[] = [];
+
+      // I5: the check that ends the game is the last thing that happens (§2.5, R216).
+      const over = events.findIndex((event) => event.type === "gameOver");
+      if (over >= 0 && over < events.length - 1) {
+        const later = events.slice(over + 1).map((event) => event.type);
+        found.push(`I5 event after game over: ${later.join(", ")} followed gameOver on turn ${turn} (§2.5, R216)`);
+      }
 
       for (const event of events) {
         switch (event.type) {

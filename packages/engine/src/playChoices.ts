@@ -505,6 +505,35 @@ export function selectionsPerDeclaration(
   return splitSelections(decls, offered, selections);
 }
 
+/**
+ * R90, R102: where the play's choices were split. A fused card's Cry resolves each ingredient with
+ * its own slice of the flat `targets` list, and the slices are the ones §10.5 step 1 read the play
+ * with — the board as it stood when the play was checked and `legalActions` offered it — not the
+ * board at step 5, where the played card itself may now be one of the options (a crafted Postdoc +
+ * Sorcerer is a Human, R102). The pipeline carries the lengths in the Cry's `data` under this key.
+ */
+export const DECLARATION_SLICES_KEY = "__declarationSlices";
+
+/** How many selections each active declaration took off the flat list, read now (R90). */
+export function declarationSlices(
+  state: GameState,
+  player: PlayerId,
+  card: CardInstance,
+  selections: readonly Selection[],
+  modes: readonly string[],
+): number[] {
+  const decls = activeTargetDecls(declaredTargets(card), modes);
+  const offered = decls.map((decl) => legalSelectionsFor(state, player, card, decl));
+  return splitSelections(decls, offered, selections).map((slice) => slice.length);
+}
+
+/** The lengths a pipeline stored under `DECLARATION_SLICES_KEY`, or null when there are none. */
+export function storedDeclarationSlices(data: Record<string, unknown>): number[] | null {
+  const raw = data[DECLARATION_SLICES_KEY];
+  if (!Array.isArray(raw) || !raw.every((value) => typeof value === "number")) return null;
+  return raw as number[];
+}
+
 function splitSelections(
   decls: readonly TargetDecl[],
   offered: readonly Selection[][],

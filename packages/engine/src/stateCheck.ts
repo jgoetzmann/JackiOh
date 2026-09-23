@@ -29,7 +29,7 @@
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, hasKeyword } from "@jackioh/shared";
 import { unitView } from "./layers";
-import { endOrphanedModifiers } from "./modifiers";
+import { endOrphanedModifiers, installLastingModifiers } from "./modifiers";
 import { applyResumable, type ResumePlan } from "./prompts";
 import type { EngineSink } from "./resolve";
 import { makeContext } from "./resolve";
@@ -41,6 +41,8 @@ import {
   owedWork,
   pausedOf,
   registerWorkHandler,
+  resumeIndex,
+  segmentsOf,
   type PausedStep,
 } from "./work";
 import {
@@ -374,7 +376,8 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
       modes: resumeAt?.modes ?? [],
     });
     const effects = hook(ctx);
-    const from = resumeAt?.from ?? 0;
+    // A fused Death runs every ingredient's list (R77, R102), which continues part by part.
+    const from = resumeIndex(effects, resumeAt);
     resumeAt = null;
 
     const owedBefore = owedWork(sink.state, DEATHS_WORK).length;
@@ -388,10 +391,12 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
     // When the *last* effect asked there was no tail to park, and the pass still owes the cards
     // after this one and steps 4 and 5 — so it parks itself, at the index that ends this hook.
     if (owedWork(sink.state, DEATHS_WORK).length === owedBefore) {
+      const segments = segmentsOf(effects);
       oweDeaths(sink, pass, {
         from: effects.length,
         targets: [...ctx.targets],
         modes: [...ctx.modes],
+        ...(segments === undefined ? {} : { segments }),
       });
     }
     return false;
@@ -544,6 +549,7 @@ export function stateCheck(sink: EngineSink): void {
     if (sink.state.result !== null) return;
     resolveIndestructibleMarks(sink);
     endOrphanedModifiers(sink);
+    installLastingModifiers(sink);
 
     const order: PlayerId[] = sink.state.active === "p1" ? ["p1", "p2"] : ["p2", "p1"];
     const units = order.flatMap((player) => unitsOf(sink, player));

@@ -6,17 +6,27 @@ import { defOf } from "./catalog";
 import { scriptOf } from "./scripts";
 import type { CardInstance, GameState, PlayerModifier, PlayerState } from "./state";
 
-/** §2.3: max mana is min(turns started, 4) plus modifiers, floored at 0. */
+/**
+ * §2.3: "Max mana = min(number of turns you have started, 4), plus persistent modifiers", floored
+ * at 0. `nextTurnMod` is not one of those: it is a one-shot rider on a single refresh, which the
+ * refresh spends and clears, so it never reaches max mana.
+ */
 export function maxManaFor(side: PlayerState): number {
   const base = Math.min(side.turnsStarted, MAX_MANA);
-  return Math.max(0, base + side.mana.permMod + side.mana.nextTurnMod);
+  return Math.max(0, base + side.mana.permMod);
 }
 
-/** Start of turn: refresh to max, then clear the one-shot modifier (Hinder). */
+/**
+ * Start of turn: refresh to max, moved by the one-shot rider (§6.3 Mana: "'next turn' mana is stored
+ * as a modifier for the next refresh"), which is then cleared. The rider changes what the refresh
+ * gives, not max mana: #24 Efficiency Dividend's next-turn mana is temporary mana on §2.3's list and
+ * "adds to current mana and can exceed 4", exactly as #6 Mana Well's gain does, and #21 Hinder
+ * "subtracts from the opponent's next refresh". Current mana never goes below 0 (§2.3).
+ */
 export function refreshMana(side: PlayerState): void {
   const max = maxManaFor(side);
   side.mana.max = max;
-  side.mana.current = max;
+  side.mana.current = Math.max(0, max + side.mana.nextTurnMod);
   side.mana.nextTurnMod = 0;
 }
 
@@ -84,10 +94,15 @@ export function effectiveCost(state: GameState, instance: CardInstance): number 
     cost -= mod.amount;
   }
 
+  // R65: "apply Professor Curvature if the result is then 4" — the result of the steps above, which
+  // every live Curvature reads. Two of them (#39's copy, #33's) each test that one number, so both
+  // apply to a card the discounts leave at 4, and the order they were played in changes nothing: a
+  // Curvature never reads the cost another Curvature has already lowered (R48).
+  const beforeCurvature = cost;
   for (const mod of side.mods) {
     if (mod.kind !== "costDiscount" || mod.onlyCurrentCost === undefined) continue;
     if (!modifierIsLive(state, mod)) continue;
-    if (cost === mod.onlyCurrentCost) cost -= mod.amount;
+    if (beforeCurvature === mod.onlyCurrentCost) cost -= mod.amount;
   }
 
   return Math.max(0, cost);

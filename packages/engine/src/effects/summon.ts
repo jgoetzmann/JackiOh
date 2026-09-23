@@ -8,7 +8,8 @@
 // Trap and every fizzle stay in `zoneFor`/`summonOnto` for all of them.
 
 import type { CardDef, CardType, PlayerId, Row, Tag } from "@jackioh/shared";
-import { defOf, query, queryCost, type CatalogQueryArgs } from "../catalog";
+import { defOf, excludingIndex, query, type CatalogQueryArgs } from "../catalog";
+import { effectiveCost } from "../mana";
 import { runHook } from "../resolve";
 import type { Effect, EffectContext } from "../script";
 import { scriptOf } from "../scripts";
@@ -265,16 +266,21 @@ export function summonCopy(args: SummonCopyArgs): Effect {
 
 /**
  * §6.3 Summon from a random pool: "summon a random 1-cost Trap face-down into your backrow zone in
- * this lane" (#67 Zoomerbin Oomen). §10.7 makes `catalog.query` the single source of random pools
- * and §5.1 keeps the requesting def out of one, so the draw is one `ctx.rng.pick` over
- * `query({ …, excludeIndex })`, exactly as `discoverFromCatalog` builds its offer.
+ * this lane" (#67 Zoomerbin Oomen), "summon 3 random 3-cost Units" and "summon 5 random Field Spells
+ * or Traps" (#95 Call to Chaos, one of these per card). §10.7 makes `catalog.query` the single source
+ * of random pools and §5.1 keeps the requesting def out of one, so the draw is one `ctx.rng.pick`
+ * over `query({ …, excludeIndex })`, exactly as `discoverFromCatalog` builds its offer.
  *
  * The draw happens inside `apply`, never when the effect is built: a draw taken at
  * factory-construction time would escape the reducer and desync every later replay (§9.3, R60).
- * It also precedes the placement because the row follows from the def drawn (§5.1) — a Trap goes to
+ * It precedes the placement because the row follows from the def drawn (§5.1) — a Trap goes to
  * the backrow and a Unit to the units row — and placement is then `summon`'s own code, so R64's
  * leftmost-free fallback, R47's occupied-or-Locked fizzle, the `summoned` event and the face-down
  * Trap of §3.2/R33 all stay in one place.
+ *
+ * But R129 comes first: "an effect that finds nothing to do draws no random numbers". So the draw is
+ * taken only when some card of the pool has a zone to go to — #67's lane already holding a backrow
+ * card, or a full unit row under #95's third summon, draws nothing at all.
  */
 export function summonRandom(
   args: {
@@ -289,16 +295,20 @@ export function summonRandom(
     kind: "summonRandom",
     apply(ctx): void {
       const self = ctx.self;
-      const excludeIndex = self === null ? undefined : defOf(ctx.state, self.defId).index;
-      const pool = query({
-        ...(args.query ?? {}),
-        // §5.1: a random pool never offers the card that generated it.
-        ...(excludeIndex === undefined ? {} : { excludeIndex }),
-      });
+      // §5.1: a random pool never offers the card that generated it.
+      const pool = query(
+        excludingIndex(args.query ?? {}, self === null ? undefined : defOf(ctx.state, self.defId).index),
+      );
+      const player = playerOf(ctx, args.player ?? "self");
+      const rows = new Set(pool.flatMap((def) => {
+        const row = rowOf(def);
+        return row === null ? [] : [row];
+      }));
+      if (![...rows].some((row) => zoneFor(ctx, player, row, args) !== null)) return;
 
       const def = ctx.rng.pick(pool);
       if (def === undefined) return;
-      summonFresh(ctx, def.id, playerOf(ctx, args.player ?? "self"), args);
+      summonFresh(ctx, def.id, player, args);
     },
   };
 }
@@ -319,7 +329,16 @@ function asList<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function matchesFilter(def: CardDef, filter: RecruitFilter): boolean {
+/**
+ * Whether a library card passes a Recruit's filter. The cost is R65's one calculation for that
+ * instance (`effectiveCost`), which R65 applies outside play ("library, hand, GY, pools, filters,
+ * comparisons") and #30 Archivist and #94 Genn's Greed already read library cards by (R24, R66): a
+ * card never played has no X (an X-cost card reads 0) and no embiggen price (its base), and its
+ * `costMod` and `costOverride` travel with it into every zone (R78), so a printed-3 Unit #95 made
+ * "cost 2 less" is a Unit costing 1 for #69 Call to Arms. The definition's printed cost would miss it.
+ */
+function matchesFilter(ctx: EffectContext, card: CardInstance, filter: RecruitFilter): boolean {
+  const def = defOf(ctx.state, card.defId);
   const types = asList(filter.type);
   if (types.length > 0 && !types.includes(def.type)) return false;
   const defIds = asList(filter.defId);
@@ -329,8 +348,7 @@ function matchesFilter(def: CardDef, filter: RecruitFilter): boolean {
   if (filter.tags !== undefined && !filter.tags.every((tag) => def.tags.includes(tag))) return false;
   if (filter.notTags !== undefined && filter.notTags.some((tag) => def.tags.includes(tag))) return false;
 
-  // R65: outside play an X-cost card counts as 0 and an embiggen card as its base price.
-  const cost = queryCost(def);
+  const cost = effectiveCost(ctx.state, card);
   if (filter.cost !== undefined && cost !== filter.cost) return false;
   if (filter.costRange?.min !== undefined && cost < filter.costRange.min) return false;
   if (filter.costRange?.max !== undefined && cost > filter.costRange.max) return false;
@@ -349,10 +367,9 @@ export function recruit(
     apply(ctx): void {
       const player = playerOf(ctx, args.player ?? "self");
       const filter = args.filter ?? {};
-      const found = ctx.state.players[player].library.find((card) => {
-        const def = defOf(ctx.state, card.defId);
-        return isPermanentType(def.type) && matchesFilter(def, filter);
-      });
+      const found = ctx.state.players[player].library.find(
+        (card) => isPermanentType(defOf(ctx.state, card.defId).type) && matchesFilter(ctx, card, filter),
+      );
       if (found === undefined) return;
 
       summonExisting(ctx, found, player, {

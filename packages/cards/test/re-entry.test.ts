@@ -11,6 +11,9 @@
 //  - §7, R41, R57: a copy keeps a Radiant Bread Token's Armor X beside its X/X.
 //  - §8 #52, R4, R78: a card radiant Silly Silas bounces into a full hand is burned without its
 //    "costing 0".
+//  - Round 4, lens L2. R77, R175: a Fuse onto a token summoned X/X sums that X/X, not the printed
+//    0/0, and the Bread Token's Armor X stands for its own Armor only. R35, §3.2: a Transform
+//    replaces a card in a Locked zone, since the Lock refuses summons and a Replace is none.
 
 import type { Selection } from "@jackioh/shared";
 import { effectiveCost, type CardInstance } from "@jackioh/engine";
@@ -18,6 +21,11 @@ import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
 const RIGHT_HOUSE = "core-003";
+const STOCKPILE = "core-005";
+const MAGIC_JAMMED = "core-036";
+const TRANSMOGULATE = "core-083";
+const COMBO_INDEX = "core-093";
+const HEROIC_POWER = "core-098";
 const VANILLA = "core-008";
 const HIT_JOB = "core-016";
 const FLOOD = "core-017";
@@ -290,5 +298,83 @@ describe("§8 #52, R4, R78: a rider on a card that never reached the hand", () =
     g.expectInZone(seven, "hand");
     expect(effectiveCost(g.state, g.card(seven))).toBe(3);
     expect(g.card(seven).costOverride).toBeUndefined();
+  });
+});
+
+describe("R77, R175: a Fuse onto a token summoned X/X", () => {
+  it("R77 Unlicensed Experimentation fusing a 7/7 onto a 3/3 Bread Token makes a 10/10, not a 3/3 (R175, §7)", () => {
+    const g = scenario({
+      active: "p2",
+      turn: 10,
+      p1: {
+        field: [{ def: BREAD, lane: 1, statsOverride: { attack: 3, health: 3 } }],
+        backrow: [{ def: EXPERIMENTATION, lane: 1 }],
+        hand: [STOCKPILE],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [SEVEN_SEVEN, STOCKPILE], library: [...LIBRARY] },
+    });
+    const bread = unitAt(g, "p1", 1);
+    g.expectStats(bread, { attack: 3, maxHealth: 3 });
+
+    g.play(SEVEN_SEVEN, { zone: 1 });
+
+    // R77 keeps the Bread Token's instance, and sums the two faces: its X/X and the 7/7.
+    const fused = g.card(bread);
+    expect(fused.defId).not.toBe(BREAD);
+    expect(g.unit("p2", 1)).toBeNull();
+    g.expectStats(fused, { attack: 10, maxHealth: 10 });
+  });
+
+  it("R77 a 7/7's Armor 7 fused onto Bread and Butter's Bread Token stays Armor 7, not the token's X (§7)", () => {
+    const g = scenario({
+      p1: {
+        hand: [STOCKPILE],
+        backrow: [{ def: BREAD_AND_BUTTER, lane: 1 }, { def: EXPERIMENTATION, lane: 2 }],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [SEVEN_SEVEN, STOCKPILE], library: [...LIBRARY] },
+    });
+
+    // p1 ends the turn with 4 unspent: a 4/4 Bread Token, whose radiant "Armor X" is carried as 4.
+    g.endTurn();
+    const bread = unitAt(g, "p1", 1);
+    expect(bread.defId).toBe(BREAD);
+    g.expectStats(bread, { attack: 4, maxHealth: 4 });
+    expect(g.stats(bread).armor).toBe(0);
+
+    g.play(SEVEN_SEVEN, { zone: 1 });
+
+    // R77 unions the keywords: the base Bread Token prints none, the 7/7 prints Armor 7. The
+    // token's X belongs to the Bread Token's own radiant Armor, not to every Armor on the face.
+    const fused = g.card(bread);
+    expect(fused.defId).not.toBe(BREAD);
+    expect(g.stats(fused).keywords).toContainEqual({ kind: "Armor", n: 7 });
+    expect(g.stats(fused).armor).toBe(7);
+  });
+});
+
+describe("R35, §3.2: a Transform replaces the occupant of a Locked zone", () => {
+  it("R35 Transmogulate replaces a Heroic Power that Magic Jammed could not destroy, although its zone is Locked (§3.2, R46)", () => {
+    const g = scenario({
+      p1: {
+        hand: [MAGIC_JAMMED, TRANSMOGULATE, STOCKPILE],
+        backrow: [{ def: HEROIC_POWER, lane: 1 }],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], library: [...LIBRARY] },
+    });
+    const power = g.card(HEROIC_POWER);
+
+    // Indestructible: the Field Spell simply stays (R46), in a zone that is now Locked.
+    g.play(MAGIC_JAMMED, { targets: at(power) });
+    expect(g.backrow("p1", 1)?.id).toBe(power.id);
+    expect(g.state.players.p1.locks.backrow[0]).toBe(true);
+
+    // R35: every board card but an Immutable one is replaced in place; the lock only stops summons
+    // and "the current occupant is unaffected" (§3.2). The one Legendary Field Spell is #93.
+    g.play(TRANSMOGULATE);
+    expect(g.backrow("p1", 1)?.defId).toBe(COMBO_INDEX);
+    g.expectInZone(power, "gone");
   });
 });

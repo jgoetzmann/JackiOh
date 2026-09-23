@@ -37,13 +37,16 @@ import {
 import { effectiveCost, isXCost, manaEvent, modifierIsLive, spendMana } from "./mana";
 import { removeModifier } from "./modifiers";
 import {
+  DECLARATION_SLICES_KEY,
   activeTargetDecls,
   choosesX,
+  declarationSlices,
   declaredModes,
   declaredTargets,
   giftedMakesRadiant,
   legalSelectionsFor,
   playsOnStack,
+  resolvingFace,
   targetsFollowModes,
   whyChoicesRefused,
 } from "./playChoices";
@@ -72,7 +75,7 @@ import { flagsOf } from "./scripts";
 import { sacrificeTogether, stateCheck } from "./stateCheck";
 import { settle } from "./triggers";
 import { triggerHoldersWithHook } from "./triggers";
-import { dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
+import { beginWorkCascade, dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
 import {
   cardAt,
   firstFreeZone,
@@ -150,6 +153,11 @@ export type PlayRun = {
   cast?: boolean;
   /** The face the card was played with, set at step 4 for `cardResolved` (R34, R57). */
   radiant?: boolean;
+  /**
+   * R90, R102: how many of `targets` each declaration took when step 1 read the play, which a fused
+   * card's Cry splits its ingredients' choices by (`playChoices.DECLARATION_SLICES_KEY`).
+   */
+  targetSlices?: number[];
 };
 
 // ---------------------------------------------------------------------------
@@ -235,6 +243,8 @@ export function validatePlay(
     if (zone === null) return { error: "no free zone" };
   }
 
+  const targets = [...(action.targets ?? [])];
+  const modes = [...(action.modes ?? [])];
   return {
     run: {
       instanceId: card.id,
@@ -242,8 +252,8 @@ export function validatePlay(
       player,
       costPaid: cost,
       zone,
-      targets: [...(action.targets ?? [])],
-      modes: [...(action.modes ?? [])],
+      targets,
+      modes,
       tributes: [...(action.tributes ?? [])],
       at: 1,
       hookAt: 0,
@@ -251,8 +261,28 @@ export function validatePlay(
       echoQueued: false,
       repeat: null,
       awaiting: null,
+      ...slicesFor(state, player, card, cost, targets, modes),
     },
   };
+}
+
+/**
+ * R90, R102: the split step 1 just checked, kept for a fused card, whose Cry hands each ingredient
+ * its own slice (`subsystems/fuse.ts`) and must hand it the slice the play was checked with. The
+ * face is the one step 5 will resolve (R214). Nothing is kept for any other card, which reads the
+ * flat list itself.
+ */
+function slicesFor(
+  state: GameState,
+  player: PlayerId,
+  card: CardInstance,
+  cost: number,
+  targets: readonly Selection[],
+  modes: readonly string[],
+): { targetSlices?: number[] } {
+  if (state.transientDefs[card.defId] === undefined) return {};
+  const face = resolvingFace(state, player, card, cost);
+  return { targetSlices: declarationSlices(state, player, face, targets, modes) };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,8 +388,12 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
  */
 function giftedProgramStep(sink: EngineSink, run: PlayRun): void {
   const card = findInstance(sink.state, run.instanceId);
-  if (card === undefined || card.radiant) return;
+  if (card === undefined) return;
   if (!giftedMakesRadiant(sink.state, run.player, run.costPaid)) return;
+  // R177: reported whether or not the card was Radiant already. A face-down trap stays hidden from
+  // the other seat, whose stream keeps its events redacted but present (R97, R33), so a cue only for
+  // a card that changed would tell that seat the trap's face in hand. Whether Gifted Program applies
+  // is public — the cost paid and the Field Spell are — so the cue says nothing more than that.
   card.radiant = true;
   sink.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });
 }
@@ -397,7 +431,9 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
  *
  * That last clause is why this step ends in the resolution loop: the trap answers the play event
  * and resolves before step 5 runs the Cry, which is R17's "fires before the Cry (Cry lost)". It
- * also means the play's own events are never left owed while a prompt is open.
+ * also means the play's own events are never left owed while a prompt is open. The loop holds the
+ * state check until something in it has resolved (§4.5, `SettleOptions.holdCheck`), so a card that
+ * arrives at 0 or less health is not collected before its own Cry (R118).
  */
 function placeStep(sink: EngineSink, run: PlayRun): void {
   const state = sink.state;
@@ -451,8 +487,9 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   run.echoQueued = true;
   queueEchoRepeats(sink, card, run.player);
   // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
-  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`).
-  if (run.cast !== true) settle(sink);
+  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`). The play has
+  // not resolved yet, so the loop holds §4.5's check until something in it has (R118).
+  if (run.cast !== true) settle(sink, { holdCheck: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +603,7 @@ function resolveStep(sink: EngineSink, run: PlayRun): void {
           controller: run.player,
           targets: standingTargets(run),
           modes: run.modes,
+          ...(run.targetSlices === undefined ? {} : { data: { [DECLARATION_SLICES_KEY]: run.targetSlices } }),
         });
         break;
       default:
@@ -943,14 +981,17 @@ function castThroughPipeline(sink: EngineSink, instance: CardInstance, options: 
   instance.zone = { z: "resolving", player };
   sink.state.players[player].resolving.push(instance);
 
+  const targets = [...(options.targets ?? [])];
+  const modes = [...(options.modes ?? [])];
   drive(sink, {
     instanceId: instance.id,
     defId: instance.defId,
     player,
     costPaid: 0,
     zone: null,
-    targets: [...(options.targets ?? [])],
-    modes: [...(options.modes ?? [])],
+    targets,
+    modes,
+    ...slicesFor(sink.state, player, instance, 0, targets, modes),
     tributes: [],
     at: PLAY_STEPS.indexOf("giftedHook"),
     hookAt: 0,
@@ -1003,6 +1044,8 @@ export function answerPlayPrompt(sink: EngineSink, answer: AnswerInput): string 
   // The answered prompt is this run's, so any tail owed for it earlier would repeat this step.
   dropWork(sink.state, (item) => isPlayResume(item.resume) && runOf(item.resume)?.instanceId === run.instanceId);
   fileSelection(run, answer.selection);
+  // R113: taking the paused step up again resets the cursor, as `prompts.answerPrompt` does.
+  beginWorkCascade(sink);
   drive(sink, run);
   return null;
 }

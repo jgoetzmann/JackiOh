@@ -1275,13 +1275,15 @@ describe("SPEC §11 rulings R43–R84 (M3 gate)", () => {
     const sink = sinkFor(state);
     const ctx = makeContext(sink, null, { controller: "p1" });
 
-    // In hand: the flag is the whole model, and setting it twice changes nothing.
+    // In hand: the flag is the whole model, and setting it twice changes nothing — though the cue
+    // is repeated, since the hand card is hidden from the opponent (R177).
     const held = handCard(state, plain.id);
     applyEffects([setRadiant({ instanceId: held.id })], ctx);
     expect(held.radiant).toBe(true);
     expect(eventsOfType(sink.events, "radiantSet")).toHaveLength(1);
     applyEffects([setRadiant({ instanceId: held.id })], ctx);
-    expect(eventsOfType(sink.events, "radiantSet")).toHaveLength(1);
+    expect(held.radiant).toBe(true);
+    expect(eventsOfType(sink.events, "radiantSet")).toHaveLength(2);
 
     // On the field: the base-stat layer swaps at once, damage and buffs stay, no Cry re-fires.
     const unit = put(state, fuseA.id, slot("p1", "units", 1)); // 2/3, and its Cry pings the hero

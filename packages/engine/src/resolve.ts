@@ -38,8 +38,16 @@ export function makeContext(sink: EngineSink, self: CardInstance | null, options
   };
 }
 
+/**
+ * Apply an effect list in order. R216: once a state check inside the list has ended the game — a
+ * cast on draw that killed its own hero, halfway through #5 Stockpile's "draw 2; heal your hero 2" —
+ * the rest of the list does not resolve: the game is over (§2.5), and nothing happens after it.
+ */
 export function applyEffects(effects: readonly Effect[], ctx: EffectContext): void {
-  for (const effect of effects) effect.apply(ctx);
+  for (const effect of effects) {
+    if (ctx.state.result !== null) return;
+    effect.apply(ctx);
+  }
 }
 
 export type HookName =

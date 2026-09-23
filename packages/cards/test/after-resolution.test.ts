@@ -9,13 +9,19 @@
 //    `cardResolved`, so #60 and #85 meet the board the card left.
 //  - R174, R61: the traps answering one play fire one after another, and once an earlier one has
 //    taken the played card off the field, the next one meets a play that is no longer in play.
+//  - §4.5, R118 (round 4, lens L2): step 4's loop, which lets a trap answer the play, runs no state
+//    check before anything has resolved, so a card that arrives at 0 or less health still resolves
+//    its Cry and dies in the check after it.
 
 import type { GameEvent, Selection } from "@jackioh/shared";
 import type { CardInstance } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
+const BIGOT = "core-002";
 const RIGHT_HOUSE = "core-003";
+const SEVEN_SEVEN = "core-025";
+const SUPPRESSIVE_AURA = "core-046";
 const GARY = "core-004";
 const STOCKPILE = "core-005";
 const VANILLA = "core-008";
@@ -192,5 +198,23 @@ describe("R174: a trap after Bear Honeypot's run meets the played unit the run k
     expect(count(g.events, "trapFired")).toBe(2);
     expect(count(g.events, "attackDeclared")).toBe(2);
     g.expectInZone(g.card(RIGHT_HOUSE), "field");
+  });
+});
+
+describe("§4.5, R118: a played unit that does not survive its own arrival still resolves its Cry", () => {
+  it("R118 Bigot played under Suppressive Aura destroys its target before it dies (§10.5 steps 4-5, §4.5)", () => {
+    const g = scenario({
+      p1: { hand: [BIGOT, STOCKPILE], backrow: [{ def: SUPPRESSIVE_AURA, lane: 1 }], library: [...LIBRARY] },
+      p2: { hand: [STOCKPILE], field: [{ def: SEVEN_SEVEN, lane: 1 }], library: [...LIBRARY] },
+    });
+    const prey = unitAt(g, "p2", 1);
+    const bigot = g.card(BIGOT);
+
+    // Bigot is 6/1 printed, 4/-1 under the aura. No trap answered it and nothing took it off the
+    // field at step 4, so step 5 resolves its Cry (R118: the Cry is lost only where a trap has taken
+    // the card off the field), and the check after the play collects it (§4.5).
+    g.play(BIGOT, { targets: at(prey) });
+    g.expectInZone(prey, "graveyard");
+    g.expectInZone(bigot, "graveyard");
   });
 });

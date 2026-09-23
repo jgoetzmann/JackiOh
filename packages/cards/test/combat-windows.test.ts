@@ -150,8 +150,12 @@ describe("§5.1, R44, R152: My Pawn and the AI turn it hands over", () => {
     s.attack(SORCERER, "hero");
 
     expect(count(s, "trapFired")).toBe(1);
+    // The Duelist's swing ends the game inside the AI turn, and nothing happens after that (R216):
+    // the trap that fired once is not consumed afterwards, so it is still in the backrow, face-up.
+    expect(s.state.result).toEqual({ winner: "p1", reason: "hero-death" });
     const toGraveyard = s.events.filter((event) => event.type === "enteredGraveyard" && event.defId === MY_PAWN);
-    expect(toGraveyard).toHaveLength(1);
+    expect(toGraveyard).toHaveLength(0);
+    expect(s.backrow("p2", 1)).toMatchObject({ defId: MY_PAWN, faceUp: true });
   });
 
   it("R152 the AI plays out only the rest of the turn My Pawn took, not the player's next turn (R44, R82)", () => {

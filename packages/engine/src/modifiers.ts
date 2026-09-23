@@ -4,6 +4,8 @@ import type { DistributiveOmit, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
 import { findInstance, type DelayedEffect, type GameState, type PlayerModifier, type Resume } from "./state";
 import type { EngineSink } from "./resolve";
+import { flagsOf } from "./scripts";
+import { cardAt, slotsOf } from "./zones";
 
 export function addModifier(
   sink: EngineSink,
@@ -61,6 +63,44 @@ export function endOrphanedModifiers(sink: EngineSink): void {
       const source = findInstance(sink.state, mod.sourceId);
       if (source !== undefined && source.zone.z === "field") continue;
       removeModifier(sink, player, mod.id);
+    }
+  }
+}
+
+/**
+ * R209, R169: a permanent's lasting effect is installed by the permanent standing on the field, not
+ * by its Cry — #79 Twinspell's "the next Spell you play gains Echo +1" prints no "Cry:" (§8), and a
+ * Cry fires only for a card played from hand (§6.2). So every permanent that stands on a side of the
+ * field with a `staticFlags.echoGrant` has one `echoNextSpell` rider on that side's player, owned by
+ * it (`sourceId`), however it got there: played, summoned (#22's copies, #95's backrow, #98's
+ * recruit), or holding Twinspell's text through a Fuse onto another permanent (#85, R77), in which
+ * case "you" is that permanent's controller (§8 Conventions). The state check runs this beside
+ * `endOrphanedModifiers`, which ends the rider when the permanent leaves, and `echo.grantedEcho`
+ * runs it once more before a Spell takes the grant, so a permanent that arrived since the last check
+ * is not missed. A rider that already exists is left alone, so a card that stays on the field keeps
+ * the id its badge was given (R169); one that changed sides has had its rider moved with it
+ * (`moveSourcedModifiers`), and the one it finds on its new controller's side is that same rider.
+ */
+export function installLastingModifiers(sink: EngineSink): void {
+  for (const player of PLAYER_IDS) {
+    for (const row of ["units", "backrow"] as const) {
+      for (const ref of slotsOf(player, row)) {
+        const card = cardAt(sink.state, ref);
+        if (card === null) continue;
+        const amount = Math.max(0, Math.trunc(flagsOf(card).echoGrant ?? 0));
+        if (amount <= 0) continue;
+        const owned = sink.state.players[player].mods.some(
+          (mod) => mod.kind === "echoNextSpell" && mod.sourceId === card.id,
+        );
+        if (owned) continue;
+        addModifier(sink, player, {
+          kind: "echoNextSpell",
+          amount,
+          sourceId: card.id,
+          // §2.2: not turn-scoped — it survives cleanup and waits for a Spell (R30).
+          expiry: { until: "used" },
+        });
+      }
     }
   }
 }
