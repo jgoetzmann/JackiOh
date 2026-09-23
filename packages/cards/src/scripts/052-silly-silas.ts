@@ -28,7 +28,10 @@
 //   * Silas is already on the field when his Cry resolves (§10.5 step 4 precedes step 5), so he is
 //     in the snapshot and rotates with everything else — the Engine cell's "Silas rotates too";
 //   * a card never leaves the field, so R78's reset never runs: damage, buffs, granted keywords,
-//     counters, position, exertion and `summonedTurn` all travel with it (R14);
+//     counters and position all travel with it (R14), and so do exertion and `summonedTurn` for a
+//     card that moves along its own side;
+//   * a card that crosses the centre line has entered its new controller's side (R171): it takes
+//     this turn as its `summonedTurn`, so it is summoning sick there, and a fresh exertion;
 //   * `controller` changes only when the destination is on the other side of the centre line, and
 //     `owner` never changes (R12), so a crossed card still leaves to its OWNER's piles later; a
 //     face-down trap that crosses is read by its new controller alone, which follows from

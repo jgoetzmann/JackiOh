@@ -1,11 +1,14 @@
-// Steal (SPEC §6.3): take control of a card on the field. Control is a field-only notion, so a
-// steal moves `controller` and nothing else: the card keeps its owner and still goes to that
-// owner's hand, library, graveyard or exile when it later leaves the field (R12, §3.2). Where it
-// lands is R15, and it keeps its damage, buffs, counters and position because it never leaves the
-// field, which is what R78's reset is about.
+// Steal (SPEC §6.3): take control of a card on the field. Control is a field-only notion, so the
+// card keeps its owner and still goes to that owner's hand, library, graveyard or exile when it
+// later leaves the field (R12, §3.2). Where it lands is R15, and it keeps its damage, buffs,
+// counters and position because it never leaves the field, which is what R78's reset is about.
+// What a steal does change besides `controller` is R171's: the card has entered its new
+// controller's side on this turn, so it takes the turn as its `summonedTurn` (summoning sick, §4.1)
+// and a fresh exertion. A steal that does nothing (R15, R76) changes neither.
 
 import type { PlayerId, Row } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
+import { enterNewSide } from "../combat";
 import type { Effect, EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import {
@@ -61,6 +64,9 @@ function takeControl(ctx: EffectContext, card: CardInstance): boolean {
     placeOnField(ctx.state, card, from, { stack: true });
     return false;
   }
+
+  // R171: the card has entered its new controller's side on this turn.
+  enterNewSide(ctx.state, card);
 
   // R33: a stolen face-down trap stays face-down, and the new controller is the one who may read
   // it — the controller decides that, so `faceUp` is deliberately untouched here.

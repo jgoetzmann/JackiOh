@@ -4,15 +4,19 @@
 // rotating player's lanes 1 to 5, then the opponent's lanes 5 down to 1, and back (§3.1). Both
 // rings turn together, one step, in the direction the play declared (R81).
 //
-// What travels with a card: everything on its instance. A rotation never takes a card off the
-// field, so R78's reset never runs and its damage, buffs, counters, position and summoning
-// sickness all come along (R14). What changes is `controller`, and only when the card's new zone
-// is on the other side of the centre line; the owner never changes, so the card still goes to its
-// owner's hand, library, graveyard or exile whenever it later leaves the field (R12). A face-down
-// trap that crosses is read by its new controller and no longer by the old one, which follows from
-// `controller` alone, so `faceUp` is deliberately untouched here (R33).
+// What travels with a card: its instance. A rotation never takes a card off the field, so R78's
+// reset never runs and its damage, buffs, counters and position all come along (R14). What
+// changes is `controller`, and only when the card's new zone is on the other side of the centre
+// line. That crossing is an entry (R171): the card takes this turn as its
+// `summonedTurn` and a fresh exertion, so it is summoning sick on its new side for the rest of the
+// turn. A card that moves along its own side has entered nothing and keeps both. The owner never
+// changes, so the card still goes to its owner's hand, library, graveyard or exile whenever it
+// later leaves the field (R12). A face-down trap that crosses is read by its new controller and no
+// longer by the old one, which follows from `controller` alone, so `faceUp` is deliberately
+// untouched here (R33).
 
 import type { PlayerId, Row } from "@jackioh/shared";
+import { enterNewSide } from "../combat";
 import { addToHand } from "../draw";
 import type { EngineSink } from "../resolve";
 import type { CardInstance, GameState } from "../state";
@@ -46,7 +50,10 @@ export type RotationArgs = {
 export type RotationResult = {
   /** Cards that reached a new zone, in ring order: the unit ring first, then the backrow ring. */
   moved: string[];
-  /** Cards whose controller changed because their new zone is on the other side (R12). */
+  /**
+   * Cards whose controller changed because their new zone is on the other side (R12). Each one has
+   * entered its new side on this turn (R171).
+   */
   crossed: string[];
   /** Cards sent to their owner's hand: a Locked destination, or the radiant bounce (R14). */
   bounced: string[];
@@ -175,6 +182,7 @@ export function rotateRings(sink: EngineSink, args: RotationArgs): RotationResul
     entry.cards.forEach((card, at) => {
       result.moved.push(card.id);
       if (card.controller === before[at]) return;
+      enterNewSide(state, card);
       result.crossed.push(card.id);
       sink.events.push({
         type: "controlChanged",

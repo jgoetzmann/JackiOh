@@ -136,6 +136,8 @@ const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
 const CARDS_FULLSEND_TEST = "../../cards/test/078-fullsend.test.ts";
 /** R169's client-side proof: the animation table's targets, checked against a rendered DOM. */
 const WEB_ANIMATION_TARGETS_TEST = "../../../apps/web/src/game/animation-targets.test.tsx";
+/** R171's and R172's card-side proofs: the six control-change cards and the stolen Reborn bodies. */
+const CARDS_CONTROL_CHANGE_TEST = "../../cards/test/control-change.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1476,6 +1478,20 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
 
   it("R170 answers a profile that vanished mid-redemption with a conflict, not a 401", () => {
     provenIn(170, SERVER_CODES_TEST);
+  });
+
+  // Proved by control-change.test.ts's "R171 …" tests (every verb, Rush and Charge, the fresh
+  // exertion, same-side moves, Stack piles, the round trip, the opponent's turn),
+  // control-change.property.test.ts (fast-check), and the cards package's control-change.test.ts
+  // with #36 radiant, #49, #50, #52, #86 and #87.
+  it("R171 makes a change of control an entry: summoning sick, with a fresh exertion", () => {
+    provenIn(171, "control-change.test.ts", "control-change.property.test.ts", CARDS_CONTROL_CHANGE_TEST);
+  });
+
+  // Proved by control-change.test.ts "R172 …" (a fixture Reborn unit) and the cards package's
+  // control-change.test.ts with #81 Radiant Saintess and radiant #3 Right-house defender.
+  it("R172 has a stolen unit die as its controller's: Death for that player, Reborn on that side", () => {
+    provenIn(172, "control-change.test.ts", CARDS_CONTROL_CHANGE_TEST);
   });
 });
 

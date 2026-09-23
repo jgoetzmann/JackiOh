@@ -180,7 +180,8 @@ describe("rotation (R14, M3-T7)", () => {
     card.grantedKeywords = [{ kind: "Taunt" }];
     card.counters = { plague: 2 };
     card.position = "DEF";
-    card.summonedTurn = state.turn;
+    card.summonedTurn = state.turn - 1;
+    card.exertion = { attacked: true, switched: false };
 
     rotate(state, "right");
 
@@ -191,7 +192,10 @@ describe("rotation (R14, M3-T7)", () => {
     expect(card.grantedKeywords).toEqual([{ kind: "Taunt" }]);
     // A rotation never takes the card off the field, so R78's reset never runs.
     expect(unitView(state, card)).toMatchObject({ attack: 5, maxHealth: 6, health: 5, position: "DEF" });
+    // R171: what does not travel across the centre line is readiness. The crossing is an entry on
+    // this turn, with a fresh exertion for the new controller.
     expect(card.summonedTurn).toBe(3);
+    expect(card.exertion).toEqual({ attacked: false, switched: false });
   });
 
   it("R14 bounces a card whose destination is Locked to its owner's hand", () => {

@@ -68,10 +68,23 @@ export function hasExertion(unit: CardInstance, kind: ExertionKind): boolean {
 
 /**
  * §4.1: a unit that entered the field this turn is summoning sick. A unit that enters again, a
- * Reborn body included, entered it on that turn like any other (R83), so this is the one comparison.
+ * Reborn body included, entered it on that turn like any other (R83), and so does a unit whose
+ * controller changed this turn (R171, through `enterNewSide` below), so this is the one comparison.
  */
 export function isSick(state: GameState, unit: CardInstance): boolean {
   return unit.summonedTurn === state.turn;
+}
+
+/**
+ * R171: a card whose controller changes has entered its new controller's side on this turn — §4.1's
+ * "entered the field" for `isSick`, and a fresh exertion for its new controller. Every path that
+ * changes control on the field calls this at the moment it emits `controlChanged`, for every card
+ * that changes sides (a card dormant under a Stack and a backrow card included), and for nothing
+ * else: a card moving along its own side has not entered anything.
+ */
+export function enterNewSide(state: GameState, card: CardInstance): void {
+  card.summonedTurn = state.turn;
+  card.exertion = { attacked: false, switched: false };
 }
 
 /**
