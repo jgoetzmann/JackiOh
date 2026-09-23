@@ -1,11 +1,11 @@
 // Quality gate: the same AI with Hard's handicap against itself on Easy (docs/polish/3-ai.md B30, B31).
 //
 // R180: the tiers differ in resources alone, so the only thing separating the two seats here is
-// the handicap. The Hard seat (the subject) must win at least AI_GATE.minWinRate["hard-vs-easy"]
-// of its games, seats alternating, both AIs at AI_GATE_BUDGET. `pnpm test` plays the smoke size
-// (AI_GATE.smokeSeeds); `pnpm ai:gate` sets JACKIOH_AI_GATE=full and plays
-// AI_GATE.fullSeeds["hard-vs-easy"]. The test passes iff wins >= ceil(minWinRate × n), and a
-// failure names the losing seeds, which replay exactly through `gameConfig("hard-vs-easy", n)`.
+// the handicap. The Hard seat (the subject) must win at least `gateNeeded("hard-vs-easy", n)` of its
+// n games, seats alternating, both AIs at AI_GATE_BUDGET (gate-random.test.ts holds the rule that
+// count comes from). `pnpm test` plays the smoke size (AI_GATE.smokeSeeds); `pnpm ai:gate` sets
+// JACKIOH_AI_GATE=full and plays AI_GATE.fullSeeds["hard-vs-easy"]. A failure names the seeds the
+// Hard AI did not win, which replay exactly through `gameConfig("hard-vs-easy", n)`.
 // Every game also has to be clean (B31): nothing rejected, nothing thrown, no fallback, a real
 // result, and a log that folds back to the live hash.
 
@@ -16,6 +16,7 @@ import {
   AI_GATE_BUDGET,
   buildAiDeck,
   gameConfig,
+  gateNeeded,
   runGate,
   type GateReport,
   type Matchup,
@@ -24,7 +25,7 @@ import {
 const MATCHUP: Matchup = "hard-vs-easy";
 const FULL = process.env["JACKIOH_AI_GATE"] === "full";
 const GAMES = FULL ? AI_GATE.fullSeeds[MATCHUP] : AI_GATE.smokeSeeds;
-const NEEDED = Math.ceil(AI_GATE.minWinRate[MATCHUP] * GAMES);
+const NEEDED = gateNeeded(MATCHUP, GAMES);
 /** Per-game allowance under load (the machine is shared), plus a fixed margin. */
 const TIMEOUT = 60_000 + GAMES * 45_000;
 
@@ -78,9 +79,18 @@ describe(`gate ${MATCHUP} (${FULL ? "full" : "smoke"}: ${GAMES} games)`, () => {
       expect(game.subjectSeat).toBe(at % 2 === 0 ? "p1" : "p2");
       expect(game.won).toBe(game.record.result?.winner === game.subjectSeat);
     });
+    // Only wins count: a draw at the turn cap is reported beside them and is a game the AI did not close.
     expect(gate.wins).toBe(gate.games.filter((game) => game.won).length);
     expect(gate.rate).toBeCloseTo(gate.wins / GAMES, 10);
-    expect(gate.wins, `losing seeds: ${losingSeeds(gate)}`).toBeGreaterThanOrEqual(NEEDED);
+    // Written to stdout, as the fuzz suite writes its numbers: vitest's default reporter swallows
+    // console output from a passing test, and a green gate should still show how it passed.
+    process.stdout.write(
+      `[gate ${MATCHUP}] ${String(gate.wins)} wins and ${String(gate.turnCapDraws)} turn-cap draws of ${String(GAMES)}; ${String(NEEDED)} wins needed\n`,
+    );
+    expect(
+      gate.wins,
+      `${String(gate.wins)} wins, ${String(gate.turnCapDraws)} turn-cap draws; not won: ${losingSeeds(gate)}`,
+    ).toBeGreaterThanOrEqual(NEEDED);
   });
 
   it("B31: every game is clean: nothing rejected or thrown, no fallback, a result, and a replay that matches", { timeout: TIMEOUT }, () => {

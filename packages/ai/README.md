@@ -36,13 +36,17 @@ The difficulty tiers change the AI seat's resources only (`AI_DIFFICULTY` in the
 
 ## Search and the opponent's reply
 
-`decide` runs an exact lethal solver, then a turn-level beam search on one determinization. The
-solver walks depth-first in move order for `AI_SEARCH.lethalQuickNodes` nodes, which finds the usual
-lethal (a few swings at the face) at once; if that walk neither found one nor searched the whole
-tree, it spends the rest of `lethalNodes` best-first, always expanding the position closest to
-lethal (`readyGap`: the enemy hero's health less what the attacks still to come deal past its
-Taunts). So a lethal that starts with a card late in move order, such as a Lava Golem tributing both
-enemy Taunts, is found by what it does rather than by where it sits. The beam's best lines are scored one turn deeper, after the opponent's reply (`src/reply.ts`): on the
+`decide` runs a lethal solver, then a turn-level beam search on one determinization. The solver is
+a bounded search for a line that wins this turn on every determinization. It walks depth-first in
+move order for `AI_SEARCH.lethalQuickNodes` nodes, which finds the usual lethal (a few swings at
+the face) at once; if that walk neither found one nor searched the whole tree, it spends the rest
+of `lethalNodes` best-first, always expanding the position closest to lethal (`readyGap`: the enemy
+hero's health less what the attacks still to come deal past its Taunts) and trying the first
+`AI_SEARCH.lethalWidth` moves of each position it expands. So a lethal that starts with a card late
+in move order, such as a Lava Golem tributing both enemy Taunts, is found as long as that card is
+among the first `lethalWidth` moves of its position. A move past them is never tried, and an X-cost
+spell's values, targets and modes can put hundreds of moves ahead of it. The beam's best lines are
+scored one turn deeper, after the opponent's reply (`src/reply.ts`): on the
 determinization the opponent plays any card the line itself put in its hand (a Pocket Chaos handed
 over, units a Flood bounced), otherwise trades or swings at the face by static trade value, and
 ends its turn; the line is scored at the start of the AI's next turn. The opponent never plays a
@@ -105,35 +109,55 @@ The baselines are `randomAction`, SPEC §10.7's random policy, and `greedyAction
 action ahead on one determinization.
 
 The gates (`runGate(matchup, seeds)`, `AI_GATE`) are three matchups whose subject alternates seats,
-with every game folded back to its hash:
+with every game folded back to its hash. Only wins count, in every gate; turn-cap draws are
+reported beside them (`GateReport.turnCapDraws`). A run of n games needs `gateNeeded(matchup, n)`
+wins: the brief's share of n (`AI_GATE.briefRate`), or fewer where an AI exactly as strong as the
+one measured on fresh deals (`AI_GATE.measuredRate`) would miss that more often than
+`AI_GATE.falseAlarm` allows. The rule is proposed in SPEC §9.9, pending the user's acceptance.
 
-| Matchup | Subject | Opponent | Floor | Full seeds |
-|---|---|---|---|---|
-| `ai-vs-random` | the AI on Easy | random policy on Easy | 95% | 100 |
-| `ai-vs-greedy` | the AI on Easy | greedy baseline on Easy | 70% | 50 |
-| `hard-vs-easy` | the AI on Hard | the AI on Easy | 80% | 50 |
+| Matchup | Subject | Opponent | Brief | Measured on fresh deals | Full run | Smoke run |
+|---|---|---|---|---|---|---|
+| `ai-vs-random` | the AI on Easy | random policy on Easy | 95% | 94.5% ± 0.7 | 91 of 100 | 17 of 20 |
+| `ai-vs-greedy` | the AI on Easy | greedy baseline on Easy | 70% | 68.0% ± 1.5 | 28 of 50 | 10 of 20 |
+| `hard-vs-easy` | the AI on Hard | the AI on Easy | 80% | 91.3% ± 1.6 | 40 of 50 | 16 of 20 |
+
+An AI at the measured rates fails any one of these runs by chance at most once in twenty. The price is
+that a gate this size sees only a broken AI: the full greedy run fails with 90% probability only
+once the win rate is down to 46%, and a 5-point loss fails it one time in eight (SPEC §9.9 has the
+rest). So the gates are not how to tell whether a change made the AI stronger or weaker: play the
+change and the AI as it stands on the same fresh deals with `duel.ts`, hundreds of them, and
+compare them game by game.
 
 `gate-perf.test.ts` is the fourth gate file: every decision of the first ai-vs-greedy gate game (six
 under `pnpm ai:gate`), decided again at `AI_BUDGET`, must stay within the node budget and take under
-`AI_GATE.maxDecisionMs` (the fastest of `AI_GATE.perfRepeats` runs counts).
+`AI_GATE.maxDecisionMs` (the fastest of `AI_GATE.perfRepeats` runs counts). So must one decision on
+each of two hand-built wide boards (five units a side, a hand of X-cost and targeted spells, at
+Hard's and at Easy's mana), because ordinary games seldom reach the worst case.
 
 ```
 pnpm vitest run --project ai    # every AI test, gates at AI_GATE.smokeSeeds per matchup
 pnpm ai:gate                    # the three gate files at their full seed counts (CI job ai-gate)
 ```
 
-A failing gate names its losing seeds. `gameConfig(matchup, n)` rebuilds game `n` exactly, so a
-tuner can replay it with `playMatch`. Tuning changes the weights in `src/config.ts`, never the
-floors or the seed counts. If the full gate outgrows its CI job, shrink `AI_GATE_BUDGET` (it is
+Every gate run writes its wins and turn-cap draws to stdout, and a failing one also names the seeds
+the subject did not win. `gameConfig(matchup, n)` rebuilds game `n`
+exactly, so a tuner can replay it with `playMatch`. Tuning changes the weights in `src/config.ts`,
+never the floors, the seed counts, `briefRate` or `falseAlarm`. `measuredRate` may be raised by a
+new measurement on fresh deals; lowering it lowers every gate and needs the user's sign-off, recorded
+in SPEC §9.9. If the full gate outgrows its CI job, shrink `AI_GATE_BUDGET` (it is
 the browser's `AI_BUDGET` today) and say so, since the gates then measure a smaller search than the
 one that ships.
 
-Three tuning aids live in `scripts/` and write no file: `bench.ts <matchup> <from> <to> [gate|full]`
-plays a range of gate games and prints one JSON line each (win, result, turns, nodes, the slowest
+Four tuning and diagnostic aids live in `scripts/` and write no file:
+`bench.ts <matchup> <from> <to> [gate|full]` plays a range of gate games and prints one JSON line each (win, result, turns, nodes, the slowest
 decision, whether the log replays), and `trace.ts <matchup> <n> [gate|full]` prints one game turn by
 turn. Both take `OVERRIDE_<CONFIG>='{…}'` to try weights without editing `src/config.ts`, and
 `BAN=id,id` to try a different shadow ban. `duel.ts <matchup> <from> <to>` plays the same games
 with the weights set per seat (`SUBJECT_AI_SEARCH='{…}'`, `OPPONENT_AI_SEARCH='{…}'`, and so on),
 so that a change can play the AI as it stands (`OPPONENT=ai`, and `SWAP_DECKS=1` for the same deals
-with the decks swapped), and it prints each game's final hash, so that two runs over the same deals
-can be compared game by game.
+with the decks swapped), and it prints each game's final hash and why it ended, so that two runs over
+the same deals can be compared game by game. A game with no result (the action ceiling, or a
+controller that threw) is `aborted`, never a draw. `oracle.ts <matchup> <from> <to> [fromTurn]`
+replays the games the AI did not win and runs the lethal solver on the true state, which `decide`
+may never read, at each of the AI's late turn starts, to tell a missed kill from a board with no
+kill on it; its header says what that search cannot see.

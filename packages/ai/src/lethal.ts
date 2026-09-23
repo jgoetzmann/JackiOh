@@ -1,6 +1,7 @@
-// The exact lethal solver (SPEC §9.9): attack orderings, removing Taunt first, buffs before attacks,
-// a spell to the face, and prompts answered on the way. Nothing in this package recurses, so both of
-// its walks keep their own explicit frontier.
+// The lethal solver (SPEC §9.9): a bounded search for a line that wins this turn on every
+// determinization, through attack orderings, removing Taunt first, buffs before attacks, a spell to
+// the face, and prompts answered on the way. Nothing in this package recurses, so both of its walks
+// keep their own explicit frontier.
 //
 // It runs in two stages on one node allowance:
 //   1. A depth-first walk in move order (`candidateActions` puts face attacks and winning trades
@@ -12,12 +13,23 @@
 //      Taunts), trying its first AI_SEARCH.lethalWidth moves at once. A depth-first walk spends
 //      everything below its first move, so a lethal that starts with a card late in move order (a
 //      spell that kills one's own unit for its Death, a tribute of the enemy's Taunts) is out of its
-//      reach on a wide board; the best-first walk finds that card by what it does.
+//      reach on a wide board. The best-first walk tries each of the first lethalWidth moves and
+//      ranks what they leave by `readyGap`, so such a card is found when it is among those moves. A
+//      move past the first lethalWidth of its position is never tried by either walk.
 // A line counts only when it wins on every determinization.
 
 import type { ActionBody, PlayerId } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
-import { findInstance, legalActions, unitView, type GameState } from "@jackioh/engine";
+import {
+  activeUnitsOf,
+  canAttack,
+  hasExertion,
+  legalActions,
+  subsystems,
+  unitView,
+  type CardInstance,
+  type GameState,
+} from "@jackioh/engine";
 import { actionKey, candidateActions } from "./candidates";
 import { AI_SEARCH } from "./config";
 import { damagePastTaunts } from "./evaluate";
@@ -77,26 +89,41 @@ function holdsEverywhere(
 }
 
 /**
+ * Whether `legalActions` would list an attack for `unit`, which `seat` controls, in a position
+ * where `seat` may act in its main phase: some target passes the engine's own test
+ * (`combat.canAttack`, the filter `attackTargets` applies). Asked unit by unit, with a unit whose
+ * attack is spent ruled out first, because enumerating every legal action (every play, target and
+ * mode of a wide hand) cost the best-first walk more than simulating its moves did.
+ */
+function hasAttack(state: GameState, unit: CardInstance): boolean {
+  if (!hasExertion(unit, "attack")) return false;
+  const enemy = opponentOf(unit.controller);
+  if (canAttack(state, unit, { kind: "hero", player: enemy })) return true;
+  return activeUnitsOf(state, enemy).some((instance) => canAttack(state, unit, { kind: "unit", instance }));
+}
+
+/**
  * How far the seat stands from lethal this turn: the enemy hero's health less what the units that
- * may still attack (those with a legal attack) would deal it past the enemy's Taunts, counted as
- * `faceThreat` counts it. Zero or less means the attacks left could end the game. It only orders the
- * search; a lethal is always proved by playing it through `reduce`.
+ * may still attack (those `legalActions` lists an attack for) would deal it past the enemy's Taunts,
+ * counted as `faceThreat` counts it. Zero or less means the attacks left could end the game. It
+ * only orders the search; a lethal is always proved by playing it through `reduce`.
  */
 export function readyGap(state: GameState, seat: PlayerId): number {
   if (state.result !== null) {
     return state.result.winner === seat ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
   }
-  const ready = new Set<string>();
-  for (const action of legalActions(state, seat)) if (action.type === "attack") ready.add(action.attackerId);
-  const attacks: number[] = [];
-  for (const id of ready) {
-    const unit = findInstance(state, id);
-    if (unit === undefined) continue;
-    const attack = unitView(state, unit).attack;
-    if (attack > 0) attacks.push(attack);
-  }
   const opp = opponentOf(seat);
-  return state.players[opp].hero.health - damagePastTaunts(state, opp, attacks);
+  const health = state.players[opp].hero.health;
+  // legalActions lists no attack while a prompt is open or outside the seat's own main phase.
+  if (state.pending !== null || state.active !== seat || state.phase !== "main") return health;
+  // As legalActions does first: a fused card's scripts must be this state's own before its layers are read.
+  subsystems.syncFusedScripts(state);
+  const attacks: number[] = [];
+  for (const unit of activeUnitsOf(state, seat)) {
+    const attack = unitView(state, unit).attack;
+    if (attack > 0 && hasAttack(state, unit)) attacks.push(attack);
+  }
+  return health - damagePastTaunts(state, opp, attacks);
 }
 
 /**

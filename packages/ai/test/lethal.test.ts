@@ -1,24 +1,29 @@
 // The lethal solver's two walks (lethal.ts, SPEC §9.9): a depth-first walk in move order for
 // AI_SEARCH.lethalQuickNodes nodes, then a best-first walk by `readyGap` on the rest of the allowance.
-// The board below is one the depth-first walk alone cannot solve in 150 nodes: the lethal starts with
-// a Lava Golem that tributes both enemy Taunts, and the cheap targeted spells beside it put hundreds
-// of lines ahead of that play in move order. The best-first walk tries the Golem's tributes by what
-// they leave the attackers, and finds it.
+// The board below is one the depth-first walk alone cannot solve in 150 nodes (a test holds that, so
+// the board keeps exercising the second walk): the lethal starts with a Lava Golem that tributes both
+// enemy Taunts, and the cheap targeted spells beside it put hundreds of lines ahead of that play in
+// move order. The best-first walk ranks the Golem's tributes by what they leave the attackers, and
+// finds it.
 
 import { describe, expect, it } from "vitest";
 import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { createRng, type CardInstance, type GameState } from "@jackioh/engine";
+import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
+import { createRng, findInstance, legalActions, unitView, type CardInstance, type GameState } from "@jackioh/engine";
 import {
   AI_BUDGET,
   AI_SEARCH,
   createNodeCounter,
+  damagePastTaunts,
   determinize,
   findLethal,
+  gameConfig,
+  playMatch,
   readyGap,
   redact,
   simulate,
 } from "../src/index";
-import { AI, HUMAN, everyCard, runPuzzle, scenario, trace } from "./_support";
+import { AI, HUMAN, everyCard, randomPolicyStates, runPuzzle, scenario, trace } from "./_support";
 
 /**
  * p1 (the AI) on turn 9 with 4 crystals: Pointmaster 7/2, Mr. Vanilla 3/3 and Tempo Timmy 3/3
@@ -47,6 +52,28 @@ function worlds(state: GameState, seed: string, count: number): GameState[] {
   const rng = createRng(seed);
   const pub = redact(state, AI);
   return Array.from({ length: count }, () => determinize(pub, AI, rng));
+}
+
+/**
+ * readyGap as it was first written: the attackers are the units `legalActions` lists an attack for.
+ * lethal.ts now asks the engine unit by unit instead, which is cheaper on a wide hand; this is the
+ * reference it must agree with.
+ */
+function readyGapByLegalActions(state: GameState, seat: PlayerId): number {
+  if (state.result !== null) {
+    return state.result.winner === seat ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+  }
+  const ready = new Set<string>();
+  for (const action of legalActions(state, seat)) if (action.type === "attack") ready.add(action.attackerId);
+  const attacks: number[] = [];
+  for (const id of ready) {
+    const unit = findInstance(state, id);
+    if (unit === undefined) continue;
+    const attack = unitView(state, unit).attack;
+    if (attack > 0) attacks.push(attack);
+  }
+  const opp = opponentOf(seat);
+  return state.players[opp].hero.health - damagePastTaunts(state, opp, attacks);
 }
 
 /** Plays `line` on `state` through `simulate`; throws on a refusal. */
@@ -79,12 +106,36 @@ describe("the lethal solver's walks", () => {
     expect(readyGap(cleared, AI)).toBe(0);
   });
 
+  it("readyGap counts exactly the units legalActions lists an attack for, from either seat", { timeout: 60_000 }, () => {
+    const states: GameState[] = [
+      wideBoard(),
+      ...randomPolicyStates("lethal-ready-gap", 3, 600),
+      ...randomPolicyStates("lethal-ready-gap-2", 5, 600),
+    ];
+    const config = gameConfig("ai-vs-greedy", 1);
+    playMatch({ ...config, maxActions: 150 }, { afterAction: (before) => void states.push(before) });
+
+    let withAttackers = 0;
+    for (const state of states) {
+      for (const seat of PLAYER_IDS) {
+        const expected = readyGapByLegalActions(state, seat);
+        expect(readyGap(state, seat), `turn ${state.turn}, ${seat}`).toBe(expected);
+        const opp = opponentOf(seat);
+        if (state.result === null && expected < state.players[opp].hero.health) withAttackers += 1;
+      }
+    }
+    // The comparison covered positions with attackers ready, not only empty boards.
+    expect(withAttackers).toBeGreaterThan(20);
+  });
+
   it("finds the Golem's tribute lethal on a wide hand within the allowance, and it wins on every world", { timeout: 60_000 }, () => {
     const dets = worlds(wideBoard(), "lethal-wide", 2);
     const counter = createNodeCounter(AI_BUDGET.nodes);
     const line = findLethal(dets, AI, counter, AI_BUDGET.lethalNodes);
     expect(line).not.toBeNull();
     expect(counter.used).toBeLessThanOrEqual(AI_BUDGET.lethalNodes);
+    // The depth-first walk's share ran out, so the line came from the best-first walk.
+    expect(counter.used).toBeGreaterThan(AI_SEARCH.lethalQuickNodes);
 
     const first = (line ?? [])[0];
     expect(first?.type).toBe("play");
@@ -92,6 +143,22 @@ describe("the lethal solver's walks", () => {
     const enemyTaunts = [mine(state, HUMAN, "core-019").id, mine(state, HUMAN, "core-055").id];
     expect(first?.type === "play" ? first.tributes : []).toEqual(expect.arrayContaining(enemyTaunts));
     for (const det of dets) expect(playOut(det, line ?? []).result?.winner).toBe(AI);
+  });
+
+  it("the depth-first walk alone does not find it within the same allowance", { timeout: 60_000 }, () => {
+    // lethalQuickNodes at the whole allowance is the solver before the best-first walk existed. If a
+    // change to move order let it find this line, the board would no longer test the second walk.
+    const dets = worlds(wideBoard(), "lethal-wide", 2);
+    const counter = createNodeCounter(AI_BUDGET.nodes);
+    const search = AI_SEARCH as { lethalQuickNodes: number };
+    const saved = search.lethalQuickNodes;
+    try {
+      search.lethalQuickNodes = AI_BUDGET.lethalNodes;
+      expect(findLethal(dets, AI, counter, AI_BUDGET.lethalNodes)).toBeNull();
+    } finally {
+      search.lethalQuickNodes = saved;
+    }
+    expect(counter.used).toBe(AI_BUDGET.lethalNodes);
   });
 
   it("stops after the depth-first walk when that walk searched the whole tree", () => {

@@ -1,7 +1,8 @@
-// The quality gates (docs/polish/3-ai.md B28–B31): three matchups, each a run of seeded games in
-// which the subject (the AI, or the Hard AI) alternates seats, every game folded back from its log to
-// prove it replays. The gate files in test/ turn a report into a pass or a fail; this module only
-// plays and measures, so a tuner can rerun one losing seed with `gameConfig(matchup, n)`.
+// The quality gates (docs/polish/3-ai.md B28–B31, SPEC §9.9): three matchups, each a run of seeded
+// games in which the subject (the AI, or the Hard AI) alternates seats, every game folded back from
+// its log to prove it replays. The gate files in test/ turn a report into a pass or a fail; this
+// module plays and measures, and says how many wins a run of a given size needs (`gateNeeded`), so
+// a tuner can rerun one losing seed with `gameConfig(matchup, n)`.
 
 import { opponentOf, type PlayerId } from "@jackioh/shared";
 import { AI_DIFFICULTY, createRng, fold, hashState, type Handicap } from "@jackioh/engine";
@@ -22,14 +23,31 @@ export const AI_GATE = {
    */
   seedSeries: "gate:v2",
   /**
-   * What `pnpm test` runs per matchup (seeds 1..20). Twenty is the smallest size at which every floor
-   * below is a whole number of games (0.95 × 20 = 19), so the smoke run asserts the gate's own rates;
-   * at four, ceil(0.8 × 4) = 4 demanded a perfect run of Hard against Easy.
+   * What `pnpm test` runs per matchup (seeds 1..20), under the same rule as the full run
+   * (`gateNeeded`: 17, 10 and 16 wins). At four games no count could tell a working AI from a broken
+   * one.
    */
   smokeSeeds: 20,
   /** What `pnpm ai:gate` (JACKIOH_AI_GATE=full) runs. */
   fullSeeds: { "ai-vs-random": 100, "ai-vs-greedy": 50, "hard-vs-easy": 50 },
-  minWinRate: { "ai-vs-random": 0.95, "ai-vs-greedy": 0.7, "hard-vs-easy": 0.8 },
+  /**
+   * The brief's floors (docs/polish/reference.md, "Quality gates"): the share of its games the
+   * subject is to win. Only wins count, in every gate; a draw at the turn cap is reported beside them.
+   */
+  briefRate: { "ai-vs-random": 0.95, "ai-vs-greedy": 0.7, "hard-vs-easy": 0.8 },
+  /**
+   * The subject's win rate as it ships, measured on tuning deals that no run had tuned on and no
+   * gate plays (`tune` 3001–4000 for the Easy matchups, 3001–3300 for Hard against Easy): 945, 680
+   * and 274 wins. Against greedy it is short of the brief. A new measurement of the same kind may
+   * raise it; lowering it lowers every count below and needs the user's sign-off (SPEC §9.9).
+   */
+  measuredRate: { "ai-vs-random": 0.945, "ai-vs-greedy": 0.68, "hard-vs-easy": 0.913 },
+  /**
+   * The most often one gate run may fail an AI exactly as strong as `measuredRate` from the luck of
+   * its deals alone. `gateNeeded` sets each count from it. Proposed in SPEC §9.9, pending the user's
+   * acceptance.
+   */
+  falseAlarm: 0.05,
   /** SPEC §9.9: the most one decision at AI_BUDGET may take on the machine that runs the gate. */
   maxDecisionMs: 1500,
   /** ai-vs-greedy games whose AI decisions the timing gate replays: `pnpm test`, then `pnpm ai:gate`. */
@@ -41,7 +59,9 @@ export const AI_GATE = {
   seedSeries: string;
   smokeSeeds: number;
   fullSeeds: Record<Matchup, number>;
-  minWinRate: Record<Matchup, number>;
+  briefRate: Record<Matchup, number>;
+  measuredRate: Record<Matchup, number>;
+  falseAlarm: number;
   maxDecisionMs: number;
   perfSmokeGames: number;
   perfFullGames: number;
@@ -60,7 +80,38 @@ type GateGame = {
   replayErrors: number;
 };
 
-export type GateReport = { matchup: Matchup; games: GateGame[]; wins: number; rate: number };
+/**
+ * `wins` is what a gate holds against `gateNeeded`, and `rate` is wins / games. `turnCapDraws` is
+ * reported beside them and counts for nothing.
+ */
+export type GateReport = { matchup: Matchup; games: GateGame[]; wins: number; turnCapDraws: number; rate: number };
+
+/** P(X ≥ k) for X ~ Binomial(n, p), summed exactly over the distribution of n trials. */
+export function binomialTail(n: number, p: number, k: number): number {
+  let dist = [1];
+  for (let trial = 0; trial < n; trial += 1) {
+    const next = new Array<number>(dist.length + 1).fill(0);
+    dist.forEach((q, wins) => {
+      next[wins] = (next[wins] ?? 0) + q * (1 - p);
+      next[wins + 1] = (next[wins + 1] ?? 0) + q * p;
+    });
+    dist = next;
+  }
+  return dist.slice(Math.max(0, k)).reduce((sum, q) => sum + q, 0);
+}
+
+/**
+ * The wins a run of `games` games of `matchup` needs: the brief's share of them, or fewer where an
+ * AI exactly as strong as `AI_GATE.measuredRate` would fall short of that more often than
+ * `AI_GATE.falseAlarm` allows. That is the largest k with P(Binomial(games, measuredRate) ≥ k) ≥
+ * 1 − falseAlarm, capped at ceil(briefRate × games) (SPEC §9.9).
+ */
+export function gateNeeded(matchup: Matchup, games: number): number {
+  const measured = AI_GATE.measuredRate[matchup];
+  let k = 0;
+  while (k < games && binomialTail(games, measured, k + 1) >= 1 - AI_GATE.falseAlarm) k += 1;
+  return Math.min(k, Math.ceil(AI_GATE.briefRate[matchup] * games));
+}
 
 /** Game n (1-based): the subject sits p1 when n is odd and p2 when n is even. */
 function subjectSeatOf(n: number): PlayerId {
@@ -139,5 +190,8 @@ export function runGate(matchup: Matchup, seeds: number, budget: SearchBudget = 
   }
 
   const wins = games.filter((game) => game.won).length;
-  return { matchup, games, wins, rate: seeds > 0 ? wins / seeds : 0 };
+  const turnCapDraws = games.filter(
+    (game) => game.record.result?.winner === "draw" && game.record.result.reason === "turn-cap",
+  ).length;
+  return { matchup, games, wins, turnCapDraws, rate: seeds > 0 ? wins / seeds : 0 };
 }

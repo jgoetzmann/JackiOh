@@ -1,9 +1,12 @@
 // `pnpm --filter @jackioh/ai exec tsx scripts/duel.ts <matchup> <from> <to>`: bench.ts with the
 // weights set per seat, so that a changed AI can play the AI as it stands, or both can play the same
 // deals against a baseline. Games are set up as the gate sets them up, from the tuning series
-// (SERIES=<name> picks another). One JSON line per game: whether the subject won, drew or lost, the
-// final hash (two runs of a deal are the same game exactly when their hashes match), whether the log
-// replays, and the subject's decision count and time. Writes no file. Knobs, all optional:
+// (SERIES=<name> picks another). One JSON line per game: whether the subject won, drew or lost, or
+// whether the game has no result at all (`aborted`: it hit the action ceiling or a controller
+// threw, which no gate accepts and no tally should count as a draw), why the game ended (a draw at
+// the turn cap is "turn-cap"), the final hash (two runs of a deal are the same game exactly when
+// their hashes match), whether the log replays, and the subject's decision count and time. Writes
+// no file. Knobs, all optional:
 // SUBJECT_<CONFIG>='{…}' and OPPONENT_<CONFIG>='{…}' merge over AI_SEARCH, AI_EVAL or AI_REPLY
 // around that seat's decisions only; SUBJECT_BUDGET and OPPONENT_BUDGET merge over the seat's
 // SearchBudget; OPPONENT=ai|greedy|random replaces the opponent's controller; SWAP_DECKS=1 swaps
@@ -103,8 +106,10 @@ function main(): void {
         n,
         subject,
         won: record.result !== null && record.result.winner === subject,
-        draw: record.result === null || record.result.winner === "draw",
+        draw: record.result !== null && record.result.winner === "draw",
         lost: record.result !== null && record.result.winner === other,
+        aborted: record.result === null,
+        reason: record.result?.reason ?? null,
         turns: record.turns,
         hash: record.hash,
         nodes: record.nodes,
