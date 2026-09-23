@@ -413,3 +413,96 @@ export const PRACTICE_OUTCOME = "practice-outcome";
 export const PRACTICE_MODIFIERS = "practice-modifiers";
 /** Every live modifier's label in full, grouped You and AI. */
 export const PRACTICE_MODIFIERS_PANEL = "practice-modifiers-panel";
+
+// ---------------------------------------------------------------------------------------------
+// A14: card faces, inspect and deck-builder browse (polish 6, docs/polish/6-cards.md). These mirror,
+// name for name, `apps/web/src/cards/inspect/testids.ts` (the `INSPECT_*` overlays) and the browse
+// additions to `apps/web/src/game/deckbuilder/testids.ts` (the `DB_*` names, the id functions and
+// `slugOf`). Keep the files identical. No name here starts with `card-` or `hand-card-`, so
+// `cy.fieldCardByName` and `cy.handCardByName` still resolve to the named card.
+// ---------------------------------------------------------------------------------------------
+
+/** A14: the hover preview (desktop, after the hover delay). `pointer-events: none`. */
+export const INSPECT_HOVER = "inspect-hover";
+/** A14: the touch long-press sheet (`role="dialog"`). */
+export const INSPECT_SHEET = "inspect-sheet";
+/** A14: the deck builder's detail view: both faces side by side and the glossary. */
+export const INSPECT_DETAIL = "inspect-detail";
+/** A14: the backdrop behind the sheet or the detail; a click on it closes the overlay. */
+export const INSPECT_SCRIM = "inspect-scrim";
+/** A14: the close control of the sheet or the detail. */
+export const INSPECT_CLOSE = "inspect-close";
+/** A14: the enlarged face inside the preview or the sheet. */
+export const INSPECT_FACE = "inspect-face";
+/** A14: the detail view's base face. */
+export const INSPECT_FACE_BASE = "inspect-face-base";
+/** A14: the detail view's radiant face. */
+export const INSPECT_FACE_RADIANT = "inspect-face-radiant";
+/** A14: the keyword glossary, one `li[data-glossary-term]` per term. */
+export const INSPECT_GLOSSARY = "inspect-glossary";
+
+/** A14: lower-case, every run of characters outside `[a-z0-9]` becomes one "-", trimmed of "-". */
+export function slugOf(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** A14: the deck builder's filter bar. */
+export const DB_FILTERS = "db-filters";
+/** A14: its free-text search box. */
+export const DB_SEARCH = "db-search";
+
+/** A14: a cost chip, `0`–`5`, `6+` or `X` (`db-filter-cost-6+`, `db-filter-cost-X`). */
+export function filterCostId(bucket: string): string {
+  return `db-filter-cost-${bucket}`;
+}
+
+/** A14: a type chip (`db-filter-type-field-spell`). */
+export function filterTypeId(type: string): string {
+  return `db-filter-type-${slugOf(type)}`;
+}
+
+/** A14: a tag chip (`db-filter-tag-call-to-chaos`). */
+export function filterTagId(tag: string): string {
+  return `db-filter-tag-${slugOf(tag)}`;
+}
+
+/** A14: a rarity chip (`db-filter-rarity-legendary`). */
+export function filterRarityId(rarity: string): string {
+  return `db-filter-rarity-${slugOf(rarity)}`;
+}
+
+/** A14: the "owned only" checkbox; checked by default. */
+export const DB_FILTER_OWNED = "db-filter-owned";
+/** A14: restores the default filter. */
+export const DB_FILTER_CLEAR = "db-filter-clear";
+/** A14: at phone width, folds the chip rows away; `aria-expanded` says which. */
+export const DB_FILTER_TOGGLE = "db-filter-toggle";
+/** A14: the sort key select (cost, name, rarity, attack, health, type). */
+export const DB_SORT = "db-sort";
+/** A14: the sort direction toggle, `data-dir="asc|desc"`. */
+export const DB_SORT_DIR = "db-sort-dir";
+/** A14: the visible pool's size, in `data-count`. */
+export const DB_RESULT_COUNT = "db-result-count";
+/** A14: shown when no pool card matches the filter. */
+export const DB_EMPTY = "db-empty";
+
+/** A14: the "+" on pool card `catalogCardId`, which adds it to the open deck (a click on the card opens its detail view). */
+export function addPoolId(catalogCardId: string): string {
+  return `db-add-${catalogCardId}`;
+}
+
+/** A14: the polite status line naming the last add or removal and the deck's count. */
+export const DB_DECK_STATUS = "db-deck-status";
+
+/** A14: the detail view's "Add to Deck N". */
+export const DB_DETAIL_ADD = "db-detail-add";
+/** A14: the deck sidebar: tabs, the open deck and the save control. */
+export const DB_SIDEBAR = "db-sidebar";
+
+/** A14: deck `oneBased`'s mana curve, one `.db-bar[data-bucket][data-count]` per bucket. */
+export function deckCurveId(oneBased: number): string {
+  return `deck-curve-${oneBased}`;
+}

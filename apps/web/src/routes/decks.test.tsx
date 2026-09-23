@@ -225,7 +225,8 @@ describe("saving", () => {
   it("sends the edited draft, not the one it opened with", async () => {
     vi.mocked(putLoadout).mockResolvedValue({ catalogVersion: catalog.version, loadout: null });
     await mount();
-    fireEvent.click(screen.getByTestId(`card-pool-${SPARE_CARD_ID}`));
+    // Polish 6: the pool card's "+" adds it (a click on the card opens its detail view).
+    fireEvent.click(screen.getByTestId(`db-add-${SPARE_CARD_ID}`));
     fireEvent.click(screen.getByTestId("loadout-save"));
     await waitFor(() => {
       expect(putLoadout).toHaveBeenCalled();
