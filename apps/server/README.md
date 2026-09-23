@@ -125,7 +125,9 @@ and `${CODE_PEPPER}:ip` — so an invite-code hash and an IP hash can never coll
 ## HTTP surface
 
 Every response is JSON. Errors are always `{ "error": { "code", "message", "details"? } }`; the
-codes are the `ApiErrorCode` union in `src/api/http.ts`.
+codes are the `ApiErrorCode` union in `src/api/http.ts`. A request body over
+`MAX_REQUEST_BODY_BYTES` (64 KiB, R173) is refused on every route with 413 `payload_too_large`
+before it is parsed, counted in the bytes actually read whatever Content-Length claims.
 
 Each route declares its own auth requirement, which is where §9.4's gate lives — one place, not the
 top of every handler:

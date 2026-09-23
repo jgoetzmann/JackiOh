@@ -17,6 +17,7 @@ import {
   MATCH_ACTIONS_PER_SECOND,
   MATCH_CEILING_MINUTES,
   MAX_LIBRARY_DECKS,
+  MAX_REQUEST_BODY_BYTES,
   PROMPT_CLOCK_SECONDS,
   RATING_WINDOW_START,
   RATING_WINDOW_UNCAPPED_AFTER_SECONDS,
@@ -62,10 +63,11 @@ export function defaultLimits(): ApiLimits {
   };
 }
 
-/** §9.8: per-match and per-account flood limits, straight from config. */
+/** §9.8: per-match and per-account flood limits, and R173's bound on one body, from config. */
 export const floodLimits = {
   matchActionsPerSecond: MATCH_ACTIONS_PER_SECOND,
   apiRequestsPerMinute: API_REQUESTS_PER_MINUTE,
+  requestBodyBytes: MAX_REQUEST_BODY_BYTES,
 } as const;
 
 /** One line of JSON per event: enough for a hosted log drain, nothing to configure. */
