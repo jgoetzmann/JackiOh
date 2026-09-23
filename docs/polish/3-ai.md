@@ -300,6 +300,10 @@ export const AI_SEARCH = {
   maxAutoAnswers: 8,
   /** Deepest line the lethal solver explores. */
   lethalMaxDepth: 10,
+  /** Nodes of lethalNodes the solver's depth-first walk gets before its best-first walk (search pass). */
+  lethalQuickNodes: 40,
+  /** Moves the best-first walk tries from each position it expands, in move order. */
+  lethalWidth: 60,
   /** Lines per first action scored after the opponent's reply on determinization 0. */
   linesPerAction: 2,
   /** Seed of the throwaway determinization that lists candidates for the forced check. */
@@ -554,14 +558,25 @@ export function staticScore(state: GameState, seat: PlayerId, rootTurn: number):
 
 ```ts
 /**
- * Depth-first over dets[0] with an explicit stack (no recursion): candidateActions minus
- * switchPosition and endTurn, depth ≤ AI_SEARCH.lethalMaxDepth, visited-set keyed on a cheap
- * signature (enemy hero health + each unit's id/damage/exertion/position + hand ids + mana).
- * A line is lethal when simulate leaves state.result.winner === seat. It is returned only if
- * replaying it (actionKey equality with legalActions at each step) also wins on every other
- * determinization; otherwise the search continues. Spends at most `limit` nodes of `counter`.
+ * Over dets[0] with explicit frontiers (no recursion): candidateActions minus switchPosition and
+ * endTurn, depth ≤ AI_SEARCH.lethalMaxDepth, visited-set keyed on a cheap signature (enemy hero
+ * health + each unit's id/damage/exertion/position + hand ids + mana). First depth-first in move
+ * order for AI_SEARCH.lethalQuickNodes nodes; if that walk neither found a lethal nor searched the
+ * whole tree, best-first by `readyGap` on the rest (each expansion tries its first
+ * AI_SEARCH.lethalWidth moves). A line is lethal when simulate leaves state.result.winner === seat.
+ * It is returned only if replaying it (actionKey equality with legalActions at each step) also wins
+ * on every other determinization; otherwise the search continues. Spends at most `limit` nodes of
+ * `counter`. (The search pass added the best-first walk; the build's solver was the depth-first
+ * walk alone.)
  */
 export function findLethal(dets: readonly GameState[], seat: PlayerId, counter: NodeCounter, limit: number): ActionBody[] | null;
+
+/**
+ * The enemy hero's health less what the units that may still attack this turn (any legal attack)
+ * would deal it past the enemy's Taunts, as faceThreat counts it (`damagePastTaunts`). It orders the
+ * lethal solver's best-first walk and nothing else.
+ */
+export function readyGap(state: GameState, seat: PlayerId): number;
 
 /** A complete line; `end` is the state it was scored at, which decide scores again after the reply. */
 export type Line = { actions: ActionBody[]; score: number; status: LineStatus; end: GameState };
@@ -1806,6 +1821,69 @@ one unswept card: it is cast on draw and never sits in hand.
   `practice/core.ts` is a second engine entry, loaded only by the practice worker.
 - `docs/polish/reference.md` is the root `reference.md` again, byte for byte (blob `0c97cccf`,
   the copy tasks 4, 5 and 7 carry), so the integration merge does not conflict on it.
+
+## Search pass: the lethal solver
+
+An experiment on the within-turn planner, not the evaluation. Everything below was measured on
+fresh tuning deals (`tune`, from seed 1001; no gate seed), paired against the AI as it stood: a run
+is deterministic, so two runs of a deal are the same game until some decision differs, and
+`scripts/duel.ts` prints each game's hash to show where that happened.
+
+### What the profile showed
+
+- **The node budget almost never binds; the beam's shape does.** Of 213 searched decisions in six
+  games, raising `nodes` from 600 to 20,000 changed none. A beam of 8 changed 18, a far bigger
+  search (beam 12, branching 20, root 40, depth 12, six finalists) 23, branching 20 six, root
+  branching 60 one. A decision spends 144 nodes on average.
+- **Candidate lists are usually short and sometimes huge.** The median decision has 6 candidates,
+  42% have more than `branching` + 1 and 10% more than `rootBranching`, and the largest had 185: an
+  X-cost spell's X values times its targets and modes, or a Lava Golem's tribute sets.
+- **The lethal solver missed lethals on wide boards.** At each AI turn start of 60 games, a
+  4,000-node run of the same solver found a lethal that held on all three worlds on 41 turns, and
+  the AI did not win on 5 of them (3 games; one ended in a turn-cap draw). Every miss began with a
+  card late in move order: an Efficiency Dividend that kills the AI's own "Miss" Mrow for its Death
+  (steal every enemy unit), a Lava Golem that tributes both enemy Taunts. A depth-first walk spends
+  its 150 nodes under the first root moves and never reaches them.
+
+### What changed
+
+`findLethal` walks depth-first in move order for `AI_SEARCH.lethalQuickNodes` (40) nodes, which
+finds the usual lethal at once and ends the search when the tree is small enough to search whole.
+Otherwise it spends the rest of `lethalNodes` best-first: it expands the position with the smallest
+`readyGap` (the enemy hero's health less what the attacks still to come deal past its Taunts,
+counted as `faceThreat` counts it), trying its first `AI_SEARCH.lethalWidth` (60) moves at once.
+The budget, the verification on every world and the rest of `decide` are unchanged, and with
+`lethalQuickNodes` at 150 the solver is the old one, game for game.
+
+- **Lethals found, same allowance.** Over 1,146 AI turn starts from 130 fresh games, the new solver
+  found 94 lethals where the old one found 78: 19 that only the new one found, 3 that only the old
+  one did. The two constants were chosen on the first 531 of those turns (10 against 3); the other
+  615 were collected afterwards and gave 49 against 40, 9 against 0. The solver spends 5% more
+  nodes, and a whole decision the same (mean 124 against 123 nodes, the most 376 either way, over
+  163 decisions timed side by side).
+- **Games.** Against greedy, 405 of 600 against 400 (67.5% and 66.7%, ±1.9 each): 525 games were
+  identical, and of the rest 5 draws and 1 loss became wins and 1 win a loss. Against random, 187 of
+  200 either way, with the same 10 turn-cap draws; none is a lethal the solver misses (the two
+  traced were a weak deck stalled by The Rock and hero health swapped back and forth by Pocket
+  Chaos). Hard against Easy, 55 of 60 against 54. Against the old AI, 47 wins, 47 losses and 10
+  draws in 104 games. A missed lethal decides about one game in a hundred, so no game-level count
+  here can resolve the gain; every one of them moved its way or not at all. The smoke gate against
+  greedy (`gate:v2` games 1–20, never tuned on) went from 13 to 14 wins: game 5 is now a win.
+
+### Tried and dropped
+
+- **One frontier line per first action**, so that the beam compares first actions at equal depth:
+  14 wins, 24 losses and 2 draws against the old AI in 40 games (37.5%, about 1.6 standard errors
+  down), and stopped there. It loses the depth the beam spends on the best first action.
+- **A second pass, twice as wide and branching, on the nodes left**, reusing every step the first
+  pass simulated and adding its lines: 98 wins, 86 losses and 16 draws in 200 games against the old
+  AI (53% counting a draw as half, under one standard error), for 36% more nodes.
+- **Lethal orderings.** Attacks on a Taunt before plays changed one of 531 turns; simulating the first 60 root
+  moves and walking depth-first from the closest to lethal found 43 of the first 531 turns' lethals
+  but lost three the plain walk finds early; best-first alone found 44. The two-stage solver found 45.
+- **Not tried**, from what the profile showed: a transposition table across depths (the beam
+  already drops a repeated position within a depth, and the budget is not what binds), and the
+  AI's own next turn after the reply (the fix pass measured it: noise).
 
 ## Merge notes (for the PR)
 

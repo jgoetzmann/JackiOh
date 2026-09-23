@@ -104,7 +104,6 @@ function material(state: GameState, player: PlayerId, seat: PlayerId, w: EvalWei
  * (armor and the Anti-oneshot cap, per hit), and the results are summed.
  */
 export function faceThreat(state: GameState, attacker: PlayerId): number {
-  const defender = opponentOf(attacker);
   const attacks: number[] = [];
   for (const unit of activeUnitsOf(state, attacker)) {
     const view = unitView(state, unit);
@@ -112,8 +111,17 @@ export function faceThreat(state: GameState, attacker: PlayerId): number {
     if (hasKeyword(view.keywords, "Can't attack")) continue;
     attacks.push(view.attack);
   }
-  attacks.sort((a, b) => a - b);
+  return damagePastTaunts(state, opponentOf(attacker), attacks);
+}
 
+/**
+ * What `attacks` (one entry per attacker) deal `defender`'s hero once its Taunt units have soaked up
+ * the smallest attackers, as `faceThreat` counts it: each Taunt costs health + armor, plus one extra
+ * attacker if it has Divine Shield, and every remaining hit goes through
+ * `subsystems.projectedHeroDamage`.
+ */
+export function damagePastTaunts(state: GameState, defender: PlayerId, attacks: readonly number[]): number {
+  const sorted = [...attacks].sort((a, b) => a - b);
   const taunts = activeUnitsOf(state, defender)
     .map((unit) => unitView(state, unit))
     .filter((view) => hasKeyword(view.keywords, "Taunt"))
@@ -122,21 +130,21 @@ export function faceThreat(state: GameState, attacker: PlayerId): number {
   let next = 0;
   for (const taunt of taunts) {
     if (hasKeyword(taunt.keywords, "Divine Shield")) {
-      if (next >= attacks.length) return 0;
+      if (next >= sorted.length) return 0;
       next += 1;
     }
     const cost = Math.max(0, taunt.health) + taunt.armor;
     let soaked = 0;
     while (soaked < cost) {
-      if (next >= attacks.length) return 0;
-      soaked += attacks[next] ?? 0;
+      if (next >= sorted.length) return 0;
+      soaked += sorted[next] ?? 0;
       next += 1;
     }
   }
 
   let total = 0;
-  for (let i = next; i < attacks.length; i += 1) {
-    total += subsystems.projectedHeroDamage(state, defender, attacks[i] ?? 0);
+  for (let i = next; i < sorted.length; i += 1) {
+    total += subsystems.projectedHeroDamage(state, defender, sorted[i] ?? 0);
   }
   return total;
 }

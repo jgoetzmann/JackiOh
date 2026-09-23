@@ -36,8 +36,13 @@ The difficulty tiers change the AI seat's resources only (`AI_DIFFICULTY` in the
 
 ## Search and the opponent's reply
 
-`decide` runs an exact lethal solver, then a turn-level beam search on one determinization. Its
-best lines are scored one turn deeper, after the opponent's reply (`src/reply.ts`): on the
+`decide` runs an exact lethal solver, then a turn-level beam search on one determinization. The
+solver walks depth-first in move order for `AI_SEARCH.lethalQuickNodes` nodes, which finds the usual
+lethal (a few swings at the face) at once; if that walk neither found one nor searched the whole
+tree, it spends the rest of `lethalNodes` best-first, always expanding the position closest to
+lethal (`readyGap`: the enemy hero's health less what the attacks still to come deal past its
+Taunts). So a lethal that starts with a card late in move order, such as a Lava Golem tributing both
+enemy Taunts, is found by what it does rather than by where it sits. The beam's best lines are scored one turn deeper, after the opponent's reply (`src/reply.ts`): on the
 determinization the opponent plays any card the line itself put in its hand (a Pocket Chaos handed
 over, units a Flood bounced), otherwise trades or swings at the face by static trade value, and
 ends its turn; the line is scored at the start of the AI's next turn. The opponent never plays a
@@ -123,8 +128,12 @@ floors or the seed counts. If the full gate outgrows its CI job, shrink `AI_GATE
 the browser's `AI_BUDGET` today) and say so, since the gates then measure a smaller search than the
 one that ships.
 
-Two tuning aids live in `scripts/` and write no file: `bench.ts <matchup> <from> <to> [gate|full]`
+Three tuning aids live in `scripts/` and write no file: `bench.ts <matchup> <from> <to> [gate|full]`
 plays a range of gate games and prints one JSON line each (win, result, turns, nodes, the slowest
 decision, whether the log replays), and `trace.ts <matchup> <n> [gate|full]` prints one game turn by
 turn. Both take `OVERRIDE_<CONFIG>='{…}'` to try weights without editing `src/config.ts`, and
-`BAN=id,id` to try a different shadow ban.
+`BAN=id,id` to try a different shadow ban. `duel.ts <matchup> <from> <to>` plays the same games
+with the weights set per seat (`SUBJECT_AI_SEARCH='{…}'`, `OPPONENT_AI_SEARCH='{…}'`, and so on),
+so that a change can play the AI as it stands (`OPPONENT=ai`, and `SWAP_DECKS=1` for the same deals
+with the decks swapped), and it prints each game's final hash, so that two runs over the same deals
+can be compared game by game.

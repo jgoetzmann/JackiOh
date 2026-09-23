@@ -31,6 +31,13 @@ export const AI_SEARCH = {
   maxAutoAnswers: 8,
   /** Deepest line the lethal solver explores. */
   lethalMaxDepth: 10,
+  /**
+   * Nodes of the lethal allowance its depth-first walk in move order gets before the best-first walk
+   * takes the rest (lethal.ts). At or above SearchBudget.lethalNodes the walk is depth-first alone.
+   */
+  lethalQuickNodes: 40,
+  /** Moves the best-first lethal walk tries from each position it expands, in move order. */
+  lethalWidth: 60,
   /** Lines per first action scored after the opponent's reply on determinization 0. */
   linesPerAction: 2,
   /** Seed of the throwaway determinization that lists candidates for the forced check. */

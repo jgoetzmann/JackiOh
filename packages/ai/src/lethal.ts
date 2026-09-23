@@ -1,16 +1,36 @@
 // The exact lethal solver (SPEC §9.9): attack orderings, removing Taunt first, buffs before attacks,
-// a spell to the face, and prompts answered on the way. A depth-first walk with an explicit stack —
-// nothing in this package recurses — whose move order (`candidateActions`) puts face attacks and
-// winning trades first, so the usual lethal is the first path it tries.
+// a spell to the face, and prompts answered on the way. Nothing in this package recurses, so both of
+// its walks keep their own explicit frontier.
+//
+// It runs in two stages on one node allowance:
+//   1. A depth-first walk in move order (`candidateActions` puts face attacks and winning trades
+//      first) for AI_SEARCH.lethalQuickNodes nodes. The usual lethal, a few swings at the face, is
+//      the first path it tries. When the walk runs out of moves before it runs out of nodes, the
+//      whole tree has been searched and there is no lethal to find.
+//   2. Otherwise a best-first walk with what is left: it expands the position closest to lethal
+//      (`readyGap`: the enemy hero's health less what the attacks still to come would deal past its
+//      Taunts), trying its first AI_SEARCH.lethalWidth moves at once. A depth-first walk spends
+//      everything below its first move, so a lethal that starts with a card late in move order (a
+//      spell that kills one's own unit for its Death, a tribute of the enemy's Taunts) is out of its
+//      reach on a wide board; the best-first walk finds that card by what it does.
+// A line counts only when it wins on every determinization.
 
 import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { legalActions, type GameState } from "@jackioh/engine";
+import { opponentOf } from "@jackioh/shared";
+import { findInstance, legalActions, unitView, type GameState } from "@jackioh/engine";
 import { actionKey, candidateActions } from "./candidates";
 import { AI_SEARCH } from "./config";
+import { damagePastTaunts } from "./evaluate";
 import { createSubCounter, lineStatus, searchSignature, simulate } from "./simulate";
 import type { NodeCounter } from "./types";
 
 type Frame = { state: GameState; line: ActionBody[]; action: ActionBody };
+
+/** A position the best-first walk may expand: the line that reached it and how far it is from lethal. */
+type Open = { state: GameState; line: ActionBody[]; gap: number; order: number };
+
+/** What a walk ended with: a lethal line, a tree searched to the end, or a walk the counter cut short. */
+type Walk = { line: ActionBody[] } | "exhausted" | "cut";
 
 /** The actions the solver tries from a position: no position switches, and never ending the turn. */
 function lethalMoves(state: GameState, seat: PlayerId): ActionBody[] {
@@ -57,12 +77,125 @@ function holdsEverywhere(
 }
 
 /**
- * Depth-first over dets[0] with an explicit stack (no recursion): candidateActions minus
- * switchPosition and endTurn, depth ≤ AI_SEARCH.lethalMaxDepth, visited-set keyed on a cheap
- * signature (enemy hero health + each unit's id/damage/exertion/position + hand ids + mana).
- * A line is lethal when simulate leaves state.result.winner === seat. It is returned only if
- * replaying it (actionKey equality with legalActions at each step) also wins on every other
- * determinization; otherwise the search continues. Spends at most `limit` nodes of `counter`.
+ * How far the seat stands from lethal this turn: the enemy hero's health less what the units that
+ * may still attack (those with a legal attack) would deal it past the enemy's Taunts, counted as
+ * `faceThreat` counts it. Zero or less means the attacks left could end the game. It only orders the
+ * search; a lethal is always proved by playing it through `reduce`.
+ */
+export function readyGap(state: GameState, seat: PlayerId): number {
+  if (state.result !== null) {
+    return state.result.winner === seat ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+  }
+  const ready = new Set<string>();
+  for (const action of legalActions(state, seat)) if (action.type === "attack") ready.add(action.attackerId);
+  const attacks: number[] = [];
+  for (const id of ready) {
+    const unit = findInstance(state, id);
+    if (unit === undefined) continue;
+    const attack = unitView(state, unit).attack;
+    if (attack > 0) attacks.push(attack);
+  }
+  const opp = opponentOf(seat);
+  return state.players[opp].hero.health - damagePastTaunts(state, opp, attacks);
+}
+
+/**
+ * What a new position means for the walk: a proved lethal, a position to search on from, or neither.
+ * null when the counter ran out while proving a win on the other determinizations.
+ */
+function judge(
+  dets: readonly GameState[],
+  seat: PlayerId,
+  line: readonly ActionBody[],
+  next: GameState,
+  rootTurn: number,
+  visited: Set<string>,
+  counter: NodeCounter,
+): "lethal" | "deeper" | "dead" | null {
+  if (next.result !== null) {
+    if (next.result.winner !== seat) return "dead";
+    const verdict = holdsEverywhere(dets, seat, line, counter);
+    if (verdict === null) return null;
+    return verdict ? "lethal" : "dead";
+  }
+  if (line.length >= AI_SEARCH.lethalMaxDepth) return "dead";
+  if (lineStatus(next, seat, rootTurn) !== "open") return "dead";
+  const signature = searchSignature(next, seat);
+  if (visited.has(signature)) return "dead";
+  visited.add(signature);
+  return "deeper";
+}
+
+/** Stage 1: depth-first in move order, with a visited set on `searchSignature`. */
+function depthFirst(dets: readonly GameState[], seat: PlayerId, counter: NodeCounter): Walk {
+  const root = dets[0] as GameState;
+  const visited = new Set<string>([searchSignature(root, seat)]);
+  const stack: Frame[] = [];
+  pushMoves(stack, root, [], seat);
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) break;
+    const step = simulate(frame.state, seat, frame.action, counter);
+    if (step === null) return "cut";
+    if (!step.ok) continue;
+    const line = [...frame.line, frame.action];
+    const verdict = judge(dets, seat, line, step.state, root.turn, visited, counter);
+    if (verdict === null) return "cut";
+    if (verdict === "lethal") return { line };
+    if (verdict === "deeper") pushMoves(stack, step.state, line, seat);
+  }
+  return "exhausted";
+}
+
+/** Index of the open position to expand next: the smallest gap, then the longest line, then the oldest. */
+function nextOpen(open: readonly Open[]): number {
+  let best = 0;
+  for (let i = 1; i < open.length; i += 1) {
+    const a = open[i] as Open;
+    const b = open[best] as Open;
+    const closer = a.gap < b.gap;
+    const deeper = a.gap === b.gap && a.line.length > b.line.length;
+    const older = a.gap === b.gap && a.line.length === b.line.length && a.order < b.order;
+    if (closer || deeper || older) best = i;
+  }
+  return best;
+}
+
+/** Stage 2: best-first by `readyGap`, each expansion simulating its first AI_SEARCH.lethalWidth moves. */
+function bestFirst(dets: readonly GameState[], seat: PlayerId, counter: NodeCounter): Walk {
+  const root = dets[0] as GameState;
+  const visited = new Set<string>([searchSignature(root, seat)]);
+  const open: Open[] = [{ state: root, line: [], gap: readyGap(root, seat), order: 0 }];
+  let order = 1;
+
+  while (open.length > 0) {
+    const node = open.splice(nextOpen(open), 1)[0] as Open;
+    for (const action of lethalMoves(node.state, seat).slice(0, AI_SEARCH.lethalWidth)) {
+      const step = simulate(node.state, seat, action, counter);
+      if (step === null) return "cut";
+      if (!step.ok) continue;
+      const line = [...node.line, action];
+      const verdict = judge(dets, seat, line, step.state, root.turn, visited, counter);
+      if (verdict === null) return "cut";
+      if (verdict === "lethal") return { line };
+      if (verdict === "deeper") {
+        open.push({ state: step.state, line, gap: readyGap(step.state, seat), order });
+        order += 1;
+      }
+    }
+  }
+  return "exhausted";
+}
+
+/**
+ * The lethal solver on dets[0]: candidateActions minus switchPosition and endTurn, lines at most
+ * AI_SEARCH.lethalMaxDepth long, a visited set keyed on `searchSignature`. A depth-first walk in move
+ * order gets AI_SEARCH.lethalQuickNodes; if it neither found a lethal nor searched the whole tree, a
+ * best-first walk by `readyGap` gets the rest (the header says why). A line is lethal when simulate
+ * leaves state.result.winner === seat, and it is returned only if replaying it (actionKey equality
+ * with legalActions at each step) also wins on every other determinization; otherwise the search
+ * continues. Spends at most `limit` nodes of `counter`.
  */
 export function findLethal(
   dets: readonly GameState[],
@@ -74,39 +207,14 @@ export function findLethal(
   if (root === undefined || limit <= 0) return null;
   if (lineStatus(root, seat, root.turn) !== "open") return null;
 
-  const slice = createSubCounter(counter, limit);
-  const rootTurn = root.turn;
-  const visited = new Set<string>([searchSignature(root, seat)]);
-  const stack: Frame[] = [];
-  pushMoves(stack, root, [], seat);
+  const start = counter.used;
+  const quick = createSubCounter(counter, Math.min(limit, AI_SEARCH.lethalQuickNodes));
+  const first = depthFirst(dets, seat, quick);
+  if (first !== "exhausted" && first !== "cut") return first.line;
+  if (first === "exhausted" || counter.stoppedBy !== "exhausted") return null;
 
-  while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame === undefined) break;
-
-    const step = simulate(frame.state, seat, frame.action, slice);
-    if (step === null) return null;
-    if (!step.ok) continue;
-
-    const line = [...frame.line, frame.action];
-    const next = step.state;
-
-    if (next.result !== null) {
-      if (next.result.winner !== seat) continue;
-      const verdict = holdsEverywhere(dets, seat, line, slice);
-      if (verdict === null) return null;
-      if (verdict) return line;
-      continue;
-    }
-
-    if (line.length >= AI_SEARCH.lethalMaxDepth) continue;
-    if (lineStatus(next, seat, rootTurn) !== "open") continue;
-
-    const signature = searchSignature(next, seat);
-    if (visited.has(signature)) continue;
-    visited.add(signature);
-    pushMoves(stack, next, line, seat);
-  }
-
-  return null;
+  const left = limit - (counter.used - start);
+  if (left <= 0) return null;
+  const second = bestFirst(dets, seat, createSubCounter(counter, left));
+  return second !== "exhausted" && second !== "cut" ? second.line : null;
 }
