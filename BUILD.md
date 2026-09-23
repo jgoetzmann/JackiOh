@@ -119,6 +119,9 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `FUSE_COST_CAP` | 4 | §6.3 |
 | `MULLIGAN_ORDER` | "draw-then-shuffle" | R9 |
 | `AI_END_TURN_PROBABILITY` | 0.1 | §10.7 |
+| `DRAWS_PER_TURN` | 1 | §2.4, R183 |
+| `HUMAN_HANDICAP` | `{ deckSize: DECK_SIZE, manaBonus: 0, manaCap: MAX_MANA, extraOpeningCards: 0, extraDrawsPerTurn: 0 }` | §9.9, R180 |
+| `AI_DIFFICULTY` | easy = `HUMAN_HANDICAP`; medium `{ 25, +1, cap 5, +1 opening, +0 draws }`; hard `{ 30, +1, cap 7, +1 opening, +1 draw }` (fields in `Handicap` order) | §9.9, R180–R184 |
 
 Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
 
@@ -527,8 +530,9 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `10-invite-gate.cy.ts` | Pending account | code screen shown; bad code error identical for three failure kinds; good code activates |
 | `11-radiant.cy.ts` | Glowy Jelly Bean on a hand card, Knockoff Temu on a field unit | glow animation; stats swap on the field card keeping damage |
 | `12-rotation-and-swaps.cy.ts` | Silly Silas, Pocket Chaos board swap | every card testid moves one lane; board swap flips sides |
+| `13-practice-vs-ai.cy.ts` | Anonymous `/practice` against the AI (§9.9), no server; Easy and Hard, seated p2, `?pace=fast` | setup shows with no account; the think indicator shows while the AI mulligans and plays; human turns end with no action error; the browser hash equals the replay of `(seed, decks, handicaps, log)` (R187); concede shows Loss; Hard's AI shows max mana 2 on its first turn (R181); no request reaches `/api` or a WebSocket |
 
-**M8 gate.** All twelve specs green in CI on Chrome and Electron.
+**M8 gate.** All thirteen specs green in CI on Chrome and Electron.
 
 ## 4. Test strategy summary
 
@@ -538,7 +542,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - Rulings: `rulings.test.ts` has one named test per §11 row; the review greps for `R<n>` coverage.
 - Catalog: `catalog.test.ts` diffs `catalog.json` against a fixture transcribed from SPEC §8.
 - Coverage floor: 90% lines in `packages/engine` and `packages/cards`; 100% of card script files have a test file.
-- E2E: the twelve specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
+- E2E: the thirteen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
 
 ## 5. Definition of done
 
