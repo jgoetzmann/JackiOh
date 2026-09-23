@@ -230,7 +230,8 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
 
 /**
  * R78: leaving the field resets an instance, while costMod, costOverride and radiant persist. R215
- * applies the same reset to a hand or library card that reaches a graveyard or exile.
+ * applies the same reset to a hand or library card that reaches a graveyard or exile, and to a card
+ * leaving the resolving zone once its play is over.
  */
 export function resetInstance(instance: CardInstance): void {
   instance.damage = 0;
@@ -348,8 +349,11 @@ export function moveToZone(
   // R215: a card that reaches a graveyard or an exile pile from a hand or a library is reset too, so
   // what comes back from there is the printed card (#89's hand buffs, #98's rolled power, R151) —
   // R78's reset, with `costMod`, `costOverride` and `radiant` kept in every zone as R78 keeps them.
+  // So is a card that lands from the resolving zone (§10.5 step 7): its play is over, and a #95 an
+  // earlier Call to Chaos cast (R87) carries no link of that chain (R28) back into a play of its own.
   const pileToPile = (from === "hand" || from === "library") && (zone === "graveyard" || zone === "exile");
-  if ((wasOnField || pileToPile) && options.keepState !== true) resetInstance(instance);
+  const landed = from === "resolving";
+  if ((wasOnField || pileToPile || landed) && options.keepState !== true) resetInstance(instance);
 
   const side = state.players[instance.owner];
   const pile = pileFor(side, zone);

@@ -4,14 +4,15 @@
 // §10.7's priorities, in order: lethal available → max; can clear the enemy board → high; hero
 // below 10 and the card heals → high; otherwise stats per mana plus draw value.
 //
-// What the engine can see: a definition's printed data — type, cost, stats and keywords (§5) — plus
-// the live state. A definition's *text* is prose and is not machine-readable, so "Deal 5 damage",
-// "Destroy all units", "Restore 8 Health" and "Draw a card" are invisible here. Each priority is
-// therefore scored from the printed signals that stand in for it, named at its own function, and a
-// card whose only claim to a priority lives in its text scores on stats per mana like any other.
+// Each priority is read two ways. The printed data — type, cost, stats and keywords (§5) — stands in
+// for it where a card's face says so (a Charge body, a Poisonous one, Lifesteal), named at its own
+// function. And §10.7's dry run plays the candidate on a copy of the state (`dryRun`), which is the
+// only way to see what a card's *text* does: #44's 4 damage, #17's bounce of every unit, #53's heal
+// to 30. A card whose claim to a priority lives in neither scores on stats per mana like any other.
 //
-// The scorer is a pure function of (state, viewer): no rng, no clock, so the same state always
-// produces the same order, which is what R29's Discover and §9.3's replay need.
+// The scorer is a pure function of (state, viewer): the dry run draws from a seed of its own and
+// never the match's, and no clock is read, so the same state always produces the same order, which
+// is what R29's Discover and §9.3's replay need.
 
 import type { CardDef, CardFace, PlayerId } from "@jackioh/shared";
 import { hasKeyword, opponentOf } from "@jackioh/shared";
@@ -19,7 +20,12 @@ import { query, queryCost } from "../catalog";
 import { canAttack } from "../combat";
 import { heroArmorOf, heroDamageCap } from "../damage";
 import { unitView } from "../layers";
-import type { CardInstance, GameState } from "../state";
+import { playActionsFor } from "../playChoices";
+import { runPlaySteps, type PlayAction } from "../playSteps";
+import { createRng } from "../rng";
+import { scriptsFor } from "../scripts";
+import { cloneState, newInstance, type CardInstance, type GameState } from "../state";
+import { settle, type SettleSink } from "../triggers";
 import { activeUnitsOf, firstFreeZone, isLocked, isReserved, slotsOf } from "../zones";
 
 /**
@@ -184,26 +190,184 @@ function drawValue(def: CardDef, face: CardFace): number {
   return value;
 }
 
+// ---------------------------------------------------------------------------
+// The dry run (§10.7: "for each candidate, simulate a dry-run score")
+// ---------------------------------------------------------------------------
+
+/**
+ * How many of one candidate's plays the dry run tries. A play is tried at its strongest price (the
+ * largest X, embiggened when that is affordable) in the first zone it could take, so what varies is
+ * its targets and modes, taken heroes first (`targetRank`): the enemy hero is lethal's target, the
+ * viewer's own a heal's, and the board's units come after them.
+ */
+export const SCORER_DRY_RUN_PLAYS = 8;
+
+/** What playing a candidate now did, read off a copy of the state it was played in. */
+export type DryRun = { lethal: boolean; clears: boolean; heals: boolean };
+
+const NOTHING: DryRun = { lethal: false, clears: false, heals: false };
+
+/** The seed a dry run draws from: its own, so the match's rng is never touched (§9.3). */
+const DRY_RUN_SEED = "zephyrs-dry-run";
+
+/**
+ * Set while a dry run is playing a candidate, so a candidate whose play would ask the scorer again
+ * scores on printed data rather than running a dry run inside a dry run. A dry run is synchronous
+ * and resets it before returning, so no state outlives one call.
+ */
+let dryRunning = false;
+
+/**
+ * The plays a dry run tries: `playChoices.playActionsFor`'s, narrowed to one price per card — the
+ * largest X and the embiggened price when either is affordable, the strongest thing the card can do
+ * now — one zone and one Tribute set, since where a card lands and what it sacrificed are not what
+ * §10.7's three questions ask.
+ */
+function dryRunPlays(state: GameState, viewer: PlayerId, card: CardInstance): PlayAction[] {
+  const all = playActionsFor(state, viewer, card);
+  if (all.length === 0) return [];
+  const x = Math.max(...all.map((action) => action.x ?? 0));
+  const embiggen = all.some((action) => action.embiggen === true);
+  const first = all.find((action) => (action.x ?? 0) === x && (action.embiggen === true) === embiggen);
+  const zone = JSON.stringify(first?.zone ?? null);
+  const tributes = JSON.stringify(first?.tributes ?? []);
+  const priced = all.filter(
+    (action) =>
+      (action.x ?? 0) === x &&
+      (action.embiggen === true) === embiggen &&
+      JSON.stringify(action.zone ?? null) === zone &&
+      JSON.stringify(action.tributes ?? []) === tributes,
+  );
+  // A stable sort, so plays that aim alike keep the order `playActionsFor` gave them.
+  return priced
+    .map((action, at) => ({ action, at, rank: targetRank(viewer, action) }))
+    .sort((a, b) => a.rank - b.rank || a.at - b.at)
+    .slice(0, SCORER_DRY_RUN_PLAYS)
+    .map((entry) => entry.action);
+}
+
+/** Which of a play's targets the dry run tries first: a hero, then anything else (§10.7). */
+function targetRank(viewer: PlayerId, action: PlayAction): number {
+  const aim = action.targets?.[0];
+  if (aim === undefined) return 0;
+  if (aim.pick === "hero") return aim.player === viewer ? 1 : 0;
+  return 2;
+}
+
+/**
+ * Whether playing a card can do anything this turn that §10.7's three questions ask about: a Cry
+ * (a Spell's script is its Cry, §10.9), an aura or a stat hook it brings to the field, a trigger, or
+ * an on-play hook. Anything else — a Trap, which only answers the opponent later (§5.1); a body
+ * whose text is a Death, a turn hook or a flag later plays read — does nothing now that its printed
+ * data does not already say, so it is not played at all.
+ */
+function mayActNow(def: CardDef, radiant: boolean): boolean {
+  if (def.type === "Trap" || def.type === "Field Trap") return false;
+  const scripts = scriptsFor(def.id);
+  const script = radiant ? scripts.radiant : scripts.base;
+  return (
+    script.cry !== undefined ||
+    script.aura !== undefined ||
+    script.setStat !== undefined ||
+    script.onPlayHook !== undefined ||
+    (script.triggers ?? []).length > 0
+  );
+}
+
+/**
+ * §10.7's dry run: the card is put in the viewer's hand on a copy of the state and played now, with
+ * the viewer's own mana, once per play `dryRunPlays` names, and the copy after the play says what it
+ * did. Lethal is available when the enemy hero is dead, or when what the viewer's board can then
+ * send at it this turn finishes it (a Charge unit, a buff, a Taunt removed); it clears the enemy
+ * board when the enemy had units and has none; and it heals when the viewer's hero ends above where
+ * it began. A card whose play asks something is read as it stands at the question.
+ *
+ * The play is made on a copy of `base` (`dryRunBase`), which the candidate joins for its turn and
+ * leaves again, and the copy draws from a seed of its own, so the match's state and rng are untouched
+ * and the ranking stays a pure function of the state (R29, §9.3).
+ */
+export function dryRun(
+  state: GameState,
+  viewer: PlayerId,
+  def: CardDef,
+  radiant: boolean,
+  base: GameState | null = dryRunBase(state, viewer),
+): DryRun {
+  if (base === null || dryRunning || !mayActNow(def, radiant)) return NOTHING;
+  const enemy = opponentOf(viewer);
+  const hand = base.players[viewer].hand;
+  const card = newInstance(base, def.id, viewer, { z: "hand", player: viewer });
+  card.radiant = radiant;
+  hand.push(card);
+  dryRunning = true;
+  try {
+    const enemyUnitsBefore = activeUnitsOf(base, enemy).length;
+    const healthBefore = base.players[viewer].hero.health;
+    // A play aimed at the viewer's own hero can only answer the heal question, which asks nothing
+    // of a hero at SCORER_LOW_HEALTH or more, so it is not played then.
+    const healMatters = healthBefore < SCORER_LOW_HEALTH;
+    const outcome: DryRun = { ...NOTHING };
+    for (const action of dryRunPlays(base, viewer, card)) {
+      if (!healMatters && targetRank(viewer, action) === 1) continue;
+      const trial = cloneState(base);
+      const sink: SettleSink = { state: trial, events: [], rng: createRng(DRY_RUN_SEED, 0) };
+      if (runPlaySteps(sink, viewer, action) !== null) continue;
+      settle(sink);
+
+      const enemyHealth = trial.players[enemy].hero.health;
+      if (trial.result?.winner === viewer || (trial.result === null && enemyHealth <= projectedBoardDamage(trial, viewer))) {
+        outcome.lethal = true;
+      }
+      if (enemyUnitsBefore > 0 && activeUnitsOf(trial, enemy).length === 0) outcome.clears = true;
+      if (trial.players[viewer].hero.health > healthBefore) outcome.heals = true;
+      if (outcome.lethal && outcome.clears && outcome.heals) break;
+    }
+    return outcome;
+  } finally {
+    dryRunning = false;
+    hand.splice(hand.indexOf(card), 1);
+  }
+}
+
+/**
+ * The copy of the state every dry run of one ranking plays on, or null when the viewer cannot play
+ * now: only the active player in the main phase with nothing open can (a rank a test asks of the
+ * other seat has no dry run, and the printed signals alone score it). The copy leaves the history
+ * of actions behind (§9.3's nonce dedupe, §10.8's event window), which nothing a play reads is in.
+ */
+export function dryRunBase(state: GameState, viewer: PlayerId): GameState | null {
+  if (state.result !== null || state.pending !== null || state.active !== viewer || state.phase !== "main") {
+    return null;
+  }
+  const base = cloneState({ ...state, applied: [] });
+  return base;
+}
+
 /** One candidate's score for this state. Pure: the same arguments always give the same number. */
 export function scoreDef(
   state: GameState,
   viewer: PlayerId,
   def: CardDef,
   options: ScorerOptions = {},
+  base: GameState | null = dryRunBase(state, viewer),
 ): Scored {
   const radiant = options.radiant === true;
   const face = faceFor(def, radiant);
   const enemy = opponentOf(viewer);
   const enemyUnits = activeUnitsOf(state, enemy);
+  // What the card's text does, which its printed data cannot say (§10.7's dry run).
+  const played = dryRun(state, viewer, def, radiant, base);
 
   const contribution = lethalContribution(state, viewer, def, face);
   const lethal =
-    contribution > 0 && projectedBoardDamage(state, viewer) + contribution >= state.players[enemy].hero.health;
+    played.lethal ||
+    (contribution > 0 && projectedBoardDamage(state, viewer) + contribution >= state.players[enemy].hero.health);
 
   const kills = killableUnits(state, enemyUnits, face);
-  const clears = enemyUnits.length > 0 && kills >= enemyUnits.length;
+  const clears = played.clears || (enemyUnits.length > 0 && kills >= enemyUnits.length);
 
-  const heals = state.players[viewer].hero.health < SCORER_LOW_HEALTH && healsFromPrintedData(face);
+  const heals =
+    state.players[viewer].hero.health < SCORER_LOW_HEALTH && (played.heals || healsFromPrintedData(face));
 
   const parts = {
     lethal: lethal ? SCORER_WEIGHTS.lethal : 0,
@@ -240,8 +404,10 @@ export function compareScored(a: Scored, b: Scored): number {
 
 /** R29: every non-token Core definition except #97, best first, as a total order. */
 export function rank(state: GameState, viewer: PlayerId, options: ScorerOptions = {}): Scored[] {
+  // One copy for every candidate's dry run: each plays on a copy of it and puts it back as it was.
+  const base = dryRunBase(state, viewer);
   return candidateDefs()
-    .map((def) => scoreDef(state, viewer, def, options))
+    .map((def) => scoreDef(state, viewer, def, options, base))
     .sort(compareScored);
 }
 

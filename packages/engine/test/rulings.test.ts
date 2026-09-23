@@ -158,6 +158,9 @@ const CARDS_HAND_RETURNS_TEST = "../../cards/test/hand-returns.test.ts";
 const CARDS_TRIBUTES_TEST = "../../cards/test/tributes.test.ts";
 /** R215 and R216's proofs: the hunt's fourth round, past its three-round cap. */
 const CARDS_GAME_OVER_TEST = "../../cards/test/game-over.test.ts";
+/** R217 to R219's proofs: the hunt's fifth round. */
+const CARDS_CALL_TO_ARMS_TEST = "../../cards/test/069-call-to-arms.test.ts";
+const CARDS_CORPSE_EATER_TEST = "../../cards/test/089-corpse-eater.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1612,6 +1615,22 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // every random game.
   it("R216 resolves nothing after the check that ends the game", () => {
     provenIn(216, CARDS_GAME_OVER_TEST);
+  });
+
+  // Proved by draw.test.ts "R217 …" (a fixture cast whose script draws, capped as one chain) and the
+  // cards package's plays-and-casts.test.ts "R217 …": CN-Virus cast under /fullsend's Combo draw.
+  it("R217 has a draw a cast-on-draw cast makes continue that cast's chain", () => {
+    provenIn(217, "draw.test.ts", CARDS_PLAYS_AND_CASTS_TEST);
+  });
+
+  // Proved by 069-call-to-arms.test.ts "R218 …": a Rush Token card #33 shuffled in is passed over.
+  it("R218 has a Recruit pass over a unit-token card in the library", () => {
+    provenIn(218, CARDS_CALL_TO_ARMS_TEST);
+  });
+
+  // Proved by 089-corpse-eater.test.ts "R219 …": a unit #46 starved below 0 max health feeds nothing.
+  it("R219 never lets a gained stat be a loss", () => {
+    provenIn(219, CARDS_CORPSE_EATER_TEST);
   });
 });
 

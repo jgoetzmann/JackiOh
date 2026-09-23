@@ -10,8 +10,12 @@
 //  - R215 (round 4, lens L2): a hand card that reaches a graveyard is reset as a card leaving the
 //    field is (R78), so it comes back as the printed card; and #99's crafted card, like every price
 //    a card is given as it reaches a hand, takes its "costs 0" only in that hand.
+//  - R215 (round 5, lenses "card by card" and "engine invariants"): a card landing from the resolving
+//    zone is reset too, so a #95 an earlier Call to Chaos cast carries no link of that chain (R28)
+//    into a play of its own once Reminisce has brought it back.
 
 import type { GameEvent } from "@jackioh/shared";
+import { CALL_TO_CHAOS_CHAIN_CAP, createRng, subsystems } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -29,6 +33,16 @@ const TWINSPELL = "core-079";
 const ZAO_GAO = "core-080";
 const CORPSE_EATER = "core-089";
 const CRAFT = "core-099";
+const MENACE = "core-019";
+const CHAOS = "core-095";
+
+/** A cursor at which a base #95's single roll is `effect`, the pick 095's own tests use (R28). */
+function chaosCursor(seed: string, effect: string): number {
+  for (let cursor = 0; cursor < 500; cursor += 1) {
+    if (subsystems.rollChaosEffects(createRng(seed, cursor), false)[0]?.name === effect) return cursor;
+  }
+  throw new Error(`no cursor below 500 rolls "${effect}" from seed "${seed}"`);
+}
 
 const AT_P2 = [{ pick: "hero", player: "p2" } as const];
 
@@ -156,5 +170,37 @@ describe("R215: a hand card that reaches a graveyard is the printed card again",
     const crafted = g.card(burned[0]?.instanceId ?? "");
     expect(crafted.zone.z).toBe("graveyard");
     expect(crafted.costOverride).toBeUndefined();
+  });
+});
+
+describe("R215: a card that lands from the resolving zone is the printed card again", () => {
+  it("R215 a Call to Chaos cast at the end of a chain, taken back from the graveyard and played, starts a chain of its own (R28, R87)", () => {
+    // The played #95 stands in for the 19th link of a chain, which is how 095's own tests pin R28's
+    // counter. Its roll casts the 20th link, which R87 sends to the graveyard as it resolves, and
+    // #72 Reminisce takes that card back. Played from hand, it is a new play, so a new chain from
+    // nothing — and its "cast a random Call to Chaos" casts one, where the old link at the cap cast
+    // nothing. Hearthstone likewise returns a card from the graveyard without what its last trip
+    // left on it.
+    const seed = "inv-r5-chaos-chain";
+    const s = scenario({ seed, p1: { hand: [CHAOS, REMINISCE, MENACE], mana: 20 }, p2: { hand: [MENACE] } });
+    s.card(CHAOS).memory[subsystems.CHAOS_CHAIN_KEY] = CALL_TO_CHAOS_CHAIN_CAP - 1;
+    s.state.rngCursor = chaosCursor(seed, "recast");
+    s.play(CHAOS);
+
+    const plays = s.events.filter(
+      (event): event is Extract<GameEvent, { type: "cardPlayed" }> => event.type === "cardPlayed" && event.defId === CHAOS,
+    );
+    expect(plays).toHaveLength(2); // the play and the chain's 20th cast
+    const lastLink = (plays[1] as { instanceId: string }).instanceId;
+    s.expectInZone(lastLink, "graveyard");
+    // It landed as the printed card: the chain's count stayed with the chain.
+    expect(s.card(lastLink).memory[subsystems.CHAOS_CHAIN_KEY]).toBeUndefined();
+
+    s.play(REMINISCE).answer(lastLink);
+    s.expectInZone(lastLink, "hand");
+
+    s.state.rngCursor = chaosCursor(seed, "recast");
+    s.play(lastLink);
+    expect(s.lastEvents.filter((event) => event.type === "cardPlayed" && event.defId === CHAOS)).toHaveLength(2);
   });
 });

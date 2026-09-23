@@ -553,14 +553,20 @@ function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): 
   }
 }
 
-/** #78 /fullsend: "this turn your cards gain 'Combo: draw 1'" — a Combo with no X is Combo 1 (§6.2). */
+/**
+ * #78 /fullsend: "this turn your cards gain 'Combo: draw 1'" — a Combo with no X is Combo 1 (§6.2).
+ * Each live rider is its own draw, and "draw N" is N separate draws (§2.4, R58), so the riders are
+ * one `draw` of their total: a draw that pauses owes the rest to the answer (R113), and one whose
+ * cast ended the game ends the rest with it (R216) — looping over the riders drew on over both.
+ */
 function comboDrawStep(sink: EngineSink, run: PlayRun): void {
   const state = sink.state;
   if (playedEarlierThisTurn(state, run.player) < 1) return;
-  for (const mod of [...state.players[run.player].mods]) {
-    if (mod.kind !== "comboDraw" || !modifierIsLive(state, mod)) continue;
-    draw(sink, run.player, Math.max(0, mod.amount));
+  let draws = 0;
+  for (const mod of state.players[run.player].mods) {
+    if (mod.kind === "comboDraw" && modifierIsLive(state, mod)) draws += Math.max(0, mod.amount);
   }
+  if (draws > 0) draw(sink, run.player, draws);
 }
 
 /**

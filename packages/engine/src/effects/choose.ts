@@ -193,10 +193,15 @@ export function chooseFromHand(args: {
 /**
  * §6.3 Discover: choose 1 of 3, drawn without replacement from the stated pool and shown only to
  * the chooser. The options are definitions, so the resume step decides what to do with the pick.
+ *
+ * `query` may be a function of the context, read when the effect applies rather than when the hook
+ * builds its list: a hook is rebuilt each time a paused list resumes (`prompts.runResume`), and a
+ * pool that costs something to build — #97 Zephyrs' scorer plays every candidate (§10.7) — is then
+ * built once, for the Discover that uses it, and not again for the effects after it.
  */
 export function discoverFromCatalog(args: {
   step: string;
-  query?: CatalogQueryArgs;
+  query?: CatalogQueryArgs | ((ctx: EffectContext) => CatalogQueryArgs);
   count?: number;
   prompt?: string;
   data?: Record<string, unknown>;
@@ -205,9 +210,10 @@ export function discoverFromCatalog(args: {
     kind: "discoverFromCatalog",
     apply(ctx): void {
       const self = ctx.self;
+      const asked = typeof args.query === "function" ? args.query(ctx) : args.query;
       // §5.1: a random pool never offers the card that generated it.
       const pool = query(
-        excludingIndex(args.query ?? {}, self === null ? undefined : defOf(ctx.state, self.defId).index),
+        excludingIndex(asked ?? {}, self === null ? undefined : defOf(ctx.state, self.defId).index),
       );
       if (pool.length === 0) return;
 

@@ -378,7 +378,9 @@ describe("#95 Call to Chaos — base, the ten effects", () => {
     const cast = s.card(must(plays[1], "the cast card's event").instanceId);
     expect(cast.defId).toBe(CHAOS);
     expect(cast.radiant).toBe(false);
-    expect(cast.memory[subsystems.CHAOS_CHAIN_KEY]).toBe(1);
+    // It was the chain's first cast while it resolved, and it has landed as the printed card again
+    // (R215): the chain's count stays with the chain, never with the card a graveyard holds.
+    expect(cast.memory[subsystems.CHAOS_CHAIN_KEY]).toBeUndefined();
 
     // R87: a card cast from no zone goes to the caster's graveyard when it resolves, which is what
     // feeds Gravedigger and Reminisce down a long chain.
@@ -415,9 +417,11 @@ describe("#95 Call to Chaos — the two caps", () => {
     const s = chaos("recast", { chain: CALL_TO_CHAOS_CHAIN_CAP - 1 });
     const plays = chaosPlays(s);
     expect(plays).toHaveLength(2);
-    // The card it cast is AT the cap, so whatever that one rolled, it cast nothing further.
+    // The card it cast is AT the cap, so whatever that one rolled, it cast nothing further — the
+    // two plays above are the whole chain — and it landed as the printed card again (R215).
     const cast = s.card(must(plays[1], "the cast card's event").instanceId);
-    expect(cast.memory[subsystems.CHAOS_CHAIN_KEY]).toBe(CALL_TO_CHAOS_CHAIN_CAP);
+    s.expectInZone(cast, "graveyard");
+    expect(cast.memory[subsystems.CHAOS_CHAIN_KEY]).toBeUndefined();
   });
 
   it("R28 the counter is instance state, so two Calls in one turn do not share it", () => {

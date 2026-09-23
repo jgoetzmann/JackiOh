@@ -247,7 +247,8 @@ describe("a prompt inside §2.4's cast-on-draw chain (R58, R113, R117, R122)", (
     // R113 and R117: the remainder is owed — one more draw, continuing the chain at the count it
     // had. §9.3: plain data, so no closure and no captured library is held across the prompt.
     const parked = only(owedWork(state, DRAW_CHAIN_WORK));
-    expect(owedDrawChainOf(parked.resume)).toEqual({ player: "p1", chain: 2 });
+    // R217: the chain is the draw's own, so the item that finishes it closes it (`owns`).
+    expect(owedDrawChainOf(parked.resume)).toEqual({ player: "p1", chain: 2, owns: true });
     expect(JSON.parse(JSON.stringify(parked))).toEqual(parked);
     // R113's order, innermost first: the effects of the Cry after the one that asked, then the
     // cast's own tail (§10.5 steps 6 and 7), and only last the draw the chain still owes.
@@ -262,6 +263,8 @@ describe("a prompt inside §2.4's cast-on-draw chain (R58, R113, R117, R122)", (
     expect(owedDrawChainOf(only(owedWork(round, DRAW_CHAIN_WORK)).resume)).toEqual({
       player: "p1",
       chain: 2,
+      // R217: the draw that began this chain finishes it, so the item closes it.
+      owns: true,
     });
 
     const done = answer(round);

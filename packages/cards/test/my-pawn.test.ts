@@ -9,8 +9,10 @@
 //  - §3.2, §6.3 Exile: a My Pawn its own AI turn exiled stays in exile.
 //  - R152, §3.2: its effect is the rest of the turn it took, so it is in the graveyard by the time
 //    the next turn starts.
+//  - Round 5 (lens L7). R168, §10.10: the AI turn's events reach the view once, after the
+//    declaration that handed the turn over, not a second time ahead of it.
 
-import type { CardInstance } from "@jackioh/engine";
+import { viewFor, type CardInstance } from "@jackioh/engine";
 import type { GameEvent } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
@@ -135,5 +137,30 @@ describe("§3.2, §5.1: where a fired My Pawn ends up", () => {
     expect(g.state.active).toBe("p2");
     g.expectHealth("p2", 5);
     g.expectInZone(pawn, "hand");
+  });
+});
+
+describe("§10.8, R168: My Pawn's AI turn reaches the view once, in order", () => {
+  it("R168 the view's events after My Pawn's AI turn are that action's events once each, in the order they happened (§10.10, R44)", () => {
+    const s = scenario({
+      seed: "hunt-cw2-two-pawns",
+      p1: { field: [SORCERER], library: [GIGA, GIGA, GIGA] },
+      p2: {
+        health: 5,
+        hand: [STOCKPILE],
+        backrow: [{ def: MY_PAWN, lane: 1, faceUp: false }],
+        library: [GIGA, GIGA],
+      },
+    });
+    // A lethal attack: My Pawn cancels it and hands the rest of p1's turn to the AI (R44), which
+    // ends it, so p2's turn starts inside this one action.
+    s.attack(SORCERER, "hero");
+    expect(s.lastEvents.filter((event) => event.type === "turnEnded")).toHaveLength(1);
+
+    // The scenario began with no history, so the view's stream is exactly this action's events: the
+    // declaration and the cancel first, then the AI's turn end and p2's turn start, each once. The
+    // AI's own actions are part of this one (`aiPolicy.adoptState` keeps the enclosing history).
+    const seen = viewFor(s.state, "p2").events.map((event) => event.type);
+    expect(seen).toEqual(s.lastEvents.map((event) => event.type));
   });
 });

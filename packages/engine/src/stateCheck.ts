@@ -30,7 +30,7 @@ import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, hasKeyword } from "@jackioh/shared";
 import { unitView } from "./layers";
 import { endOrphanedModifiers, installLastingModifiers } from "./modifiers";
-import { applyResumable, type ResumePlan } from "./prompts";
+import { SELF_KEY, applyResumable, type ResumePlan } from "./prompts";
 import type { EngineSink } from "./resolve";
 import { makeContext } from "./resolve";
 import { scriptOf } from "./scripts";
@@ -374,6 +374,9 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
       controller: snapshot.controller,
       targets: resumeAt?.targets ?? [],
       modes: resumeAt?.modes ?? [],
+      // R89: a prompt this hook opens is answered in a later action, when the instance on the board
+      // is R78's reset one; the step it re-enters reads this snapshot instead (`prompts.runResume`).
+      data: { [SELF_KEY]: snapshot },
     });
     const effects = hook(ctx);
     // A fused Death runs every ingredient's list (R77, R102), which continues part by part.

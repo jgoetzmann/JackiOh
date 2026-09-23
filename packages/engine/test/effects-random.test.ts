@@ -246,10 +246,10 @@ describe("radiantChance (§8.2 #42, §6.1 Lucky X, §10.7, R32, R60)", () => {
     );
   });
 
-  it("R60 never re-rolls a card that is already Radiant, so the draw count is the non-Radiant count", () => {
+  it("§8 #42 rolls every remaining card, a Radiant one too, and cues every success on a hidden card (R177)", () => {
     const state = game("eug-b");
     const library = setLibrary(state, "p1", Array.from({ length: 6 }, () => body.id));
-    // Flag two of them up front; nothing may unset the flag, so they are out of the pool (§6.3).
+    // Flag two of them up front. #42 is no random pick (R60), so they are rolled like the rest.
     const alreadyRadiant = [0, 2];
     for (const at of alreadyRadiant) {
       const card = library[at];
@@ -258,16 +258,15 @@ describe("radiantChance (§8.2 #42, §6.1 Lucky X, §10.7, R32, R60)", () => {
 
     const sink = run(state, [radiantChance({ zone: "library", chance: 1 })], { controller: "p1" });
 
-    // Four rolls for the four non-Radiant cards, not six.
-    expect(draws(sink)).toBe(4);
-    // At chance 1 every rolled card hits, so all six are Radiant — but only four events fired.
+    // Six rolls for the six cards: how many draws the effect takes does not hang on how many of a
+    // library nobody may read were Radiant already (§9.1).
+    expect(draws(sink)).toBe(6);
+    // At chance 1 every roll hits, and a library card is hidden from both seats, so every success is
+    // cued, changed or not (R177): the cues cannot count the Radiant ones either.
     expect(library.every((card) => card.radiant)).toBe(true);
-    expect(eventsOfType(sink.events, "radiantSet")).toHaveLength(4);
-    expect(
-      eventsOfType(sink.events, "radiantSet").every(
-        (event) => !alreadyRadiant.some((at) => library[at]?.id === event.instanceId),
-      ),
-    ).toBe(true);
+    expect(eventsOfType(sink.events, "radiantSet").map((event) => event.instanceId)).toEqual(
+      library.map((card) => card.id),
+    );
   });
 
   it("§6.1 Lucky 1 takes two rolls a card and keeps the success, so #42's radiant face flags more", () => {

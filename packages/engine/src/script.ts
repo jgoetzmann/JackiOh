@@ -29,6 +29,12 @@ export type EffectContext = {
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */
   self: CardInstance | null;
+  /**
+   * R127: the definition whose script is running, set where a continuation is re-entered
+   * (`prompts.runResume`), because `self` is null once the card has ceased to exist and a step that
+   * asks again must still name its script. Absent elsewhere, where `self` names it.
+   */
+  defId?: string;
   /** Whether the radiant text is the one running (§5.2). */
   radiant: boolean;
   targets: Selection[];

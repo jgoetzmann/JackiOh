@@ -27,7 +27,7 @@ import { runTrapWindow } from "./traps";
 import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
 import { moveSourcedModifiers } from "./modifiers";
 import { leftFieldSince } from "./stays";
-import { owe, registerWorkHandler } from "./work";
+import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
 /**
@@ -593,15 +593,79 @@ function isEnemyOf(attacker: CardInstance, target: AttackTarget): boolean {
  * through Reborn before its turn is not the unit the run named, so it is passed over in silence like
  * any attacker that is gone (R96).
  */
-export function forceAttacksOn(sink: EngineSink, attackers: readonly CardInstance[], target: AttackTarget): void {
-  const from = sink.events.length;
-  for (const attacker of attackers) {
+export function forceAttacksOn(
+  sink: EngineSink,
+  attackers: readonly CardInstance[],
+  target: AttackTarget,
+  from = sink.events.length,
+): void {
+  for (let at = 0; at < attackers.length; at += 1) {
+    const attacker = attackers[at];
+    if (attacker === undefined) continue;
     if (sink.state.result !== null) return;
     if (target.kind === "unit") {
       if (!isActiveOnField(sink.state, target.instance)) return;
       if (leftFieldSince(sink.events, from, target.instance.id)) return;
     }
+    // R53, R113: the check after the last combat collected a unit whose Death asks something, and
+    // that check belongs to that combat (R59). The run waits for the answer rather than walking on
+    // over the prompt: the attackers still to come are owed, and the answer's drain brings them.
+    if (isPaused(sink)) {
+      oweForcedRun(sink, attackers.slice(at), target, from);
+      return;
+    }
     if (leftFieldSince(sink.events, from, attacker.id)) continue;
     forceAttack(sink, attacker, target);
   }
 }
+
+/**
+ * R113: the `resume.hook` of a forced run a Death hook's prompt stopped between two combats: the
+ * attackers it has not reached and the target, by id, since R44's AI turn can replace every
+ * instance before the answer (the same reason `ATTACK_WINDOW_WORK` carries ids).
+ */
+export const FORCED_RUN_WORK = "@forcedRun";
+
+type OwedForcedRun = { attackers: string[]; target: { unit: string } | { hero: PlayerId } };
+
+/**
+ * Park the rest of a run at the pause. R174 is read up to here — an attacker the run named that has
+ * left the field since it began is dropped, and a target that has left it ends the run — because the
+ * answer is a new action whose events begin after the pause, and that is all the resumed run reads.
+ */
+function oweForcedRun(sink: EngineSink, rest: readonly CardInstance[], target: AttackTarget, from: number): void {
+  if (sink.state.result !== null) return;
+  if (target.kind === "unit" && leftFieldSince(sink.events, from, target.instance.id)) return;
+  const attackers = rest.filter((unit) => !leftFieldSince(sink.events, from, unit.id)).map((unit) => unit.id);
+  if (attackers.length === 0) return;
+  const owed: OwedForcedRun = {
+    attackers,
+    target: target.kind === "unit" ? { unit: target.instance.id } : { hero: target.player },
+  };
+  owe(sink, { defId: "", hook: FORCED_RUN_WORK, step: "run", radiant: false, data: { run: owed } });
+}
+
+/** `work.ts`'s handler for a forced run a prompt stopped: the same run, where it stopped (R53). */
+function runOwedForcedRun(sink: EngineSink, item: WorkItem): void {
+  const raw: unknown = item.resume.data.run;
+  if (raw === null || typeof raw !== "object") return;
+  const owed = raw as Partial<OwedForcedRun>;
+  if (!Array.isArray(owed.attackers) || owed.target === undefined) return;
+  let target: AttackTarget;
+  if ("unit" in owed.target) {
+    const instance = findInstance(sink.state, owed.target.unit);
+    if (instance === undefined) return;
+    target = { kind: "unit", instance };
+  } else {
+    target = { kind: "hero", player: owed.target.hero };
+  }
+  const attackers = owed.attackers.flatMap((id) => {
+    const unit = typeof id === "string" ? findInstance(sink.state, id) : undefined;
+    return unit === undefined ? [] : [unit];
+  });
+  // Everything this action has done happened after the pause, which is where the run's R174 reading
+  // left off (`oweForcedRun`).
+  forceAttacksOn(sink, attackers, target, 0);
+}
+
+registerWorkHandler(FORCED_RUN_WORK, runOwedForcedRun);

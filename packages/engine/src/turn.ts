@@ -88,8 +88,23 @@ function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId):
     if (!sink.state.delayed.some((due) => due.id === effect.id)) continue;
     dropDelayed(sink.state, effect.id);
     runResume(sink, effect.resume, { controller: effect.owner });
+    // R59: the check runs after the whole delayed effect, never between its parts. One that asked
+    // is not whole yet — the answer finishes it — so the check is owed to the step that picks the
+    // boundary up after it (`checkBeforeDelayed`), before the next delayed effect runs (R174).
+    if (isPaused(sink)) return;
     stateCheck(sink);
   }
+}
+
+/**
+ * The owed `delayed` step of either boundary: a delayed effect (or the trap window before them)
+ * paused, and the answer has finished it by the time this runs, so its state check comes first
+ * (R59) — a unit it killed has died before the next delayed effect meets the board (R174: #50's
+ * steal fizzles on it). False when that check ended the game or paused on a Death hook's prompt.
+ */
+function checkBeforeDelayed(sink: EngineSink): boolean {
+  stateCheck(sink);
+  return !isPaused(sink);
 }
 
 /** Exertion and the once-per-turn flags reset at the controller's own turn start (§4.1). */
@@ -221,7 +236,9 @@ function startOfTurnDraw(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
 
   draw(sink, player, 1);
-  stateCheck(sink);
+  // R59: after the draw as a whole. A cast-on-draw card whose cast is asking something is not
+  // whole yet: the chain it owes runs the check once the answer has finished the cast (§2.4, R158).
+  if (!isPaused(sink)) stateCheck(sink);
   settle(sink);
   if (state.result !== null) return;
   if (state.pending !== null) {
@@ -246,6 +263,10 @@ function runOwedStartOfTurn(sink: EngineSink, item: WorkItem): void {
   if (player === null) return;
 
   if (item.resume.step === START_DELAYED_STEP) {
+    if (!checkBeforeDelayed(sink)) {
+      if (sink.state.result === null) oweStartOfTurn(sink, player, START_DELAYED_STEP);
+      return;
+    }
     startOfTurnDelayed(sink, player);
     return;
   }
@@ -468,6 +489,10 @@ function runOwedEndOfTurn(sink: EngineSink, item: WorkItem): void {
   }
 
   // The only other step this module parks: §2.2's tail, whose window has already had its event.
+  if (!checkBeforeDelayed(sink)) {
+    if (sink.state.result === null) oweEndOfTurn(sink, player, END_DELAYED_STEP);
+    return;
+  }
   endOfTurnAfterWindow(sink, player);
 }
 

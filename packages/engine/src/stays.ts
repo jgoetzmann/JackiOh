@@ -32,8 +32,12 @@ export function leftFieldSince(events: readonly GameEvent[], from: number, insta
       case "destroyed":
       case "bounced":
       case "exiled":
-      case "transformed":
         if (event.instanceId === instanceId) return true;
+        break;
+      case "transformed":
+        // A Replace puts a new card in the old one's place; a Vanilla (§6.3) names the same card on
+        // both sides of the event, and a card whose text went away has not left anything.
+        if (event.instanceId === instanceId && event.newInstanceId !== instanceId) return true;
         break;
       default:
         break;

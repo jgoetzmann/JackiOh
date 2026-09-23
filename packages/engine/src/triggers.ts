@@ -263,9 +263,9 @@ const TRIGGER_STEP = "trigger" as unknown as Resume["step"];
  * entry by its number, so a hand card's entry borrows the counter's current value without moving it,
  * told apart by the queue's length.
  */
-function nextEntryId(state: GameState, hidden = false): { id: string; seq: number } {
+function nextEntryId(state: GameState, hidden = false, prefix = "h"): { id: string; seq: number } {
   const seq = state.nextSeq;
-  if (hidden) return { id: `h${seq}.${state.triggerQueue.length}`, seq };
+  if (hidden) return { id: `${prefix}${seq}.${state.triggerQueue.length}`, seq };
   state.nextSeq += 1;
   return { id: `t${seq}`, seq };
 }
@@ -361,7 +361,10 @@ export function runHooksInTriggerOrder(sink: SettleSink, hook: HookName, only?: 
  */
 function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]): QueuedTrigger {
   const state = sink.state;
-  const { id, seq } = nextEntryId(state);
+  // R177: whether this entry exists at all hangs on which traps are still owed the event, and a
+  // face-down one is read by its controller alone (R33) — a second #96 watches a declaration where
+  // a Sheepish does not — so it takes no number from the counter the modifiers' ids come from.
+  const { id, seq } = nextEntryId(state, true, "o");
   const entry: QueuedTrigger = {
     id,
     seq,
@@ -511,12 +514,10 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
     ...makeContext(sink, card, { controller, data: entry.resume.data }),
     event,
   };
-  // Resumable, so a prompt inside the list stops the list there instead of being stepped over.
-  // `prompts.hookFor` resolves a continuation by `Script` key, and a `TriggerDef` lives in an
-  // array, so the parked tail of a trigger's own list is only re-enterable once M3-T3 teaches it
-  // `hook: "triggers" | "handTriggers"` with the trigger id as the step. Until then a trigger that
-  // asks mid-list continues in its card's `resume` table, which is where every §6.3 choose effect
-  // already sends the answer.
+  // Resumable, so a prompt inside the list stops the list there instead of being stepped over. The
+  // parked tail names the trigger's id as its hook, and `work.scriptStepFor` re-enters a trigger by
+  // its id, rebuilding its list from the event the entry captured (R113); the answer itself goes to
+  // the card's `resume` table, where every §6.3 choose effect sends it.
   applyResumable(sink, ctx, { ...entry.resume, owner: controller }, def.run(ctx));
 }
 

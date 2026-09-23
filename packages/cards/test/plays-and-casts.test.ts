@@ -10,8 +10,10 @@
 //  - R65: X is a play-time choice, so an X-cost Spell back in hand costs 0 again.
 //  - R210: the zone a play names is held while its Tribute is paid, and a tributed Reborn unit
 //    comes back (§6.1, §6.3 "counts as a death").
+//  - Round 5, lens L8. R217: a draw a cast-on-draw cast makes continues that cast's chain, so
+//    R58's cap bounds a CN-Virus chain under /fullsend's Combo draw, which recursed without end.
 
-import { effectiveCost } from "@jackioh/engine";
+import { CAST_ON_DRAW_CHAIN_CAP, effectiveCost } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -30,6 +32,9 @@ const GIFTED = "core-064";
 const ROCK = "core-066";
 const FULLSEND = "core-078";
 const TWINSPELL = "core-079";
+const INFINITE_RESERVES = "core-075"; // an empty library gives a Rush Token card, not fatigue
+const GOING_LONG = "core-084"; // hero Armor 2, so CN-Virus's 1 damage is absorbed
+const CN_VIRUS = "core-090-1"; // Cast on draw: take 1 damage; shuffle 2 copies of this into your library
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
 describe("R70: a cast-on-draw card is cast through §10.5's steps, and is whole before the draw repeats", () => {
@@ -244,5 +249,33 @@ describe("R210: the Tribute a play pays", () => {
     expect(g.unit("p1", 1)?.id).toBe(rock.id);
     const units = g.state.players.p1.units.flatMap((pile) => pile ?? []);
     expect(units.some((card) => card.defId === RIGHT_HOUSE && card.id !== guard.id)).toBe(true);
+  });
+});
+
+describe("R217: a draw a cast makes continues its chain", () => {
+  it("R217 a CN-Virus cast under /fullsend's Combo draw is one chain, bounded by R58's cap (§2.4, R70, §9.3)", () => {
+    // /fullsend gives every card p1 plays this turn "Combo: draw 1", and a cast is a play (R70), so
+    // each CN-Virus cast draws once more before its own script shuffles two copies back in. With the
+    // Armor absorbing the virus's damage and Infinite Reserves standing in for fatigue nothing else
+    // ends it: counted as chains of their own, the nested draws recursed until the call stack ran out.
+    const g = scenario({
+      p1: {
+        hand: [FULLSEND, VANILLA],
+        backrow: [GOING_LONG, INFINITE_RESERVES],
+        library: [CN_VIRUS],
+        mana: 4,
+      },
+      p2: { hand: [VANILLA], field: [VANILLA], library: [VANILLA, VANILLA] },
+    });
+    g.play(FULLSEND);
+
+    // §9.3: `reduce` returns a state (or refuses the action); it never throws on a legal play.
+    expect(() => g.play(VANILLA)).not.toThrow();
+    expect(g.state.pending).toBeNull();
+    // The Vanilla's Combo draw began the chain, and every CN-Virus cast in it counts toward one cap.
+    const casts = g.lastEvents.filter((event) => event.type === "cardPlayed" && event.defId === CN_VIRUS);
+    expect(casts.length).toBeGreaterThan(0);
+    expect(casts.length).toBeLessThanOrEqual(CAST_ON_DRAW_CHAIN_CAP);
+    expect(g.state.castChain).toBeUndefined();
   });
 });

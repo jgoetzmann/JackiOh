@@ -14,6 +14,10 @@
 //  - Round 4, lens L2. R77, R175: a Fuse onto a token summoned X/X sums that X/X, not the printed
 //    0/0, and the Bread Token's Armor X stands for its own Armor only. R35, §3.2: a Transform
 //    replaces a card in a Locked zone, since the Lock refuses summons and a Replace is none.
+//  - Round 5, lens L2. R174: a later part of one effect list is aimed at the stay the play chose, so
+//    a fused card's part fizzles on a card an earlier part took off the field — #68's damage on the
+//    meal's Reborn body, #61's copy of a card in a graveyard, #50's steal of a card bounced and
+//    replayed. #85 fuses the opponent's played card onto a unit, which is bounced and played again.
 
 import type { Selection } from "@jackioh/shared";
 import { effectiveCost, type CardInstance } from "@jackioh/engine";
@@ -24,6 +28,10 @@ const RIGHT_HOUSE = "core-003";
 const STOCKPILE = "core-005";
 const MAGIC_JAMMED = "core-036";
 const TRANSMOGULATE = "core-083";
+const MANA_WELL = "core-006";
+const TIMMY = "core-011";
+const POSTDOC = "core-061";
+const SORCERER = "core-068";
 const COMBO_INDEX = "core-093";
 const HEROIC_POWER = "core-098";
 const VANILLA = "core-008";
@@ -53,6 +61,13 @@ function unitAt(g: Scenario, player: "p1" | "p2", lane: number): CardInstance {
   const card = g.unit(player, lane);
   if (card === null) throw new Error(`setup: ${player} should hold a unit in lane ${lane}`);
   return card;
+}
+
+/** Hand the turn over until `player` is the active one (R82 can end a turn with nothing left in it). */
+function untilActive(g: Scenario, player: "p1" | "p2"): void {
+  if (g.state.active !== player) g.endTurn();
+  if (g.state.active !== player) g.endTurn();
+  expect(g.state.active).toBe(player);
 }
 
 /** Every card in a unit zone, top first (§3.2). */
@@ -376,5 +391,115 @@ describe("R35, §3.2: a Transform replaces the occupant of a Locked zone", () =>
     g.play(TRANSMOGULATE);
     expect(g.backrow("p1", 1)?.defId).toBe(COMBO_INDEX);
     g.expectInZone(power, "gone");
+  });
+});
+
+describe("R174: a later part of one Cry meets the stay the play chose", () => {
+  it("R174 a fused Cube+Sorcerer's damage aimed at the meal does not land on the meal's Reborn body (R83)", () => {
+    const g = scenario({
+      p1: { hand: [CUBE, VANILLA], library: [...LIBRARY] },
+      p2: {
+        hand: [{ def: SILAS, radiant: true }, SAINTESS, VANILLA],
+        field: [{ def: SORCERER, lane: 5 }],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        library: [...LIBRARY],
+      },
+    });
+    const sorcerer = unitAt(g, "p2", 5);
+    // p1 plays the Cube with nothing to eat (R41); p2's #85 fuses it onto the Sorcerer (R77).
+    g.play(CUBE, { zone: 2 });
+    const fused = g.card(sorcerer);
+    expect(fused.defId).not.toBe(SORCERER);
+    g.endTurn();
+    // p2's radiant Silas rotates right: the fused unit in lane 5 would cross, so it is bounced to
+    // p2's hand costing 0 (§8 #52 radiant, R14).
+    g.play(g.hand("p2").find((card) => card.defId === SILAS) as CardInstance, { zone: 3, modes: ["right"] });
+    g.expectInZone(fused, "hand");
+    g.play(SAINTESS, { zone: 1 });
+    const saintess = unitAt(g, "p2", 1);
+    // Replayed: the fused Cry runs the Cube's part (eat the Saintess) and then the Sorcerer's
+    // (4 damage), both aimed at the Saintess.
+    g.play(fused, { zone: 5, targets: [...at(saintess), ...at(saintess)] });
+    // The meal died and came back through Reborn (§4.5 step 4), a new arrival (R83): the damage aimed
+    // at the stay that died fizzles (R174), so the body stands at 1 health.
+    g.expectInZone(saintess, "field");
+    expect(g.card(saintess).rebornSpent).toBe(true);
+    g.expectStats(saintess, { health: 1 });
+  });
+
+  it("R174 a fused Cube+Postdoc summons no copy of the meal its own Cube part sacrificed (R57)", () => {
+    const g = scenario({
+      p1: { hand: [CUBE, VANILLA], library: [...LIBRARY] },
+      p2: {
+        hand: [{ def: SILAS, radiant: true }, TIMMY, VANILLA],
+        field: [{ def: POSTDOC, lane: 5 }],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        library: [...LIBRARY],
+      },
+    });
+    const postdoc = unitAt(g, "p2", 5);
+    g.play(CUBE, { zone: 2 });
+    const fused = g.card(postdoc);
+    expect(fused.defId).not.toBe(POSTDOC);
+    g.endTurn();
+    g.play(g.hand("p2").find((card) => card.defId === SILAS) as CardInstance, { zone: 3, modes: ["right"] });
+    g.expectInZone(fused, "hand");
+    g.play(TIMMY, { zone: 1 });
+    const timmy = unitAt(g, "p2", 1);
+    const before = g.events.length;
+    // The Cube's part eats Timmy, and the Postdoc's part asks for a Vanilla copy of the same Timmy.
+    g.play(fused, { zone: 5, targets: [...at(timmy), ...at(timmy)] });
+    g.expectInZone(timmy, "graveyard");
+    // Timmy's stay on the field ended with the sacrifice: the copy aimed at it fizzles (R174), rather
+    // than a copy being made of a card in a graveyard.
+    const copies = g.events
+      .slice(before)
+      .filter((event) => event.type === "summoned" && event.defId === TIMMY);
+    expect(copies).toEqual([]);
+  });
+
+  it("R174 a fused Silas+Kpop's delayed steal fizzles on a target the Silas part bounced, even once it is replayed (R76, R14)", () => {
+    const g = scenario({
+      p1: {
+        hand: [SILAS, VANILLA, VANILLA, VANILLA],
+        backrow: [{ def: MANA_WELL, lane: 1 }, { def: MANA_WELL, lane: 2 }],
+        library: [...LIBRARY],
+      },
+      p2: {
+        hand: [MAGIC_JAMMED, FLOOD, VANILLA, VANILLA],
+        field: [{ def: KPOP, lane: 3 }],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        library: [...LIBRARY],
+      },
+    });
+    const kpop = unitAt(g, "p2", 3);
+    const jammed = g.backrow("p1", 1) as CardInstance;
+    const prey = g.backrow("p1", 2) as CardInstance;
+    // Turn 9, p1: Silas rotates right (from p1's seat: p1's backrow 1 -> 2, 2 -> 3; p2's Kpop 3 -> 2),
+    // then p2's #85 fuses the played Silas onto the Kpop: the fused Cry runs Silas's part first.
+    g.play(SILAS, { zone: 3, modes: ["right"] });
+    const fused = g.card(kpop);
+    expect(fused.defId).not.toBe(KPOP);
+    expect(g.backrow("p1", 3)?.id).toBe(prey.id);
+    expect(g.backrow("p1", 2)?.id).toBe(jammed.id);
+    g.endTurn();
+    // Turn 10, p2: Magic Jammed locks p1's backrow lane 2, and Flood returns the fused unit to hand.
+    g.play(MAGIC_JAMMED, { targets: at(jammed) });
+    g.play(FLOOD);
+    g.expectInZone(fused, "hand");
+    untilActive(g, "p1");
+    untilActive(g, "p2");
+    // Turn 12, p2: the fused card again. Silas's part rotates right (from p2's seat p1's backrow
+    // 3 -> 2), and lane 2 is Locked, so the prey is bounced to p1's hand (R14); the Kpop part then
+    // schedules the steal of the prey, which has already left the field.
+    g.play(fused, { zone: 1, modes: ["right"], targets: at(prey) });
+    g.expectInZone(prey, "hand");
+    // Turn 13, p1 plays the prey again: a new arrival (R78, R83).
+    untilActive(g, "p1");
+    g.play(prey, { zone: 4 });
+    g.expectInZone(prey, "field");
+    // Turn 14, p2's start of turn: the steal was aimed at a stay that had already ended (R174, R76).
+    untilActive(g, "p2");
+    expect(g.card(prey).controller).toBe("p1");
   });
 });

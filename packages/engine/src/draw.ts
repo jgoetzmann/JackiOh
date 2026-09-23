@@ -12,6 +12,7 @@ import { flagsOf, scriptOf } from "./scripts";
 import {
   newInstance,
   type CardInstance,
+  type GameState,
   type PendingChoice,
   type Resume,
   type WorkItem,
@@ -166,8 +167,36 @@ export const DRAW_CHAIN_WORK = "@drawChain";
 
 const DRAW_CHAIN_STEP = "chain";
 
-/** R58: one more draw continuing a chain, and the count it must continue from. */
-export type OwedDrawChain = { player: PlayerId; chain: number };
+/**
+ * R58: one more draw continuing a chain, and the count it must continue from. `owns` is set when
+ * the chain is the one a draw of its own began, rather than one a draw inside some cast of it
+ * continues (R217), so the item that finishes it is the one that closes `state.castChain`.
+ */
+export type OwedDrawChain = { player: PlayerId; chain: number; owns: boolean };
+
+/**
+ * Where a draw stands in a cast-on-draw chain: the casts the chain has made so far, and whether
+ * this draw's chain is its own to close (R217). A draw that continues a chain after a cast passes
+ * its link on; a fresh draw — "draw N", a Combo draw, #30's named draw — reads it off the state.
+ */
+export type ChainLink = { chain: number; owns: boolean };
+
+/**
+ * R217: a fresh draw made while a chain is running — by one of the chain's casts, whose Combo draw
+ * or own "draw 1" is part of the cast — continues that chain's count instead of starting its own, so
+ * R58's cap bounds everything one draw sets off. Otherwise it begins a chain of its own at 0.
+ */
+function linkFor(state: GameState, link: ChainLink | number | undefined): ChainLink {
+  if (typeof link === "object") return { chain: state.castChain ?? link.chain, owns: link.owns };
+  // A count given on its own (a caller starting a chain part-way, as the engine's tests do) is a
+  // chain of its own at that count, unless a running one takes it over.
+  return { chain: state.castChain ?? link ?? 0, owns: state.castChain === undefined };
+}
+
+/** The draw that began a chain has finished it, or the game ended under it: nothing is running. */
+function closeChain(state: GameState, link: ChainLink): void {
+  if (link.owns) delete state.castChain;
+}
 
 export const DRAW_COUNT_WORK = "@drawCount";
 
@@ -213,7 +242,9 @@ function countOf(data: Record<string, unknown>, key: string): number {
 export function owedDrawChainOf(resume: Resume): OwedDrawChain | null {
   if (resume.hook !== DRAW_CHAIN_WORK) return null;
   const player = playerOf(resume.data);
-  return player === null ? null : { player, chain: countOf(resume.data, "chain") };
+  // An item parked before R217 carries no `owns`, and its chain was always its own draw's.
+  const owns = resume.data.owns !== false;
+  return player === null ? null : { player, chain: countOf(resume.data, "chain"), owns };
 }
 
 /** What a `DRAW_COUNT_WORK` item owes, or null when it is not one. */
@@ -228,15 +259,21 @@ export function owedDrawCountOf(resume: Resume): OwedDrawCount | null {
  * item lands at `state.workCursor`, which puts it behind anything the pausing cast parked inside it
  * — its own Cry tail, §10.5 steps 6 and 7 — and in front of everything else still owed.
  */
-function oweChain(sink: EngineSink, player: PlayerId, chain: number): void {
+function oweChain(sink: EngineSink, player: PlayerId, link: ChainLink): void {
   const resume: Resume = {
     defId: "",
     hook: DRAW_CHAIN_WORK,
     step: DRAW_CHAIN_STEP,
     radiant: false,
-    data: { player, chain },
+    data: { player, chain: sink.state.castChain ?? link.chain, owns: link.owns },
   };
   owe(sink, resume);
+}
+
+/** A chain stopped where it stands: owed to the answer, or closed for a game that is over. */
+function stopChain(sink: EngineSink, player: PlayerId, link: ChainLink): void {
+  if (sink.state.result === null) oweChain(sink, player, link);
+  else closeChain(sink.state, link);
 }
 
 /** Park the whole draws a "draw N" has not made yet (R113), behind the chain that interrupted it. */
@@ -266,27 +303,31 @@ export function completeDraw(
   sink: EngineSink,
   player: PlayerId,
   card: CardInstance,
-  chain = 0,
+  link?: ChainLink | number,
 ): DrawOutcome {
-  sink.state.counters.drawn += 1;
+  const state = sink.state;
+  state.counters.drawn += 1;
   sink.events.push({ type: "drawn", player, instanceId: card.id, defId: card.defId });
 
-  if (flagsOf(card).castOnDraw === true && chain < CAST_ON_DRAW_CHAIN_CAP) {
+  const at = linkFor(state, link);
+  if (flagsOf(card).castOnDraw === true && at.chain < CAST_ON_DRAW_CHAIN_CAP) {
+    // R58, R217: counted before the cast resolves, so a draw the cast makes continues from here.
+    state.castChain = at.chain + 1;
     card.zone = { z: "resolving", player };
-    const before = sink.state.pending;
+    const before = state.pending;
     castCard(sink, card);
 
     // §9.3 and R122: the cast is a whole play and a play can ask, so the repeat of the draw belongs
     // to the action that answers, not to this one. Drawing on here would put cards in the hand — and
     // cast more of them — while the player is still being asked about this one. What is owed is one
-    // more draw at `chain + 1`, which is precisely the count this draw would have passed on, so R58's
-    // cap bounds the resumed chain exactly as it bounds an uninterrupted one (R113, R117).
+    // more draw at the chain's count, which is precisely the count this draw would have passed on, so
+    // R58's cap bounds the resumed chain exactly as it bounds an uninterrupted one (R113, R117).
     if (stopped(sink, before)) {
-      if (sink.state.result === null) oweChain(sink, player, chain + 1);
+      stopChain(sink, player, at);
       return "cast";
     }
 
-    continueChain(sink, player, chain + 1, before);
+    continueChain(sink, player, at.owns, before);
     return "cast";
   }
 
@@ -299,21 +340,29 @@ export function completeDraw(
  * cast-on-draw cast", so a hero the cast brought to 0 ends the game here and the draw does not
  * repeat into the card beneath, and a unit it killed has died before the next card is cast. A Death
  * hook that asks stops the chain like any other pause, owing the draw it would have made.
+ *
+ * The repeat reads the chain's count off the state, not the count this draw passed on: the cast may
+ * have drawn and cast more of the same chain itself (R217). The draw that began the chain closes it
+ * once its repeat is done.
  */
-function continueChain(sink: EngineSink, player: PlayerId, chain: number, before: PendingChoice | null): void {
+function continueChain(sink: EngineSink, player: PlayerId, owns: boolean, before: PendingChoice | null): void {
+  const link: ChainLink = { chain: sink.state.castChain ?? 0, owns };
   stateCheck(sink);
   if (stopped(sink, before)) {
-    if (sink.state.result === null) oweChain(sink, player, chain);
+    stopChain(sink, player, link);
     return;
   }
-  drawOne(sink, player, chain);
+  drawOne(sink, player, { chain: sink.state.castChain ?? link.chain, owns });
+  // A pause further down the chain parked its own repeat with `owns`, and that item closes it.
+  if (!stopped(sink, before) || sink.state.result !== null) closeChain(sink.state, link);
 }
 
 /**
  * One draw (§2.4). A cast-on-draw card resolves at once and the draw repeats, up to
  * CAST_ON_DRAW_CHAIN_CAP casts (R58); the next such card goes to hand uncast and ends the chain.
+ * `link` is the chain a repeat continues; a fresh draw passes none (R217).
  */
-export function drawOne(sink: EngineSink, player: PlayerId, chain = 0): DrawOutcome {
+export function drawOne(sink: EngineSink, player: PlayerId, link?: ChainLink | number): DrawOutcome {
   const side = sink.state.players[player];
 
   if (side.library.length === 0) {
@@ -337,7 +386,7 @@ export function drawOne(sink: EngineSink, player: PlayerId, chain = 0): DrawOutc
 
   const card = side.library[0] as CardInstance;
   side.library.splice(0, 1);
-  return completeDraw(sink, player, card, chain);
+  return completeDraw(sink, player, card, link);
 }
 
 /**
@@ -350,7 +399,9 @@ export function draw(sink: EngineSink, player: PlayerId, count: number): DrawOut
   const before = sink.state.pending;
   const out: DrawOutcome[] = [];
   for (let i = 0; i < count; i += 1) {
-    out.push(drawOne(sink, player, 0));
+    // R216: a draw whose cast, or the check after it, ended the game ends the draws with it.
+    if (sink.state.result !== null) return out;
+    out.push(drawOne(sink, player));
     if (!stopped(sink, before)) continue;
     // R117: parked here, at the pause, and never in advance. The chain that stopped has already
     // parked its own remainder, so this lands behind it and the interrupted chain finishes first.
@@ -368,7 +419,9 @@ export function draw(sink: EngineSink, player: PlayerId, count: number): DrawOut
 function runOwedDrawChain(sink: EngineSink, item: WorkItem): void {
   const owed = owedDrawChainOf(item.resume);
   if (owed === null) return;
-  continueChain(sink, owed.player, owed.chain, sink.state.pending);
+  // The count is the state's while the chain runs; an item parked before R217 kept its own.
+  if (sink.state.castChain === undefined && owed.owns) sink.state.castChain = owed.chain;
+  continueChain(sink, owed.player, owed.owns, sink.state.pending);
 }
 
 /** `work.ts`'s handler for the whole draws a "draw N" still owed when one of them paused. */

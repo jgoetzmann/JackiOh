@@ -89,12 +89,20 @@ function nonceFor(state: GameState, player: PlayerId, step: number): string {
  * the result back field by field so the object the caller (and any enclosing `reduce`) holds stays
  * current. Every instance inside is a new object afterwards, so a caller re-reads what it needs
  * from `sink.state` instead of keeping references across a playout.
+ *
+ * Except `applied`, the history of the actions a player took (§9.3's nonce dedupe, §10.8's event
+ * window). The playout's actions are the AI's inside the one action that handed it the turn, and
+ * their events reach that action's own entry through the sink (R168), so adopting their entries too
+ * put every event of the AI turn in the view twice, the first copy ahead of the declaration that
+ * caused it (§10.10: each event is animated once, in the order it happened).
  */
 function adoptState(sink: EngineSink, next: GameState): void {
   if (next === sink.state) return;
+  const applied = sink.state.applied;
   const target = sink.state as unknown as Record<string, unknown>;
   for (const key of Object.keys(target)) delete target[key];
   Object.assign(target, next);
+  sink.state.applied = applied;
 }
 
 /**

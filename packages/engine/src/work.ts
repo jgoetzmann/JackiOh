@@ -258,6 +258,24 @@ export function pushWork(sink: EngineSink, resume: Resume, owner?: PlayerId): Wo
 }
 
 /**
+ * Park one owed continuation without taking a number: its id borrows `state.nextSeq` without moving
+ * it. R177: for an item whose existence hangs on a card someone may not read — the end-of-turn trap
+ * window's remainder exists only when a trap still to be offered the event watches it, and a
+ * face-down trap is read by its controller alone (R33) — so the ids the counter hands the modifiers
+ * next (R169) say nothing about it. Nothing orders or finds a work item by its `seq`.
+ */
+export function oweUnnumbered(sink: EngineSink, resume: Resume, owner?: PlayerId): WorkItem {
+  const state = sink.state;
+  const item: WorkItem = {
+    id: `u${state.nextSeq}.${state.work.length}`,
+    seq: state.nextSeq,
+    owner: owner ?? state.active,
+    resume,
+  };
+  return place(state, item);
+}
+
+/**
  * What a pause still owes. A `Resume` is parked as a new item; a whole `WorkItem` is parked again
  * as it stands, keeping its id and `seq`, which is what a handler that has to wait behind another
  * one needs.
@@ -347,18 +365,49 @@ export function unparkWork(state: GameState, id: string): WorkItem | undefined {
 // Running
 // ---------------------------------------------------------------------------
 
+/** Where a continuation of an event trigger keeps the event it answers (`triggers.queueTrigger`). */
+export const EVENT_KEY = "event";
+
 /**
- * The step a card's script registers for this continuation: a hook of its own (`cry`, `delayed`)
- * or an entry in its step table (`resume: { picked: … }`), which is how `prompts.ts` re-enters one.
+ * An event trigger's own list, re-entered by its id (R113). A `TriggerDef` lives in an array
+ * (`triggers`, `handTriggers`), not under a `Script` key, so a trigger or a trap whose list asks
+ * mid-list parks its tail under the trigger's id, and the tail is rebuilt here from the event the
+ * continuation carries in its data.
  */
+function triggerStepFor(script: Script, resume: Resume): Hook | undefined {
+  const def = [...(script.triggers ?? []), ...(script.handTriggers ?? [])].find(
+    (candidate) => candidate.id === resume.hook,
+  );
+  if (def === undefined) return undefined;
+  return (ctx) => {
+    const event: unknown = ctx.data[EVENT_KEY];
+    if (event === null || typeof event !== "object" || typeof (event as { type?: unknown }).type !== "string") {
+      return [];
+    }
+    return def.run({ ...ctx, event: event as Parameters<typeof def.run>[0]["event"] });
+  };
+}
+
+/**
+ * The step a script registers for a continuation: a hook of its own (`cry`, `delayed`), an entry
+ * in its step table (`resume: { picked: … }`), or an event trigger named by its id. `prompts.ts`
+ * re-enters a continuation through this, and `canResume` asks it, so the two cannot disagree.
+ */
+export function scriptStepFor(script: Script, resume: Resume): Hook | undefined {
+  const entry: unknown = (script as unknown as Record<string, unknown>)[resume.hook];
+  if (typeof entry === "function") return entry as Hook;
+  if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+    const step: unknown = (entry as Record<string, unknown>)[resume.step];
+    if (typeof step === "function") return step as Hook;
+  }
+  return triggerStepFor(script, resume);
+}
+
+/** The step a card's script registers for this continuation, on the face the pause recorded. */
 function cardStepFor(resume: Resume): Hook | undefined {
   const scripts = scriptsFor(resume.defId);
   const script: Script = resume.radiant ? scripts.radiant : scripts.base;
-  const entry: unknown = (script as unknown as Record<string, unknown>)[resume.hook];
-  if (typeof entry === "function") return entry as Hook;
-  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return undefined;
-  const step: unknown = (entry as Record<string, unknown>)[resume.step];
-  return typeof step === "function" ? (step as Hook) : undefined;
+  return scriptStepFor(script, resume);
 }
 
 /** Whether anything at all knows how to resume this item (R113). */

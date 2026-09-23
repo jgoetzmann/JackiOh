@@ -7,10 +7,12 @@
 //    accepts any listing of it, and every listing is the same play.
 //  - R174: a target the play's own Tribute sacrificed has left the field, so the effect aimed at it
 //    fizzles (§8 Conventions) instead of landing on a card in a graveyard.
+//  - Round 5 (lenses L9 and "keywords and layers"). §6.3 Vanilla, §7: a Sheep Token's "worth 2
+//    Tributes" is its text, so a Vanilla copy of one is worth 1 like any other unit.
 
 import { describe, expect, it } from "vitest";
 import type { Selection } from "@jackioh/shared";
-import { type CardInstance } from "@jackioh/engine";
+import { legalActions, reduce, tributeValueOf, type CardInstance } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
 const STOCKPILE = "core-005"; // keeps a hand non-empty, so no turn auto-ends (§2.5)
@@ -21,6 +23,8 @@ const TWISTED_SORCERER = "core-068";
 const RADIANT_SAINTESS = "core-081";
 const MISS_MROW = "core-086";
 const CRAFT_A_CARD = "core-099";
+const POSTDOC = "core-061"; // radiant: "choose any unit on the field; summon a Vanilla copy"
+const SHEEP = "core-t-sheep"; // "Worth 2 Tributes while on the field."
 
 function must<T>(value: T | null | undefined, what: string): T {
   if (value === null || value === undefined) throw new Error(`missing: ${what}`);
@@ -105,5 +109,54 @@ describe("R174: a target the play's own Tribute sacrificed is no longer a target
       damage: 0,
       hits: 0,
     });
+  });
+});
+
+describe("§6.3 Vanilla: a Vanilla Sheep Token has no text, so it is worth 1 Tribute", () => {
+  it("§6.3 a Vanilla copy of a Sheep Token and one other unit do not pay Lava Golem's Tribute 3 (§7, R101)", () => {
+    const s = scenario({
+      p1: {
+        hand: [{ def: POSTDOC, radiant: true }, LAVA_GOLEM, STOCKPILE],
+        mana: 9,
+        field: [
+          { def: SHEEP, lane: 1 },
+          { def: GARY, lane: 2 },
+        ],
+      },
+      p2: { hand: [STOCKPILE] },
+    });
+    const sheep = must(s.unit("p1", 1), "Sheep Token");
+    const gary = must(s.unit("p1", 2), "Gary");
+    expect(tributeValueOf(s.state, sheep)).toBe(2);
+
+    // Radiant Prejudiced Postdoc: "any unit" → a Vanilla copy of the Sheep in lane 3.
+    s.play(POSTDOC, { zone: 4, targets: [{ pick: "instance", instanceId: sheep.id }] });
+    const copy = must(s.unit("p1", 3), "the Vanilla copy");
+    expect({ def: copy.defId, vanilla: copy.vanilla }).toEqual({ def: SHEEP, vanilla: true });
+
+    // §6.3 Vanilla "removes a unit's text", and "Worth 2 Tributes while on the field" is the Sheep's
+    // text (§7), so the copy is worth 1 (§3.2 reads the worth off the face that is up).
+    expect(tributeValueOf(s.state, s.card(copy))).toBe(1);
+
+    // The copy and Gary pay 2 of the 3: R101 refuses the play, and `legalActions` does not offer it.
+    const golem = must(s.hand("p1").find((card) => card.defId === LAVA_GOLEM), "Lava Golem in hand");
+    const pair = [copy.id, gary.id].sort().join();
+    const offered = legalActions(s.state, "p1").some(
+      (action) =>
+        action.type === "play" &&
+        action.instanceId === golem.id &&
+        [...(action.tributes ?? [])].sort().join() === pair,
+    );
+    expect(offered).toBe(false);
+
+    const result = reduce(s.state, {
+      type: "play",
+      playerId: "p1",
+      nonce: "vanilla-sheep",
+      instanceId: golem.id,
+      zone: { row: "units", lane: 5 },
+      tributes: [copy.id, gary.id],
+    });
+    expect(result.error).toMatch(/Tribute 3/);
   });
 });

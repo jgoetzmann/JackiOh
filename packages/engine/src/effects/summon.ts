@@ -20,6 +20,7 @@ import {
   isEmpty,
   isLocked,
   isReserved,
+  isUnitToken,
   placeOnField,
   removeFromAnyZone,
   rowSize,
@@ -251,7 +252,10 @@ export function summonCopy(args: SummonCopyArgs): Effect {
     kind: "summonCopy",
     apply(ctx): void {
       const source = instanceOf(ctx, args.of);
-      if (source === null) return;
+      // R57 copies "a unit on the field" (#12 itself, #61's chosen Human). One that has left it —
+      // sacrificed by a fused card's other half (#22) earlier in the same list — is gone for this
+      // effect (R174), and a copy is never made of a card in a graveyard.
+      if (source === null || source.zone.z !== "field") return;
       const player = playerOf(ctx, args.player ?? "self");
       const row = rowOf(defOf(ctx.state, source.defId));
       if (row === null) return;
@@ -368,14 +372,27 @@ export function recruit(
       const player = playerOf(ctx, args.player ?? "self");
       const filter = args.filter ?? {};
       const found = ctx.state.players[player].library.find(
-        (card) => isPermanentType(defOf(ctx.state, card.defId).type) && matchesFilter(ctx, card, filter),
+        (card) =>
+          isPermanentType(defOf(ctx.state, card.defId).type) &&
+          // R218: a unit-token card leaves a library only by being drawn (R11), so it is never
+          // recruited — the scan passes over it to the next card that matches.
+          !isUnitToken(ctx.state, card) &&
+          matchesFilter(ctx, card, filter),
       );
       if (found === undefined) return;
 
-      summonExisting(ctx, found, player, {
+      const recruited = summonExisting(ctx, found, player, {
         ...(args.lane === undefined ? {} : { lane: args.lane }),
         ...(args.radiant === undefined ? {} : { radiant: args.radiant }),
       });
+      // #98 radiant, "Recruit and make it Radiant": the second half is §6.3's Make Radiant, and
+      // every visible change is announced (§10.3) — `radiantSet` is what §10.10 animates the glow
+      // from. The flag went on as the card left the library, so it lands on its Radiant face; the
+      // cue follows the summon, and goes out whether or not the card was Radiant already, as R177
+      // has a Make Radiant on a card someone may not read (a face-down Trap) do.
+      if (recruited !== null && args.radiant === true) {
+        ctx.events.push({ type: "radiantSet", instanceId: recruited.id, defId: recruited.defId, zone: recruited.zone });
+      }
     },
   };
 }

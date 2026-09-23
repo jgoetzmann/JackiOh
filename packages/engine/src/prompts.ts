@@ -34,7 +34,7 @@ import type { ActionBody, PlayerId, PromptKind, Selection } from "@jackioh/share
 import { makeContext, type EngineSink } from "./resolve";
 import type { Effect, EffectContext, Hook, Script } from "./script";
 import { scriptsFor } from "./scripts";
-import { findInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
+import { findInstance, type CardInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
 import {
   beginWorkCascade,
   cardData,
@@ -43,9 +43,17 @@ import {
   pausedOf,
   registerDefaultWorkHandler,
   resumeIndex,
+  scriptStepFor,
   segmentsOf,
   type WorkPlan,
 } from "./work";
+
+/**
+ * Where a Death hook's context keeps the snapshot of the unit as it died (R89), so a continuation
+ * built from that context — a prompt's answered step, re-entered in a later action — reads the same
+ * card the hook did rather than the instance R78 has reset since.
+ */
+export const SELF_KEY = "__self";
 
 /** The ten kinds of §10.6. `x`, `embiggen`, `zone`, `tribute` and `direction` are play choices for
  * every Core card (R81) and stay here for later sets; nothing in this module reads the kind except
@@ -147,8 +155,10 @@ export function resumeAt(args: {
 
 /**
  * The continuation of the script that is running now: the same card, the same face, and the data
- * this chain has captured so far plus whatever this step adds. A Spell resolving with no instance
- * (`ctx.self === null`) still names its definition's script.
+ * this chain has captured so far plus whatever this step adds. A step resolving with no instance
+ * (`ctx.self === null`: its card has ceased to exist, R127) still names its definition's script,
+ * which the context it was re-entered with carries (`EffectContext.defId`), so the answer to a
+ * prompt it opens comes back to the same script rather than to none (R113).
  */
 export function resumeSelf(
   ctx: EffectContext,
@@ -157,7 +167,7 @@ export function resumeSelf(
 ): Resume {
   const self = ctx.self;
   return resumeAt({
-    defId: self?.defId ?? "",
+    defId: self?.defId ?? ctx.defId ?? "",
     step,
     radiant: ctx.radiant,
     ...(self === null ? {} : { instanceId: self.id }),
@@ -360,16 +370,26 @@ function faceOf(defId: string, radiant: boolean): Script {
 }
 
 /**
- * The hook a continuation names: a step out of a table (`resume: { picked: … }`) or a hook of the
- * card's own (`cry`, `delayed`). Nothing registered is not an error — the answer just closed the
- * prompt (§10.6) — so this returns undefined rather than throwing.
+ * The hook a continuation names: a step out of a table (`resume: { picked: … }`), a hook of the
+ * card's own (`cry`, `delayed`), or an event trigger by its id (`work.scriptStepFor`). Nothing
+ * registered is not an error — the answer just closed the prompt (§10.6) — so this returns
+ * undefined rather than throwing.
  */
 function hookFor(script: Script, resume: Resume): Hook | undefined {
-  const entry: unknown = (script as unknown as Record<string, unknown>)[resume.hook];
-  if (typeof entry === "function") return entry as Hook;
-  if (entry === null || typeof entry !== "object") return undefined;
-  const step: unknown = (entry as Record<string, unknown>)[resume.step];
-  return typeof step === "function" ? (step as Hook) : undefined;
+  return scriptStepFor(script, resume);
+}
+
+/**
+ * R89: the card a continuation re-enters as, when the step was paused by a Death hook. R78 has
+ * reset the instance on the board by then (or a Reborn body stands under the same id), so the hook
+ * reads the snapshot taken as the unit died, which the Death pass puts in its context's data
+ * (`stateCheck.runDeathPass`) and every continuation built from that context carries on.
+ */
+function selfSnapshotOf(data: Record<string, unknown>): CardInstance | null {
+  const raw = data[SELF_KEY];
+  if (raw === null || typeof raw !== "object") return null;
+  const card = raw as Partial<CardInstance>;
+  return typeof card.id === "string" && typeof card.defId === "string" ? (raw as CardInstance) : null;
 }
 
 /**
@@ -429,7 +449,8 @@ export function runResume(
   const paused = pausedOf(resume.data);
   const data = cardData(resume.data);
   const instance =
-    resume.instanceId === undefined ? null : findInstance(sink.state, resume.instanceId) ?? null;
+    selfSnapshotOf(data) ??
+    (resume.instanceId === undefined ? null : findInstance(sink.state, resume.instanceId) ?? null);
 
   const hook = hookFor(faceOf(resume.defId, resume.radiant), resume);
   if (hook === undefined) return true;
@@ -442,6 +463,8 @@ export function runResume(
       data,
     }),
     radiant: resume.radiant,
+    // R127: the script this continuation named, which a step with no instance still asks again in.
+    defId: resume.defId,
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };

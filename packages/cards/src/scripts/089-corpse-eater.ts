@@ -70,12 +70,14 @@ function feed(factor: number): TriggerDef {
       // R11: a unit token ceases to exist and never reaches a graveyard, so it never died for this.
       if (dead.token) return [];
 
-      // R38, R89: the attack and max health the layers computed at the moment it died.
+      // R38, R89: the attack and max health the layers computed at the moment it died. R219: a gain
+      // is never a loss, so a unit #46 starved below 0 max health gives nothing rather than shrinking
+      // the Eater (§10.4 floors attack at 0 already; max health below 0 is only the check's signal).
       return [
         buff({
           target: { of: "self" },
-          attack: event.attack * factor,
-          health: event.maxHealth * factor,
+          attack: Math.max(0, event.attack) * factor,
+          health: Math.max(0, event.maxHealth) * factor,
         }),
       ];
     },

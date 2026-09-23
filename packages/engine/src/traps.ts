@@ -12,7 +12,9 @@
 //   3. consuming — a Trap goes to its owner's graveyard, a Field Trap stays and is face-up (R33)
 //                  (`consumeTrap`);
 //   4. owing     — a window a prompt interrupted parks the traps that have not seen the event yet
-//                  on `state.work`, so the answer finishes the window (`TRAP_WINDOW_WORK`, R113).
+//                  on `state.work`, so the answer finishes the window (`TRAP_WINDOW_WORK`, R113),
+//                  and a trap whose own list asks parks the rest of its firing — its other
+//                  triggers, its consumption and its check — behind that list (`TRAP_FIRING_WORK`).
 //
 // The *when* is the caller's: `triggers.ts` offers every freshly emitted event to `fireTrapsFor`
 // before it queues any ordinary trigger, and `turn.ts` calls `runTrapWindow` at R62's scheduled
@@ -36,13 +38,14 @@
 
 import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
 import { defOf } from "./catalog";
-import { applyEffects, makeContext, type EngineSink } from "./resolve";
+import { applyResumable } from "./prompts";
+import { makeContext, type EngineSink } from "./resolve";
 import type { TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { leftFieldSince } from "./stays";
 import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
-import { owe, paused as isPaused, registerWorkHandler } from "./work";
+import { EVENT_KEY, owe, oweUnnumbered, paused as isPaused, registerWorkHandler } from "./work";
 import { slotOf } from "./zones";
 import { cardAt, moveToZone, slotsOf } from "./zones";
 
@@ -262,27 +265,117 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
   // §5.1: it has fired, and it is face-up from this moment (R33) — which also keeps it out of every
   // dispatch its own effects start, since a Trap fires once (`isSpent`).
   trap.faceUp = true;
-  for (const trigger of armed) {
-    applyEffects(trigger.run({ ...ctx, event }), ctx);
-  }
-  // R216: the trap's effect ended the game (#96's AI turn ran to an end-of-turn hit that killed a
-  // hero), and nothing happens after the game is over — the trap is not consumed afterwards.
-  if (sink.state.result !== null) return true;
-
-  // R52: everything the trap did belongs to the trap's controller, whoever caused the event.
-  //
-  // §3.2 sends a backrow card to its owner's graveyard when its effect ends, so the trap is
-  // consumed where it is NOW — found again by id, because #96 My Pawn's AI turn replaces every
-  // instance in the state (`aiPolicy.adoptState`) and `trap` is then the object from before it.
-  // Only a trap still on the field is consumed: one its own effects moved off it — exiled by the
-  // AI's #34 Collateral Damage, destroyed — is where that move put it, and exile is a pile nothing
-  // takes a card back out of (§6.3). One whose turn-long effect has already ended was consumed by
-  // `turn.cleanup` at the end of that turn (R152) and is in the graveyard by now.
-  const live = findInstance(sink.state, trap.id);
-  if (live !== undefined && isOnField(live)) consumeTrap(sink, live);
-  stateCheck(sink);
+  runArmedTriggers(sink, {
+    trapId: trap.id,
+    controller: trap.controller,
+    triggers: armed.map((trigger) => trigger.id),
+    at: 0,
+    event,
+  });
   return true;
 }
+
+/**
+ * What is left of one trap's firing: its armed triggers from `at` on, then its end — consumed, and
+ * the state check that makes it "resolve to completion" (§10.3). All JSON, so a firing a prompt
+ * interrupted is owed on `state.work` as `TRAP_FIRING_WORK` and survives the answer (R113).
+ */
+type TrapFiring = {
+  trapId: string;
+  controller: PlayerId;
+  triggers: string[];
+  at: number;
+  event: GameEvent;
+};
+
+/**
+ * R113: the `resume.hook` of a trap's firing that a prompt interrupted — the triggers it has not
+ * run and its end. §10.3 has a trap "resolve to completion (including … prompts for the trap's
+ * owner) before the opponent's action continues", and a trap's list is an effect list like any
+ * other, so it runs resumably: the effects after one that asks are parked by
+ * `prompts.applyResumable` (re-entered by the trigger's id, `work.scriptStepFor`), and this item
+ * behind them owes the rest. Running the list straight through walked on over the open prompt,
+ * dropped a second one (`openPrompt` never overwrites) and consumed the trap and ran the check in
+ * the middle of its effect.
+ */
+export const TRAP_FIRING_WORK = "@trapFiring";
+
+/**
+ * The armed triggers of one firing, from `firing.at`, each with the trap's controller as "you"
+ * (R52), then the trap's end. Stops at a pause and owes the rest (R117: at the pause, never before).
+ */
+function runArmedTriggers(sink: EngineSink, firing: TrapFiring): void {
+  for (let at = firing.at; at < firing.triggers.length; at += 1) {
+    if (sink.state.result !== null) return;
+    const trap = findInstance(sink.state, firing.trapId);
+    const trigger = trap === undefined ? undefined : trapTriggersOf(trap).find((def) => def.id === firing.triggers[at]);
+    if (trap === undefined || trigger === undefined) continue;
+    const ctx = makeContext(sink, trap, { controller: firing.controller, data: { [EVENT_KEY]: firing.event } });
+    const before = sink.state.pending;
+    const plan = {
+      defId: trap.defId,
+      hook: trigger.id,
+      step: "",
+      radiant: trap.radiant,
+      instanceId: trap.id,
+      data: { [EVENT_KEY]: firing.event },
+      owner: firing.controller,
+    };
+    const withEvent = { ...ctx, event: firing.event };
+    applyResumable(sink, withEvent, plan, trigger.run(withEvent));
+    if (sink.state.result !== null) return;
+    if (sink.state.pending !== null && sink.state.pending !== before) {
+      oweFiring(sink, { ...firing, at: at + 1 });
+      return;
+    }
+  }
+  endFiring(sink, firing.trapId);
+}
+
+/**
+ * The end of a firing: the trap consumed and the state check run (§3.2, §10.3).
+ *
+ * R216: once the trap's effect has ended the game (#96's AI turn ran to an end-of-turn hit that
+ * killed a hero) nothing happens after it — the trap is not consumed afterwards.
+ *
+ * R52: everything the trap did belongs to the trap's controller, whoever caused the event. §3.2
+ * sends a backrow card to its owner's graveyard when its effect ends, so the trap is consumed where
+ * it is NOW — found again by id, because #96 My Pawn's AI turn replaces every instance in the state
+ * (`aiPolicy.adoptState`). Only a trap still on the field is consumed: one its own effects moved off
+ * it — exiled by the AI's #34 Collateral Damage, destroyed — is where that move put it, and exile is
+ * a pile nothing takes a card back out of (§6.3). One whose turn-long effect has already ended was
+ * consumed by `turn.cleanup` at the end of that turn (R152) and is in the graveyard by now.
+ */
+function endFiring(sink: EngineSink, trapId: string): void {
+  if (sink.state.result !== null) return;
+  const live = findInstance(sink.state, trapId);
+  if (live !== undefined && isOnField(live)) consumeTrap(sink, live);
+  stateCheck(sink);
+}
+
+function oweFiring(sink: EngineSink, firing: TrapFiring): void {
+  const resume: Resume = {
+    defId: "",
+    hook: TRAP_FIRING_WORK,
+    step: "firing",
+    radiant: false,
+    data: { firing: JSON.parse(JSON.stringify(firing)) as TrapFiring },
+  };
+  owe(sink, resume);
+}
+
+/** `work.ts`'s handler for a firing a prompt interrupted: the same trap, where it stopped (R113). */
+function runOwedFiring(sink: EngineSink, item: WorkItem): void {
+  const raw: unknown = item.resume.data.firing;
+  if (raw === null || typeof raw !== "object") return;
+  const firing = raw as Partial<TrapFiring>;
+  if (typeof firing.trapId !== "string" || typeof firing.at !== "number") return;
+  if (!Array.isArray(firing.triggers) || firing.event === undefined) return;
+  if (firing.controller !== "p1" && firing.controller !== "p2") return;
+  runArmedTriggers(sink, firing as TrapFiring);
+}
+
+registerWorkHandler(TRAP_FIRING_WORK, runOwedFiring);
 
 /**
  * §4.2 step 4, §6.3 "Cancel an attack": the window a declaration opens answers that declaration,
@@ -415,7 +508,9 @@ function oweWindow(sink: EngineSink, event: GameEvent, owed: readonly string[]):
     radiant: false,
     data: { event, owed: [...owed] },
   };
-  owe(sink, resume);
+  // R177: the remainder exists only when a trap still owed the event watches it, and whether a
+  // face-down one does is its controller's to know (R33), so it takes no number (`oweUnnumbered`).
+  oweUnnumbered(sink, resume);
 }
 
 /**

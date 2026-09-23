@@ -514,7 +514,9 @@ describe("cancelAttack (§6.3 Cancel an attack, §4.2 step 4, R44, #96)", () => 
       targetId: defender.id,
       cancelled: false,
     });
-    expect(paused.state.work.map((item) => item.resume.hook)).toEqual(["@trapWindow", "@attackWindow"]);
+    // R113, §10.3: the asking trap's own end first — consumed, and its check, once the answer has
+    // finished its list — then the traps the window still owes, then the combat.
+    expect(paused.state.work.map((item) => item.resume.hook)).toEqual(["@trapFiring", "@trapWindow", "@attackWindow"]);
     expect(eventsOfType(paused.events, "damage")).toEqual([]);
 
     // §10.1: everything owed is plain JSON, so the paused attack survives a clone round trip.

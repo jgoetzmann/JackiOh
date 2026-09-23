@@ -2,8 +2,8 @@
 // `legalActions` offers and `reduce` accepts must agree with SPEC and with each other (§2.3, §2.5,
 // §9.3, §10.2, R36, R43, R79, R103). Found by the polish-4 edge-case hunt
 // (docs/polish/4-edge-cases.md, lenses L8 and L9, and in round 4 the engine-invariants lens, which
-// found two target options sharing one key); every case here but the known gap at the end failed
-// before its fix.
+// found two target options sharing one key, and in round 5 a play naming a lane between two lanes);
+// every case here but the known gap failed before its fix.
 
 import { describe, expect, it } from "vitest";
 import type { Action, ActionInput, GameEvent, Selection } from "@jackioh/shared";
@@ -13,6 +13,7 @@ import { scenario } from "./_harness";
 const SCARAB = "core-007"; // Cry: Discover a 2-cost card — one prompt
 const VANILLA = "core-008";
 const STOCKPILE = "core-005";
+const GARY = "core-004"; // Unit, cost 1
 const HINDER = "core-021"; // cast on draw
 const PANTHER = "core-032";
 const MAGIC_JAMMED = "core-036";
@@ -276,5 +277,32 @@ describe("§9.1: legalActions and a face-down trap's instance id", () => {
 
     const naming = legalActions(g.state, "p1").filter((a) => JSON.stringify(a).includes(`"${trapId}"`));
     expect(naming).toEqual([]);
+  });
+});
+
+describe("§3.2, §9.3: a play's zone is one of the row's lanes", () => {
+  it("§9.3 a play naming a zone between two lanes is refused, not accepted with the card lost and its mana spent", () => {
+    const s = scenario({ p1: { hand: [GARY, STOCKPILE] }, p2: { hand: [STOCKPILE] } });
+    const gary = must(s.hand("p1").find((card) => card.defId === GARY), "Gary in hand");
+    const mana = s.state.players.p1.mana.current;
+
+    // `legalActions` offers lanes 1 to 5 only…
+    const offered = legalActions(s.state, "p1").some(
+      (action) => action.type === "play" && action.instanceId === gary.id && action.zone?.lane === 2.5,
+    );
+    expect(offered).toBe(false);
+
+    // …and §9.3 has `reduce` refuse what is illegal itself. Lane 2.5 passed the range check and read
+    // as an empty, unlocked zone, so the play was accepted: the mana was spent and the card written to
+    // `units[1.5]`, a property no lane reads, which the next JSON clone dropped — in no zone at all.
+    const result = reduce(s.state, {
+      type: "play",
+      playerId: "p1",
+      nonce: "lane-2.5",
+      instanceId: gary.id,
+      zone: { row: "units", lane: 2.5 },
+    });
+    expect(result.error).toBeDefined();
+    expect(result.state.players.p1.mana.current).toBe(mana);
   });
 });

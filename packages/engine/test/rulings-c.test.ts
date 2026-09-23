@@ -91,7 +91,7 @@ import {
   usedThisTurn,
   whyCannotActivate,
 } from "../src/subsystems/heroPower";
-import { fireTrapsFor, isTrapWindowEvent, runTrapWindow, trapsWatching } from "../src/traps";
+import { TRAP_FIRING_WORK, fireTrapsFor, isTrapWindowEvent, runTrapWindow, trapsWatching } from "../src/traps";
 import { playedIdsThisTurn } from "../src/query";
 import { createRng } from "../src/rng";
 import { settle } from "../src/triggers";
@@ -1513,7 +1513,9 @@ describe("SPEC §11 R117–R118: pausing the play pipeline (M3 gate)", () => {
     const owed = paused.state.work.filter((item) => item.resume.hook === PLAY_WORK_KIND);
     expect(owed).toHaveLength(1);
     expect(owed.map((item) => item.owner)).toEqual(["p1"]);
-    expect(paused.state.work).toHaveLength(1);
+    // Ahead of it, the trap's own end (§10.3: it resolves to completion before the play goes on,
+    // R113), owed at the same pause and no sooner.
+    expect(paused.state.work.map((item) => item.resume.hook)).toEqual([TRAP_FIRING_WORK, PLAY_WORK_KIND]);
 
     // While the driver was on the stack the steps were the driver's alone: step 4's nested `settle`
     // drains `state.work` before it pops a trigger, and it neither took nor ran the steps it was

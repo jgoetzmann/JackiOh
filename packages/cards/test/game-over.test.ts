@@ -3,6 +3,9 @@
 // seeded random games for a finished game that stays finished; every case here failed before its
 // fix, and the fuzz monitor's I5 now checks the same thing in every random game.
 //
+// Round 5 (lens L1) found /fullsend's Combo draws drawing on, one per rider, after a cast inside the
+// first had ended the game.
+//
 // The check that finds a hero at 0 or less ends the game at once. Whatever was still to resolve then
 // does not: the rest of the effect list the check ran inside, owed work, queued triggers, or a trap's
 // consumption after the AI turn it handed over has ended the game.
@@ -16,6 +19,9 @@ const MENACE = "core-019";
 const RENO = "core-053";
 const CN_VIRUS = "core-090-1";
 const MY_PAWN = "core-096";
+const VANILLA = "core-008";
+const HINDER = "core-021";
+const FULLSEND = "core-078";
 
 describe("R216: nothing happens after the game is over", () => {
   it("R216 #5 Stockpile's heal does not follow the CN-Virus cast that killed its hero (§2.5, §4.5, §2.4)", () => {
@@ -53,5 +59,25 @@ describe("R216: nothing happens after the game is over", () => {
     const types = s.lastEvents.map((event) => event.type);
     expect(types).toContain("trapFired");
     expect(types.slice(types.indexOf("gameOver") + 1)).toEqual([]);
+  });
+
+  it("R216 /fullsend's Combo draws stop once a cast-on-draw draw inside them has ended the game (§2.5, §2.4, §10.5 step 5)", () => {
+    // Two /fullsends make two "Combo: draw 1" riders. The Vanilla played after them owes two draws;
+    // the first draws Hinder, which is cast (R70) and owes the same two draws of its own, both from an
+    // empty library (fatigue 1, then 2), and the check after that cast finds p1 at 0 or less: the
+    // game is over. The Vanilla's second Combo draw must not happen.
+    const g = scenario({
+      p1: { hand: [FULLSEND, FULLSEND, VANILLA], mana: 10, health: 2, library: [VANILLA, HINDER] },
+      p2: { field: [{ def: VANILLA, lane: 1 }] },
+    });
+    g.play(FULLSEND);
+    g.play(FULLSEND);
+    g.play(VANILLA);
+
+    const types = g.lastEvents.map((event) => event.type);
+    const over = types.indexOf("gameOver");
+    expect(over, types.join(", ")).toBeGreaterThanOrEqual(0);
+    expect(types.slice(over + 1), types.join(", ")).toEqual([]);
+    expect(g.state.players.p1.fatigueCount).toBe(2);
   });
 });

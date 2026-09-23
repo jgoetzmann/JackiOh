@@ -275,6 +275,12 @@ export type GameState = {
   nextSeq: number;
   /** Nonce dedupe: the events each already-applied action produced (§9.3). */
   applied: { nonce: string; events: GameEvent[] }[];
+  /**
+   * R217: how many cards the cast-on-draw chain that is running has cast, draws made by its casts
+   * included, so R58's cap bounds the whole chain. Present only while a chain runs (a pause inside
+   * one keeps it here for the answer), and gone once the draw that began it has finished.
+   */
+  castChain?: number;
 };
 
 function emptyRow<T>(size: number): (T | null)[] {

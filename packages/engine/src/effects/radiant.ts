@@ -55,8 +55,24 @@ function makeRadiant(ctx: EffectContext, card: CardInstance): boolean {
     return false;
   }
   card.radiant = true;
+  gainPrintedShield(ctx, card);
   ctx.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });
   return true;
+}
+
+/**
+ * §5.2: on the field "newly gained keywords apply at once". A radiant face that prints Divine Shield
+ * where the base face does not (#20, #50, #89) gives the unit a shield it did not have, so one an
+ * earlier, granted Divine Shield spent is up again — the same as a shield granted again (§10.4,
+ * `buff.grantTo`). A shield printed on both faces is not newly gained, and stays spent.
+ */
+function gainPrintedShield(ctx: EffectContext, card: CardInstance): void {
+  // A Vanilla unit has no printed text on either face (§6.3), so its face prints no shield.
+  if (card.zone.z !== "field" || card.divineShieldSpent !== true || card.vanilla) return;
+  const def = defOf(ctx.state, card.defId);
+  const prints = (keywords: readonly { kind: string }[] | undefined): boolean =>
+    (keywords ?? []).some((keyword) => keyword.kind === "Divine Shield");
+  if (prints(def.radiant.keywords) && !prints(def.base.keywords)) delete card.divineShieldSpent;
 }
 
 /** §3.2 and R13: only the top of a Stack pile is on the field, so only it can be picked. */
@@ -70,10 +86,16 @@ function fieldCardsOf(ctx: EffectContext, player: PlayerId): CardInstance[] {
 }
 
 /**
- * The cards a random pick may choose from: hand order, library top down and lane order, so the
- * draw depends only on (seed, cursor). R60 narrows it to the non-Radiant cards.
+ * The cards of the named zones in hand order, library top down and lane order, so a draw over them
+ * depends only on (seed, cursor). A random pick narrows it to the non-Radiant cards (R60); a
+ * per-card roll (#42) takes every one (`radiantChance`).
  */
-function poolOf(ctx: EffectContext, player: PlayerId, zones: readonly RadiantZone[]): CardInstance[] {
+function poolOf(
+  ctx: EffectContext,
+  player: PlayerId,
+  zones: readonly RadiantZone[],
+  options: { radiantToo?: boolean } = {},
+): CardInstance[] {
   const side = ctx.state.players[player];
   const seen = new Set<string>();
   const pool: CardInstance[] = [];
@@ -81,7 +103,7 @@ function poolOf(ctx: EffectContext, player: PlayerId, zones: readonly RadiantZon
     const cards =
       zone === "hand" ? side.hand : zone === "library" ? side.library : fieldCardsOf(ctx, player);
     for (const card of cards) {
-      if (card.radiant || seen.has(card.id)) continue;
+      if ((card.radiant && options.radiantToo !== true) || seen.has(card.id)) continue;
       seen.add(card.id);
       pool.push(card);
     }
@@ -133,11 +155,14 @@ function keepSuccess(a: boolean, b: boolean): boolean {
 /**
  * A per-card chance rather than a pick of N (#42 Eugenics: "each remaining library card has a 30%
  * chance to become Radiant", radiant "Lucky 1 at 40%"). One INDEPENDENT `rng.chance` roll per
- * non-Radiant card in the named zones, in `poolOf`'s order — hand order, library top down, lane
- * order — so the draws depend only on (seed, cursor) and nothing else (§10.7).
+ * card in the named zones, in `poolOf`'s order — hand order, library top down, lane order — so the
+ * draws depend only on (seed, cursor) and nothing else (§10.7).
  *
- * R60 makes the flag the whole model and nothing ever unsets it, so an already-Radiant card is
- * skipped by `poolOf` rather than rolled: the number of draws is the number of non-Radiant cards.
+ * EVERY card is rolled, a Radiant one included. §8 #42 rolls "each remaining library card", and it
+ * is not one of R60's random picks, which choose among the non-Radiant cards: skipping the Radiant
+ * ones made the number of draws, and so every later draw, hang on how many of a library nobody may
+ * read were Radiant already, and a success on one is cued like any other (R177), so the cues cannot
+ * count them either (§9.1). A success on a card that is already Radiant changes nothing (§6.3).
  * `lucky: n` is §6.1's Lucky X — n extra rolls per card, keeping the success — so the draw count is
  * (n + 1) per card, which is what makes "Lucky 1 at 40%" two rolls a card.
  *
@@ -166,9 +191,8 @@ export function radiantChance(args: {
       const zones = Array.isArray(args.zone) ? args.zone : [args.zone];
       const lucky = Math.max(0, Math.trunc(args.lucky ?? 0));
 
-      // The pool is a snapshot of the non-Radiant cards, so a card this effect just flagged is
-      // never reconsidered and every card gets exactly its own rolls.
-      for (const card of poolOf(ctx, player, zones)) {
+      // The pool is a snapshot taken before any roll, so every card gets exactly its own rolls.
+      for (const card of poolOf(ctx, player, zones, { radiantToo: true })) {
         const roll = (): boolean => ctx.rng.chance(args.chance);
         if (lucky === 0 ? roll() : ctx.rng.lucky(lucky, roll, keepSuccess)) makeRadiant(ctx, card);
       }

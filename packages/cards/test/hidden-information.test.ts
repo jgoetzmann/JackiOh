@@ -1,6 +1,6 @@
 // What `viewFor` hands each seat about cards it may not read (SPEC §9.1, §10.8, R33, R35, R97,
 // R177). Found by the polish-4 edge-case hunt (docs/polish/4-edge-cases.md, lens L10, rounds 1 to
-// 4); every case here failed before its fix. Where a leak is a difference between two games that
+// 5); every case here failed before its fix. Where a leak is a difference between two games that
 // differ only in hidden cards, the test builds both and asserts the viewer cannot tell them apart.
 
 import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
@@ -34,6 +34,9 @@ const MY_PAWN = "core-096";
 const GLOWY = "core-026";
 const GIGA = "core-029";
 const GIFTED = "core-064";
+const SORCERER = "core-068";
+const MASK = "core-065";
+const HONEYPOT = "core-060";
 
 function eventsOf<T extends GameEvent["type"]>(view: PlayerView, type: T): Extract<GameEvent, { type: T }>[] {
   return view.events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
@@ -432,5 +435,92 @@ describe("R177: Make Radiant on a hidden card that is already Radiant", () => {
     expect(radiant.backrow("p1", 2)?.radiant).toBe(true);
     expect(base.view("p2").opponent.backrow[1]).toEqual({ faceDown: true });
     indistinguishable("p2", base, radiant);
+  });
+});
+
+describe("R177: Eugenics' Radiant roll over a hidden library", () => {
+  /**
+   * p1's library is nine 4-mana 7/7s. Eugenics exiles 8 at random, and with this seed the card left
+   * is library[5]; each remaining library card then has a 30% chance to become Radiant (§8 #42),
+   * and with this seed that card's roll comes up. The two games differ only in whether that one
+   * library card, which neither player can read (§9.1), was Radiant already.
+   */
+  function eugenicsGame(leftCardRadiant: boolean): Scenario {
+    const library = Array.from({ length: 9 }, (_, at) => ({ def: SEVEN_SEVEN, radiant: leftCardRadiant && at === 5 }));
+    const s = scenario({
+      seed: "r5-eugenics-0",
+      p1: { hand: [EUGENICS, STOCKPILE], mana: 10, library },
+      p2: { hand: [STOCKPILE], library: [STOCKPILE] },
+    });
+    s.play(EUGENICS);
+    return s;
+  }
+
+  it("R177 #42 rolls every remaining library card, so its cues do not count the ones already Radiant (§8 #42, §9.1, R97)", () => {
+    const base = eugenicsGame(false);
+    const radiant = eugenicsGame(true);
+
+    // The same eight cards went to the (public) exile pile in both games, all of them base-face.
+    expect(base.pile("p1", "exile").map((card) => card.id)).toEqual(radiant.pile("p1", "exile").map((card) => card.id));
+    expect(base.pile("p1", "exile").every((card) => !card.radiant)).toBe(true);
+    // One card is left, and it ends Radiant in both games: rolled into it, or already there.
+    expect(base.pile("p1", "library").map((card) => card.radiant)).toEqual([true]);
+    expect(radiant.pile("p1", "library").map((card) => card.radiant)).toEqual([true]);
+
+    // "Each remaining library card has a 30% chance" (§8 #42): the already-Radiant card is rolled
+    // like any other, and a success on a card nobody may read is cued whether or not its flag
+    // changed (R177). A cue for the changed cards only lets both seats count the Radiant ones.
+    indistinguishable("p2", base, radiant);
+    indistinguishable("p1", base, radiant);
+  });
+});
+
+describe("R177: a number taken by a face-down trap owed an event", () => {
+  /**
+   * p1's Twisted Sorcerer swings for lethal at p2 (5 health). p2's lane-1 My Pawn cancels it and
+   * the AI plays out p1's turn (R44); p2's turn starts inside that playout and Masochism Mask asks
+   * p2 (§8 #65), so the declaration's trap window stops with a prompt open. p2's lane-2 card is
+   * face-down, and the games differ only in what it is. p2 answers, then plays Lunar Eclipse,
+   * whose "next Spell costs 1 less" is a modifier both seats read with its id (R169).
+   */
+  function pawnGame(laneTwo: string): Scenario {
+    const s = scenario({
+      seed: "r5-owed-window",
+      p1: { field: [SORCERER], library: [GIGA, GIGA, GIGA] },
+      p2: {
+        health: 5,
+        hand: [LUNAR_ECLIPSE, STOCKPILE],
+        backrow: [
+          { def: MY_PAWN, lane: 1, faceUp: false },
+          { def: laneTwo, lane: 2, faceUp: false },
+          { def: MASK, lane: 3 },
+        ],
+        library: [GIGA, GIGA, GIGA],
+      },
+    });
+    s.attack(SORCERER, "hero");
+    s.answer("lose 3");
+    s.play(LUNAR_ECLIPSE, { targets: [{ pick: "hero", player: "p1" }] });
+    return s;
+  }
+
+  it("R177 p1 cannot tell from a modifier's id that p2's other face-down trap is a second My Pawn (§10.8, R33, R169)", () => {
+    const twoPawns = pawnGame(MY_PAWN);
+    const pawnAndSheep = pawnGame(SHEEPISH);
+    const pawnAndHoneypot = pawnGame(HONEYPOT);
+
+    // Every game played the same public course: the attack cancelled, p1's turn handed over and
+    // ended, p2 on turn 10 with Lunar Eclipse's discount live, and the lane-2 card still face-down.
+    for (const s of [twoPawns, pawnAndSheep, pawnAndHoneypot]) {
+      expect(s.state.turn).toBe(10);
+      expect(s.state.active).toBe("p2");
+      expect(s.view("p1").opponent.backrow[1]).toEqual({ faceDown: true });
+      expect(s.view("p1").opponent.modifiers).toHaveLength(1);
+    }
+
+    // What p2's lane-2 face-down card is must not reach p1 (R33), not even through the number the
+    // counter hands the next modifier: R177's "no number the view carries is taken by a hidden card".
+    indistinguishable("p1", pawnAndSheep, twoPawns);
+    indistinguishable("p1", pawnAndHoneypot, twoPawns);
   });
 });

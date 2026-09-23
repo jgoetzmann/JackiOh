@@ -282,8 +282,13 @@ export const SHEEP_TRIBUTE_VALUE = 2;
  * §7 gives the Sheep a Radiant face worth 3, so the value is read off the instance's face rather
  * than its definition — the same card is worth a different amount depending on which face is up,
  * which is exactly what a Radiant form is.
+ *
+ * "Worth 2 Tributes" is the Sheep's text (§7), and §6.3's Vanilla removes a unit's text, so a
+ * Vanilla Sheep — radiant #61's copy of one — is worth 1 like any other unit (R115's reading of
+ * the flags a card's text sets, applied to the one that lives outside `Script.staticFlags`).
  */
 export function tributeValueOf(state: GameState, unit: CardInstance): number {
+  if (unit.vanilla) return 1;
   if (defOf(state, unit.defId).index !== SHEEP_TOKEN_INDEX) return 1;
   return unit.radiant ? RADIANT_SHEEP_TRIBUTE_VALUE : SHEEP_TRIBUTE_VALUE;
 }
@@ -715,7 +720,10 @@ function refuseZone(state: GameState, player: PlayerId, card: CardInstance, zone
 
   const row = rowForCard(state, card);
   if (zone.row !== row) return `${name} goes in the ${row} row`;
-  if (zone.lane < 1 || zone.lane > rowSize(row)) return `there is no ${row} zone ${zone.lane}`;
+  // §3.2: a zone is one of the row's lanes, numbered 1 up — never a place between two of them.
+  if (!Number.isInteger(zone.lane) || zone.lane < 1 || zone.lane > rowSize(row)) {
+    return `there is no ${row} zone ${zone.lane}`;
+  }
 
   // §6.2 Stack: an occupied unit zone is a legal zone for a Stack card, and only occupancy is
   // waived — `acceptsStack` still refuses a Locked or Reborn-reserved zone (R64).
