@@ -37,6 +37,7 @@ import {
   type AnimationQueue,
 } from "./animations.ts";
 import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
+import FxLayer from "../fx/FxLayer.tsx";
 import "./animations.css";
 
 /**
@@ -257,6 +258,7 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         onClick={handleClick}
         onControl={handleControl}
       />
+      <FxLayer queue={runner} view={shown} />
 
       <Prompt
         view={shown}

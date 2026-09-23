@@ -1,0 +1,1065 @@
+/* The effects layer's look (docs/polish/1-animations.md S10, B40).
+ *
+ * FxLayer renders one fixed overlay over the whole viewport:
+ *
+ *   .fx-layer[data-fx="on|off"]  >  canvas.fx-canvas  +  div.fx-dom
+ *
+ * The canvas holds the particles, projectiles, cracks and rings. `.fx-dom` holds the short-lived
+ * elements `mountDomEffect` (fx/dom.ts) appends, one per DOM cue, each carrying `data-fx="<kind>"`,
+ * its geometry and timing as `--fx-x/--fx-y/--fx-w/--fx-h/--fx-dx/--fx-dy/--fx-ms`, and its words
+ * only in `data-amount` / `data-text`. Every word on screen comes from `content: attr(…)` below, so
+ * no effect ever adds a text node to the document.
+ *
+ * R200: the layer is presentation only. It takes no pointer event (the layer and every descendant
+ * are `pointer-events: none`), never carries `data-animating`, and adds no scrollable width
+ * (`position: fixed; inset: 0; overflow: hidden`). z-index 38 sits above the board and below the
+ * prompt scrim (40); the cards mid-animation (40, 45, 50) stay above it.
+ *
+ * Colours come from the src/index.css tokens (--radiant, --opponent, --legal, --plague, --grade,
+ * --mana, --text, --bg-*, --line-*), mixed with plain white or black where a shade is needed.
+ *
+ * Every @keyframes here animates only what the compositor can run off the main thread: transform
+ * (and translate, scale, rotate), opacity, and a filter with no pixel-moving function (brightness,
+ * never drop-shadow or blur). A glow or a shadow is drawn once, statically, and faded with opacity.
+ * css.test.ts holds both sheets to that.
+ */
+
+/* ------------------------------------------------------------------------------ the layer --- */
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+
+  /* The layer's own palette, derived from the index.css tokens. */
+  --fx-gold: var(--radiant, #ffd24a);
+  --fx-gold-pale: color-mix(in srgb, var(--fx-gold) 35%, white);
+  --fx-gold-deep: color-mix(in srgb, var(--fx-gold) 55%, black);
+  --fx-damage: var(--opponent, #c0453f);
+  --fx-heal: var(--legal, #4ec98a);
+  --fx-loss: var(--plague, #8b5cf6);
+  --fx-arcane: var(--plague, #8b5cf6);
+  --fx-frost: var(--grade, #38bdf8);
+  --fx-ink: var(--bg-sunken, #0b0d13);
+  --fx-steel: var(--text-dim, #9aa1b8);
+  --fx-white: var(--text, #e8eaf2);
+}
+
+.fx-layer * {
+  pointer-events: none;
+}
+
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fx-dom {
+  position: absolute;
+  inset: 0;
+}
+
+/* Every DOM effect is placed in viewport pixels: the layer is fixed at inset 0, so the
+   getBoundingClientRect boxes the director measured map straight onto left/top. */
+.fx-dom > * {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  will-change: transform, opacity;
+  contain: layout style;
+}
+
+/* ------------------------------------------------------------- splat: the damage starburst --- */
+
+/* Hearthstone's hit marker: a big jagged starburst over the target with the signed amount in
+   white on top. It pops in, overshoots, holds through FX_SPLAT_HOLD_MS and drifts up as it fades.
+   Damage is red, healing green (a softer, rounder burst) and health loss violet. */
+
+@keyframes fx-splat-pop {
+  0% {
+    transform: scale(0.15) rotate(-14deg);
+    opacity: 0;
+  }
+  9% {
+    transform: scale(1.28) rotate(5deg);
+    opacity: 1;
+  }
+  16% {
+    transform: scale(0.93) rotate(-1deg);
+    opacity: 1;
+  }
+  23% {
+    transform: scale(1.03) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  78% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9) translateY(-14px);
+    opacity: 0;
+  }
+}
+
+.fx-splat {
+  --fx-splat-color: var(--fx-damage);
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: clamp(58px, calc(var(--fx-w, 82px) * 1.02), 118px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  z-index: 3;
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 55%));
+  animation: fx-splat-pop var(--fx-ms) cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.fx-splat::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at 46% 40%,
+      color-mix(in srgb, var(--fx-splat-color) 30%, white) 0%,
+      var(--fx-splat-color) 34%,
+      color-mix(in srgb, var(--fx-splat-color) 62%, black) 72%,
+      color-mix(in srgb, var(--fx-splat-color) 30%, black) 100%
+    );
+  /* A thirteen-point starburst with uneven spikes, so it reads as a splat, not a badge. */
+  clip-path: polygon(
+    55.2% 0.3%, 60.5% 20.8%, 73.9% 14.2%, 72.9% 29.1%, 92.1% 27%, 80% 42.1%, 91% 49.3%, 80.2% 56.9%,
+    94.6% 72.5%, 73.5% 70.2%, 76.2% 86.6%, 61.5% 78.8%, 56.8% 99.5%, 46.8% 80.8%, 35.4% 90.4%,
+    32.8% 75.8%, 14.6% 82.4%, 22.8% 64.8%, 10.4% 60.5%, 19% 50.5%, 1.3% 38.8%, 22.3% 36%, 15.8% 20.7%,
+    32% 24.8%, 31.5% 3.5%, 45.8% 19.3%
+  );
+}
+
+.fx-splat::after {
+  content: attr(data-amount);
+  position: relative;
+  font:
+    900 clamp(21px, calc(var(--fx-w, 82px) * 0.36), 38px) / 1 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  letter-spacing: -0.02em;
+  color: white;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 0 1px black,
+    1px 1px 0 black,
+    -1px 1px 0 black,
+    1px -1px 0 black,
+    -1px -1px 0 black,
+    0 2px 3px rgb(0 0 0 / 70%);
+  white-space: nowrap;
+}
+
+.fx-splat[data-tone="heal"] {
+  --fx-splat-color: var(--fx-heal);
+}
+
+.fx-splat[data-tone="heal"]::before {
+  /* Healing is a soft nine-lobed bloom rather than a jagged hit. */
+  clip-path: polygon(
+    50% 0%, 63.7% 12.4%, 82.1% 11.7%, 84.6% 30%, 99.2% 41.3%, 89.4% 56.9%, 93.3% 75%, 75.7% 80.6%,
+    67.1% 97%, 50% 90%, 32.9% 97%, 24.3% 80.6%, 6.7% 75%, 10.6% 56.9%, 0.8% 41.3%, 15.4% 30%,
+    17.9% 11.7%, 36.3% 12.4%
+  );
+}
+
+.fx-splat[data-tone="heal"]::after {
+  color: color-mix(in srgb, var(--fx-heal) 18%, white);
+}
+
+.fx-splat[data-tone="loss"] {
+  --fx-splat-color: var(--fx-loss);
+}
+
+.fx-splat[data-tone="loss"]::before {
+  /* Health loss (no damage source) is a seven-point void star. */
+  clip-path: polygon(
+    50% 0%, 63% 23%, 89.1% 18.8%, 79.2% 43.3%, 98.7% 61.1%, 73.5% 68.7%, 71.7% 95%, 50% 80%, 28.3% 95%,
+    26.5% 68.7%, 1.3% 61.1%, 20.8% 43.3%, 10.9% 18.8%, 37% 23%
+  );
+}
+
+/* ------------------------------------------------------------ rays: the light-ray fans --- */
+
+/* Legendary and Mythic entrances, the heal column, the radiant set and the victory / "Your turn"
+   backdrop. A repeating conic gradient draws the rays; a radial mask fades them out from the
+   centre; the whole fan turns slowly while it blooms and fades. */
+
+@keyframes fx-rays-spin {
+  0% {
+    transform: rotate(0deg) scale(0.45);
+    opacity: 0;
+  }
+  18% {
+    transform: rotate(calc(var(--fx-rays-turn, 1) * 9deg)) scale(1);
+    opacity: var(--fx-rays-peak, 0.95);
+  }
+  70% {
+    transform: rotate(calc(var(--fx-rays-turn, 1) * 34deg)) scale(1.06);
+    opacity: calc(var(--fx-rays-peak, 0.95) * 0.8);
+  }
+  100% {
+    transform: rotate(calc(var(--fx-rays-turn, 1) * 48deg)) scale(1.14);
+    opacity: 0;
+  }
+}
+
+.fx-rays {
+  /* 1 turns the fan as it blooms; 0 holds it still (the holy column). */
+  --fx-rays-turn: 1;
+  --fx-ray: var(--fx-gold);
+  --fx-ray-core: var(--fx-gold-pale);
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: max(240px, calc(max(var(--fx-w, 0px), var(--fx-h, 0px)) * 2.8));
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  z-index: 1;
+  /* Two fans with different periods, each ray ramping in and out rather than hard-stopped, so the
+     light reads as soft god rays of uneven width instead of a stamped starburst. */
+  background:
+    radial-gradient(circle closest-side, var(--fx-ray-core) 0%, color-mix(in srgb, var(--fx-ray-core) 40%, transparent) 16%, transparent 38%),
+    repeating-conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      var(--fx-ray) 3deg,
+      color-mix(in srgb, var(--fx-ray) 40%, transparent) 5deg,
+      transparent 8deg 19deg
+    ),
+    repeating-conic-gradient(
+      from 9deg,
+      transparent 0deg,
+      color-mix(in srgb, var(--fx-ray) 55%, transparent) 2deg,
+      transparent 5deg 13deg
+    );
+  -webkit-mask-image: radial-gradient(circle closest-side, black 6%, rgb(0 0 0 / 70%) 30%, rgb(0 0 0 / 22%) 66%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, black 6%, rgb(0 0 0 / 70%) 30%, rgb(0 0 0 / 22%) 66%, transparent 100%);
+  animation: fx-rays-spin var(--fx-ms) cubic-bezier(0.25, 0.7, 0.3, 1) both;
+}
+
+.fx-rays[data-tone="legendary"] {
+  --fx-ray: color-mix(in srgb, var(--fx-gold) 80%, var(--opponent, #c0453f));
+  --fx-ray-core: var(--fx-gold-pale);
+}
+
+/* Mythic: prismatic, every token hue in turn, each ray ramped like the gold ones. */
+.fx-rays[data-tone="mythic"] {
+  background:
+    radial-gradient(circle closest-side, white 0%, rgb(255 255 255 / 45%) 14%, transparent 34%),
+    repeating-conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      var(--plague, #8b5cf6) 3deg,
+      transparent 7deg 12deg,
+      var(--grade, #38bdf8) 15deg,
+      transparent 19deg 24deg,
+      var(--radiant, #ffd24a) 27deg,
+      transparent 31deg 36deg,
+      var(--legal, #4ec98a) 39deg,
+      transparent 43deg 48deg,
+      var(--opponent, #c0453f) 51deg,
+      transparent 55deg 60deg
+    );
+}
+
+.fx-rays[data-tone="radiant"] {
+  --fx-ray: var(--fx-gold);
+  --fx-ray-core: white;
+}
+
+/* Holy light: a still shaft of warm light falling from above onto the target, feathered at both
+   sides, with faint streaks inside it and a bright pool of light where it lands (the foot sits on
+   the target's centre, 80% of the way down the shaft). */
+.fx-rays[data-tone="holy"] {
+  --fx-rays-turn: 0;
+  width: max(96px, calc(var(--fx-w, 0px) * 1.5));
+  height: max(240px, calc(var(--fx-h, 0px) * 3));
+  aspect-ratio: auto;
+  translate: -50% -80%;
+  border-radius: 0;
+  background:
+    radial-gradient(ellipse 48% 12% at 50% 80%, rgb(255 255 255 / 95%) 0%, color-mix(in srgb, var(--fx-gold-pale) 70%, transparent) 45%, transparent 100%),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 8px,
+      rgb(255 255 255 / 18%) 10px,
+      transparent 12px 19px
+    ),
+    radial-gradient(
+      ellipse 34% 60% at 50% 60%,
+      rgb(255 255 255 / 80%) 0%,
+      color-mix(in srgb, var(--fx-gold-pale) 55%, transparent) 40%,
+      color-mix(in srgb, var(--fx-gold) 14%, transparent) 75%,
+      transparent 100%
+    );
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 34%, black 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 34%, black 86%, transparent 100%);
+}
+
+/* Victory and "Your turn": a wide gold fan behind the centre of the screen, kept soft so the board
+   still reads through it. */
+.fx-rays[data-tone="victory"] {
+  --fx-ray: color-mix(in srgb, var(--fx-gold) 85%, white);
+  --fx-ray-core: color-mix(in srgb, var(--fx-gold-pale) 70%, transparent);
+  --fx-rays-peak: 0.6;
+  width: max(320px, 105vmin);
+  z-index: 0;
+}
+
+/* ---------------------------------------------------------- sheen: the radiant golden sweep --- */
+
+/* A band of pale gold light sweeps across the card as it turns Radiant, with a gold edge glow. The
+   band is the ::before, slid across by transform and clipped by the box (overflow clips children,
+   never the box's own shadow); the glow is the box's own shadow, drawn once and faded by opacity. */
+
+@keyframes fx-sheen-sweep {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(220%);
+    opacity: 0;
+  }
+}
+
+@keyframes fx-sheen-glow {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.fx-sheen {
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: var(--fx-w);
+  height: var(--fx-h);
+  border-radius: var(--radius, 7px);
+  z-index: 2;
+  overflow: hidden;
+  animation: fx-sheen-glow var(--fx-ms) ease-in-out both;
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--fx-gold) 80%, transparent),
+    0 0 18px 4px color-mix(in srgb, var(--fx-gold) 70%, transparent);
+}
+
+.fx-sheen::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 55%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    color-mix(in srgb, var(--fx-gold) 45%, transparent) 30%,
+    color-mix(in srgb, var(--fx-gold-pale) 90%, white) 50%,
+    color-mix(in srgb, var(--fx-gold) 45%, transparent) 70%,
+    transparent 100%
+  );
+  animation: fx-sheen-sweep var(--fx-ms) cubic-bezier(0.45, 0, 0.2, 1) both;
+}
+
+/* ------------------------------------------------------- ghost: a card back in flight --- */
+
+/* Draws, shuffles, bounces and discards: a card BACK (never a face, R202) arcs from the source
+   pile to the destination, lifting and turning on the way. */
+
+@keyframes fx-ghost-fly {
+  0% {
+    transform: translate(0, 0) scale(0.7) rotate(-10deg);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(calc(var(--fx-dx) * 0.08), calc(var(--fx-dy) * 0.08 - 10px)) scale(0.95) rotate(-6deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(var(--fx-dx) * 0.5), calc(var(--fx-dy) * 0.5 - 38px)) scale(1.08) rotate(0deg);
+    opacity: 1;
+  }
+  86% {
+    transform: translate(calc(var(--fx-dx) * 0.92), calc(var(--fx-dy) * 0.92 - 8px)) scale(0.86) rotate(5deg);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--fx-dx), var(--fx-dy)) scale(0.7) rotate(7deg);
+    opacity: 0;
+  }
+}
+
+.fx-ghost {
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: calc(var(--card-w, 82px) * 0.72);
+  height: calc(var(--card-h, 112px) * 0.72);
+  translate: -50% -50%;
+  z-index: 2;
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: var(--radius, 7px);
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 18%, var(--line-bright, #454d66) 19% 21%, transparent 22%),
+    repeating-linear-gradient(
+      135deg,
+      var(--bg-raised, #1a1d28) 0 6px,
+      var(--line, #2c3142) 6px 12px
+    );
+  box-shadow:
+    0 6px 14px rgb(0 0 0 / 55%),
+    0 0 12px 2px color-mix(in srgb, var(--fx-arcane) 55%, transparent);
+  animation: fx-ghost-fly var(--fx-ms) cubic-bezier(0.45, 0.05, 0.35, 1) both;
+}
+
+/* ----------------------------------------------------------------- arrows: buff chevrons --- */
+
+/* Net positive buffs: green chevrons rise through the card. Net negative: red chevrons fall. */
+
+@keyframes fx-arrows-rise {
+  0% {
+    transform: translateY(calc(var(--fx-arrow-dir) * -28%));
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  68% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(var(--fx-arrow-dir) * 34%));
+    opacity: 0;
+  }
+}
+
+@keyframes fx-arrows-chevron {
+  0% {
+    scale: 0.55;
+    opacity: 0;
+  }
+  22% {
+    scale: 1.12;
+    opacity: 1;
+  }
+  38% {
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    scale: 1;
+    opacity: 0.45;
+  }
+}
+
+.fx-arrows {
+  --fx-arrow-color: var(--fx-heal);
+  /* -1 moves up the screen, 1 moves down. */
+  --fx-arrow-dir: -1;
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: var(--fx-w);
+  height: var(--fx-h);
+  z-index: 3;
+  /* A dark outline and a coloured glow, so the chevrons read over any card art (review: the old
+     small, half-transparent ones were only visible in a 3x crop). Static: only transform and
+     opacity animate. */
+  filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)
+    drop-shadow(0 0 7px color-mix(in srgb, var(--fx-arrow-color) 90%, transparent))
+    drop-shadow(0 2px 2px rgb(0 0 0 / 70%));
+  animation: fx-arrows-rise var(--fx-ms) cubic-bezier(0.3, 0.6, 0.4, 1) both;
+}
+
+.fx-arrows[data-direction="down"] {
+  --fx-arrow-color: var(--fx-damage);
+  --fx-arrow-dir: 1;
+}
+
+.fx-arrows::before,
+.fx-arrows::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  translate: -50% -50%;
+  aspect-ratio: 1.25;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--fx-arrow-color) 70%, black) 0%,
+    var(--fx-arrow-color) 50%,
+    color-mix(in srgb, var(--fx-arrow-color) 35%, white) 100%
+  );
+  /* An upward chevron; the down variant turns it over. */
+  clip-path: polygon(50% 0%, 100% 52%, 100% 82%, 50% 36%, 0% 82%, 0% 52%);
+  animation: fx-arrows-chevron var(--fx-ms) ease-out both;
+}
+
+.fx-arrows::before {
+  top: 36%;
+  width: min(78%, 64px);
+}
+
+.fx-arrows::after {
+  top: 64%;
+  width: min(60%, 50px);
+  animation-delay: calc(var(--fx-ms) * 0.14);
+}
+
+.fx-arrows[data-direction="down"]::before,
+.fx-arrows[data-direction="down"]::after {
+  rotate: 180deg;
+}
+
+.fx-arrows[data-direction="down"]::before {
+  top: 62%;
+}
+
+.fx-arrows[data-direction="down"]::after {
+  top: 36%;
+}
+
+/* ------------------------------------------------------------- banner: "Your turn" etc. --- */
+
+/* The Hearthstone turn banner: big gold gradient letters on a dark ribbon that slam in, hold, and
+   fade. The opponent's turn is steel; "No moves left" is small and muted. */
+
+@keyframes fx-banner-in {
+  0% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+  9% {
+    transform: scale(0.94);
+    opacity: 1;
+  }
+  15% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  21% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  78% {
+    transform: scale(1.01);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.06);
+    opacity: 0;
+  }
+}
+
+.fx-banner {
+  left: 50%;
+  top: 45%;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  max-width: 100vw;
+  /* Sized so the longest line ("Opponent's turn", uppercase) still fits a 360 px phone. */
+  padding: 0.3em 1em 0.36em;
+  z-index: 4;
+  font:
+    900 clamp(24px, min(7vw, 12vh), 72px) / 1.05 ui-serif,
+    Georgia,
+    "Times New Roman",
+    serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: fx-banner-in var(--fx-ms) cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* The ribbon behind the letters: a dark band that fades out at both ends, edged in gold. */
+.fx-banner::before {
+  content: "";
+  position: absolute;
+  inset: 4% -12%;
+  background:
+    linear-gradient(90deg, transparent, var(--fx-gold) 22%, var(--fx-gold) 78%, transparent) top / 100% 2px no-repeat,
+    linear-gradient(90deg, transparent, var(--fx-gold) 22%, var(--fx-gold) 78%, transparent) bottom / 100% 2px no-repeat,
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--fx-ink) 82%, transparent) 20%,
+      color-mix(in srgb, var(--fx-ink) 88%, transparent) 50%,
+      color-mix(in srgb, var(--fx-ink) 82%, transparent) 80%,
+      transparent 100%
+    );
+}
+
+.fx-banner::after {
+  content: attr(data-text);
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    var(--fx-gold-pale) 0%,
+    var(--fx-gold) 46%,
+    var(--fx-gold-deep) 58%,
+    color-mix(in srgb, var(--fx-gold) 70%, white) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 85%)) drop-shadow(0 0 14px color-mix(in srgb, var(--fx-gold) 65%, transparent));
+}
+
+.fx-banner[data-tone="opponent"]::before {
+  background:
+    linear-gradient(90deg, transparent, var(--fx-steel) 22%, var(--fx-steel) 78%, transparent) top / 100% 2px no-repeat,
+    linear-gradient(90deg, transparent, var(--fx-steel) 22%, var(--fx-steel) 78%, transparent) bottom / 100% 2px no-repeat,
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--fx-ink) 80%, transparent) 20%,
+      color-mix(in srgb, var(--fx-ink) 86%, transparent) 50%,
+      color-mix(in srgb, var(--fx-ink) 80%, transparent) 80%,
+      transparent 100%
+    );
+}
+
+.fx-banner[data-tone="opponent"]::after {
+  background: linear-gradient(180deg, white 0%, var(--fx-steel) 52%, var(--line-bright, #454d66) 60%, var(--fx-white) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 85%))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--fx-damage) 45%, transparent));
+}
+
+.fx-banner[data-tone="muted"] {
+  font-size: clamp(20px, min(5vw, 9vh), 40px);
+}
+
+.fx-banner[data-tone="muted"]::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--fx-ink) 78%, transparent) 22%,
+    color-mix(in srgb, var(--fx-ink) 78%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+.fx-banner[data-tone="muted"]::after {
+  background: none;
+  color: var(--fx-steel);
+  -webkit-text-fill-color: var(--fx-steel);
+  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 80%));
+}
+
+/* ------------------------------------------------- result: Victory, Defeat and Draw screens --- */
+
+/* The game-over sequence (planResult). The screen darkens at the edges, the outcome word slams in
+   huge, holds, and everything is gone by FX_RESULT_MS. Victory glows gold with a flare behind the
+   word (the rays and confetti are separate cues); Defeat sinks into a cold dark vignette with an
+   ember glow rising from below; Draw is a quiet steel. */
+
+@keyframes fx-result-in {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  84% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The word slams in from wide and huge (a horizontal stretch stands in for tracking in, since
+   letter-spacing would re-lay the text every frame), holds, and swells as it fades. */
+@keyframes fx-result-word {
+  0% {
+    transform: scale(3, 2.4);
+    opacity: 0;
+  }
+  11% {
+    transform: scale(0.92);
+    opacity: 1;
+  }
+  17% {
+    transform: scale(1.05);
+  }
+  24% {
+    transform: scale(1);
+  }
+  86% {
+    transform: scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.12, 1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes fx-result-flare {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  12% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+.fx-result {
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 5;
+  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(0 0 0 / 55%) 100%);
+  animation: fx-result-in var(--fx-ms) ease-out both;
+}
+
+.fx-result[data-outcome="victory"] {
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--fx-gold) 30%, transparent) 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 45%, transparent 35%, rgb(0 0 0 / 50%) 100%);
+}
+
+.fx-result[data-outcome="defeat"] {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgb(0 0 0 / 30%) 15%, color-mix(in srgb, var(--fx-ink) 88%, transparent) 100%),
+    linear-gradient(to top, color-mix(in srgb, var(--fx-damage) 35%, transparent) 0%, transparent 38%);
+}
+
+.fx-result[data-outcome="draw"] {
+  background: radial-gradient(ellipse at 50% 45%, rgb(0 0 0 / 15%) 20%, color-mix(in srgb, var(--fx-ink) 75%, transparent) 100%);
+}
+
+/* The flare behind the word. */
+.fx-result::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: min(92vw, 720px);
+  aspect-ratio: 2.4;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse closest-side,
+    color-mix(in srgb, var(--fx-gold-pale) 80%, transparent) 0%,
+    color-mix(in srgb, var(--fx-gold) 40%, transparent) 45%,
+    transparent 100%
+  );
+  animation: fx-result-flare var(--fx-ms) ease-out both;
+}
+
+.fx-result[data-outcome="defeat"]::before {
+  background: radial-gradient(
+    ellipse closest-side,
+    color-mix(in srgb, var(--fx-damage) 50%, transparent) 0%,
+    color-mix(in srgb, var(--fx-ink) 60%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+.fx-result[data-outcome="draw"]::before {
+  background: radial-gradient(
+    ellipse closest-side,
+    color-mix(in srgb, var(--fx-steel) 40%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.fx-result::after {
+  content: attr(data-text);
+  position: relative;
+  margin-bottom: 10vh;
+  font:
+    900 clamp(44px, min(14vw, 24vh), 128px) / 1 ui-serif,
+    Georgia,
+    "Times New Roman",
+    serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: linear-gradient(
+    180deg,
+    white 0%,
+    var(--fx-gold-pale) 22%,
+    var(--fx-gold) 48%,
+    var(--fx-gold-deep) 60%,
+    color-mix(in srgb, var(--fx-gold) 75%, white) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 0 rgb(0 0 0 / 90%)) drop-shadow(0 0 22px color-mix(in srgb, var(--fx-gold) 70%, transparent));
+  animation: fx-result-word var(--fx-ms) cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.fx-result[data-outcome="defeat"]::after {
+  background: linear-gradient(
+    180deg,
+    var(--fx-white) 0%,
+    var(--fx-steel) 40%,
+    color-mix(in srgb, var(--fx-damage) 70%, black) 62%,
+    color-mix(in srgb, var(--fx-damage) 55%, var(--fx-steel)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 3px 0 rgb(0 0 0 / 90%)) drop-shadow(0 0 20px color-mix(in srgb, var(--fx-damage) 60%, transparent));
+}
+
+.fx-result[data-outcome="draw"]::after {
+  background: linear-gradient(180deg, white 0%, var(--fx-steel) 55%, var(--fx-white) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 3px 0 rgb(0 0 0 / 90%)) drop-shadow(0 0 16px color-mix(in srgb, var(--fx-white) 40%, transparent));
+}
+
+/* ------------------------------------------------ hold: a stand-in carried to its zone --- */
+
+/* B46. The board keeps the view from before a burst until the burst has played (BUILD M5-T4), so a
+   unit played from the hand would not be in its zone while its Cry resolves. A stand-in carries it
+   there: a copy of the hand card (or of a back, from the opponent's hand) lifts, flies in an arc
+   and slams down on the fx slam, then sits in the zone until the board shows the real card, in the
+   same paint. With nothing to copy it is a card-shaped light that drops in. `--fx-x/--fx-y/--fx-w/
+   --fx-h` is the landing box, `--fx-dx/--fx-dy/--fx-s` where it starts relative to it, and
+   `--fx-land-ms` when it lands. After it lands the director moves it only by `translate` (the board
+   shook or scrolled under it), which costs no layout. */
+
+@keyframes fx-hold-fly {
+  0% {
+    transform: translate(var(--fx-dx), var(--fx-dy)) scale(var(--fx-s));
+    opacity: var(--fx-o0);
+    filter: brightness(1.05);
+  }
+  42% {
+    transform: translate(calc(var(--fx-dx) * 0.5), calc(var(--fx-dy) * 0.5 - var(--fx-lift))) scale(1.3);
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+    filter: brightness(1.7);
+  }
+}
+
+/* The landing: a heavy squash, a flash that burns off, and the card settles. */
+@keyframes fx-hold-slam {
+  0% {
+    transform: scale(1.04, 0.93);
+    filter: brightness(1.7);
+  }
+  35% {
+    transform: scale(0.98, 1.03);
+    filter: brightness(1.25);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.fx-dom > .fx-hold {
+  --fx-lift: 22px;
+  left: var(--fx-x);
+  top: var(--fx-y);
+  width: var(--fx-w);
+  height: var(--fx-h);
+  z-index: 1;
+  transform-origin: 50% 60%;
+  /* The fly holds its end state until the slam takes over at --fx-land-ms; the slam must not fill
+     backwards, or its first frame would override the flight. */
+  animation:
+    fx-hold-fly var(--fx-land-ms) cubic-bezier(0.4, 0, 0.85, 0.45) both,
+    fx-hold-slam 300ms cubic-bezier(0.2, 0.7, 0.3, 1) var(--fx-land-ms) forwards;
+}
+
+.fx-hold > .fx-hold-card {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  opacity: 1;
+  transform: none;
+  translate: none;
+}
+
+/* The copy plays only what the board plays on the card it carries (the director mirrors that card's
+   `data-animating` onto it: a Cry's buff, a transform, a hit), and nothing else. */
+.fx-hold > .fx-hold-card:not([data-animating]) {
+  animation: none;
+}
+
+/* The copy's words, back from `data-text` (no text node ever enters the layer). */
+.fx-hold-text::before {
+  content: attr(data-text);
+}
+
+.fx-hold-glow {
+  width: 100%;
+  height: 100%;
+  border: 1px solid color-mix(in srgb, var(--fx-gold) 45%, white);
+  border-radius: var(--radius, 7px);
+  background:
+    radial-gradient(ellipse at 50% 38%, rgb(255 255 255 / 70%), transparent 68%),
+    linear-gradient(160deg, color-mix(in srgb, var(--fx-gold) 40%, #2a3050), #171a24);
+  box-shadow:
+    0 0 18px 4px color-mix(in srgb, var(--fx-gold) 55%, transparent),
+    inset 0 0 12px color-mix(in srgb, white 35%, transparent);
+}
+
+/* B47: a card the burst has taken away stays gone until the board shows the view it left.
+   "now": a stand-in has already taken its place. "after": its own keyframes (the dissolve, the
+   lift out of the hand) play first; the attribute only bites once they have ended. */
+[data-fx-concealed="now"],
+[data-fx-concealed="after"]:not([data-animating]) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* -------------------------------------------------- the persistent Divine Shield cocoon --- */
+
+/* Hearthstone's "translucent yellow cocoon": every card that shows the Divine Shield keyword chip
+   wears a golden bubble that breathes slowly. It hangs off e2e-contract hooks only (the
+   `card-<id>` testid and `data-keyword`), so no component changes. When the shield pops the chip
+   leaves the view and the cocoon goes with it; the `shieldBreak` cue draws the shatter.
+
+   It is an effect like any other (SPEC §10.10), so it is drawn only while the layer is on: under
+   reduced motion (the query or the viewer's setting) or with intensity "off" there is no bubble and
+   no endless pulse, and the keyword chip alone says the unit is shielded (R200). The card clips its
+   content, so the shell past its edge is an outline, and the bubble inside is the ::after. */
+
+@keyframes fx-shield-pulse {
+  0% {
+    opacity: 0.62;
+    transform: scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fx-shield-pop {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.06);
+    filter: brightness(2.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+    filter: brightness(1);
+  }
+}
+
+/* A focused card keeps its focus ring. */
+.game:has(> .fx-layer[data-fx="on"]) [data-testid^="card-"]:has([data-keyword="Divine Shield"]):not(:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--radiant, #ffd24a) 80%, white);
+  outline-offset: 2px;
+}
+
+.game:has(> .fx-layer[data-fx="on"]) [data-testid^="card-"]:has([data-keyword="Divine Shield"])::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(155deg, color-mix(in srgb, white 40%, transparent) 0%, transparent 32%),
+    radial-gradient(
+      ellipse 70% 62% at 50% 50%,
+      transparent 44%,
+      color-mix(in srgb, var(--radiant, #ffd24a) 32%, transparent) 72%,
+      color-mix(in srgb, var(--radiant, #ffd24a) 70%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--radiant, #ffd24a) 95%, white),
+    inset 0 0 16px 4px color-mix(in srgb, var(--radiant, #ffd24a) 60%, transparent);
+  animation: fx-shield-pulse 2.6s ease-in-out infinite alternate;
+}
+
+/* The pop: during its own divineShieldLost entry the cocoon flashes and bursts outward. */
+.game:has(> .fx-layer[data-fx="on"]) [data-testid^="card-"][data-animating="divineShieldLost"]:has([data-keyword="Divine Shield"])::after {
+  animation: fx-shield-pop calc(250ms * var(--anim-scale, 1) * var(--anim-squeeze, 1)) ease-out both;
+}
+
+/* ------------------------------------------------ the classic numbers while effects are on --- */
+
+/* The splats replace the old floating numbers. They stay in the DOM (only hidden), so BUILD's
+   `.damage-pop` text assertions still hold. */
+.game:has(> .fx-layer[data-fx="on"]) :is(.damage-pop, .heal-pop, .loss-pop) {
+  visibility: hidden;
+}
+
+/* While the layer's big turn banner is up, the small status line under it would contradict it: it is
+   drawn from the view the board still shows, so it says "Your turn" while the banner already says
+   "Opponent's turn". It steps aside for the banner's life and stays in the DOM (role="status"). */
+.game:has(> .fx-layer [data-fx="banner"]) > .turn-banner {
+  visibility: hidden;
+}
+
+/* ------------------------------------------------------------------------ reduced motion --- */
+
+/* R200: under prefers-reduced-motion no effect is drawn at all. FxLayer already renders
+   `data-fx="off"` with no canvas and plays no cue, which also takes the cocoon away (it is gated on
+   `data-fx="on"`); this block is the belt to that brace. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-layer *,
+  .fx-layer *::before,
+  .fx-layer *::after,
+  [data-testid^="card-"]:has([data-keyword="Divine Shield"])::after,
+  [data-testid^="card-"][data-animating="divineShieldLost"]:has([data-keyword="Divine Shield"])::after {
+    animation: none !important;
+  }
+
+  .fx-dom > * {
+    visibility: hidden;
+  }
+}
