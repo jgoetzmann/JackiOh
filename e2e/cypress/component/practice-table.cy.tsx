@@ -1,24 +1,25 @@
-// The practice table (apps/web/src/practice/table.css) at the viewports practice is played on,
-// measured on the M5-T1 fixture board with a hand of 4, 7 and 10 cards.
+// The practice table at the viewports practice is played on, measured on the M5-T1 fixture board
+// with a hand of 4, 7 and 10 cards.
 //
-// The skin makes the page exactly one screen tall with `overflow: hidden`, so anything it lays out
-// past the viewport is not scrolled to: it is gone. Two things the first skin got wrong are pinned
-// here, each a public part of the view (§10.8) that has to stay on screen:
+// The practice page is exactly one screen tall with `overflow: hidden` (practice.css, "the game
+// screen"), so anything laid out past the viewport is not scrolled to: it is gone. The board inside
+// it is board.css's, as in hotseat and online play (the practice-only skin this spec was first
+// written against was dropped at integration, once polish tasks 6 and 7 landed). Two things are
+// pinned here, each a public part of the view (§10.8) that has to stay on screen:
 //
-//   - every card in the player's hand lies inside the viewport, however many there are. A 7-card
-//     hand at 768x720 once put its last card 14 px past the right edge, where it could not be
-//     clicked, because the fan's overlap was fixed per card count rather than fitted to the room;
+//   - every card in the player's hand lies across the viewport, however many there are, and shows
+//     enough of itself to be clicked. Across, and down to its top: on a phone board.css lets the
+//     hand hang below the screen's edge as Hearthstone's does, and its B46 (mobile-ux.cy.tsx) holds
+//     a hand card to showing its top 24 px, the cost and the name. This spec holds practice to the
+//     same line, under the HUD practice adds;
 //   - R169's modifier badges (`modifiers-<side>`), the plague and grade counters, and a Stack's
-//     buried count are drawn at every size. The skin once hid the badge list on every portrait
-//     screen and on landscape phones, and the counters and buried count in every narrow lane,
-//     which brought back exactly the invisible modifiers R169 exists to prevent.
+//     buried count are drawn at every size.
 //
 // The mount is the route's own shell (routes/practice.tsx): `.app-shell--wide.practice--game`
 // with a HUD row above `.practice-board.practice-table`, so the table gets the height it really has.
 
 import Game from "../../../apps/web/src/game/Game.tsx";
 import "../../../apps/web/src/practice/practice.css";
-import "../../../apps/web/src/practice/table.css";
 import { card, fullBoardView } from "../../../apps/web/src/test/fixtures.ts";
 
 const VIEWPORTS = [
@@ -55,6 +56,25 @@ function mountTable(handSize: number): void {
   );
 }
 
+/** B46's line for a hand card (mobile-ux.cy.tsx): the top 24 px of a card, its cost and name. */
+const HAND_CARD_SHOWING_PX = 24;
+
+/** A hand card a player can see and press: displayed, across the viewport, its top on screen. */
+function expectHandCardOnScreen(element: Element, label: string, width: number, height: number): void {
+  const style = getComputedStyle(element);
+  expect(style.display, `${label} is displayed`).to.not.eq("none");
+  expect(style.visibility, `${label} is not hidden`).to.not.eq("hidden");
+  const box = element.getBoundingClientRect();
+  expect(box.width, `${label} has a width`).to.be.greaterThan(0);
+  expect(box.height, `${label} has a height`).to.be.greaterThan(0);
+  expect(box.left, `${label} starts inside the viewport`).to.be.at.least(-EPSILON);
+  expect(box.top, `${label} starts inside the viewport`).to.be.at.least(-EPSILON);
+  expect(box.right, `${label} ends inside ${String(width)} px`).to.be.at.most(width + EPSILON);
+  expect(box.top + HAND_CARD_SHOWING_PX, `${label} shows its top inside ${String(height)} px`).to.be.at.most(
+    height + EPSILON,
+  );
+}
+
 /** Visible in the sense a player means: displayed, with an area, and inside the viewport. */
 function expectOnScreen(element: Element, label: string, width: number, height: number): void {
   const style = getComputedStyle(element);
@@ -79,13 +99,13 @@ describe("the practice table keeps the hand, the modifiers and the counters on s
         mountTable(handSize);
 
         cy.get('[data-testid="board"]').should("be.visible");
-        cy.get(".hand-you .hand-cards > .card").should("have.length", handSize);
+        cy.get(".hand-you .hand-cards .card").should("have.length", handSize);
 
         cy.document().should((doc) => {
-          const handCards = [...doc.querySelectorAll(".hand-you .hand-cards > .card")];
+          const handCards = [...doc.querySelectorAll(".hand-you .hand-cards .card")];
           expect(handCards, "the hand is drawn").to.have.length(handSize);
           handCards.forEach((element, index) => {
-            expectOnScreen(element, `hand card ${String(index + 1)} of ${String(handSize)}`, viewport.width, viewport.height);
+            expectHandCardOnScreen(element, `hand card ${String(index + 1)} of ${String(handSize)}`, viewport.width, viewport.height);
           });
           // A card must show enough of itself to be clicked: at least 12 px of its left edge.
           for (let index = 0; index + 1 < handCards.length; index += 1) {

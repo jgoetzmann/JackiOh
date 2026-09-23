@@ -863,8 +863,8 @@ describe("B33 starting renders the game under the practice HUD", () => {
     expect(indicator).toHaveAttribute("role", "status");
     expect(indicator).toHaveTextContent("AI is thinking…");
     expect(screen.getByTestId(T.hud)).toHaveAttribute("data-thinking", "true");
-    // The practice table (practice/table.css) wraps the board and carries the same flag, which is
-    // what lights the AI's hero while it thinks.
+    // The practice table (`.practice-table`, practice.css) wraps the board and carries the same flag,
+    // which is what lights the AI's hero while it thinks.
     const table = screen.getByTestId("game").closest(".practice-table");
     expect(table).not.toBeNull();
     expect(table).toHaveAttribute("data-thinking", "true");

@@ -2235,3 +2235,14 @@ Two states that fuse different cards into one slot now get two ids, so neither c
 other's entry. `redact` step 6 follows the ingredients the id names. The tests moved with it:
 `packages/engine/test/fuse-registry.test.ts` and `packages/ai/test/redact-fusion.test.ts` use R179's
 ids and are named after R179 and R185.
+
+## Integration note: the practice skin is dropped
+
+Once tasks 6 and 7 landed, `practice/table.css` restyled a board DOM that no longer existed (task
+7 wraps each hand card in a `.hand-slot`) and drew over task 6's card faces, so the integration
+branch took the "drop it" branch of the merge note above. Practice now shows the board and faces
+exactly as hotseat and online play do. What the skin decided for practice alone moved to
+`practice.css` ("the game screen"): the page is one viewport tall with the board a size container
+under the HUD, Offer draw is hidden (§9.9, R188), and the AI's hero breathes a ring while it
+thinks. `practice-table.cy.tsx` measures the same things on task 7's board, holding a hand card to
+task 7's B46 line (its top 24 px on screen, as a phone's hand hangs below the edge).

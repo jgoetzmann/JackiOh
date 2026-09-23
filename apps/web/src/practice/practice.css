@@ -1,6 +1,7 @@
 /* The practice route's own chrome: the setup screen, the loading and failure screens, the HUD
    above the board, the think indicator, the result dialog and "Leave this game?". The board itself
-   is Game.tsx, unchanged; how it looks inside practice is table.css.
+   is Game.tsx, unchanged, laid out and drawn by board.css and the card faces exactly as in hotseat
+   and online play; this file only gives it the screen's height (see "the game screen").
 
    Every colour is a token from index.css. A tier's colour is `--tier` (Easy green, Medium gold,
    Hard red), set wherever a tier is drawn, so a crest, a card and the HUD agree. Motion is scaled
@@ -1537,5 +1538,75 @@
   .practice-hud {
     min-height: 0;
     padding: 2px 4px 2px 10px;
+  }
+}
+
+/* ---- the game screen: exactly one screen tall ------------------------------------------------ */
+
+/* The board is board.css's (polish task 7) and its cards are the card faces (task 6), the same as
+   in hotseat and online play. Until those landed, practice carried a skin of its own (table.css)
+   that relaid the board for this page alone; the integration branch dropped it once they did.
+
+   What practice still decides is the frame. board.css budgets a route whose shell holds `.game`
+   directly; here the HUD sits above, and the board is inside `.practice-table`, so the same budget
+   is given through that wrapper: the shell is exactly the visible viewport tall (`dvh`), the HUD
+   takes what it needs, and the board is a size container filling the rest, so board.css's layouts
+   size the cards off the room the board really has. */
+.app-shell.practice--game:has(.practice-table > .game) {
+  height: 100vh;
+  height: 100dvh;
+  padding-top: max(12px, env(safe-area-inset-top));
+  overflow: hidden;
+}
+
+.practice--game > .practice-hud {
+  flex: 0 0 auto;
+}
+
+.practice-table {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.practice-table > .game {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+
+.practice-table > .game > .board {
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: size;
+}
+
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .app-shell.practice--game:has(.practice-table > .game) {
+    gap: 6px;
+    padding: max(6px, env(safe-area-inset-top)) 12px 6px;
+  }
+}
+
+/* The AI declines every draw offer (R188), so in practice the button could only ever lead to
+   "Draw declined": SPEC §9.9 keeps it off this page. The action stays legal. */
+.practice-table .control-bar .control-offer-draw {
+  display: none;
+}
+
+/* While the AI thinks, its hero breathes a ring in the opponent's colour: the other seat is
+   visibly "on". Not while the hero animates, so animations.css's damage shake and the like win. */
+.practice-table[data-thinking="true"] .hero-opponent:not([data-animating]) {
+  animation: practice-hero-think calc(1.4s * var(--anim-scale, 1)) ease-in-out infinite;
+}
+
+@keyframes practice-hero-think {
+  50% {
+    outline: 3px solid color-mix(in srgb, var(--opponent) 60%, transparent);
+    outline-offset: 2px;
   }
 }

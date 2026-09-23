@@ -112,7 +112,6 @@ src/practice/
   decks.ts            random, the three named practice decks (hand-built lists), saved decks
   DeckPreview.tsx     the chosen deck's name, identity, mana curve and cards, before Start
   ModifierList.tsx    every live R169 modifier in full, one tap from the HUD
-  table.css           the practice skin over Game.tsx's board (its header says what it leaves alone)
 routes/practice.tsx   the route: setup, HUD, and Game.tsx unchanged inside the worker's catalog
 ```
 

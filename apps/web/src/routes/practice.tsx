@@ -64,7 +64,6 @@ import { practiceTestid } from "../practice/testids.ts";
 import { ThinkIndicator } from "../practice/ThinkIndicator.tsx";
 import { DIFFICULTY_LABEL, TierCrest } from "../practice/Tier.tsx";
 import "../practice/practice.css";
-import "../practice/table.css";
 
 /** The dev handle exists only outside a production build, like `window.__jackioh`. */
 const DEV_ONLY = import.meta.env.MODE !== "production";
@@ -667,8 +666,8 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
           Menu
         </button>
       </header>
-      {/* `practice-table` is the board's practice skin (practice/table.css); the wrapper is also the
-          root `useBoardBusy` watches. */}
+      {/* `practice-table` holds the board and hands it the screen's height (practice.css, "the game
+          screen"); the wrapper is also the root `useBoardBusy` watches. */}
       <div
         className="practice-board practice-table"
         ref={setBoardRoot}
