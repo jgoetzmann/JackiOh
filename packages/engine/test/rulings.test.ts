@@ -1497,10 +1497,11 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(172, SERVER_QUEUE_TEST, SERVER_ROOMS_TEST);
   });
 
-  // Proved by apps/server http.test.ts "R173 …": an oversized body is refused with 413 before it is
-  // parsed, on every route, and a body at the limit is still read.
-  it("R173 caps a request body at MAX_REQUEST_BODY_BYTES and refuses a larger one before parsing", () => {
-    provenIn(173, SERVER_HTTP_TEST);
+  // Proved by apps/server http.test.ts "R173 …" (an oversized body is refused with 413 before it is
+  // parsed, on every route, and a body at the limit is still read) and packages/validator
+  // validator.test.ts "R173 …" (an over-size deck is L2's alone, too many decks L1's alone).
+  it("R173 caps a request body at MAX_REQUEST_BODY_BYTES and bounds the validator's report", () => {
+    provenIn(173, SERVER_HTTP_TEST, VALIDATOR_TEST);
   });
 });
 

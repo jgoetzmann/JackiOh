@@ -237,6 +237,12 @@ export default function Library(props: LibraryProps): ReactElement {
     [editing, edited],
   );
 
+  // The editor as last rendered, for a save that lands after further edits (see `onSave`).
+  const latest = useRef<Editing | null>(null);
+  useEffect(() => {
+    latest.current = editing;
+  });
+
   const onSave = useCallback(() => {
     if (editing === null) return;
     const draft: LibraryDraft = { name: editing.name, cards: [...editing.cards] };
@@ -264,6 +270,11 @@ export default function Library(props: LibraryProps): ReactElement {
           setConfirmDiscard(false);
           return;
         }
+        // A refusal is the server's verdict on the deck it was sent. If the deck has been edited or
+        // closed since, that deck no longer exists, so the verdict is dropped as `edited` would
+        // drop it, and the client's own verdict on the current draft stands.
+        const now = latest.current;
+        if (now?.stored !== sentFrom || now.name !== draft.name || !sameCards(now.cards, draft.cards)) return;
         setServerIssues(outcome.issues);
         setServerMessage(outcome.issues.length === 0 ? outcome.message : null);
       })

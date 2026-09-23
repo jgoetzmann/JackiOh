@@ -583,6 +583,20 @@ describe("saving", () => {
     expect(props.save).toHaveBeenCalledWith("d1", { name: "Aggro", cards: [first, second] });
   });
 
+  it("drops a refusal that lands after the deck was edited: it was about a deck that no longer exists", async () => {
+    const save = inFlight();
+    mount({ create: vi.fn().mockReturnValue(save.promise) });
+    newDeck();
+    rightClick(pageCardId(first));
+    fireEvent.click(screen.getByTestId(DECK_SAVE));
+    rightClick(pageCardId(second));
+    await save.land({ ok: false, message: "STALE", issues: [{ rule: "L5", message: "STALE", cardId: first }] });
+
+    expect(screen.queryByTestId(DECK_SAVE_ERROR)).toBeNull();
+    expect(screen.getByTestId(DECK_ERRORS).querySelectorAll('[data-source="server"]')).toHaveLength(0);
+    expect(count()).toBe("2");
+  });
+
   it("holds Discard while a save is in flight", async () => {
     const save = inFlight();
     mount({ decks: [deck("a", 1)], save: vi.fn().mockReturnValue(save.promise) });

@@ -126,6 +126,8 @@ export default function Deckbuilder(props: DeckbuilderProps) {
 
   const putInDeck = useCallback(
     (deck: number, cardId: string) => {
+      // A drop can carry any text from outside the page; only a card the pool offers goes in.
+      if (!pool.includes(cardId)) return;
       const move = addCard(draft, deck, cardId);
       if (!move.applied) {
         // BUILD M8: "a card dragged into a second deck is refused". Refused, not reworded.
@@ -135,7 +137,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       setRefusedCardId(null);
       edited(move.draft);
     },
-    [draft, edited],
+    [draft, edited, pool],
   );
 
   const takeFromDeck = useCallback(

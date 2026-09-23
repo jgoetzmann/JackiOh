@@ -72,6 +72,17 @@ function drag(cardId: string, deck: number): void {
 // What `09-deckbuilder.cy.ts`'s last `it` actually asserts.
 // ---------------------------------------------------------------------------------------------
 
+describe("a drop from outside the page", () => {
+  it("puts in only a card the pool offers, whatever text is dropped", () => {
+    mount(null);
+    for (const text of ["constructor", "hello world", TOKEN_ID]) {
+      const carried: Record<string, string> = { "text/plain": text };
+      fireEvent.drop(screen.getByTestId("deck-drop-1"), { dataTransfer: { getData: (mime: string) => carried[mime] ?? "" } });
+    }
+    expect(screen.getByTestId("deck-count-1")).toHaveAttribute("data-count", "0");
+  });
+});
+
 describe("the saved loadout opens on screen", () => {
   it("shows a card from each of the three saved decks, by name", () => {
     const decks = legalDecks();

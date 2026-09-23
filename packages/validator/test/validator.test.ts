@@ -265,6 +265,27 @@ describe("a single library deck (R171)", () => {
   });
 });
 
+describe("the report is bounded by the rules' own sizes (R173)", () => {
+  const junk = (n: number, prefix: string): CardId[] => Array.from({ length: n }, (_, i) => `${prefix}-${String(i)}`);
+
+  it("R173 reports an over-size deck by L2 alone, however many bad ids it carries", () => {
+    const result = validateDeck({ deck: { cards: junk(DECK_SIZE * 50, "junk") }, catalog: catalog(), collection: collection() });
+    expect(errorsOf(result).map((error) => error.rule)).toEqual(["L2"]);
+  });
+
+  it("R173 reports a loadout of too many decks by L1 alone", () => {
+    const decks = Array.from({ length: LOADOUT_DECKS * 20 }, (_, i) => ({ cards: junk(DECK_SIZE, `d${String(i)}`) }));
+    expect(errorsOf(validateLoadout({ decks, catalog: catalog(), collection: collection() })).map((e) => e.rule)).toEqual([
+      "L1",
+    ]);
+  });
+
+  it("R173 still judges a short deck card by card, which is what a builder needs", () => {
+    const result = validateDeck({ deck: { cards: [NOT_IN_CATALOG] }, catalog: catalog(), collection: collection() });
+    expect(rulesOf(result)).toEqual(["L2", "L6"]);
+  });
+});
+
 describe("card ids are data, not property names", () => {
   it("reports an id named after an Object.prototype member as L6, never throwing", () => {
     for (const cardId of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {

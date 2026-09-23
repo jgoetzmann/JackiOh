@@ -129,6 +129,11 @@ function isToken(def: CardDef): boolean {
  * Checks every loadout rule and collects every failure, so the deckbuilder can show all of
  * them at once. Pure and total: bad-but-typed input returns errors, never an exception.
  *
+ * Bounded (R173): a loadout of more than LOADOUT_DECKS decks is reported by L1 alone, and a deck
+ * of more than `deckSize` cards by L2 alone. Neither can be judged card by card until it is the
+ * right size, and judging it anyway would let one request of junk ids come back as one issue per
+ * id. Short loadouts and short decks are still checked in full, which is what a builder needs.
+ *
  * Catalog staleness ("update required") is not one of L1–L6; the endpoint compares versions
  * (BUILD M6-T2) and this module only checks membership in the snapshot it was handed.
  */
@@ -149,6 +154,7 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
       message: `A loadout needs exactly ${LOADOUT_DECKS} decks; this one has ${decks.length}.`,
     });
   }
+  if (decks.length > LOADOUT_DECKS) return { ok: false, errors };
 
   /** Distinct ids in first-appearance order across the whole loadout, for L4 and L5. */
   const order: CardId[] = [];
@@ -157,7 +163,7 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
   /** Which decks hold each id, in deck order and without repeats (L4). */
   const decksHolding = new Map<CardId, number[]>();
 
-  // L1 does not stop the per-deck rules: every supplied deck is checked, even a fourth.
+  // A short loadout does not stop the per-deck rules: every supplied deck is checked.
   for (const [index, deck] of decks.entries()) {
     const deckNumber = index + 1;
 
@@ -171,6 +177,8 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
         deck: deckNumber,
       });
     }
+    // R173: an over-size deck is L2's alone, and its cards count towards nothing else.
+    if (deck.cards.length > deckSize) continue;
 
     const deckOrder: CardId[] = [];
     const deckCounts = new Map<CardId, number>();
