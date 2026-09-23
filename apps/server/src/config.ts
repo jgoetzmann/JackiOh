@@ -186,6 +186,10 @@ export const MATCH_ACTIONS_PER_SECOND = 5;
 // SPEC §11 R109: 300 requests/minute per account across the API is generous for normal client
 // polling and UI use while still bounding a runaway or malicious client.
 export const API_REQUESTS_PER_MINUTE = 300;
+// SPEC §11 R173: the largest request body the API reads, in bytes (64 KiB); a larger one is refused
+// with 413 before it is parsed. R109 bounds how many requests an account makes, this how large one
+// is: well over a hundred times the largest legitimate body, a three-deck loadout.
+export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 
 // ---------------------------------------------------------------------------------------------
 // The reaper (§9.5).
@@ -253,6 +257,7 @@ export const SERVER_CONFIG = Object.freeze({
   MATCHMAKER_SWEEP_INTERVAL_SECONDS,
   MATCH_ACTIONS_PER_SECOND,
   API_REQUESTS_PER_MINUTE,
+  MAX_REQUEST_BODY_BYTES,
   MATCH_REAPER_INTERVAL_SECONDS,
   MAX_LIBRARY_DECKS,
   DECK_NAME_MAX_LENGTH,

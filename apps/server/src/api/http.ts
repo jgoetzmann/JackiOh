@@ -17,6 +17,7 @@ import type { AuthUser, Profile, ServerDeps, Timers } from "./ports";
 
 export type ApiErrorCode =
   | "bad_request"
+  | "payload_too_large"
   | "unauthorized"
   | "email_unverified"
   | "account_pending"
@@ -34,6 +35,7 @@ export type ApiErrorCode =
 
 const STATUS: Record<ApiErrorCode, number> = {
   bad_request: 400,
+  payload_too_large: 413,
   unauthorized: 401,
   email_unverified: 403,
   account_pending: 403,
@@ -107,7 +109,10 @@ export type ApiRequest = {
   readonly url: URL;
   readonly headers: Headers;
   readonly params: Readonly<Record<string, string>>;
-  /** Parsed JSON body; `{}` for a request without one. Rejects anything but a JSON object. */
+  /**
+   * Parsed JSON body; `{}` for a request without one. Rejects anything but a JSON object, and a
+   * body over R173's limit.
+   */
   readonly body: Readonly<Record<string, unknown>>;
   /** §9.4, §9.8: the client address is only ever seen hashed. */
   readonly ipHash: string;
@@ -133,9 +138,33 @@ export function bearerToken(headers: Headers): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * SPEC §11 R173: a body is read only up to `floodLimits.requestBodyBytes` and refused with 413
+ * past it, before it is parsed. The declared Content-Length is checked first because it costs
+ * nothing, but it is the client's claim, so the bytes actually read are counted too: a missing or
+ * lying header reads no further than an honest one would.
+ */
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (request.method === "GET" || request.method === "HEAD") return {};
-  const text = await request.text();
+  const limit = floodLimits.requestBodyBytes;
+  const tooLarge = (): ApiError =>
+    new ApiError("payload_too_large", `the request body must be at most ${String(limit)} bytes`);
+  if (Number(request.headers.get("content-length")) > limit) throw tooLarge();
+
+  if (request.body === null) return {};
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytes = 0;
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    bytes += next.value.byteLength;
+    if (bytes > limit) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    text += decoder.decode(next.value, { stream: true });
+  }
+  text += decoder.decode();
   if (text.trim().length === 0) return {};
   let parsed: unknown;
   try {

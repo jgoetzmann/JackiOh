@@ -160,7 +160,7 @@ describe("R171 — the deck library (§9.4, BUILD M9-T1)", () => {
     expect((await created(mine, "Empty", [])).cards).toEqual([]);
   });
 
-  it("R171 refuses an illegal deck with 422 and the shared validator's own sentences", async () => {
+  it("R171 refuses an illegal deck with 422 and the shared validator's own sentences, on create and on edit", async () => {
     const token = catalog.cardIds.find((cardId) => catalog.isToken(cardId)) ?? "";
     const extra = catalog.cardIds.find(
       (cardId) => !full.includes(cardId) && !catalog.isToken(cardId) && !catalog.isBanned(cardId),
@@ -173,19 +173,25 @@ describe("R171 — the deck library (§9.4, BUILD M9-T1)", () => {
       unknown: [first, "core-does-not-exist"],
     };
 
+    const kept = await created(mine, "Kept", full);
+
     for (const [name, cards] of Object.entries(illegal)) {
       const expected = await saveIssues(cards, name);
       // PREMISE: the validator objects, so the refusal is its verdict and not the route's.
       expect(expected, name).not.toEqual([]);
 
-      const response = await save(mine, { name, cards });
-      const body = await readJson<Body>(response);
-      expect(response.status, name).toBe(422);
-      expect(body.error?.code).toBe("loadout_invalid");
-      expect(body.error?.message).toBe(expected[0]?.message);
-      expect(body.error?.details).toEqual(expected);
+      for (const response of [
+        await save(mine, { name, cards }),
+        await save(mine, { name, cards }, kept.id),
+      ]) {
+        const body = await readJson<Body>(response);
+        expect(response.status, name).toBe(422);
+        expect(body.error?.code).toBe("loadout_invalid");
+        expect(body.error?.message).toBe(expected[0]?.message);
+        expect(body.error?.details).toEqual(expected);
+      }
     }
-    expect(deps.store.tables.decks).toEqual([]);
+    expect((await listed(mine)).decks).toEqual([kept]);
   });
 
   it("R171 answers another profile's deck id with 404, never 403, and leaves it alone", async () => {
@@ -265,15 +271,19 @@ describe("R171 — the deck library (§9.4, BUILD M9-T1)", () => {
       "DELETE /api/decks/:id active",
     ]);
 
+    // A real deck id, so a 403 on the edit and the delete is the gate and not a miss.
+    const deck = await created(mine, "Mine", full);
     deps.store.seedProfile({ id: "pending", userId: "user-pending", status: "pending" });
     const pending = deps.auth.addUser({ userId: "user-pending", email: "pending@example.test" });
     for (const response of [
       await send("GET", "/api/decks", pending),
       await save(pending, { name: "Early", cards: [] }),
+      await save(pending, { name: "Early", cards: [] }, deck.id),
+      await send("DELETE", `/api/decks/${deck.id}`, pending),
     ]) {
       expect(response.status).toBe(403);
       expect((await readJson<Body>(response)).error?.code).toBe("account_pending");
     }
-    expect(deps.store.tables.decks).toEqual([]);
+    expect((await listed(mine)).decks).toEqual([deck]);
   });
 });
