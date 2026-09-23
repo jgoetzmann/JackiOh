@@ -1,5 +1,5 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R172, in order.
+// name. One `it("R<n> …")` per §11 row, R1 to R173, in order.
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -134,6 +134,8 @@ const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
 const VALIDATOR_TEST = "../../validator/test/validator.test.ts";
 const SERVER_DECKS_TEST = "../../../apps/server/test/api/decks.test.ts";
 const SERVER_ROOMS_TEST = "../../../apps/server/test/match/rooms.test.ts";
+/** R173's proof: the body limit every route reads through. */
+const SERVER_HTTP_TEST = "../../../apps/server/test/api/http.test.ts";
 
 /** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
 const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
@@ -1493,6 +1495,12 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // deck, an incomplete or foreign deck is refused, and no loadout is needed on that path.
   it("R172 lets a match use a library deck, validated strictly and frozen like a loadout deck", () => {
     provenIn(172, SERVER_QUEUE_TEST, SERVER_ROOMS_TEST);
+  });
+
+  // Proved by apps/server http.test.ts "R173 …": an oversized body is refused with 413 before it is
+  // parsed, on every route, and a body at the limit is still read.
+  it("R173 caps a request body at MAX_REQUEST_BODY_BYTES and refuses a larger one before parsing", () => {
+    provenIn(173, SERVER_HTTP_TEST);
   });
 });
 
