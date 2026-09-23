@@ -1,4 +1,4 @@
-# `e2e/` — the thirteen BUILD M8 specs
+# `e2e/` — the fourteen BUILD M8 specs
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,7 +16,7 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the thirteen specs
+  cypress/e2e/*.cy.ts      the fourteen specs
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
   support/
     commands.ts            seedGame, playCard, attack, answerPrompt, endTurn (+ the waiting
