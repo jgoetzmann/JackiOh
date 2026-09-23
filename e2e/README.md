@@ -152,6 +152,16 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 08 | M4 + M5 only: it ends turns until the cap. |
 | 09 | M6-T3 (validator + loadout endpoints) and the deckbuilder UI. |
 | 10 | M6-T1 (auth, invite gate) and the code screen. |
+| 14 | A built client only (`pnpm build:e2e`, then `vite preview`): no server and no auth provider. Every `${apiUrl}/api/*` call is a `cy.intercept` stub, sessions are seeded under `jackioh.e2e.session` in `onBeforeLoad`, and emailed links are visited as `/login#…`. It covers the landing page, the segmented code field, rate-limit feedback, emailed-link handling, the reset screen and the gate's exits (`docs/polish/5-sign-in.md`). |
+
+Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
+bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:
+
+```
+pnpm build:e2e
+pnpm --dir apps/web exec vite preview --port 5173 --strictPort
+E2E_BASE_URL=http://localhost:5173 pnpm --dir e2e exec cypress run --spec cypress/e2e/14-landing-and-sign-in.cy.ts
+```
 
 ## What the root still needs (not changed from here)
 
