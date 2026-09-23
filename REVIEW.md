@@ -140,7 +140,7 @@ For each row, name the test(s) that prove it, or trace a fixture state through t
 
 ### B7 End-to-end (BUILD M8)
 
-All fourteen specs exist under `e2e/cypress/e2e/` with the listed assertions and pass headless. `grep -rn "cy.wait([0-9]" e2e/` returns nothing.
+All fifteen specs exist under `e2e/cypress/e2e/` with the listed assertions and pass headless. `grep -rn "cy.wait([0-9]" e2e/` returns nothing.
 
 ### B8 Determinism and fuzz
 

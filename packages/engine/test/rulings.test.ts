@@ -174,6 +174,9 @@ const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
 const AI_DECIDE_TEST = "../../ai/test/decide.test.ts";
 const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
+/** R203's and R204's proofs (SPEC §10.11): the client's sound cue table, and the director that plays it. */
+const WEB_AUDIO_CUES_TEST = "../../../apps/web/src/audio/cues.test.ts";
+const WEB_AUDIO_DIRECTOR_TEST = "../../../apps/web/src/audio/director.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1743,6 +1746,29 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
       WEB_RESET_PASSWORD_TEST,
       SERVER_AUTH_TEST,
     );
+  });
+
+  // R203 and R204 are client rulings (SPEC §10.11): the engine makes neither, and the proofs live in
+  // `apps/web/src/audio`, where the cue table and the director are. Neither changes a rule.
+
+  // Proved by apps/web cues.test.ts's "R203 …" tests (an event whose defId is R97's sentinel gives
+  // no voice cue, the viewer's own trap set gives the generic `trapSet` and never speaks, and a
+  // `trapFired` speaks its cast line only where R154 leaves its identity readable), and by
+  // director.test.ts's "R203 …" tests (the first view, and any view whose `viewer` differs from the
+  // last, voice nothing and drop every owed event, so a hotseat hand-over plays nothing; and a real
+  // #41 Sheepish, set and fired through the engine's own `viewFor`, speaks only on its controller's
+  // seat).
+  it("R203 lets sound reveal nothing the viewer's PlayerView does not, so a hidden card never speaks", () => {
+    provenIn(203, WEB_AUDIO_CUES_TEST, WEB_AUDIO_DIRECTOR_TEST);
+  });
+
+  // Proved by apps/web cues.test.ts's "R204 …" tests: a readable unit's `cardPlayed` gives its play
+  // line and a Spell's or Field Spell's its cast line, a unit's `destroyed` gives its death line
+  // (R89's defId), a defId the table lacks gives no line, a unit summoned without a play speaks at
+  // the lowest priority while a played one's `summoned` adds nothing, `bounced`, `exiled`,
+  // `transformed` and `fused` never speak, and death and trap lines outrank play and cast lines.
+  it("R204 speaks a play line on cardPlayed, a death line on destroyed, and a trap's line when it fires", () => {
+    provenIn(204, WEB_AUDIO_CUES_TEST);
   });
 
   // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,
