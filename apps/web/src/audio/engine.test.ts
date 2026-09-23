@@ -1189,3 +1189,106 @@ describe("B51 caches and prefetch", () => {
     expect(r.fetch.urls()).toEqual([url("core-004-play")]);
   });
 });
+
+/* --------------------------------------------------------------------------------------------- *
+ * B58: no background voice work while the board animates
+ * --------------------------------------------------------------------------------------------- */
+
+describe("B58 background voice work waits while the engine is busy", () => {
+  /** Resolves every hanging request, over and over, until nothing new is asked for. */
+  async function drainFetches(r: Rig): Promise<void> {
+    for (let i = 0; i < 60; i += 1) {
+      r.fetch.release();
+      await settle();
+    }
+  }
+
+  it("B58 while busy the prefetch starts no request; when busy clears it resumes, a few at a time, and fetches each line once", async () => {
+    const r = rig({ engine: { manifest: PRELOAD_MANIFEST } });
+    unlocked(r);
+    r.fetch.mode = "hang";
+    r.engine.preloadVoices(["core-004-play"]);
+    await settle();
+
+    r.engine.setBusy(true);
+    await elapse(r, VOICE_PREFETCH_DELAY_MS + 5_000);
+    expect(r.fetch.urls(), "the prefetch came due mid-burst and waited").toEqual([url("core-004-play")]);
+
+    r.engine.setBusy(false);
+    await settle();
+    expect(r.fetch.urls()).toHaveLength(1 + VOICE_PREFETCH_CONCURRENCY);
+
+    // Requests already in flight when a burst starts finish, but start nothing after them.
+    r.engine.setBusy(true);
+    await drainFetches(r);
+    expect(r.fetch.urls(), "nothing new while busy").toHaveLength(1 + VOICE_PREFETCH_CONCURRENCY);
+
+    r.engine.setBusy(false);
+    await settle();
+    expect(r.fetch.urls()).toHaveLength(1 + 2 * VOICE_PREFETCH_CONCURRENCY);
+    await drainFetches(r);
+    const all = Object.keys(PRELOAD_MANIFEST.files).map((key) => url(key));
+    expect(new Set(r.fetch.urls())).toEqual(new Set(all));
+    expect(r.fetch.urls(), "each line once").toHaveLength(all.length);
+  });
+
+  it("B58 a preload asked for while busy is held, and only the newest one runs when busy clears", async () => {
+    const r = rig({ engine: { manifest: PRELOAD_MANIFEST } });
+    unlocked(r);
+
+    r.engine.setBusy(true);
+    r.engine.preloadVoices(["core-200-play"]);
+    r.engine.preloadVoices(["core-201-play", "core-202-play"]);
+    await settle();
+    expect(r.fetch.fetchBytes).not.toHaveBeenCalled();
+
+    r.engine.setBusy(false);
+    await settle();
+    expect(r.fetch.urls()).toEqual([url("core-201-play"), url("core-202-play")]);
+    expect(r.factory.last().decodeCalls).toHaveLength(2);
+
+    r.engine.setBusy(true);
+    r.engine.setBusy(false);
+    await settle();
+    expect(r.fetch.urls(), "a held preload runs once").toHaveLength(2);
+  });
+
+  it("B58 a line asked to play while busy is fetched at once and heard", async () => {
+    const r = rig();
+    unlocked(r);
+    r.engine.setBusy(true);
+
+    expect(r.engine.playVoice("core-004", "play", 0)).toBe(true);
+    expect(r.fetch.urls()).toEqual([url("core-004-play")]);
+    await settle();
+
+    expect(lastVoice(r)?.outcome).toBe("file");
+  });
+
+  it("B58 muted, or with voice lines off, nothing is preloaded or prefetched; voice lines back on resume the prefetch", async () => {
+    const r = rig({ engine: { manifest: PRELOAD_MANIFEST } });
+    unlocked(r);
+    r.fetch.mode = "hang";
+    r.engine.preloadVoices(["core-004-play"]);
+    await settle();
+
+    writeAudioSettings({ voiceOn: false });
+    r.engine.preloadVoices(["core-200-play"]);
+    await elapse(r, VOICE_PREFETCH_DELAY_MS + 1_000);
+    expect(r.fetch.urls(), "voice lines off").toEqual([url("core-004-play")]);
+
+    writeAudioSettings({ voiceOn: true });
+    await settle();
+    expect(r.fetch.urls()).toHaveLength(1 + VOICE_PREFETCH_CONCURRENCY);
+
+    writeAudioSettings({ muted: true });
+    r.engine.preloadVoices(["core-229-play"]);
+    await drainFetches(r);
+    expect(r.fetch.urls(), "muted").toHaveLength(1 + VOICE_PREFETCH_CONCURRENCY);
+    expect(r.fetch.urls()).not.toContain(url("core-229-play"));
+
+    writeAudioSettings({ muted: false });
+    await settle();
+    expect(r.fetch.urls()).toHaveLength(1 + 2 * VOICE_PREFETCH_CONCURRENCY);
+  });
+});

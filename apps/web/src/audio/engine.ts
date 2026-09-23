@@ -28,6 +28,14 @@
 // and the decoded buffers of the VOICE_DECODED_MAX most recently used lines (a decoded line is
 // about 20 times its file).
 //
+// BACKGROUND VOICE WORK NEVER RUNS DURING AN ANIMATION BURST (B58). The runner times each entry
+// with a main-thread setTimeout, so a burst takes as long as the page's busiest moment lets it: the
+// prefetch's stream of requests (and, under Cypress, the command log entry each one adds) landing
+// in an R82 auto-ended turn run pushed a 3.8 s burst past 4 s. `useGameAudio` calls
+// `setBusy(true)` while the runner has an entry in flight. Until it clears, the prefetch starts no
+// new request and a preload is held (the newest one, run when it clears). A line asked to play is
+// never held. With sound muted or voice lines off, neither the prefetch nor a preload runs at all.
+//
 // Every accepted cue is logged (at most LOG_LIMIT), which is how tests and the e2e debug handle
 // observe the engine in a headless browser with no audio device.
 
@@ -259,6 +267,13 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   let channel: VoiceChannel | null = null;
   let waiting: VoiceLine[] = [];
   let prefetchScheduled = false;
+  /** The keys the prefetch has still to fetch: null until VOICE_PREFETCH_DELAY_MS after it was scheduled. */
+  let prefetchRest: VoiceKey[] | null = null;
+  let prefetchInFlight = 0;
+  /** The board is animating (setBusy): background voice work waits. */
+  let busy = false;
+  /** The newest preload asked for while busy, run when it clears. */
+  let heldPreload: VoiceKey[] | null = null;
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
   function later(ms: number, fn: () => void): void {
@@ -302,6 +317,8 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     // A line already speaking stops with the setting, speech fallback included: the bus gain
     // cannot reach the browser's speech synthesis.
     if (s.muted || !s.voiceOn) silenceVoice();
+    // Voice lines back on: the prefetch picks up where it paused.
+    else pumpPrefetch();
   }
 
   /** iOS only counts a context as unlocked once a sound has started inside the gesture. */
@@ -448,23 +465,41 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     return pending;
   }
 
+  /** Whether a voice line could be heard at all: no point loading one otherwise. */
+  function voiceWanted(): boolean {
+    const s = readAudioSettings();
+    return !s.muted && s.voiceOn;
+  }
+
+  /** Background loading (the prefetch and preloads) runs only between bursts, and only for voice that can be heard (B58). */
+  function backgroundFree(): boolean {
+    return !busy && !disposed && voiceWanted();
+  }
+
+  /** Starts prefetch requests up to VOICE_PREFETCH_CONCURRENCY while background work may run. */
+  function pumpPrefetch(): void {
+    const rest = prefetchRest;
+    if (rest === null) return;
+    while (prefetchInFlight < VOICE_PREFETCH_CONCURRENCY && backgroundFree()) {
+      const key = rest.shift();
+      if (key === undefined) return;
+      if (bytes.has(key)) continue;
+      prefetchInFlight += 1;
+      // fetchCached never rejects (a failed fetch is cached as null).
+      void fetchCached(key).then(() => {
+        prefetchInFlight -= 1;
+        pumpPrefetch();
+      });
+    }
+  }
+
   /** Once the context runs: every line's bytes, a few at a time, so no first line waits on the network. */
   function schedulePrefetch(): void {
     if (prefetchScheduled) return;
     prefetchScheduled = true;
     later(VOICE_PREFETCH_DELAY_MS, () => {
-      const rest = (Object.keys(manifest.files) as VoiceKey[]).filter((key) => !bytes.has(key));
-      const next = (): void => {
-        if (disposed) return;
-        const key = rest.shift();
-        if (key === undefined) return;
-        if (bytes.has(key)) {
-          next();
-          return;
-        }
-        void fetchCached(key).then(next);
-      };
-      for (let i = 0; i < VOICE_PREFETCH_CONCURRENCY; i += 1) next();
+      prefetchRest = (Object.keys(manifest.files) as VoiceKey[]).filter((key) => !bytes.has(key));
+      pumpPrefetch();
     });
   }
 
@@ -701,6 +736,11 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   function preloadVoices(keys: readonly VoiceKey[]): void {
     try {
       if (ctx === null || disposed) return;
+      if (!voiceWanted()) return;
+      if (busy) {
+        heldPreload = [...keys];
+        return;
+      }
       let started = 0;
       for (const key of keys) {
         if (!Object.hasOwn(manifest.files, key)) continue;
@@ -715,6 +755,20 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
       if (running()) schedulePrefetch();
     } catch {
       // Preloading is best effort.
+    }
+  }
+
+  function setBusy(next: boolean): void {
+    try {
+      if (busy === next) return;
+      busy = next;
+      if (busy || disposed) return;
+      const held = heldPreload;
+      heldPreload = null;
+      if (held !== null) preloadVoices(held);
+      pumpPrefetch();
+    } catch {
+      // Background loading is best effort.
     }
   }
 
@@ -736,6 +790,8 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     }
     channel = null;
     waiting = [];
+    heldPreload = null;
+    prefetchRest = null;
     if (ctx !== null) {
       try {
         void ctx.close().catch(() => {});
@@ -751,6 +807,7 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     playSfx,
     playVoice,
     preloadVoices,
+    setBusy,
     log: () => entries.slice(),
     clearLog: () => {
       entries = [];

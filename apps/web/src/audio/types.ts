@@ -112,7 +112,14 @@ export type AudioEngine = SoundSink & {
   state(): AudioState;
   /** Call synchronously inside a user gesture. Idempotent. */
   unlock(): void;
+  /** Held while busy (the newest call only) and skipped while muted or with voice lines off. */
   preloadVoices(keys: readonly VoiceKey[]): void;
+  /**
+   * true while the board animates (useGameAudio: the runner has an entry in flight). Background
+   * voice work (the prefetch and preloads) waits until it is false again; a line asked to play
+   * never does (B58).
+   */
+  setBusy(busy: boolean): void;
   /** Accepted cues, oldest first, at most LOG_LIMIT. */
   log(): readonly PlayedCue[];
   clearLog(): void;

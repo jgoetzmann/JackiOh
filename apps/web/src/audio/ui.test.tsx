@@ -1,4 +1,5 @@
-// The audio UI and its wiring into Game (docs/polish/2-sound.md, B28 to B32, and B44's preload).
+// The audio UI and its wiring into Game (docs/polish/2-sound.md, B28 to B32, B44's preload, and
+// B58: no background voice work while the board animates).
 //
 // B28's other half, "every pre-existing web test stays green", is the whole `web` project run, not
 // a test of its own: `pnpm vitest run --project web`.
@@ -15,13 +16,15 @@ import {
   AUDIO_SETTINGS_KEY,
   UI_HOVER_THROTTLE_MS,
   VOICE_DELAY_MS,
+  VOICE_PREFETCH_CONCURRENCY,
+  VOICE_PREFETCH_DELAY_MS,
   VOICE_PREVIEW_DEF_ID,
   VOICE_PRIORITY,
 } from "./constants.ts";
 import { exposeAudioDebug, type AudioDebugHandle } from "./debug.ts";
-import { getAudioEngine, setAudioEngineForTests } from "./engine.ts";
+import { createAudioEngine, getAudioEngine, setAudioEngineForTests } from "./engine.ts";
 import { readAudioSettings, resetAudioSettingsForTests, writeAudioSettings } from "./settings.ts";
-import { FakeClock } from "./test/fakeAudio.ts";
+import { FakeClock, FakeFetch, fakeContextFactory } from "./test/fakeAudio.ts";
 import type { AudioEngine, AudioState, PlayedCue, SoundSink } from "./types.ts";
 import { installUiSounds } from "./uiSounds.ts";
 import { VOICE_LINES, voiceKeysForView } from "./voiceData.ts";
@@ -43,6 +46,7 @@ function fakeEngine(options: { state?: AudioState; contexts?: number; log?: Play
     state: vi.fn<AudioEngine["state"]>(() => options.state ?? "locked"),
     unlock: vi.fn<AudioEngine["unlock"]>(),
     preloadVoices: vi.fn<AudioEngine["preloadVoices"]>(),
+    setBusy: vi.fn<AudioEngine["setBusy"]>(),
     log: vi.fn<AudioEngine["log"]>(() => log),
     clearLog: vi.fn<AudioEngine["clearLog"]>(() => {
       log.length = 0;
@@ -612,6 +616,99 @@ describe("B44 Game preloads the voice lines each view makes likely, once the con
 
       expect(engine.preloadVoices, state).not.toHaveBeenCalled();
       unmount();
+    }
+  });
+});
+
+/* --------------------------------------------------------------------------------------------- *
+ * B58: no background voice work while the board animates
+ * --------------------------------------------------------------------------------------------- */
+
+/**
+ * The shape of the burst that broke e2e spec 08 in CI: R82 auto-ending dead turns back to back,
+ * each with its banner, mana and draw. 3200 ms of table durations, played in BURST_BUDGET_MS.
+ */
+function autoEndedTurns(): GameEvent[] {
+  const turn = (player: "p1" | "p2", n: number): GameEvent[] => [
+    { type: "turnStarted", player, turn: n },
+    { type: "manaChanged", player, current: 1, max: 1 },
+    { type: "drawn", player, instanceId: `d${String(n)}`, defId: "core-001" },
+    { type: "turnAutoEnded", player, turn: n },
+  ];
+  return [...turn("p2", 4), ...turn("p1", 5)];
+}
+
+describe("B58 the board's animations hold background voice work", () => {
+  it("B58 Game holds the engine busy while its runner has an entry in flight, before that entry's cues, and frees it at idle", () => {
+    vi.useFakeTimers();
+    const engine = fakeEngine({ state: "running" });
+    setAudioEngineForTests(engine);
+    const first = baseView();
+    const { rerender, unmount } = renderGame(first);
+    expect(engine.setBusy).toHaveBeenLastCalledWith(false);
+
+    rerenderGame(rerender, withEvents(first, [turnStarted, unitPlayed]));
+    expect(engine.setBusy).toHaveBeenLastCalledWith(true);
+    const busyAt = Math.min(...engine.setBusy.mock.calls.flatMap((call, i) => (call[0] ? [engine.setBusy.mock.invocationCallOrder[i] ?? 0] : [])));
+    expect(busyAt, "busy before the entry's first cue").toBeLessThan(Math.min(...engine.playSfx.mock.invocationCallOrder));
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(engine.setBusy).toHaveBeenLastCalledWith(false);
+
+    rerenderGame(rerender, withEvents(first, [turnStarted, unitPlayed, { type: "turnStarted", player: "p1", turn: 5 }]));
+    expect(engine.setBusy).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(engine.setBusy, "a Game unmounted mid-burst frees the engine").toHaveBeenLastCalledWith(false);
+  });
+
+  it("B58 with the real engine, a burst holds the voice prefetch and the new view's preload until the board is still", async () => {
+    vi.useFakeTimers();
+    const fetch = new FakeFetch();
+    fetch.mode = "hang";
+    const engine = createAudioEngine({
+      createContext: fakeContextFactory({ state: "running" }).create,
+      speech: null,
+      fetchBytes: fetch.fetchBytes,
+      visibility: () => "visible",
+    });
+    setAudioEngineForTests(engine);
+    engine.unlock();
+    const url = (key: string): string => `/audio/voice/${key}.m4a`;
+    const advance = async (ms: number): Promise<void> => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
+
+    try {
+      const first = baseView({ you: emptySide("p1", { hand: [card({ defId: "core-004" })] }) });
+      const { rerender } = renderGame(first);
+      expect(fetch.urls(), "the first view's preload, on a still board").toEqual([url("core-004-play")]);
+
+      // The prefetch comes due VOICE_PREFETCH_DELAY_MS after that preload: start the burst first.
+      const lead = VOICE_PREFETCH_DELAY_MS / 2;
+      await advance(lead);
+      const hand = [card({ defId: "core-004" }), card({ defId: "core-012" })];
+      rerenderGame(rerender, withEvents(baseView({ you: emptySide("p1", { hand }) }), autoEndedTurns()));
+      expect(screen.queryByTestId("animation-queue"), "the burst is running").not.toBeNull();
+
+      let animated = 0;
+      while (screen.queryByTestId("animation-queue") !== null && animated < 10_000) {
+        expect(fetch.urls(), `no voice request ${String(animated)} ms into the burst`).toEqual([url("core-004-play")]);
+        await advance(50);
+        animated += 50;
+      }
+      expect(lead + animated, "the prefetch came due mid-burst").toBeGreaterThan(VOICE_PREFETCH_DELAY_MS);
+      expect(screen.queryByTestId("animation-queue"), "the burst ended").toBeNull();
+
+      // Board still: the held preload (the new hand card) first, then the prefetch, a few at a time.
+      const urls = fetch.urls();
+      expect(urls.slice(0, 2)).toEqual([url("core-004-play"), url("core-012-play")]);
+      expect(urls).toHaveLength(2 + VOICE_PREFETCH_CONCURRENCY);
+    } finally {
+      engine.dispose();
     }
   });
 });

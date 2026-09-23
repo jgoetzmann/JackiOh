@@ -401,7 +401,8 @@ Engine semantics, all observable through `state()`, `log()`, `contextsCreated()`
   not already decoded per call (a decoded one is only marked recently used). Decoded lines are kept
   for the `VOICE_DECODED_MAX` most recently used keys, and every fetched file's bytes for the page's
   life; `VOICE_PREFETCH_DELAY_MS` after the first preload on a running context, every line's bytes
-  are fetched in the background (review fix, B51).
+  are fetched in the background (review fix, B51). Neither runs during an animation burst or while
+  voice cannot be heard (CI fix, B58: `setBusy`).
 
 ### `apps/web/src/audio/unlock.ts` (slice 1)
 
@@ -547,7 +548,8 @@ In this order inside the hook:
 3. **`useLayoutEffect` subscribing to `runner`.** Keep `last = runner.inFlight()`. On each
    notification, read `e = runner.inFlight()`: if `e !== null && e !== last`, call
    `director.onEntryStart(e)`; if `e === null`, call `director.onIdle()`; then `last = e`. Unsubscribe
-   on cleanup.
+   on cleanup. The same notifications drive `engine.setBusy(e !== null)` (B58), set before the
+   entry's cues and cleared after the idle flush's, and cleanup clears it.
 4. **`useEffect(() => { if (runner.idle()) director.onIdle(); }, [view, runner])`.** It runs after
    every layout effect, which covers reduced motion, where the runner drains inside `enqueue`.
 5. **`useEffect` on mount.** It runs `installAudioUnlock(engine)`, `installUiSounds(engine, document)`
@@ -935,6 +937,18 @@ against the code and fixed, and each has a test.
 R203 also gained a proof against the engine's own redaction (director.test.ts): a real #41 Sheepish
 set and fired through `viewFor` speaks only on its controller's seat, the other seat hears the plain
 play and the sting, and the fired event on that seat carries `HIDDEN_DEF_ID`.
+
+### CI fix (B58)
+
+Added after e2e spec 08 failed in CI on Chrome (every attempt) and once on Electron. p2's mulligan
+answer produces one long burst: R82 auto-ends turns 1 to 4, 29 entries that `fitBudget` plays in
+about 3.8 s against `cy.settled()`'s 4 s. `VOICE_PREFETCH_DELAY_MS` after p1's first view on the
+running context, the prefetch's requests landed inside that burst. Each request is cheap, but
+Cypress logs each one in a reporter that shares the page's main thread, so the runner's chained
+timers slipped past 4 s. The runner is timed by main-thread timers, so any background work is
+charged to the burst, and that holds for a slow phone as much as for Cypress.
+
+58. **B58**: While `setBusy(true)` holds (useGameAudio sets it while the runner has an entry in flight, before that entry's cues, and clears it at idle after the flush's, and on unmount), the prefetch starts no new request (one already in flight finishes), and `preloadVoices` is held, the newest call only, and run when it clears. A line asked to play is fetched at once. While muted or with voice lines off, nothing is preloaded or prefetched, and turning voice lines back on resumes the prefetch. With the real engine inside `Game`, an R82-style burst that straddles the prefetch's due time makes no voice request until the board is still (engine.test.ts, ui.test.tsx).
 
 ## Tests
 

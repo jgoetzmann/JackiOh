@@ -1,7 +1,7 @@
 // The one hook `Game` calls for sound (SPEC §10.11). It feeds the director every view, tells it
-// when the animation runner starts an entry or goes idle, installs the gesture unlock, the UI
-// ticks and the debug handle for the component's lifetime, and preloads the voice lines the view
-// makes likely.
+// (and the engine) when the animation runner starts an entry or goes idle, installs the gesture
+// unlock, the UI ticks and the debug handle for the component's lifetime, and preloads the voice
+// lines the view makes likely.
 //
 // ORDER MATTERS. `Game` calls this directly after `const runner = queue.current;`, before its own
 // layout effects, so the director's `onView` runs before Game's enqueue layout effect: the events
@@ -41,15 +41,29 @@ export function useGameAudio(runner: AnimationQueue, view: PlayerView): void {
     quietly(() => director.onView(view));
   }, [director, view]);
 
-  // 3. Entry starts and idles, straight from the runner's notifications.
+  // 3. Entry starts and idles, straight from the runner's notifications. The engine is busy while
+  //    an entry is in flight, so no background voice work competes with the runner's timers (B58):
+  //    busy before the entry's cues, free after the idle flush's, so a line the flush asks for is
+  //    fetched ahead of the held preload and the prefetch. A Game unmounted mid-burst frees it.
   useLayoutEffect(() => {
+    const engine = getAudioEngine();
     let last = runner.inFlight();
-    return runner.subscribe(() => {
+    quietly(() => engine.setBusy(last !== null));
+    const stop = runner.subscribe(() => {
       const entry = runner.inFlight();
-      if (entry !== null && entry !== last) quietly(() => director.onEntryStart(entry));
-      if (entry === null) quietly(() => director.onIdle());
+      if (entry !== null) {
+        quietly(() => engine.setBusy(true));
+        if (entry !== last) quietly(() => director.onEntryStart(entry));
+      } else {
+        quietly(() => director.onIdle());
+        quietly(() => engine.setBusy(false));
+      }
       last = entry;
     });
+    return () => {
+      stop();
+      quietly(() => engine.setBusy(false));
+    };
   }, [director, runner]);
 
   // 4. After every layout effect: covers a view that produced no entry the runner could start.
@@ -67,7 +81,8 @@ export function useGameAudio(runner: AnimationQueue, view: PlayerView): void {
     };
   }, []);
 
-  // 6. Preload the lines this view makes likely, once the context runs.
+  // 6. Preload the lines this view makes likely, once the context runs. A view that starts a burst
+  //    reaches here with the engine already busy, so the engine holds it until the burst is over.
   useEffect(() => {
     quietly(() => {
       const engine = getAudioEngine();
