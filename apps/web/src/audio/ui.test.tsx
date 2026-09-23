@@ -78,11 +78,15 @@ function storedSettings(): Record<string, unknown> | null {
 
 const mounted: HTMLElement[] = [];
 
-function mount(html: string): HTMLElement {
+/**
+ * Renders fixed markup into its own attached root. Through React, not by assigning raw HTML, so
+ * this file keeps to task 5's B36 like every other file under apps/web/src (auth/no-raw-html.test.ts).
+ */
+function mount(ui: ReactElement): HTMLElement {
   const root = document.createElement("div");
-  root.innerHTML = html;
   document.body.append(root);
   mounted.push(root);
+  render(ui, { container: root });
   return root;
 }
 
@@ -398,17 +402,33 @@ describe("B30 AudioControls", () => {
  * --------------------------------------------------------------------------------------------- */
 
 describe("B31 UI click and hover sounds", () => {
-  const PAGE = `
-    <button id="enabled"><span id="inside">Play</span></button>
-    <button id="enabled-2">Pass</button>
-    <button id="disabled" disabled>Nope</button>
-    <div id="role" role="button">Role</div>
-    <div id="role-disabled" role="button" aria-disabled="true">Role off</div>
-    <div id="legal" data-legal="true">Zone</div>
-    <div id="legal-2" data-legal="true">Zone 2</div>
-    <div id="illegal" data-legal="false">Zone off</div>
-    <p id="plain">Just text</p>
-  `;
+  const PAGE = (
+    <>
+      <button id="enabled">
+        <span id="inside">Play</span>
+      </button>
+      <button id="enabled-2">Pass</button>
+      <button id="disabled" disabled>
+        Nope
+      </button>
+      <div id="role" role="button">
+        Role
+      </div>
+      <div id="role-disabled" role="button" aria-disabled="true">
+        Role off
+      </div>
+      <div id="legal" data-legal="true">
+        Zone
+      </div>
+      <div id="legal-2" data-legal="true">
+        Zone 2
+      </div>
+      <div id="illegal" data-legal="false">
+        Zone off
+      </div>
+      <p id="plain">Just text</p>
+    </>
+  );
 
   function rig() {
     const root = mount(PAGE);
@@ -738,7 +758,7 @@ describe("B52 the unlock and the UI ticks are page-wide, installed once", () => 
   it("B52 outside any Game, a held app root ticks on a button click, and a release takes the listeners off", () => {
     const engine = fakeEngine({ state: "running" });
     setAudioEngineForTests(engine);
-    const root = mount('<button id="menu">Decks</button>');
+    const root = mount(<button id="menu">Decks</button>);
     const release = retainAppAudio();
 
     fireEvent.click(byId(root, "menu"));
@@ -754,7 +774,7 @@ describe("B52 the unlock and the UI ticks are page-wide, installed once", () => 
   it("B52 the listeners reach whichever engine is the singleton at the time of the event", () => {
     const first = fakeEngine({ state: "running" });
     setAudioEngineForTests(first);
-    const root = mount('<button id="menu">Play</button>');
+    const root = mount(<button id="menu">Play</button>);
     const release = retainAppAudio();
 
     const second = fakeEngine({ state: "running" });
