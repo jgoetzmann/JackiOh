@@ -13,116 +13,264 @@
 // What `Gated` does is read `GET /api/auth/me`, the endpoint §9.4 provides precisely so "the client
 // knows to show the code screen", and send the browser to the screen that will actually work. It
 // lives in exactly one place so there is one thing to change when §9.4 grows a status.
+//
+// NO DEAD ENDS (docs/polish/5-sign-in.md, B40). Every panel this file draws itself — the gate's
+// error, the banned account, the 404, a screen whose code failed to load, and a check that is
+// taking too long — offers a way out: home, sign out, and try again where trying again can help.
+// The landing page is `routes/landing.tsx`, imported statically because it is the first screen most
+// visits see. The panels sit in the same tavern frame as the sign-in screens (`auth/tavern.css`),
+// since they are the waypoints between the landing and those screens.
+//
+// ONE GATE PER SCREEN. Every gated route renders `<Gated>` at the same place in the tree, so React
+// would reuse one instance (and the account it read) across in-app moves: a redemption on
+// `/invite` went on to `/decks` still holding the "pending" account it read before, and bounced
+// straight back. Each route's gate is keyed by its path, so a move re-reads `/api/auth/me`.
+//
+// ONE SOCKET PER SESSION (R194). The gate renews a session shortly before its token expires and
+// hands the new token down. The match screen is keyed by the provider session the token belongs to,
+// so a renewal of the same session keeps its socket (the new token waits for the next reconnect),
+// and only a different session, or account, opens a new one.
+//
+// EMAILED LINKS ON ANY PATH (R193). Before the route switch runs, a link is scrubbed from the
+// address bar, on `/login` too (whose screen is a lazy chunk that may be slow or fail to load), and
+// one that landed anywhere else (Supabase's Site URL fallback) is handed to `/login`.
 
-import { StrictMode, Suspense, lazy, useEffect, type ReactElement } from "react";
+import {
+  Component,
+  StrictMode,
+  Suspense,
+  lazy,
+  useEffect,
+  useState,
+  type ErrorInfo,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 
+import { GATE_SLOW_NOTICE_SECONDS } from "../../server/src/config.ts";
+import { useSecondsUntil } from "./auth/cooldown.ts";
+import { adoptAuthRedirect, sessionIdFromToken } from "./auth/redirect.ts";
+import { shellTestid } from "./auth/testids.ts";
 import { useAccount, type Account } from "./net/gate.ts";
-import { matchIdOf, navigate, paths, usePathname } from "./net/navigate.ts";
+import { currentPath, loginPath, matchIdOf, navigate, paths, usePathname } from "./net/navigate.ts";
+import { rememberReturnTo } from "./net/return-to.ts";
+import { readSession } from "./net/session.ts";
 import type { MeResponse } from "./net/api.ts";
+// Static, not lazy: the gate's own panels offer "Sign out", which must work synchronously from a
+// screen that failed to load anything else, so account.tsx is in the entry chunk either way.
+import AccountRoute, { signOut, signOutLabel, useSigningOut } from "./routes/account.tsx";
+import LandingRoute from "./routes/landing.tsx";
+import { followInApp } from "./routes/nav.tsx";
 
 import "./index.css";
+import "./auth/tavern.css";
 
 const HotseatRoute = lazy(() => import("./routes/dev/hotseat.tsx"));
 const LoginRoute = lazy(() => import("./routes/login.tsx"));
+const ResetPasswordRoute = lazy(() => import("./routes/reset-password.tsx"));
 const InviteRoute = lazy(() => import("./routes/invite.tsx"));
 const DecksRoute = lazy(() => import("./routes/decks.tsx"));
 const PlayRoute = lazy(() => import("./routes/play.tsx"));
-const AccountRoute = lazy(() => import("./routes/account.tsx"));
 const MatchRoute = lazy(() => import("./routes/match.tsx"));
 const PracticeRoute = lazy(() => import("./routes/practice.tsx"));
 
 const DEV_ONLY = import.meta.env.MODE !== "production";
 
-/** Chrome this file invented: the gate's two holding panels. No spec asserts on them. */
-export const shellTestid = {
-  loading: "gate-loading",
-  error: "gate-error",
-} as const;
+/**
+ * Chrome this file invented: the gate's holding panels, their exits and the 404. The names live in
+ * `auth/testids.ts` so Cypress specs can import them; re-exported here so existing imports keep
+ * working.
+ */
+export { shellTestid };
 
-function Landing(): ReactElement {
-  // The landing is not gated, so it asks for itself. `useAccount` answers `loading` first, and
-  // rendering nothing for that beat avoids flashing "Sign in" at somebody who already is.
-  const account = useAccount();
-  const signedIn = account.kind === "ready";
-
+/** The frame every panel this file draws sits in: the wordmark on the tavern board. */
+function ShellPanel({ testId, children }: { testId?: string; children: ReactNode }): ReactElement {
   return (
-    <div className="app-shell">
-      <nav className="row screen-nav screen-nav--end">
-        {account.kind === "loading" ? null : signedIn ? (
-          <a className="button-secondary" href={paths.account} data-testid="landing-account">
-            Account
-          </a>
-        ) : (
-          <a className="button-secondary" href={paths.login} data-testid="landing-sign-in">
-            Sign in
-          </a>
-        )}
-      </nav>
-
-      <div className="hero">
+    <div className="app-shell tavern shell-panel" data-testid={testId}>
+      <section className="panel panel--auth">
         <div className="brand">
           <h1>JackiOh</h1>
-          <span className="tagline">a 1v1 card game</span>
         </div>
-        <p className="lede">
-          Hearthstone-style mana and combat on Yu-Gi-Oh-style lanes, with a hidden trap backrow.
-        </p>
-        <div className="row">
-          <a className="button-primary" href={paths.play} role="button">
-            Play a match
-          </a>
-          <a className="button-secondary" href={paths.decks} role="button">
-            Build decks
-          </a>
-        </div>
-      </div>
-
-      <div className="card-grid">
-        <section className="panel">
-          <h2>Play</h2>
-          <p>Queue for a ranked match, or make a room code and send it to someone.</p>
-          <a href={paths.play}>Find a game →</a>
-        </section>
-        <section className="panel">
-          <h2>Decks</h2>
-          <p>Three decks, twenty cards each, singleton — no card twice and none shared between decks.</p>
-          <a href={paths.decks}>Edit your decks →</a>
-        </section>
-        {DEV_ONLY ? (
-          // Dev-only, and it really is absent in production: main.tsx serves NotFound for
-          // /dev/hotseat when MODE is production, so a link here would 404 on a deploy.
-          <section className="panel">
-            <h2>Hotseat</h2>
-            <p>Both seats on one device. No account, no server — it runs the engine in the tab.</p>
-            <a href={`${paths.hotseat}?seed=42&a=first20&b=first20`}>Open hotseat →</a>
-          </section>
-        ) : null}
-      </div>
+        {children}
+      </section>
     </div>
   );
 }
 
+/** "Home": back to the landing page, in place on a plain click and a real link otherwise. */
+function HomeLink({ testId, label = "Home" }: { testId: string; label?: string }): ReactElement {
+  return (
+    <a
+      className="button-secondary"
+      href={paths.landing}
+      data-testid={testId}
+      onClick={followInApp(paths.landing)}
+    >
+      {label}
+    </a>
+  );
+}
+
+/** "Sign out": `routes/account.tsx` clears the device, revokes the session and reloads `/`. */
+function SignOutButton(): ReactElement {
+  const leaving = useSigningOut();
+  return (
+    <button
+      type="button"
+      data-testid={shellTestid.signOut}
+      disabled={leaving}
+      aria-busy={leaving}
+      onClick={() => {
+        signOut();
+      }}
+    >
+      {signOutLabel(leaving)}
+    </button>
+  );
+}
+
+/** A path the client serves nothing at. Said in a player's words; the path is shown, never followed. */
 function NotFound({ path }: { path: string }): ReactElement {
   return (
-    <div className="app-shell">
-      <h1>JackiOh</h1>
-      <p className="notice">
-        No route for <code>{path}</code>.
+    <ShellPanel testId={shellTestid.notFound}>
+      <p className="notice">That page doesn&rsquo;t exist.</p>
+      <p className="auth-hint">
+        There is nothing at <code>{path}</code>. The link may be wrong or out of date.
       </p>
-    </div>
+      <div className="row">
+        <HomeLink testId={shellTestid.notFoundHome} label="Back to the start" />
+      </div>
+    </ShellPanel>
   );
 }
 
-function Loading({ what }: { what: string }): ReactElement {
+/**
+ * A holding panel. With `slow`, a wait that runs past `GATE_SLOW_NOTICE_SECONDS` says why it may
+ * be slow (Render's free tier sleeps and takes about a minute to wake) and offers the way out, so a
+ * server or network that never answers is not a trap.
+ */
+function Loading({ what, slow = false }: { what: string; slow?: boolean }): ReactElement {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (!slow) return;
+    const timer = window.setTimeout(() => {
+      setLate(true);
+    }, GATE_SLOW_NOTICE_SECONDS * 1000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [slow]);
+
   return (
-    <div className="app-shell">
-      <h1>JackiOh</h1>
-      <p className="notice" data-testid={shellTestid.loading} role="status">
+    <ShellPanel>
+      <p className="notice shell-panel__loading" data-testid={shellTestid.loading} role="status">
         {what}
       </p>
-    </div>
+      {late ? (
+        <>
+          <p className="notice" data-testid={shellTestid.slow}>
+            This is taking a while. The server may be waking up, which can take up to a minute.
+          </p>
+          <div className="row">
+            <HomeLink testId={shellTestid.home} />
+            {readSession() === null ? null : <SignOutButton />}
+          </div>
+        </>
+      ) : null}
+    </ShellPanel>
   );
+}
+
+/**
+ * Seconds left of a stated wait, from when it was stated: counted on the clock, so a tab the
+ * browser put to sleep does not come back still waiting (`auth/cooldown.ts`). 0 when there is none.
+ */
+function useCountdown(totalMs: number | undefined): number {
+  const [deadline, setDeadline] = useState(() => (totalMs === undefined ? null : Date.now() + totalMs));
+  const [stated, setStated] = useState(totalMs);
+  if (stated !== totalMs) {
+    // A new wait was stated: counted from now.
+    setStated(totalMs);
+    setDeadline(totalMs === undefined ? null : Date.now() + totalMs);
+  }
+  return useSecondsUntil(deadline);
+}
+
+/** The gate's error panel: the sentence, and the three ways on. A stated wait holds the retry. */
+function GateError({ account }: { account: Extract<Account, { kind: "error" }> }): ReactElement {
+  const wait = useCountdown(account.retryAfterMs);
+  return (
+    <ShellPanel>
+      <p className="notice" data-testid={shellTestid.error} role="alert">
+        {account.message}
+        {wait > 0 ? ` You can try again in ${String(wait)} s.` : null}
+      </p>
+      <div className="row">
+        <button
+          type="button"
+          className="button-primary"
+          data-testid={shellTestid.retry}
+          disabled={wait > 0}
+          onClick={() => {
+            // Re-reads /api/auth/me in place, without a page load.
+            account.retry?.();
+          }}
+        >
+          {wait > 0 ? `Try again in ${String(wait)} s` : "Try again"}
+        </button>
+        <HomeLink testId={shellTestid.home} />
+        <SignOutButton />
+      </div>
+    </ShellPanel>
+  );
+}
+
+/**
+ * A screen whose code could not be loaded. Every route but the landing page is a lazy chunk, and a
+ * chunk fails on a flaky network, and after every deploy for a tab left open (the old hashed file is
+ * gone, and the host answers the request with `index.html`). Without this the whole root unmounted
+ * to a blank page. A reload fetches the current build; the home link is a real page load too.
+ */
+type LoadFailedState = { failed: boolean };
+
+export class RouteErrorBoundary extends Component<{ children: ReactNode }, LoadFailedState> {
+  override state: LoadFailedState = { failed: false };
+
+  static getDerivedStateFromError(): LoadFailedState {
+    return { failed: true };
+  }
+
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    // Kept for whoever opens the console; the player gets the panel below.
+    console.error("A screen failed to load", error, info.componentStack);
+  }
+
+  override render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <ShellPanel testId={shellTestid.loadFailed}>
+        <p className="notice" role="alert">
+          This screen didn&rsquo;t load. Check your connection, then reload the page.
+        </p>
+        <div className="row">
+          <button
+            type="button"
+            className="button-primary"
+            data-testid={shellTestid.reload}
+            onClick={() => {
+              window.location.reload();
+            }}
+          >
+            Reload
+          </button>
+          <a className="button-secondary" href={paths.landing} data-testid={shellTestid.loadFailedHome}>
+            Home
+          </a>
+        </div>
+      </ShellPanel>
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -142,7 +290,11 @@ export type GatedProps = {
 
 /** Where a given account belongs, or null when it may stay where it is. */
 export function redirectFor(account: Account, allowPending: boolean): string | null {
-  if (account.kind === "anonymous") return paths.login;
+  if (account.kind === "anonymous") {
+    // A renewal the provider refused (R194) ended the session, and the sign-in screen says so.
+    // The reason is the only thing ever put in that query (`loginPath`), never a destination.
+    return account.reason === "expired" ? loginPath({ reason: "expired" }) : paths.login;
+  }
   if (account.kind === "ready" && account.me.profile.status === "pending" && !allowPending) {
     return paths.invite;
   }
@@ -157,21 +309,15 @@ export function Gated({ allowPending = false, children }: GatedProps): ReactElem
   // `usePathname` subscriber, and doing that while this component is rendering would be an update
   // during render.
   useEffect(() => {
-    if (target !== null) navigate(target, { replace: true });
-  }, [target]);
+    if (target === null) return;
+    // Sent to sign in: the sign-in comes back to this screen (a fixed `paths` value, never a URL).
+    if (account.kind === "anonymous") rememberReturnTo(currentPath());
+    navigate(target, { replace: true });
+  }, [target, account.kind]);
 
-  if (account.kind === "loading") return <Loading what="Checking your account…" />;
+  if (account.kind === "loading") return <Loading what="Checking your account…" slow />;
   if (account.kind === "anonymous") return <Loading what="Sign in to continue." />;
-  if (account.kind === "error") {
-    return (
-      <div className="app-shell">
-        <h1>JackiOh</h1>
-        <p className="notice" data-testid={shellTestid.error} role="alert">
-          {account.message}
-        </p>
-      </div>
-    );
-  }
+  if (account.kind === "error") return <GateError account={account} />;
 
   const status = account.me.profile.status;
   if (status === "pending" && !allowPending) return <Loading what="Redeem an invite code first." />;
@@ -181,12 +327,15 @@ export function Gated({ allowPending = false, children }: GatedProps): ReactElem
     // door (R145 reports it distinctly, because it depends on the caller's own account and leaks
     // nothing), so nothing downstream rides on what this screen says and there is no rule to state.
     return (
-      <div className="app-shell">
-        <h1>JackiOh</h1>
+      <ShellPanel>
         <p className="notice" data-testid={shellTestid.error} role="alert">
           This account is banned.
         </p>
-      </div>
+        <div className="row">
+          <HomeLink testId={shellTestid.home} />
+          <SignOutButton />
+        </div>
+      </ShellPanel>
     );
   }
 
@@ -197,21 +346,38 @@ export function Gated({ allowPending = false, children }: GatedProps): ReactElem
 // The route table
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * The provider session a token belongs to (its `session_id` claim), else the token itself (the
+ * end-to-end fixtures name none, and never renew). See ONE SOCKET PER SESSION above.
+ */
+function sessionKeyOf(token: string): string {
+  return sessionIdFromToken(token) ?? token;
+}
+
 export function App(): ReactElement {
+  // Before the first read of the path: an emailed link is scrubbed, and moved to `/login` (R193).
+  useState(() => adoptAuthRedirect(paths.login));
   const path = usePathname();
 
   const route = ((): ReactElement => {
-    if (path === paths.landing) return <Landing />;
+    if (path === paths.landing) return <LandingRoute />;
     if (path === paths.login) return <LoginRoute />;
-    if (path === paths.invite) return <Gated allowPending>{() => <InviteRoute />}</Gated>;
-    if (path === paths.decks) return <Gated>{() => <DecksRoute />}</Gated>;
-    if (path === paths.play) return <Gated>{(account) => <PlayRoute token={account.token} />}</Gated>;
+    if (path === paths.resetPassword) return <ResetPasswordRoute />;
+    // `key={path}` on every gate: see ONE GATE PER SCREEN above.
+    // The gate's own read of the account is handed down, so the code screen does not read it twice.
+    if (path === paths.invite) {
+      return <Gated key={path} allowPending>{(account) => <InviteRoute account={account} />}</Gated>;
+    }
+    if (path === paths.decks) return <Gated key={path}>{() => <DecksRoute />}</Gated>;
+    if (path === paths.play) return <Gated key={path}>{(account) => <PlayRoute token={account.token} />}</Gated>;
     // `allowPending`: a pending account still has an email, a status and a way to sign out,
     // and being unable to sign out of the screen that tells you to redeem a code is the trap
     // this route exists to remove.
     if (path === paths.account) {
       return (
-        <Gated allowPending>{(account) => <AccountRoute token={account.token} />}</Gated>
+        <Gated key={path} allowPending>
+          {(account) => <AccountRoute token={account.token} me={account.me} />}
+        </Gated>
       );
     }
 
@@ -220,8 +386,10 @@ export function App(): ReactElement {
     const matchId = matchIdOf(path);
     if (matchId !== null) {
       return (
-        <Gated>
-          {(account) => <MatchRoute matchId={matchId} token={account.token} />}
+        <Gated key={path}>
+          {(account) => (
+            <MatchRoute key={sessionKeyOf(account.token)} matchId={matchId} token={account.token} />
+          )}
         </Gated>
       );
     }
@@ -233,7 +401,12 @@ export function App(): ReactElement {
     return <NotFound path={path} />;
   })();
 
-  return <Suspense fallback={<Loading what="Loading…" />}>{route}</Suspense>;
+  // Keyed by the path, so moving to another screen clears a failed load's panel.
+  return (
+    <RouteErrorBoundary key={path}>
+      <Suspense fallback={<Loading what="Loading…" slow />}>{route}</Suspense>
+    </RouteErrorBoundary>
+  );
 }
 
 /**

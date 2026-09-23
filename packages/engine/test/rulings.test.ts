@@ -1667,6 +1667,84 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(188, AI_DECIDE_TEST);
   });
 
+  // R190 to R194 are sign-in and invite-code rulings (polish task 5, docs/polish/5-sign-in.md). Like
+  // R157 to R170 their proofs live outside the engine, in the server, the shared package and the web
+  // client, so each index row names the files and asserts each still carries a test named after it.
+  const SERVER_CLIENT_ADDRESS_TEST = "../../../apps/server/test/api/client-address.test.ts";
+  const SERVER_CODE_INPUT_PARITY_TEST = "../../../apps/server/test/api/code-input-parity.test.ts";
+  const SERVER_REDEEM_FEEDBACK_TEST = "../../../apps/server/test/api/redeem-feedback.test.ts";
+  const SHARED_CODES_TEST = "../../shared/test/codes.test.ts";
+  const WEB_CODE_FIELD_TEST = "../../../apps/web/src/auth/CodeField.test.tsx";
+  const WEB_AUTH_FLOWS_TEST = "../../../apps/web/src/net/auth-flows.test.ts";
+  const WEB_REDIRECT_TEST = "../../../apps/web/src/auth/redirect.test.ts";
+  const WEB_LOGIN_FLOWS_TEST = "../../../apps/web/src/routes/login-flows.test.tsx";
+  const WEB_GATE_REFRESH_TEST = "../../../apps/web/src/net/gate-refresh.test.tsx";
+  const WEB_GATE_SESSION_CHANGES_TEST = "../../../apps/web/src/net/gate-session-changes.test.tsx";
+  const WEB_INVITE_FEEDBACK_TEST = "../../../apps/web/src/routes/invite-feedback.test.tsx";
+  const WEB_RESET_PASSWORD_TEST = "../../../apps/web/src/routes/reset-password.test.tsx";
+  const WEB_SHELL_GATE_TEST = "../../../apps/web/src/routes/shell-gate.test.tsx";
+
+  // Proved by client-address.test.ts's "R190 …" rows: `clientAddress` takes the rightmost trusted
+  // hop and never CF-Connecting-IP or X-Real-IP, requests with different leftmost entries share one
+  // per-IP bucket, too few entries fall back to the peer address, the default trusts no hop,
+  // `loadEnv` bounds TRUSTED_PROXY_HOPS, an IPv6 client is keyed by its /56, and `api.forwarded_for`
+  // reports the fewest entries seen, never an address.
+  it("R190 keys a per-IP limit on the rightmost trusted X-Forwarded-For hop, then the peer", () => {
+    provenIn(190, SERVER_CLIENT_ADDRESS_TEST);
+  });
+
+  // Proved by the shared table in codes.test.ts (the reading itself), code-input-parity.test.ts
+  // (the server redeems every row the table calls canonical and answers R145's identical error for
+  // the rest) and CodeField.test.tsx (the field refuses an excluded character instead of dropping it).
+  it("R191 reads a typed or pasted code one way on both sides, never dropping or mapping a character", () => {
+    provenIn(191, SHARED_CODES_TEST, SERVER_CODE_INPUT_PARITY_TEST, WEB_CODE_FIELD_TEST);
+  });
+
+  // Proved by redeem-feedback.test.ts (§9.4 steps 2 and 3 and R109's limit answer 429 with
+  // `Retry-After` and `details.retryAfterMs`, next to the unchanged `invalid_code` bytes, and the
+  // status says when an account's tries come back), auth-flows.test.ts (a provider 429 is a rate
+  // limit, and resend and recover stay neutral for every answer that could name an account),
+  // login-flows.test.tsx (the per-address interval, a sign-up's included) and
+  // invite-feedback.test.tsx (the screen shows each wait and lifts by itself when it runs out).
+  it("R192 reports a rate limit as a rate limit, with its wait, never as the identical error", () => {
+    provenIn(192, SERVER_REDEEM_FEEDBACK_TEST, WEB_AUTH_FLOWS_TEST, WEB_LOGIN_FLOWS_TEST, WEB_INVITE_FEEDBACK_TEST);
+  });
+
+  // Proved by redirect.test.ts (a link is parsed once and scrubbed, error text is never read, a held
+  // recovery session lives in this tab's memory and sessionStorage, never localStorage, and one
+  // abandoned after its access token expired is renewed, then revoked), login-flows.test.tsx (no
+  // confirmation link signs this browser in, not even for the sign-up it started; a link is renewed
+  // before it is checked, so the refresh token in its URL is spent; a recovery link is held at once
+  // for a reset this browser asked for, and otherwise only once the player types the address it was
+  // sent to; nothing from a link is shown or filled into a form; and a link's session that is not
+  // kept is revoked), reset-password.test.tsx (the reset screen says when it replaces another
+  // account's session, asks before its exits spend the link, and abandons it when left) and
+  // shell-gate.test.tsx (a link on any path is scrubbed and handed to /login).
+  it("R193 reads an emailed auth link once, scrubs it, and never signs this browser in from a confirmation", () => {
+    provenIn(193, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST, WEB_RESET_PASSWORD_TEST, WEB_SHELL_GATE_TEST);
+  });
+
+  // Proved by gate-refresh.test.tsx (renewal near expiry and on a 401, and the expired sign-in
+  // screen), gate-session-changes.test.tsx (a renewal the device outlived, and a renewal of the same
+  // session, here or in another tab, keeps an open match socket), auth-flows.test.ts (single-flight
+  // refresh, and revocation on sign-out, an expired session renewed first), invite-feedback.test.tsx
+  // (a redemption refused as unauthorised is renewed and sent again), reset-password.test.tsx (a
+  // recovery session that runs out while the form is open is renewed before the new password is
+  // sent) and the server's auth.test.ts (the API honours a token only while the provider still has
+  // its session, remembering a live answer for AUTH_SESSION_LIVE_CACHE_SECONDS, and an unreachable
+  // provider signs nobody out).
+  it("R194 renews a session once near expiry or on a 401, revokes it on sign-out, and the API honours only a live one", () => {
+    provenIn(
+      194,
+      WEB_GATE_REFRESH_TEST,
+      WEB_GATE_SESSION_CHANGES_TEST,
+      WEB_AUTH_FLOWS_TEST,
+      WEB_INVITE_FEEDBACK_TEST,
+      WEB_RESET_PASSWORD_TEST,
+      SERVER_AUTH_TEST,
+    );
+  });
+
   // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,
   // destroyed, and stolen and made Radiant by #49.
   it("R209 has a permanent's lasting effect last while it is on the field, and follow its face", () => {

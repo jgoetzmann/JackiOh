@@ -300,8 +300,10 @@ export function loadoutErrorId(rule: string): string {
 
 // ---------------------------------------------------------------------------------------------
 // A13: the invite code screen (BUILD M6-T1, SPEC §9.4). Like A11's deckbuilder block, BUILD names
-// no testid for this screen, so these mirror — name for name — the screen's own vocabulary in
-// `apps/web/src/routes/invite.tsx`, which exports every one of them. Keep the two files identical.
+// no testid for this screen, so these mirror — name for name — the screen's own vocabulary:
+// `inviteTestid`, `codeFieldTestid` and `codeFieldSegmentTestid` in `apps/web/src/auth/testids.ts`,
+// which `apps/web/src/routes/invite.tsx` and `apps/web/src/auth/CodeField.tsx` render. Keep the two
+// files identical.
 //
 // THESE WERE NEVER MISSING FROM THE CLIENT. The M8 rule-8 review recorded spec 10's "code screen
 // shown" as blocked because `invite-code-input`, `invite-submit` and `invite-error` "really are
@@ -312,9 +314,16 @@ export function loadoutErrorId(rule: string): string {
 // would have passed it.
 // ---------------------------------------------------------------------------------------------
 
-/** The box §9.4's `XXXX-XXXX-XXXX-XXXX` code is typed into; R104's alphabet normalises the input. */
+/**
+ * The box §9.4's `XXXX-XXXX-XXXX-XXXX` code is typed into: one real `<input>` with transparent text
+ * over the four segments below. R191 reads it exactly as the server does, so a character outside
+ * R104's alphabet is refused (the value stays and `CODE_FIELD_HINT` names it), never dropped.
+ */
 export const INVITE_CODE_INPUT = "invite-code-input";
-/** Submits the code (`POST /api/codes/redeem`). Disabled while the box is empty or paused. */
+/**
+ * Submits the code (`POST /api/codes/redeem`). Enabled only while the code is complete, redemption
+ * is not paused, no request is in flight, the account has tries left and no rate limit is running.
+ */
 export const INVITE_SUBMIT = "invite-submit";
 /** The server's refusal, rendered verbatim — §9.4's identical error is never paraphrased here. */
 export const INVITE_ERROR = "invite-error";
@@ -322,6 +331,28 @@ export const INVITE_ERROR = "invite-error";
 export const INVITE_PAUSED = "invite-paused";
 /** An active account reached the code screen; redemption is the pending → active transition only. */
 export const INVITE_NOT_NEEDED = "invite-not-needed";
+/** The tries `GET /api/codes/status` says this account has left, as `data-remaining`. */
+export const INVITE_ATTEMPTS = "invite-attempts";
+/** R192: a 429 `rate_limited` refusal's wait, as `data-retry-after-ms`. Submit is off meanwhile. */
+export const INVITE_RATE_LIMITED = "invite-rate-limited";
+/** The address the pending account signed in with, beside the way out. */
+export const INVITE_ACCOUNT_EMAIL = "invite-account-email";
+/** Signs out (clears both session keys) and lands on `/`: the code screen is never a dead end. */
+export const INVITE_SIGN_OUT = "invite-sign-out";
+/** The line under the field saying what a code looks like. */
+export const INVITE_HELP = "invite-help";
+
+/** The code field's root, carrying `data-complete` and, while one stands, `data-problem`. */
+export const CODE_FIELD = "code-field";
+/** "N of 16 characters" (`aria-live="polite"`). */
+export const CODE_FIELD_PROGRESS = "code-field-progress";
+/** The refused character's sentence, with `data-kind="excluded|foreign|tooLong"`. Only while a problem stands. */
+export const CODE_FIELD_HINT = "code-field-hint";
+
+/** One drawn group (`aria-hidden`), with `data-state="empty|partial|complete"` and `data-active`. */
+export function codeFieldSegmentId(index: number): string {
+  return `code-field-segment-${String(index)}`;
+}
 
 // ---------------------------------------------------------------------------------------------
 // PRACTICE: `/practice`, a game against the AI with no account and no server (SPEC §9.9, R187,
