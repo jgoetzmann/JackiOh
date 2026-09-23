@@ -3,6 +3,16 @@
 //   "a snapshot test renders a fixture `PlayerView` with 10 units, 10 backrow cards and a stacked
 //    pile WITHOUT LAYOUT OVERFLOW at 1280x720 and 390x844"
 //
+// Polish task 7 (docs/polish/7-mobile-ux.md B28, B46) adds four more shapes to the same
+// measurement: a phone on its side, 844x390, where board.css turns the board into three columns
+// with your hand along the bottom; a portrait tablet, 768x1024, which gets the one-column board
+// with touch sizing; a tablet held landscape, 1024x768, which gets the desktop board; and a phone
+// held upright as Safari leaves it with its toolbars showing, 390x664. Every assertion below runs
+// unchanged at all six, and since the game screen is now budgeted to the viewport's height (the
+// board sizes its cards off what is left), the page must not scroll vertically either. The route's
+// own bar is B46's, in cypress/component/mobile-ux.cy.tsx, with the other mobile-specific checks
+// (touch targets, the fan, the bottom sheet, the landscape columns).
+//
 // The snapshot half has always been green (apps/web/src/game/Board.test.tsx). The four words in
 // capitals had never been measured anywhere, and three files said so, each deferring to one of the
 // others:
@@ -132,14 +142,26 @@
 // while the `.and("be.visible")` one-liner it replaced stayed GREEN. See the assertion itself.
 //
 // None of the three probes is kept: a spec that ships its own overflow would be measuring itself.
+//
+// The landscape and tablet rows were added after the numbers above were taken; their measurements
+// reach the run output through the same `layout:report` task, one `[M5-T1 layout]` line each. At
+// 844x390 the board is again the viewport less `.app-shell`'s 24px (820px), and at 768x1024 it is
+// 744px.
 
 import Game from "../../../apps/web/src/game/Game.tsx";
 import { fullBoardView } from "../../../apps/web/src/test/fixtures.ts";
 
-/** BUILD M5-T1's two viewports. The first is also this project's configured default. */
+/**
+ * BUILD M5-T1's two viewports plus polish task 7's landscape phone and portrait tablet (B28). The
+ * first is also this project's configured default.
+ */
 const VIEWPORTS = [
   { label: "desktop", width: 1280, height: 720 },
+  { label: "landscape", width: 844, height: 390 },
+  { label: "tablet", width: 768, height: 1024 },
   { label: "phone", width: 390, height: 844 },
+  { label: "tablet landscape", width: 1024, height: 768 },
+  { label: "phone, Safari's visible viewport", width: 390, height: 664 },
 ] as const;
 
 type Viewport = (typeof VIEWPORTS)[number];
@@ -187,7 +209,7 @@ function measure(doc: Document, viewport: Viewport, board: Element): Measurement
   };
 }
 
-describe("BUILD M5-T1 — the full fixture board fits 1280x720 and 390x844", () => {
+describe("BUILD M5-T1 — the full fixture board fits 1280x720, 844x390, 768x1024 and 390x844", () => {
   beforeEach(() => {
     // The premise, asserted rather than assumed, in the fixture this spec is about to mount. One
     // `null` in a backrow lane once left `fullBoardView()` with 9 backrow cards while every test
@@ -251,6 +273,8 @@ describe("BUILD M5-T1 — the full fixture board fits 1280x720 and 390x844", () 
         expect(m.bodyScrollWidth, `the body fits ${where}`).to.be.at.most(viewport.width);
         expect(m.boardScrollWidth, `the board's contents fit ${where}`).to.be.at.most(viewport.width);
         expect(m.boardRight, `the board's right edge is inside ${where}`).to.be.at.most(viewport.width);
+        // B46: the game screen is exactly the viewport tall, so nothing scrolls vertically either.
+        expect(m.documentScrollHeight, `the document fits ${where} vertically`).to.be.at.most(viewport.height);
 
         // The control that keeps the three above honest: `.app-shell` costs the board 24px of
         // padding and nothing else may, so a board narrower than this is a board that collapsed,
@@ -263,9 +287,7 @@ describe("BUILD M5-T1 — the full fixture board fits 1280x720 and 390x844", () 
       });
 
       // Into the run's terminal output: an assertion nobody can read the numbers of is half a
-      // measurement. `documentScrollHeight` rides along unasserted on purpose — the vertical budget
-      // is shared with route chrome this mount deliberately omits (see the header), so a vertical
-      // assertion here would be measuring something other than the board.
+      // measurement.
       cy.then(() => {
         cy.task("layout:report", out.measured, { log: false });
       });

@@ -77,6 +77,11 @@ export type BoardControl = "end-turn" | "offer-draw" | "power" | "concede";
 export type Highlight = {
   legal: ReadonlySet<string>;
   selected: ReadonlySet<string>;
+  /**
+   * The green glow (Hearthstone's "can act"): a subset of `legal`, derived by `highlightFor` from
+   * `legalActions` and the open prompt's options alone. Absent means nothing glows.
+   */
+  glow?: ReadonlySet<string>;
 };
 
 export const NO_HIGHLIGHT: Highlight = { legal: new Set(), selected: new Set() };

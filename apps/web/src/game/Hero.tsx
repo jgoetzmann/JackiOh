@@ -1,7 +1,9 @@
 // A hero: health, armor and the Heroic Power (SPEC §3, BUILD M5-T1).
 //
-// The hero is a click and drop target like any card — `hero-<side>` — so an attack can land on
-// it. Whether it may be attacked is `props.highlight.legal`; Taunt lives in the engine.
+// The hero is a click target like any card — `hero-<side>` — so an attack can land on it, by a
+// click or by a pointer drag the DragLayer resolves through the same testid. Whether it may be
+// attacked is `props.highlight.legal`, and whether it glows green is `props.highlight.glow`;
+// Taunt lives in the engine.
 //
 // The modifier badges (BUILD M5-T4 `modifierChanged`: "badge list equals the view's modifiers")
 // come from `SideView.modifiers`, which R169 put in the view — `{ id, label }` per §10.1 modifier,
@@ -23,7 +25,7 @@
 import type { ReactElement } from "react";
 
 import { animTestid } from "./animations.ts";
-import { allowDrop, completeDrop, cx, isLegal, isSelected, legalAttr, PopLayer, type Pops } from "./Card.tsx";
+import { cx, isLegal, isSelected, legalAttr, PopLayer, type Pops } from "./Card.tsx";
 import {
   sideView,
   testid,
@@ -33,6 +35,7 @@ import {
   type Highlight,
   type Side,
 } from "./contract.ts";
+import { glowAttr } from "./glow.ts";
 import type { PlayerView } from "@jackioh/shared";
 
 export type HeroProps = {
@@ -68,6 +71,7 @@ export default function Hero(props: HeroProps): ReactElement {
       data-legal={legalAttr(legal)}
       data-selected={selected ? "true" : undefined}
       data-animating={props.animating?.get(testId)}
+      data-glow={glowAttr(props.highlight, testId)}
       aria-disabled={legal ? undefined : "true"}
       aria-label={side === "you" ? "Your hero" : "Opponent hero"}
       tabIndex={legal ? 0 : undefined}
@@ -81,8 +85,6 @@ export default function Hero(props: HeroProps): ReactElement {
         if (!legal) return;
         props.onClick?.(target);
       }}
-      onDragOver={allowDrop}
-      onDrop={(event) => completeDrop(event, target, props.onClick)}
     >
       <span className="hero-seat">{side === "you" ? "You" : "Opponent"}</span>
       <span className="hero-health" data-health={hero.health} title="Health">
@@ -106,6 +108,7 @@ export default function Hero(props: HeroProps): ReactElement {
             data-legal={legalAttr(powerLegal)}
             data-selected={isSelected(props.highlight, testid.power) ? "true" : undefined}
             data-animating={props.animating?.get(testid.power)}
+            data-glow={glowAttr(props.highlight, testid.power)}
             data-used={hero.power.usedThisTurn ? "true" : "false"}
             data-x={hero.power.x}
             aria-disabled={powerLegal ? undefined : "true"}

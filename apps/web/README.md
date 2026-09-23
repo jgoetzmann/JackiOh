@@ -37,6 +37,22 @@ src/
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
     Game.tsx            board + prompts + animation runner, wired together
+    board.css prompt.css  layout and look: the game screen budgeted to the viewport (the
+                        route's bar and the board share its height, and the cards are sized
+                        off the board's with `cqh`), the board grid (a play area and sidebar
+                        on desktops and landscape tablets, one column on portrait tablets and
+                        phones held upright, sideways on phones held landscape), the playmat,
+                        the hand fan, 44px touch targets, safe areas, the log behind a toggle
+                        on phones, the prompt's bottom sheet on phones, and small pickers
+                        docked clear of the field
+    glow.ts             data-glow / data-condition-active helpers: green from
+                        Highlight.glow, yellow from the view's conditionActive
+    highlights.css      the green and yellow glow colours, imported after board.css
+    drag/               drag to play: pointer events for mouse and touch, the targeting
+                        arrow and reticle, and a dropped card held where it landed until
+                        the board shows the play; click-click keeps working in every mode
+  settings/             the settings store (localStorage, in try/catch) and the panel the
+                        gear opens from the game's control bar and the nav
   routes/dev/hotseat.tsx  the dev hotseat route
   test/
     setup.ts            jsdom matchers and a matchMedia stub

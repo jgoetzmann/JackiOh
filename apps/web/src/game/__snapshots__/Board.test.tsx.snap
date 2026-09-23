@@ -4,6 +4,7 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
 <div
   class="board"
   data-active="you"
+  data-drag="on"
   data-phase="main"
   data-testid="board"
   data-turn="3"
@@ -140,6 +141,7 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
   <div
     aria-label="opponent hand"
     class="hand hand-opponent"
+    data-count="6"
     data-side="opponent"
     data-testid="hand-opponent"
   >
@@ -160,66 +162,97 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     </span>
     <div
       class="hand-cards"
+      style="--n: 6;"
     >
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 0;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 1;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 2;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 3;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 4;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 5;"
       >
-        <span
-          aria-hidden="true"
-          class="card-back-mark"
-        />
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
+        >
+          <span
+            aria-hidden="true"
+            class="card-back-mark"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -1637,6 +1670,8 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
   <div
     aria-label="you hand"
     class="hand hand-you"
+    data-count="4"
+    data-hover-preview="on"
     data-side="you"
     data-testid="hand-you"
   >
@@ -1657,87 +1692,108 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     </span>
     <div
       class="hand-cards"
+      style="--n: 4;"
     >
       <div
-        aria-disabled="true"
-        class="card card-spell card-hand"
-        data-def-id="core-002"
-        data-legal="false"
-        data-testid="hand-card-c11"
-        title="core-002"
+        class="hand-slot"
+        style="--i: 0;"
       >
-        <span
-          class="cost-gem"
-          data-cost="1"
+        <div
+          aria-disabled="true"
+          class="card card-spell card-hand"
+          data-def-id="core-002"
+          data-legal="false"
+          data-testid="hand-card-c11"
+          title="core-002"
         >
-          1
-        </span>
-        <span
-          class="card-name"
-        >
-          core-002
-        </span>
+          <span
+            class="cost-gem"
+            data-cost="1"
+          >
+            1
+          </span>
+          <span
+            class="card-name"
+          >
+            core-002
+          </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell radiant card-hand"
-        data-def-id="core-019"
-        data-legal="false"
-        data-radiant="true"
-        data-testid="hand-card-c12"
-        title="core-019"
+        class="hand-slot"
+        style="--i: 1;"
       >
-        <span
-          class="cost-gem"
-          data-cost="3"
+        <div
+          aria-disabled="true"
+          class="card card-spell radiant card-hand"
+          data-def-id="core-019"
+          data-legal="false"
+          data-radiant="true"
+          data-testid="hand-card-c12"
+          title="core-019"
         >
-          3
-        </span>
-        <span
-          class="card-name"
-        >
-          core-019
-        </span>
+          <span
+            class="cost-gem"
+            data-cost="3"
+          >
+            3
+          </span>
+          <span
+            class="card-name"
+          >
+            core-019
+          </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell card-hand"
-        data-def-id="core-055"
-        data-legal="false"
-        data-testid="hand-card-c13"
-        title="core-055"
+        class="hand-slot"
+        style="--i: 2;"
       >
-        <span
-          class="cost-gem"
-          data-cost="0"
+        <div
+          aria-disabled="true"
+          class="card card-spell card-hand"
+          data-def-id="core-055"
+          data-legal="false"
+          data-testid="hand-card-c13"
+          title="core-055"
         >
-          0
-        </span>
-        <span
-          class="card-name"
-        >
-          core-055
-        </span>
+          <span
+            class="cost-gem"
+            data-cost="0"
+          >
+            0
+          </span>
+          <span
+            class="card-name"
+          >
+            core-055
+          </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell card-hand"
-        data-def-id="core-077"
-        data-legal="false"
-        data-testid="hand-card-c14"
-        title="core-077"
+        class="hand-slot"
+        style="--i: 3;"
       >
-        <span
-          class="cost-gem"
-          data-cost="6"
+        <div
+          aria-disabled="true"
+          class="card card-spell card-hand"
+          data-def-id="core-077"
+          data-legal="false"
+          data-testid="hand-card-c14"
+          title="core-077"
         >
-          6
-        </span>
-        <span
-          class="card-name"
-        >
-          core-077
-        </span>
+          <span
+            class="cost-gem"
+            data-cost="6"
+          >
+            6
+          </span>
+          <span
+            class="card-name"
+          >
+            core-077
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -1745,6 +1801,23 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     aria-label="Controls"
     class="control-bar"
   >
+    <div
+      aria-hidden="true"
+      class="turn-plate"
+      data-side="you"
+    >
+      <span
+        class="turn-plate-number"
+      >
+        Turn 
+        3
+      </span>
+      <span
+        class="turn-plate-whose"
+      >
+        Your turn
+      </span>
+    </div>
     <button
       aria-disabled="true"
       class="control control-end-turn"
@@ -1774,6 +1847,34 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       type="button"
     >
       Concede
+    </button>
+    <button
+      aria-expanded="false"
+      aria-label="Show the game log"
+      class="log-toggle"
+      data-testid="log-toggle"
+      title="Game log"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        class="log-toggle-icon"
+      />
+    </button>
+    <button
+      aria-expanded="false"
+      aria-haspopup="dialog"
+      aria-label="Settings"
+      class="settings-gear settings-gear--game"
+      data-testid="settings-open-game"
+      title="Settings"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+      >
+        ⚙
+      </span>
     </button>
   </div>
   <ol
