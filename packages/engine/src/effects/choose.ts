@@ -8,7 +8,7 @@ import { openPrompt, resumeSelf } from "../prompts";
 import type { Effect, EffectContext } from "../script";
 import { effectiveCost } from "../mana";
 import type { CardInstance, GameState } from "../state";
-import { activeUnitsOf, cardAt, slotsOf } from "../zones";
+import { activeUnitsOf, cardAt, isUnitToken, slotsOf } from "../zones";
 import { playerOf, type PlayerSpec } from "./targets";
 
 /** Which cards a `target` prompt may offer. */
@@ -265,6 +265,9 @@ function filterTypes(filter: LibraryFilter): CardType[] | undefined {
  * it into every zone (R78), so #95's "every card in your library costs 2 less" moves its bracket.
  */
 function matchesFilter(state: GameState, card: CardInstance, filter: LibraryFilter): boolean {
+  // R218: a unit-token card leaves a library only by being drawn or played (R11), so a reveal that
+  // puts the pick in a hand passes over it, as a Recruit does.
+  if (isUnitToken(state, card)) return false;
   const types = filterTypes(filter);
   if (types !== undefined && !types.includes(defOf(state, card.defId).type)) return false;
 

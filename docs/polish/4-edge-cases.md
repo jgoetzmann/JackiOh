@@ -6,7 +6,7 @@ Design notes for `polish/4-edge-cases`, written 2026-09-22 against `main` at `d0
 
 The task owns `packages/engine/src/combat.ts` and the control-change paths in `effects/steal.ts`,
 `effects/swap.ts` and `subsystems/rotation.ts`. Its SPEC surface is §4.1 and the §11 rows R171–R179
-(and, from the overflow range, R209–R219).
+(and, from the overflow range, R209–R223).
 The hunt's fixes reached well past that: every edit to a file or SPEC section another task owns is
 listed, with its reason, under "Merge notes" at the end, and "Hunt status" says where the hunt
 stopped.
@@ -212,7 +212,8 @@ with the recommended answer:
 - **Q3, an attack whose attacker or target changes side inside §4.2 step 4's window (lens L7).**
   `resolveDeclaredAttack` (`combat.ts:428-443`) does not re-validate. No Core trap changes control in
   that window (My Pawn cancels first, R44), so this is only a finding if a hunter builds a reachable
-  case.
+  case. Round 6 built one with fixture traps, and R220 answers it: the attack resolves only while it
+  stands as it was declared.
 
 ---
 
@@ -842,6 +843,76 @@ The engine changes behind most of these:
 per Discover rather than again when "exile this" resumes after the answer. No event type was added.
 SPEC changed only in §11. The recorded hotseat game's hash did not move.
 
+### Round 6: what the hunt found
+
+Round 6 ran past the cap a third time, with the lenses of round 5 plus "combat windows" (§4.2
+step 4's trap window, Q3 above) and "turn boundaries" (L8) on their own. Its 43 failing tests were
+32 findings, and none was rejected. Two tests were corrected rather than dropped, because each asked
+for more than SPEC does. The recruited card's discount event (L10) was expected to read openly at
+the same place in both games; what §9.1 asks is that neither seat learn the library's order, and the
+fix keeps an event made in a library unread for good. The instance-id test expected one id for the
+Heroic Power in both games under the same seed, which no numbering can give; the corrected test
+shows that whatever id p1 reads, the other game shows it too under some seed, and that the id is not
+the card's rank. Four rows were needed, R220 to R223. R174, R176, R177 and R218, task 4's own rows,
+and R68 and R102 were amended. As in round 5, most of the L7 findings need a card that asks from a
+trap's list, a Death hook, a delayed effect, an onPlayHook or a cast. No Core card does, so those
+tests build the asking card as a fixture.
+
+| Topic file | Findings | Rule |
+|---|---|---|
+| `combat-windows.test.ts` | A trap in the step-4 window that destroyed, stole or moved the attacker or its target, or swapped the boards, left step 5 to resolve the combat anyway: a stolen attacker hit its new controller's hero, and a Reborn body attacked or was attacked. My Pawn fired on a declaration an earlier trap had already ended. My Pawn called a Trample swing lethal that the defender's Lifesteal strike back outhealed | R220 (new), R176 (amended) |
+| `paused-sequences.test.ts` | The traps a play's event still owed fired after the play had resumed, so Sheepish missed the Cry (R17, R118). A power whose draw's cast asked ran the check before the answer (R59). A cast never asked for its declared targets (R70, R81). Call to Chaos's partner, and the mana after its draw, walked on over a paused cast (R87). An owed trap and a list's tail after a prompt lost the stays the pause began with (R174). A nested Death pass's item fooled the outer pass into dropping its remainder (R156). A delayed effect made while its stage resolved ran in that stage after a pause (R68). Step 3's hooks resumed by index into a board the answer had reshaped. The AI turn stopped for good at the other player's prompt (R44) | R17, R59, R70, R87, R174, R156, R68 (amended), R44 |
+| `turn-stages.test.ts` (new) | The end-of-turn window's events, and a start-of-turn delayed effect's, were dispatched only after the next stage had begun, so a trigger answering them resolved on the next turn or behind the start-of-turn hooks. The AI turn stopped at the other player's prompt (three lenses found this one) | R62, §10.3, R44 |
+| `re-entry.test.ts`, `deaths-and-reborn.test.ts` | A crafted Cube + Scarab + Sorcerer's Discover lost the stay the Cube's part ended, so the Sorcerer hit the Reborn body. Reborn took a collected unit out of whatever pile a Death hook had moved it to, leaving it in two zones | R174 (amended), §4.5, §10.1 |
+| `fused-hooks.test.ts` | A fused hook built every ingredient's list before any applied: a Cube behind a Ceaseless Void remembered the meal the Void had exiled, and a Sorcerer behind Reno read the hero before Reno healed it. A Fuse that printed a new Divine Shield or Reborn left the kept card's spent flag in place | R102 (amended), R41, §5.2, R77 |
+| `tributes.test.ts`, `resolving-face.test.ts` | A Sheep a unit was fused onto was worth 1 Tribute. A Gifted Program a Tribute's Death put on the field at step 2 changed the face step 1 had checked the choices against | R102, R214 |
+| `097-zephyrs.test.ts`, `hidden-information.test.ts` | The dry run played on the real hidden cards, so the offer named the opponent's face-down trap and the order of the caster's library. It read a Charge body's printed attack, never tried the one enemy unit behind the caster's own permanents, and never tried #55's Tribute of the enemy's units. #95's discount over the library spelled out the library's order once a recruited card read openly. Instance ids followed the store's sorted deck order | R222 (new), §10.7, R177 (amended), R223 (new) |
+| `turn-clock-and-legality.test.ts` | An answer listed in an order `legalActions` never offers meant something no offered answer did (#80's discards) | R221 (new) |
+| `051-kys-private-tutor.test.ts`, `plays-and-casts.test.ts` | The Tutor handed a unit-token card from the library to a hand. The resolution loop's flat cap of 1,000 passes threw on a legal play that R58 bounds at about 1,100 triggers | R218 (amended), R58 |
+
+The engine changes behind most of these:
+
+- **A stay is kept in state.** R174's "has this card left the field since" was read off the action's
+  event list, which a prompt splits. So `GameState.fieldExits` now counts the field's departures and
+  records each card's latest one (`stays.exitMark`, `leftFieldAfter`). A script takes its mark in
+  `makeContext` (`EffectContext.exitsFrom`), a paused list carries it (`PausedStep.exitsFrom`), and
+  so do a declared attack (`DeclaredAttack.exitsFrom`), a forced run and the traps an event is owed.
+- **A composed list is built part by part.** `Effect.expand` (`resolve.lazyPart`) is a part built
+  when the list reaches it. It replaces round 4's `Effect.segment` and `PausedStep.segments`. A pause
+  parks one item that names the parts it stood inside (`PausedStep.part`), plus what each part
+  handed its rebuild (`memo`: #95's roll, which is never rolled twice).
+  `prompts.runResumableList` walks that stack and reports how the list ended. That status is what a
+  Death pass reads, where before it counted its own items. Fused hooks are lazy parts (auras stay
+  eager), and so are Call to Chaos's pair and each of its effects.
+- **What a play owes it still owes after an answer.** Step 4 re-enters its own resolution loop
+  (`PlayRun.placed`). Step 3 walks the holders it began with (`PlayRun.hookIds`). Step 1's Gifted
+  Program answer is kept (`PlayRun.gifted`). A cast asks for its declared choices at step 5
+  (`PlayRun.castChosen`), with the Echo repeat's prompts. The AI turn is owed as `aiPolicy.AI_TURN_WORK`;
+  its handler settles the answer first and keeps what the enclosing sequences owe out of the
+  playout's own `reduce`s.
+- **Every turn stage settles.** The start of a turn settles after its delayed effects, and the end
+  settles after the window and again after its delayed effects, each with a resumable step of its
+  own. A delayed stage keeps the creation mark it began at (`dueBefore`).
+- **R220.** `combat.declaredAttackStands` is asked by step 5, and by the traps later in the window
+  through `traps.registerDeclarationCheck`, because the layering puts `combat.ts` above `traps.ts`.
+- **Smaller ones.** Reborn returns a card only from the graveyard. `activatePower` runs no check
+  while paused. My Pawn nets out the defender's Lifesteal. `prompts.inOfferedOrder` orders an answer's
+  picks. The Sheep's worth is `StaticFlags.tributeWorth`, which the Sheep's script declares. A Fuse clears the
+  spent flag of a keyword it newly prints. A library Discover passes over unit-token cards.
+  `SETTLE_PASS_CAP` is derived from R58's bounds. Zephyrs' dry run swaps each hidden card for a
+  text-less stand-in, plays Charge bodies and enemy Tributes, and tries enemy targets first.
+  `costChanged` gained an optional `hiddenFrom` for a change made in a library, a `radiantSet` made
+  in a library stays hidden, and `createGame` numbers each deck from a seed stream of its own.
+
+No event type was added. `GameState` gained an optional `fieldExits`, `DeclaredAttack` an optional
+`by` and `exitsFrom`, `EffectContext` an optional `exitsFrom`, `StaticFlags` a `tributeWorth`, and
+`costChanged` an optional `hiddenFrom`. `Effect.segment` became `Effect.expand`. The recorded
+hotseat game's hash moved, and its log changed with it. The log's 40 deck-card ids were relabeled
+through R223's numbering and nothing else in it changed. A fold of the old log under the old
+numbering and a fold of the new log, relabeled back, differ in `fieldExits` alone. The gitignored
+local copy of spec 01's recording was relabeled the same way. Spec 01 itself should be rerun on
+Chrome before the PR merges, since it re-records the game.
+
 ---
 
 ## Out of scope
@@ -905,17 +976,20 @@ SPEC changed only in §11. The recorded hotseat game's hash did not move.
 ## Hunt status
 
 The brief asks for loop-until-dry finders. The hunt ran three rounds, was stopped by the schedule,
-and was then continued for a fourth and a fifth round past that cap. It is **still not dry**. Round
-5 confirmed 23 findings from 27 failing tests. It needed three new rows (R217 to R219) and three
-amended ones. The number of tests each round added keeps falling (53, 44, 43, 29, 27), but the
-number of confirmed findings does not (about twenty in round 3, twenty-eight in round 4, twenty-three
-in round 5). The new ground in round 5 was sequences that span a prompt (L7, eight findings) and the
-fused cards' parts (L2, three). Most of the L7 findings need a card that asks from a delayed effect,
-a cast on draw, a trap's list or a Death hook, and no Core card does yet. So they are sound
+and was then continued past that cap for rounds 4, 5 and 6. It is **still not dry**. Round 6
+confirmed 32 findings from 43 failing tests, rejected none, and corrected two over-specified tests.
+It needed four new rows (R220 to R223) and six amended ones. The tests each round added went 53, 44,
+43, 29, 27 and then back up to 43, and the confirmed findings went about twenty, twenty-eight,
+twenty-three and then thirty-two. Neither count is falling. Round 6's new ground was
+§4.2 step 4's window, which Q3 had left open (R220, seven tests), and sequences that span a prompt:
+every place a paused sequence re-read the board, re-read a count, or lost the stays it began with
+(L7, fourteen findings). It also reached the turn loop's stages, #97's dry run (five findings), and
+what the view's event batches and instance ids give away. Most of the L7 and window findings need a
+card that asks from a trap's list, a Death hook, a delayed effect, an onPlayHook or a cast, or a
+trap that answers a declaration without cancelling it. No Core card does either, so they are sound
 engine bugs that later sets would hit first. More edge cases very likely remain, most likely where
-round 5 was still finding them: prompts mid-sequence, fused cards, the rarer cards' own text (three
-this round) and what the view can count. The PR should say so in those words rather than call the
-hunt complete.
+round 6 was still finding them: sequences a prompt splits, the scorer, and what the view can count.
+The PR should say so in those words rather than call the hunt complete.
 
 The brief's headline is the one part with evidence of being dry. After the R171 slice, no round
 found a unit that could attack while sick. The findings that touch a change of control are about
@@ -948,25 +1022,34 @@ finding, and a test named after its rule proves it.
 | `turn.ts` (round 5) | `runDelayed` runs no state check while the delayed effect it ran is still asking; the owed `delayed` step of both boundaries runs that check first (`checkBeforeDelayed`); `startOfTurnDraw` runs none while the draw's cast is asking | R59: the check follows a whole delayed effect, or a whole cast-on-draw cast, never a part of one. R174: the next delayed effect meets the board the answered one left |
 | `draw.ts` (round 5) | A draw a cast-on-draw cast makes continues that chain's count (`ChainLink`, `linkFor`, `closeChain`), the owed chain item carries `owns`, and `draw` stops once the game is over. `drawOne` and `completeDraw` still take a plain count | R217: one draw's chain is bounded however deeply its casts draw. R216 |
 | `state.ts` (round 5) | `GameState.castChain`, optional, present only while a chain runs | R217 |
+| `turn.ts` (round 6) | Each stage settles before the next: the start of a turn after its delayed effects (`startOfTurnSettle`, step `settle`), the end after its trap window (`endOfTurnWindowSettle`, step `window`) and after its delayed effects (`endOfTurnDelayedSettle`, step `cleanup`). `runDelayed` takes the creation mark its stage began at (`dueBefore`), which the owed `delayed` step carries (`boundaryResume`, `dueBeforeOf`) | §10.3, R62: a trigger answering the window or a delayed effect resolves in that stage, not the next turn's loop. R68 (amended): a delayed effect made while its point resolves is due at the next one, pause or no pause |
+| `state.ts` (round 6) | `GameState.fieldExits` and its `FieldExits` type; `DeclaredAttack.by` and `exitsFrom`; `createGame` numbers each deck's cards from a seed stream of its own (`INSTANCE_ID_STREAM`), and imports `createRng` | R174: the stays a paused sequence began with. R220. R223: an id no longer tells the opponent a card's rank in the store's sorted deck |
+| `subsystems/fuse.ts` (round 6) | A combined hook is a list of lazy parts (`resolve.lazyPart`), built as the list reaches each (auras stay eager, `EAGER_KEYS`); `fusedCry` likewise, its slices still fixed as the hook is called. `inPart` and the `Effect.segment` tagging are gone. `keepInstance` clears a spent Divine Shield or Reborn the fused face newly prints (`gainPrintedKeywords`) | R102 (amended), R41, §8 #68, R113. §5.2, R77 |
 
-`git merge-tree` against `polish/3-ai` (at `78f723b`), after round 5's fix stage, reports textual
+`git merge-tree` against `polish/3-ai` (at `e458708`), after round 6's fix stage, reports textual
 conflicts in:
 
 - `turn.ts`, in two places. The import block: keep both, task 3's multi-line `./state` import (with
   `handicapOf`) and this branch's `import { endHandedOverTurn, runTrapWindow } from "./traps";`.
   And `startOfTurnDraw` (round 5): keep task 3's draw count and this branch's guarded check,
   `draw(sink, player, DRAWS_PER_TURN + handicapOf(state.players[player]).extraDrawsPerTurn);` then
-  `if (!isPaused(sink)) stateCheck(sink);`.
+  `if (!isPaused(sink)) stateCheck(sink);`. Round 6's new stages and steps merge cleanly around them.
+- `state.ts`, round 6: `createGame`'s deck loop. Keep both — this branch's relabel of the seat's
+  ids (`numbering.shuffle`) and then task 3's R180 handicap copy. The relabel reads only the library
+  it has just built, so a handicap `deckSize` that shortens a deck is numbered from what is left.
 - `mana.ts` `maxManaFor`. Task 3's R181 handicap and this branch's round-4 fix both rewrote it: keep
   task 3's `base` (the bonus and the cap from `handicapOf`) and this branch's sum, which leaves
   `nextTurnMod` out of max mana (`refreshMana` adds it to current mana only). That is
   `Math.max(0, base + side.mana.permMod)`, and its doc comment should name R181 as well as §2.3.
-- `subsystems/fuse.ts`, in two places: the `../script` type import (keep `CardScripts`, `Effect`,
-  `Hook` and `Script`, and this branch's `../playChoices` import), and `buildDef`'s head (keep task
-  3's `FusedDef` return type and this branch's `nextTransientId(state, defs)`).
+- `subsystems/fuse.ts`, in three places: the imports (keep task 3's `CardScripts` and this branch's
+  `../playChoices` import, `lazyPart` from `../resolve`, and `Effect`, `Hook`, `Script`), `buildDef`'s
+  head (keep task 3's `FusedDef` return type and this branch's `nextTransientId(state, defs)`), and
+  its faces (keep task 3's `fusedFrom` and this branch's `fusedFace(ingredients, defs, …)`, which
+  reads a token's worn X/X). Task 3's registry rebuild calls `fusedScript`, so it gets the lazy parts
+  with no change of its own.
 - `SPEC.md` and `rulings.test.ts`, where every task inserts after R170.
 
-`config.ts`, `state.ts` and `draw.ts` merge cleanly (task 3 does not touch `draw.ts`). Task 3's AI
+`config.ts` and `draw.ts` merge cleanly (task 3 does not touch `draw.ts`). Task 3's AI
 reads max mana nowhere it plans with, so the refresh change reaches it only through
 `mana.current`, which is unchanged.
 
@@ -978,6 +1061,19 @@ Two engine changes of round 5 reach an AI that is built the way task 3's is:
 - `subsystems/scorer.rank` now plays each candidate on a copy of the state (§10.7's dry run, for
   the active player in the main phase only), so it costs tens of milliseconds. A search should not
   call it per node.
+
+Round 6 adds three more:
+
+- My Pawn's AI turn is a resumable sequence now (`aiPolicy.AI_TURN_WORK`): when one of its actions
+  puts a question to the other player, the playout parks itself behind what that action owes, and
+  the answer brings it back (R44). An AI that plays My Pawn's turn some other way must park the same
+  way, or the locked-out player is handed back the rest of the turn. The handler keeps the items
+  owed after it out of the playout's own `reduce`s.
+- Zephyrs' dry run plays on a copy where every card the caster may not read is a text-less
+  stand-in (`scorer.concealFrom`, R222). An AI that reuses `dryRunBase` for its own search gets the
+  same concealment, which is what a search that must not cheat wants.
+- `createGame` numbers each deck from a seed stream of its own (R223). Nothing in `packages/ai`
+  should read meaning into an instance id's number.
 
 `fuse.ts` needs a decision as well as a textual merge. Both fixes can stay, since task 3's
 `fusedFrom` rebuilds a registry from the state alone and content-addressed ids do not. But two
@@ -1023,11 +1119,18 @@ would keep the two from drifting apart.
   continuation names, which `prompts.resumeSelf` falls back to when `self` is null (R127). Additive.
   In the effects barrel, `discoverFromCatalog`'s `query` may now be a function of the context,
   read when the effect applies.
+- `script.ts`, round 6: `Effect.segment` is replaced by `Effect.expand` (a part of a composed list,
+  built when the list reaches it) and the `EffectPart` type. No card file set `segment`, and a card
+  file builds a part only through the engine (`resolve.lazyPart`). `EffectContext` gained an
+  optional `exitsFrom` (R174), and `StaticFlags` a `tributeWorth` (§3.2), which #T-sheep's script
+  now declares.
 - The hunt also edited these card scripts: #22, #24, #31, #33, #37, #50, #52, #60, #72, #79 and
   #85, and in round 4 #21 (a comment), #23, #30, #51 and #83, and #79 again (its Cry is gone: the
   grant is the engine's, from `staticFlags.echoGrant`). In round 5: #89 (what it gains is floored at
-  0, R219) and #97 (its Discover's pool is a function, so the scorer ranks once per Discover). None
-  is one of task 7's `conditionMet` cards (#10, #53, #68, #71, #93).
+  0, R219) and #97 (its Discover's pool is a function, so the scorer ranks once per Discover). In
+  round 6: T-sheep (its worth is a static flag, not an index the engine keys on) and #51 (the Tutor
+  passes over unit-token cards, R218). None is one of task 7's `conditionMet` cards (#10, #53, #68,
+  #71, #93).
 - Round 4 changed two things the client sees. A target prompt's option keys are now built from the
   selection (`instance:<id>`, `hero:<player>`) instead of the card's name, so the client must go on
   treating a key as opaque. And `radiantSet` now also goes out for a hidden card that was already
@@ -1037,6 +1140,12 @@ would keep the two from drifting apart.
   prompt, and it keeps concede lit. The hunk sits above task 7's `glow` edits.
 - `apps/web/src/game/Log.tsx`: two `describe` cases for R177's redactions, a hidden cost change
   and a hidden buff. They are apart from task 7's scroll edits.
+- Round 6 changed what the client is told about a library card. A `costChanged` or `radiantSet`
+  made while the card sat in a library stays redacted for both seats for good (R177), so the log and
+  the glow play it as a card back even once the card reads openly. `viewFor.ts`'s `redactEvent` gained
+  the two cases; task 7 owns only `conditionActive` there, so they merge apart. And a Discover or a
+  cast's own choices (R70) now open prompts labelled `Cast: <name>`, beside the Echo repeat's
+  `Echo: <name>`.
 - The branch leaves one seam open. R171 makes a stolen, swapped or rotated unit sick, but `UnitView`
   carries only `canAct`, so the client cannot draw Hearthstone's sleep marker. Task 7's green glow
   already leaves `switchPosition` unlit, so a sick unit does not glow. A `sick` flag on `UnitView`
@@ -1060,12 +1169,17 @@ would keep the two from drifting apart.
 | R77 | A token's `statsOverride` and `armorOverride` are its printed face, so a Fuse sums them and they leave the kept instance; it used to say `statsOverride` stayed unchanged | Round 4 |
 | R174, R177, R209 | Task 4's own rows, amended again: a forced attacker back through Reborn is passed over; Make Radiant always cues a hidden card; a Twinspell has its grant however it came to stand on the field | Round 4 |
 | R174, R177, R215 | Task 4's own rows, amended again: a later part of one effect list meets the stay the play chose; #42 rolls every card and an owed trap entry takes no number; a card landing from the resolving zone is reset | Round 5 |
+| R174, R176, R177, R218 | Task 4's own rows, amended again: a prompt that splits a sequence changes none of R174; My Pawn nets out the defender's Lifesteal; a change made to a library card stays unread for good; the Tutor passes over a unit-token card | Round 6 |
+| R68 | The delayed effects due at a point are those that exist as it begins | Round 6 |
+| R102 | A combined hook builds each ingredient's list as the list reaches it; a fused Sheep keeps its worth | Round 6 |
 
-Rows R209 to R219 come from the overflow range, because R171 to R179 filled up in round 1 (R215 and
-R216 in round 4, R217 to R219 in round 5). The integration branch renumbers any collision.
+Rows R209 to R223 come from the overflow range, because R171 to R179 filled up in round 1 (R215 and
+R216 in round 4, R217 to R219 in round 5, R220 to R223 in round 6). The integration branch renumbers
+any collision.
 
 `packages/shared` gained no event type. `cardResolved` gained an optional `radiant`, `transformed`
-an optional `hiddenFrom`, and `TargetDecl` an optional `forModes`.
+an optional `hiddenFrom`, `costChanged` an optional `hiddenFrom` (round 6), and `TargetDecl` an
+optional `forModes`.
 
 ---
 

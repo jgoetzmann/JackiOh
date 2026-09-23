@@ -28,7 +28,7 @@ import {
   summon,
   summonRandom,
 } from "../effects";
-import { applyEffects, castCard, type EngineSink } from "../resolve";
+import { castCard, lazyPart, type EngineSink } from "../resolve";
 import type { Rng } from "../rng";
 import type { Effect, EffectContext } from "../script";
 import { newInstance, type CardInstance } from "../state";
@@ -94,15 +94,13 @@ function tokenDefId(index: string): string | null {
 
 /**
  * One of the ten effects, built when it resolves rather than when the hook returns it, so every
- * state read happens after the effects before it have landed.
+ * state read happens after the effects before it have landed. It is a part of the list that holds it
+ * (`resolve.lazyPart`), so an effect inside it that asks — a draw whose cast asks, in "draw your
+ * whole library and gain 4 mana" — pauses the rest of it until the answer (R113): the mana waits
+ * for the draw, as the partner waits for the recursion (R87).
  */
 function chaosEffect(name: ChaosEffectName, build: (ctx: EffectContext) => Effect[]): Effect {
-  return {
-    kind: `callToChaos:${name}`,
-    apply(ctx): void {
-      applyEffects(build(ctx), ctx);
-    },
-  };
+  return lazyPart(`callToChaos:${name}`, (ctx) => ({ effects: build(ctx) }));
 }
 
 /**
@@ -323,14 +321,24 @@ export function rollChaosEffects(rng: Rng, radiant: boolean): ChaosEffectDef[] {
  * instance's own flag, which is what `makeContext` put in the context (§5.2).
  */
 export function callToChaos(args: { radiant?: boolean } = {}): Effect {
-  return {
-    kind: "callToChaos",
-    apply(ctx): void {
-      const radiant = args.radiant ?? ctx.radiant;
-      applyEffects(
-        rollChaosEffects(ctx.rng, radiant).map((chosen) => chosen.build()),
-        ctx,
-      );
-    },
-  };
+  return lazyPart("callToChaos", (ctx, memo) => {
+    // R87: the pair resolves in order, the recursion's whole chain first, and a cast in that chain
+    // can ask — so the pair is a part of the Cry's list, and a pause inside it waits with the rest of
+    // it owed. What was rolled is the part's memo: resuming builds the same pair again, and rolls
+    // nothing a second time (§10.7).
+    const names = rolledNames(memo) ?? rollChaosEffects(ctx.rng, args.radiant ?? ctx.radiant).map((chosen) => chosen.name);
+    return {
+      effects: names.flatMap((name) => {
+        const chosen = chaosEffectByName(name);
+        return chosen === null ? [] : [chosen.build()];
+      }),
+      memo: names,
+    };
+  });
+}
+
+/** A roll kept across a pause (`EffectPart.memo`), read back defensively: it came through JSON. */
+function rolledNames(memo: unknown): string[] | null {
+  if (!Array.isArray(memo)) return null;
+  return memo.filter((name): name is string => typeof name === "string");
 }

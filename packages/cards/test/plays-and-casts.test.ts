@@ -12,8 +12,10 @@
 //    comes back (§6.1, §6.3 "counts as a death").
 //  - Round 5, lens L8. R217: a draw a cast-on-draw cast makes continues that cast's chain, so
 //    R58's cap bounds a CN-Virus chain under /fullsend's Combo draw, which recursed without end.
+//  - Round 6, lens "engine invariants". R58, §10.3: the resolution loop's cap holds every trigger a
+//    legal play can set off, so a Call to Chaos drawing a library of CN-Viruses beside #33 resolves.
 
-import { CAST_ON_DRAW_CHAIN_CAP, effectiveCost } from "@jackioh/engine";
+import { CAST_ON_DRAW_CHAIN_CAP, createRng, effectiveCost, subsystems } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -278,4 +280,59 @@ describe("R217: a draw a cast makes continues its chain", () => {
     expect(casts.length).toBeLessThanOrEqual(CAST_ON_DRAW_CHAIN_CAP);
     expect(g.state.castChain).toBeUndefined();
   });
+});
+
+const CHAOS = "core-095"; // #95 Call to Chaos (Core Edition), Spell, 4
+/**
+ * The one play below sets off about 1,100 casts, each a play #33 answers: seconds of work, and
+ * several times that under the coverage run's instrumentation, past vitest's default 5 s.
+ */
+const LONG_PLAY_TIMEOUT_MS = 60_000;
+const MENACE = "core-019"; // #19 Midrange Menace, a spare 3-cost Unit, so the turn never auto-ends
+
+/**
+ * #95's roll is the first rng draw of its play (see `095-call-to-chaos.test.ts`), so the cursor
+ * picks the effect. The seed and the search are that file's.
+ */
+const CHAOS_SEED = "chaos-card";
+function chaosCursorFor(effect: string): number {
+  for (let cursor = 0; cursor < 500; cursor += 1) {
+    if (subsystems.rollChaosEffects(createRng(CHAOS_SEED, cursor), false)[0]?.name === effect) return cursor;
+  }
+  throw new Error(`no cursor below 500 rolls "${effect}" from "${CHAOS_SEED}"`);
+}
+
+describe("R58, §10.3: the resolution loop runs until the rules say it is done", () => {
+  // Found by the lens's probe, which tried every action `legalActions` offered in seeded random
+  // games: on turn 24 of one, p2's library had filled with #90's CN-Viruses, p1 had a #33 in play,
+  // and the #95 in p2's hand threw out of `reduce` when played.
+  //
+  // "Draw your whole library" is one draw per card the library held when the effect started (R58),
+  // and each of those draws casts at most 20 CN-Viruses (R58, R217), so the play is finite: 55
+  // draws, at most 1,100 casts. Every cast is a play that #33 answers (R70), and Going Long's Armor
+  // 2 takes each CN-Virus hit to 0 (§4.4 step 2), so the hero never dies and the whole chain runs.
+  // `triggers.settle` pops one queued trigger per pass and throws once it has gone round
+  // SETTLE_PASS_CAP (1,000) times, so a legal play the rules bound at about 1,100 triggers crashes
+  // the action instead of resolving. p2's #33 on the other side does the same at about 50 draws:
+  // it does nothing for p1's casts, but its trigger is queued and popped for each one.
+  it("R58 a Call to Chaos that draws a library of 55 CN-Viruses beside Unstable Clone Machine resolves instead of throwing (§10.3, R217, R70)", () => {
+    const s = scenario({
+      seed: CHAOS_SEED,
+      p1: {
+        hand: [CHAOS, MENACE],
+        mana: 8,
+        backrow: [GOING_LONG, CLONE_MACHINE],
+        library: Array.from({ length: 55 }, () => CN_VIRUS),
+      },
+    });
+    s.state.rngCursor = chaosCursorFor("draw");
+
+    expect(() => s.play(CHAOS)).not.toThrow();
+    expect(s.state.result).toBeNull();
+    expect(s.state.pending).toBeNull();
+    // R58: 55 draws, each chain casting at most 20.
+    const casts = s.events.filter((event) => event.type === "cardPlayed" && event.defId === CN_VIRUS);
+    expect(casts.length).toBeGreaterThan(1000);
+    expect(casts.length).toBeLessThanOrEqual(55 * 20);
+  }, LONG_PLAY_TIMEOUT_MS);
 });

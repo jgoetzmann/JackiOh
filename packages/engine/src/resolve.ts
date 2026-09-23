@@ -4,9 +4,10 @@
 import type { GameEvent, PlayerId, Selection } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import type { Rng } from "./rng";
-import type { Effect, EffectContext, Hook, Script } from "./script";
+import type { Effect, EffectContext, EffectPart, Hook, Script } from "./script";
 import { scriptOf } from "./scripts";
 import { findInstance, type CardInstance, type GameState } from "./state";
+import { exitMark } from "./stays";
 
 export type EngineSink = { state: GameState; events: GameEvent[]; rng: Rng };
 
@@ -27,6 +28,8 @@ export function makeContext(sink: EngineSink, self: CardInstance | null, options
     // continuation calls back through here and therefore opens a fresh window, not the one its
     // first pass had.
     eventsFrom: sink.events.length,
+    // R174: the stay every card on the field has as this script begins.
+    exitsFrom: exitMark(sink.state),
     controller: options.controller ?? self?.controller ?? sink.state.active,
     self,
     radiant: self?.radiant ?? false,
@@ -48,6 +51,21 @@ export function applyEffects(effects: readonly Effect[], ctx: EffectContext): vo
     if (ctx.state.result !== null) return;
     effect.apply(ctx);
   }
+}
+
+/**
+ * A part of a composed list (`Effect.expand`), built when the list reaches it rather than when the
+ * list is made (R102). Applied on its own it builds and applies its effects in one go; inside
+ * `prompts.applyResumable` it runs as a nested list a prompt can pause.
+ */
+export function lazyPart(kind: string, expand: (ctx: EffectContext, memo: unknown) => EffectPart): Effect {
+  return {
+    kind,
+    expand,
+    apply(ctx): void {
+      applyEffects(expand(ctx, undefined).effects, ctx);
+    },
+  };
 }
 
 export type HookName =

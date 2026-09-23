@@ -11,8 +11,9 @@ import { AI_END_TURN_PROBABILITY } from "../config";
 import { legalActions, reduce } from "../reduce";
 import type { EngineSink } from "../resolve";
 import type { Rng } from "../rng";
-import type { GameState } from "../state";
-import { markDispatched } from "../triggers";
+import type { GameState, WorkItem } from "../state";
+import { markDispatched, settle } from "../triggers";
+import { owe, registerWorkHandler } from "../work";
 
 /**
  * A playout covers one turn, so this ceiling is far above any reachable turn; it exists only so a
@@ -123,8 +124,13 @@ export function playOutTurn(sink: EngineSink, player: PlayerId, options: PolicyO
     if (state.result !== null) return { actions, stopped: "gameOver" };
     if (state.turn !== turn) return { actions, stopped: "turnEnded" };
     if (state.pending !== null) {
-      // Someone else's prompt blocks every action of ours (§9.3), so the playout waits.
-      if (state.pending.playerId !== player) return { actions, stopped: "promptElsewhere" };
+      // Someone else's prompt blocks every action of ours (§9.3), so the playout waits — and a
+      // turn handed to the AI is owed, so the answer brings it back (R113): the rest of that turn is
+      // still the AI's (R44).
+      if (state.pending.playerId !== player) {
+        if (state.players[player].aiTurn) oweAiTurn(sink, player, turn);
+        return { actions, stopped: "promptElsewhere" };
+      }
     } else if (state.active !== player || state.phase !== "main") {
       return { actions, stopped: "turnEnded" };
     }
@@ -146,3 +152,54 @@ export function playOutTurn(sink: EngineSink, player: PlayerId, options: PolicyO
 
   return { actions, stopped: "stepCap" };
 }
+
+/**
+ * R113: the `resume.hook` of an AI turn another player's prompt stopped. #96 My Pawn hands the rest
+ * of the turn to the policy (R44), and one of the AI's actions can set off a question for the other
+ * player — a trap that asks, a Death hook of theirs. The answer is that player's action, and the
+ * turn it interrupted is still the AI's: R44's "it plays out the turn while the opponent is locked
+ * out" and R152's lockout until the end of that turn. Stopping for good handed the locked-out player
+ * a turn the AI was to finish, and left My Pawn to be consumed mid-turn rather than at its cleanup.
+ * The item is parked at the moment the playout stops (R117), behind what the AI's own action owes.
+ */
+export const AI_TURN_WORK = "@aiTurn";
+
+function oweAiTurn(sink: EngineSink, player: PlayerId, turn: number): void {
+  owe(sink, { defId: "", hook: AI_TURN_WORK, step: "turn", radiant: false, data: { player, turn } });
+}
+
+/**
+ * `work.ts`'s handler: the same AI turn, going on once the answer has finished what its action set
+ * off. The answer's own events are dispatched and the triggers they wake resolve first (§10.3: the
+ * interrupting response resolves to completion before the action it interrupted continues). What is
+ * owed after this item is the enclosing sequences' — My Pawn's own firing, the window, the combat it
+ * cancelled — and not the playout's to run, so the playout's `reduce`s, which settle, never see it
+ * (R117): it waits aside and comes back behind whatever the playout leaves owed.
+ */
+function runOwedAiTurn(sink: EngineSink, item: WorkItem): void {
+  const named: unknown = item.resume.data.player;
+  const player = named === "p1" || named === "p2" ? named : null;
+  const turn: unknown = item.resume.data.turn;
+  const state = sink.state;
+  if (player === null || state.result !== null || state.turn !== turn) return;
+  if (!state.players[player].aiTurn) return;
+
+  const after = state.work;
+  state.work = [];
+  state.workCursor = 0;
+  try {
+    settle(sink);
+    if (sink.state.result !== null) return;
+    // Another question for the other player waits for its own answer; one for the AI's player is
+    // the AI's to answer, which the playout does (R44).
+    if (sink.state.pending !== null && sink.state.pending.playerId !== player) {
+      oweAiTurn(sink, player, turn);
+      return;
+    }
+    playOutTurn(sink, player);
+  } finally {
+    sink.state.work = [...sink.state.work, ...after];
+  }
+}
+
+registerWorkHandler(AI_TURN_WORK, runOwedAiTurn);

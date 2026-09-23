@@ -2,6 +2,7 @@
 // persist in every zone (R78), so a card discounted in hand is still discounted from the graveyard.
 // The order the two combine is `effectiveCost`'s (§6.3 Cost, R65); nothing here recomputes it.
 
+import { PLAYER_IDS } from "@jackioh/shared";
 import { effectiveCost } from "../mana";
 import type { Effect, EffectContext } from "../script";
 import type { CardInstance } from "../state";
@@ -25,9 +26,22 @@ function priced(card: CardInstance, inHandOnly: boolean | undefined): boolean {
   return inHandOnly !== true || card.zone.z === "hand";
 }
 
-/** R65: the event reports what the card costs now, which is `effectiveCost` and nothing else. */
+/**
+ * R65: the event reports what the card costs now, which is `effectiveCost` and nothing else.
+ *
+ * R177: a change made to a card in a library is one nobody could read where it happened (§3), and a
+ * library-wide change (#95's "every card in your hand and library costs 2 less") emits one event per
+ * card in library order — so the event says it was made there (`hiddenFrom`), and a view keeps it
+ * unread for good, or the recruited card's event would give away its place in the batch once the
+ * card reads openly.
+ */
 function emitCost(ctx: EffectContext, card: CardInstance): void {
-  ctx.events.push({ type: "costChanged", instanceId: card.id, cost: effectiveCost(ctx.state, card) });
+  ctx.events.push({
+    type: "costChanged",
+    instanceId: card.id,
+    cost: effectiveCost(ctx.state, card),
+    ...(card.zone.z === "library" ? { hiddenFrom: [...PLAYER_IDS] } : {}),
+  });
 }
 
 /**

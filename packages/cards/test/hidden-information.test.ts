@@ -1,9 +1,13 @@
 // What `viewFor` hands each seat about cards it may not read (SPEC §9.1, §10.8, R33, R35, R97,
-// R177). Found by the polish-4 edge-case hunt (docs/polish/4-edge-cases.md, lens L10, rounds 1 to
-// 5); every case here failed before its fix. Where a leak is a difference between two games that
-// differ only in hidden cards, the test builds both and asserts the viewer cannot tell them apart.
+// R177, R222, R223). Found by the polish-4 edge-case hunt (docs/polish/4-edge-cases.md, lens L10,
+// rounds 1 to 6); every case here failed before its fix. Where a leak is a difference between two
+// games that differ only in hidden cards, the test builds both and asserts the viewer cannot tell
+// them apart. Round 6 found #97 Zephyrs' offer reading a face-down trap and the library's order
+// (R222), a library-wide discount whose events spelled out the library's order once a card read
+// openly (R177), and instance ids numbered in the order the store sorts a deck in (R223).
 
-import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
+import type { Action, ActionBody, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
+import { beginGame, createGame, legalActions, reduce, viewFor, type GameState } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -37,6 +41,11 @@ const GIFTED = "core-064";
 const SORCERER = "core-068";
 const MASK = "core-065";
 const HONEYPOT = "core-060";
+const CALL_TO_ARMS = "core-069";
+const MOTHS = "core-009";
+const BLOOD_RIDDEN = "core-027";
+const ZEPHYRS = "core-097";
+const HEROIC_POWER = "core-098";
 
 function eventsOf<T extends GameEvent["type"]>(view: PlayerView, type: T): Extract<GameEvent, { type: T }>[] {
   return view.events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
@@ -522,5 +531,214 @@ describe("R177: a number taken by a face-down trap owed an event", () => {
     // counter hands the next modifier: R177's "no number the view carries is taken by a hidden card".
     indistinguishable("p1", pawnAndSheep, twoPawns);
     indistinguishable("p1", pawnAndHoneypot, twoPawns);
+  });
+});
+
+/** The def ids a Discover prompt offers the viewer, sorted. */
+function offeredTo(s: Scenario, viewer: PlayerId): string[] {
+  const pending = s.view(viewer).pending;
+  if (pending === null || !pending.forYou) throw new Error(`no prompt open for ${viewer}`);
+  return pending.options.map((option) => option.defId ?? option.key).sort();
+}
+
+describe("R222: #97 Zephyrs' dry run and hidden information", () => {
+  /**
+   * p1 casts Zephyrs against p2's 1/14 Moths, which no affordable printed attack kills, so a
+   * candidate "clears the enemy board" (§10.7) only through what its text does. p2's lane-1 card is
+   * face-down, and the two games differ only in what it is: Sheepish, or My Pawn (which answers a
+   * declared attack and never a play).
+   */
+  function zephyrsAgainst(trap: string): Scenario {
+    const s = scenario({
+      seed: "r6-zephyrs-trap",
+      p1: { hand: [ZEPHYRS, STOCKPILE], library: [HIT_JOB, HIT_JOB] },
+      p2: { field: [MOTHS], backrow: [{ def: trap, lane: 1 }], hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(ZEPHYRS);
+    return s;
+  }
+
+  it("R222 the cards #97 offers do not tell p1 what p2's face-down trap is (§9.1, §10.8, R33)", () => {
+    const sheep = zephyrsAgainst(SHEEPISH);
+    const pawn = zephyrsAgainst(MY_PAWN);
+
+    // p1 reads a bare face-down zone in both games, and both have the Discover open.
+    expect(sheep.view("p1").opponent.backrow[0]).toEqual({ faceDown: true });
+    expect(pawn.view("p1").opponent.backrow[0]).toEqual({ faceDown: true });
+    expect(offeredTo(sheep, "p1")).toHaveLength(3);
+
+    // The scorer ranks for p1 (§10.7, R29), and what p1 may read is the same in both games, so the
+    // three cards it offers must be too: an offer that moves with p2's face-down card names it.
+    expect(offeredTo(sheep, "p1")).toEqual(offeredTo(pawn, "p1"));
+    indistinguishable("p1", pawn, sheep);
+  });
+
+  /**
+   * p1 is at 5 health, so §10.7's heal priority applies, and p2 has no units. The two games differ
+   * only in the order of p1's own library, which nobody may read (§3, §9.1, §10.8): Blood Ridden
+   * Glowy Jelly Bean (cast on draw: lose 5) is on top, or at the bottom.
+   */
+  function zephyrsOverLibrary(library: readonly string[]): Scenario {
+    const s = scenario({
+      seed: "r6-zephyrs-library",
+      p1: { hand: [ZEPHYRS, STOCKPILE], health: 5, library: [...library] },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(ZEPHYRS);
+    return s;
+  }
+
+  it("R222 the cards #97 offers do not tell p1 the order of its own library (§3, §9.1, §10.8)", () => {
+    const onTop = zephyrsOverLibrary([BLOOD_RIDDEN, HIT_JOB, HIT_JOB]);
+    const atBottom = zephyrsOverLibrary([HIT_JOB, HIT_JOB, BLOOD_RIDDEN]);
+
+    expect(offeredTo(onTop, "p1")).toHaveLength(3);
+    expect(onTop.view("p1").you.libraryCount).toBe(3);
+
+    // "The rest of the library stays hidden from both" (§10.8): an offer that moves with the order
+    // of p1's library tells p1 what is on top of it.
+    expect(offeredTo(onTop, "p1")).toEqual(offeredTo(atBottom, "p1"));
+    expect(eventsOf(onTop.view("p1"), "drawn")).toHaveLength(0);
+    indistinguishable("p1", atBottom, onTop);
+  });
+});
+
+describe("R177: a library card's place in a library-wide event sequence", () => {
+  /**
+   * "chaos-2" is a seed whose #95 rolls "every card in your hand and library costs 2 less", which
+   * emits one `costChanged` per hand card and then one per library card, top first. #69 Call to
+   * Arms then recruits p1's one Unit (Gary, 1 cost) out of the library. The games differ only in
+   * where Gary was: on top of the two Hit Jobs, or between them.
+   */
+  function chaosThenRecruit(library: readonly string[]): Scenario {
+    const s = scenario({
+      seed: "chaos-2",
+      p1: { hand: [CALL_TO_CHAOS, CALL_TO_ARMS, STOCKPILE], mana: 10, library: [...library] },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB] },
+    });
+    s.play(CALL_TO_CHAOS);
+    s.play(CALL_TO_ARMS);
+    return s;
+  }
+
+  /** Where in the view's `costChanged` sequence the recruited card's own event sits. */
+  function placeOfRecruited(s: Scenario, viewer: PlayerId): number {
+    const gary = s.unit("p1", 1);
+    if (gary === null || gary.defId !== GARY) throw new Error("Call to Arms recruited no Gary");
+    return eventsOf(s.view(viewer), "costChanged").findIndex((event) => event.instanceId === gary.id);
+  }
+
+  /** The view's `costChanged` events, in order. */
+  function discounts(s: Scenario, viewer: PlayerId): GameEvent[] {
+    return eventsOf(s.view(viewer), "costChanged");
+  }
+
+  it("R177 a discount made while a card lay in the library stays unread once the card reads openly, so its place says nothing (§3, §9.1, R97)", () => {
+    const onTop = chaosThenRecruit([GARY, HIT_JOB, HIT_JOB]);
+    const second = chaosThenRecruit([HIT_JOB, GARY, HIT_JOB]);
+
+    // The discount rolled for the two hand cards and the three library cards, and Gary is on the
+    // field in both games, the two Hit Jobs still in the library.
+    for (const s of [onTop, second]) {
+      expect(eventsOf(s.view("p2"), "costChanged").length).toBeGreaterThanOrEqual(5);
+      expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([HIT_JOB, HIT_JOB]);
+    }
+
+    // §9.1 hides library order from both players, which is why R97 blanks `shuffledIn.position`
+    // even for a card the viewer may read, and why R177 hides a library card's cost. The discount
+    // went out one event per card in library order, so read openly once Gary did, its place among
+    // them would say how deep Gary lay — here, whether p1's next draw was a 1-cost Unit. The finder
+    // asked for Gary's event to read openly at the same place in both games; what SPEC asks is that
+    // neither seat learns the order, and the event was made where nobody could read it (§3), so it
+    // stays unread for good (R177) and both seats read the same batch in both games.
+    for (const viewer of ["p1", "p2"] as const) {
+      expect(placeOfRecruited(onTop, viewer)).toBe(-1);
+      expect(placeOfRecruited(second, viewer)).toBe(-1);
+      expect(discounts(second, viewer)).toEqual(discounts(onTop, viewer));
+    }
+  });
+});
+
+describe("R223: instance ids and the order a deck was submitted in", () => {
+  /**
+   * `apps/server`'s store hands `createGame` each deck ordered by card id (`app.resolve_deck`,
+   * "a deck saved in one order comes back sorted"), and `createGame` numbers every card in that
+   * order before §2.1 shuffles the library. This test cannot use `scenario()`, which numbers its
+   * cards in its own setup order: it plays the engine's own path, `createGame` → `beginGame` →
+   * mulligans → turns, as `replay.fold` and the server do.
+   *
+   * p2's deck is 18 cards costing 1 and #98 Heroic Power (a Quickdraw card, so it starts in the
+   * opening hand whatever the shuffle does), plus one card p2 never shows: #1 Big D-fender, which
+   * sorts before every other card of the deck, or #100 Ceaseless Void, which sorts after them all.
+   * p1 only ever ends its turn; p2 plays Heroic Power as soon as it can pay its X, and nothing else.
+   */
+  const P1_DECK = [
+    "core-003", "core-004", "core-005", "core-007", "core-008", "core-010", "core-011", "core-015",
+    "core-018", "core-023", "core-031", "core-035", "core-036", "core-039", "core-041", "core-044",
+    "core-048", "core-050", "core-060", "core-062",
+  ];
+  const P2_SHARED = [
+    "core-003", "core-004", "core-005", "core-007", "core-008", "core-011", "core-015", "core-023",
+    "core-031", "core-035", "core-036", "core-044", "core-050", "core-062", "core-063", "core-081",
+    "core-082", "core-086", HEROIC_POWER,
+  ];
+  /** The order the server's store returns a deck in: by card id. */
+  const sortedDeck = (ids: readonly string[]): string[] => [...ids].sort();
+
+  function heroicPowerOf(state: GameState): string | undefined {
+    return state.players.p2.backrow.find((card) => card?.defId === HEROIC_POWER)?.id;
+  }
+
+  function gameWithHidden(hidden: string): GameState {
+    const decks: [string[], string[]] = [sortedDeck(P1_DECK), sortedDeck([...P2_SHARED, hidden])];
+    let state = beginGame(createGame({ seed: "r6-deck-order", decks })).state;
+    let nonce = 0;
+    const act = (player: PlayerId, body: ActionBody): void => {
+      const result = reduce(state, { ...body, playerId: player, nonce: `r6-${nonce}` } as Action);
+      nonce += 1;
+      if (result.error !== undefined) throw new Error(`${player} ${body.type}: ${result.error}`);
+      state = result.state;
+    };
+    act("p1", { type: "mulligan", keep: state.players.p1.hand.map((card) => card.id) });
+    act("p2", { type: "mulligan", keep: state.players.p2.hand.map((card) => card.id) });
+    for (let guard = 0; guard < 16 && heroicPowerOf(state) === undefined; guard += 1) {
+      if (state.result !== null || state.pending !== null) break;
+      if (state.active === "p1") {
+        act("p1", { type: "endTurn" });
+        continue;
+      }
+      const power = state.players.p2.hand.find((card) => card.defId === HEROIC_POWER);
+      const play = legalActions(state, "p2").find((body) => body.type === "play" && body.instanceId === power?.id);
+      act("p2", play ?? { type: "endTurn" });
+    }
+    return state;
+  }
+
+  /** The id `createGame` gives p2's Heroic Power, with `hidden` as p2's one card that never shows. */
+  function powerIdAt(seed: string, hidden: string): string | undefined {
+    const decks: [string[], string[]] = [sortedDeck(P1_DECK), sortedDeck([...P2_SHARED, hidden])];
+    return createGame({ seed, decks }).players.p2.library.find((card) => card.defId === HEROIC_POWER)?.id;
+  }
+
+  const SEEDS = Array.from({ length: 200 }, (_, at) => `r6-deck-order-${at}`);
+
+  it("R223 a card's instance id does not tell the opponent where it sorts in its owner's deck (§2.1, §9.1, R97)", () => {
+    // The id reaches the opponent: p2 plays Heroic Power and p1's view names it (§10.8, R97).
+    const game = gameWithHidden("core-100");
+    const id = must(heroicPowerOf(game), "p2's Heroic Power on the field");
+    expect(viewFor(game, "p1").opponent.hero.powers[0]?.instanceId).toBe(id);
+
+    // Numbered in the order the store sorts a deck in, the power was c40 when p2's hidden card sorts
+    // before it (#1) and c39 when it sorts after it (#100): the id was its rank. The finder asked for
+    // one id in both games under the same seed, which no numbering can give — any order a card takes
+    // among its deck's shifts with the cards around it. What §9.1 asks is that the id tell p1 nothing,
+    // and the seed that orders the numbers is as hidden as the one that shuffles the library (§2.1):
+    // whatever id p1 reads, the other game shows it under some seed, and the id is not the rank.
+    for (const hidden of ["core-001", "core-100"]) {
+      const other = hidden === "core-001" ? "core-100" : "core-001";
+      const seen = powerIdAt(SEEDS[0] ?? "", hidden);
+      expect(SEEDS.some((seed) => powerIdAt(seed, other) === seen), `${seen} is possible either way`).toBe(true);
+      expect(new Set(SEEDS.map((seed) => powerIdAt(seed, hidden))).size).toBeGreaterThan(1);
+    }
   });
 });

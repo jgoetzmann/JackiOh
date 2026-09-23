@@ -67,8 +67,14 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * The third: the turn log records what each play paid (`costsPaid`, R213), and a hand card's queued
  * trigger no longer takes a number from `nextSeq` (R177). A fold before and after it differs in p1's
  * `costsPaid` and in `nextSeq` and the two frontier ids it numbers, 4 lower, and nowhere else.
+ *
+ * Round 6 of the hunt moved it twice more, and moved the log's ids with it. `createGame` now numbers
+ * each deck's cards in an order of the seed's own (R223), so the log's 40 deck-card ids were relabeled
+ * through that mapping and nothing else in the log changed; and the state counts the field's
+ * departures (`fieldExits`, R174). A fold of the old log under the old numbering and a fold of the
+ * relabeled log, relabeled back, differ in `fieldExits` alone — the same game, action for action.
  */
-const EXPECTED_HASH = "1372c65e";
+const EXPECTED_HASH = "aca6b485";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

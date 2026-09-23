@@ -25,6 +25,13 @@ export type EffectContext = {
    * it slices. Once that literal is allowed to change this becomes required.
    */
   eventsFrom: number;
+  /**
+   * R174: the field's departures when this script's run began (`stays.exitMark`), so an effect later
+   * in the list can tell a card an earlier one took off the field from the card that stood there
+   * when the run began — across a prompt too, since a paused list resumes with the mark it began
+   * with (`work.PausedStep.exitsFrom`). Set by `makeContext`; absent reads as "now".
+   */
+  exitsFrom?: number;
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */
@@ -53,14 +60,21 @@ export type Effect = {
   readonly kind: string;
   apply: (ctx: EffectContext) => void;
   /**
-   * Which part of a composed list this effect came from: a fused hook runs every ingredient's list
-   * (R77, R102), and tags each effect with its ingredient's index — a path, since a fused card can be
-   * fused again. A pause records the parts' lengths, so the list rebuilt on resume is continued part
-   * by part (`work.resumeIndex`, R113) even when a part rebuilt against the board it now finds is
-   * shorter or longer than it was. A card's own effects carry none.
+   * A part of a composed list, built when the list reaches it: a fused hook runs each ingredient's
+   * list in turn (R77, R102), and a later ingredient's list reads the board the earlier ones left
+   * (#68's threshold after Reno's heal, #22's meal after #100's exile), which a list built all at
+   * once cannot. `prompts.applyResumable` runs the part it builds as a nested list, so a prompt
+   * inside it pauses the part and everything after it, and the pause records where it stood
+   * (`work.PausedStep.part`) — so the part is built again on resume, and only the part the pause
+   * stood in. `memo` is what the first build must hand every rebuild so the part is the same one:
+   * #95's roll, which must not be rolled again (R87). A caller that only calls `apply` gets the
+   * part built and applied in one go, as `resolve.lazyPart` writes it.
    */
-  readonly segment?: readonly number[];
+  readonly expand?: (ctx: EffectContext, memo: unknown) => EffectPart;
 };
+
+/** What a part of a composed list builds (`Effect.expand`): its effects, and what a rebuild reads. */
+export type EffectPart = { effects: readonly Effect[]; memo?: unknown };
 
 export type Hook = (ctx: EffectContext) => Effect[];
 
@@ -116,6 +130,12 @@ export type StaticFlags = {
   giftedProgram?: number;
   /** Tribute cost in units, Sheep Tokens counting 2 (§6.3). */
   tribute?: number;
+  /**
+   * §3.2, §7: what this unit counts toward a Tribute while it is on the field — the Sheep Token's
+   * "worth 2 Tributes" (3 on its radiant face). Absent is 1. It is the face's text, so a Vanilla
+   * unit is worth 1, and a fused card takes the larger of its ingredients' (R102).
+   */
+  tributeWorth?: number;
   /** R101: only a card that says so may pay its Tribute with the opponent's units (§8 #55). */
   tributeEnemies?: boolean;
   /** Anti-oneshot Armor: caps each hit on this player's hero at ANTI_ONESHOT_CAP (§4.4 step 3). */

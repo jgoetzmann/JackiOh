@@ -513,6 +513,9 @@ describe("cancelAttack (§6.3 Cancel an attack, §4.2 step 4, R44, #96)", () => 
       attackerId: attacker.id,
       targetId: defender.id,
       cancelled: false,
+      // R220: whose attack it is, and the stays it was declared on.
+      by: attacker.controller,
+      exitsFrom: expect.any(Number) as unknown as number,
     });
     // R113, §10.3: the asking trap's own end first — consumed, and its check, once the answer has
     // finished its list — then the traps the window still owes, then the combat.

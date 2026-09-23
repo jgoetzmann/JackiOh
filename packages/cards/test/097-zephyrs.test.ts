@@ -2,7 +2,11 @@
 // BUILD M4-T4 row 97: "Scorer deterministic; a lethal-enabling card ranks first when lethal
 // exists; Discover offers the top 3 (R29); exiled; radiant picks are radiant". The polish-4 edge-case
 // hunt, round 5 (lens "card by card"), found the scorer blind to card text: §10.7's dry run now plays
-// each candidate on a copy of the state, so a burn spell, a board wipe and a heal count.
+// each candidate on a copy of the state, so a burn spell, a board wipe and a heal count. Round 6
+// found the dry run reading cards its player may not (R222: the opponent's face-down trap, the
+// library's order), a Charge body's swing read off its printed attack rather than through the
+// viewer's auras, and plays it never tried: the one enemy unit behind the viewer's own permanents,
+// and #55's Tribute of the enemy's units.
 
 import { describe, expect, it } from "vitest";
 import type { GameState, PendingChoice } from "@jackioh/engine";
@@ -236,5 +240,131 @@ describe("#97 Zephyrs — §10.7's dry run reads what a card's text does", () =>
     const offered = offeredIds(s);
     expect(offered).toHaveLength(3);
     expect(offered.filter((id) => !LETHAL_AT_3.includes(id)), "offers that are not lethal").toEqual([]);
+  });
+});
+
+/** #8 Mr. Vanilla: a plain body that keeps each side's turn from auto-ending (R82). */
+const VANILLA = "core-008";
+const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
+/** #25 4-mana 7/7 with Armor 7: no Core unit's printed attack answers it. */
+const SEVEN_SEVEN = "core-025";
+/** #1 Big D-fender, a 0/8: a friendly body that never attacks, so nothing on it is lethal. */
+const D_FENDER = "core-001";
+
+function mustHave<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`setup: ${what} is missing`);
+  return value;
+}
+
+/** The catalog ids a Discover of #97's offers, sorted. */
+function offeredDefs(g: Scenario): string[] {
+  return sorted(optionIds(open(g.state)));
+}
+
+/** §10.7's ranking for the active player now, the one #97's Discover reads (R29). */
+function scoredOn(g: Scenario, defId: string): subsystems.Scored {
+  return mustHave(
+    subsystems.rank(g.state, "p1").find((entry) => entry.def.id === defId),
+    `${defId}'s score`,
+  );
+}
+
+describe("#97 Zephyrs — R222: the dry run reads only what its player may read", () => {
+  it("R222 the cards #97 offers do not depend on which face-down trap the opponent holds (§9.1, §10.8, R33)", () => {
+    // Two games p1 cannot tell apart: p2 holds one face-down trap in the same zone, a My Pawn in
+    // one and a Sheepish in the other. The dry run plays each candidate on a copy of the real
+    // state, so the Sheepish turns Big Felinor and Bigot into Sheep before their Cries and they
+    // stop "clearing" p2's board: the offers name the trap.
+    const offersWith = (trap: string): string[] => {
+      const g = scenario({
+        seed: "zephyrs-hidden-trap",
+        p1: { hand: [ZEPHYRS, VANILLA], library: [...LIBRARY] },
+        p2: {
+          hand: [VANILLA],
+          field: [{ def: SEVEN_SEVEN, lane: 3 }],
+          backrow: [{ def: trap, lane: 2, faceUp: false }],
+          library: [...LIBRARY],
+        },
+      });
+      g.play(ZEPHYRS);
+      return offeredDefs(g);
+    };
+
+    expect(offersWith("core-041")).toEqual(offersWith("core-096"));
+  });
+
+  it("R222 the cards #97 offers do not depend on the order of the viewer's own library (§3, §9.1)", () => {
+    // p1 is at 5 health, so a heal is the priority, and #5 Stockpile ("draw 2; heal your hero 2")
+    // is one. With two #27 Blood Ridden Glowy Jelly Beans on top of the library the dry run's draw
+    // casts them, p1 loses 10 and Stockpile stops "healing": the offers say what is on top.
+    const offersWith = (library: string[]): string[] => {
+      const g = scenario({
+        seed: "zephyrs-library-order",
+        p1: { hand: [ZEPHYRS, VANILLA], library, health: 5 },
+        p2: { hand: [VANILLA], library: [...LIBRARY] },
+      });
+      g.play(ZEPHYRS);
+      return offeredDefs(g);
+    };
+
+    const beansBelow = offersWith([VANILLA, VANILLA, "core-027", "core-027", VANILLA, VANILLA]);
+    const beansOnTop = offersWith(["core-027", "core-027", VANILLA, VANILLA, VANILLA, VANILLA]);
+    expect(beansOnTop).toEqual(beansBelow);
+  });
+});
+
+describe("#97 Zephyrs — §10.7: 'lethal available' and 'can clear the enemy board' as the board has them", () => {
+  it("§10.7 a Charge unit's swing is read through the viewer's auras, both ways (§10.4 layer 5)", () => {
+    // #45 Deft Duelist is a printed 4/3 with Charge. Under p1's #14 Jlockeed's Weapons it swings
+    // for 8 the turn it lands, which is lethal on a hero at 8; under p1's own #65.1 Spikey Pillow
+    // it swings for 2, which is not lethal on a hero at 4. The scorer reads the printed 4 both
+    // times, and the Duelist has no text for the dry run to play.
+    const underWeapons = scenario({
+      seed: "zephyrs-weapons",
+      p1: { hand: [ZEPHYRS, VANILLA], backrow: ["core-014"], library: [...LIBRARY] },
+      p2: { hand: [VANILLA], health: 8, library: [...LIBRARY] },
+    });
+    const underPillow = scenario({
+      seed: "zephyrs-pillow",
+      p1: { hand: [ZEPHYRS, VANILLA], field: [{ def: "core-065-1", lane: 1 }], library: [...LIBRARY] },
+      p2: { hand: [VANILLA], health: 4, library: [...LIBRARY] },
+    });
+
+    expect(scoredOn(underWeapons, "core-045").priority).toBe("lethal");
+    expect(scoredOn(underPillow, "core-045").priority).not.toBe("lethal");
+
+    // …and what p1 is offered follows: the lethal card is on the table.
+    underWeapons.play(ZEPHYRS);
+    expect(offeredDefs(underWeapons)).toContain("core-045");
+  });
+
+  it("§10.7 the dry run reaches the lone enemy unit however many permanents the viewer has", () => {
+    // #34 Collateral Damage exiles one target permanent, and p2 has one unit: it clears p2's board.
+    // With nine permanents of p1's own ahead of it among the targets, the dry run's eight plays
+    // never aim at p2's unit, and the clear is missed. Four fewer friendly permanents and it is seen.
+    const g = scenario({
+      seed: "zephyrs-crowded",
+      p1: {
+        hand: [ZEPHYRS, VANILLA],
+        field: [D_FENDER, D_FENDER, D_FENDER, D_FENDER, D_FENDER],
+        backrow: ["core-006", "core-006", "core-006", "core-006"],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [VANILLA], field: [{ def: SEVEN_SEVEN, lane: 5 }], library: [...LIBRARY] },
+    });
+
+    expect(scoredOn(g, "core-034").priority).toBe("clear");
+  });
+
+  it("§10.7 the dry run sees #55 Lava Golem clear the enemy board by tributing the enemy's units (§8 #55, R101)", () => {
+    // Lava Golem "may tribute enemy units": paid with p2's three 7/7s it leaves p2 no board. The
+    // dry run tries one Tribute set only, p1's own three units, so the clear is never played.
+    const g = scenario({
+      seed: "zephyrs-golem",
+      p1: { hand: [ZEPHYRS, VANILLA], field: [D_FENDER, D_FENDER, D_FENDER], library: [...LIBRARY] },
+      p2: { hand: [VANILLA], field: [SEVEN_SEVEN, SEVEN_SEVEN, SEVEN_SEVEN], library: [...LIBRARY] },
+    });
+
+    expect(scoredOn(g, "core-055").priority).toBe("clear");
   });
 });

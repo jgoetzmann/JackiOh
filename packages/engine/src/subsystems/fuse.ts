@@ -28,6 +28,7 @@ import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
+import { lazyPart } from "../resolve";
 import type { Effect, Hook, Script } from "../script";
 import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
@@ -232,10 +233,20 @@ function buildDef(
 type ListFn = (...args: unknown[]) => unknown[];
 
 /**
+ * The script keys whose functions return something other than effects, so they combine by building
+ * every ingredient's list at once: an aura's entries are read off the field on every stat read
+ * (§10.4), and there is no "when the list reaches it" for them.
+ */
+const EAGER_KEYS: readonly string[] = ["aura"];
+
+/**
  * Combine one key of several scripts. The rule is the same for every kind of value a script holds,
  * which is what keeps this working as `Script` grows new hooks:
- *   - a hook (Cry, Death, a start/end-of-turn hook, an aura) becomes one hook that runs each of
- *     them and concatenates what they return, so "both Cry and Death lists run" (R77);
+ *   - a hook (Cry, Death, a start/end-of-turn hook, a resume step) becomes one hook that runs each
+ *     of them in turn, so "both Cry and Death lists run" (R77) — each ingredient's list built only
+ *     when the one before it has resolved (`lazyPart`, R102), so a later ingredient reads the board
+ *     the earlier ones left: #68's "8 if your hero is below 10" after Reno has set the hero to 30,
+ *     #22's meal after #100 has exiled it. An aura, which returns no effects, runs each at once;
  *   - a list (triggers, declared targets and modes) becomes the lists in ingredient order, so a
  *     fused trap carries every ingredient's trigger condition;
  *   - a nested object (static flags, the resume table) is combined key by key by the same rules,
@@ -243,13 +254,15 @@ type ListFn = (...args: unknown[]) => unknown[];
  *   - a flag is true when any ingredient set it, and a number takes the larger, which is the one
  *     stricter requirement rather than a doubled one (`staticFlags.tribute`).
  */
-function combineValues(values: readonly unknown[]): unknown {
+function combineValues(values: readonly unknown[], eager = false): unknown {
   const defined = values.filter((value) => value !== undefined);
   if (defined.length <= 1) return defined[0];
   if (defined.every((value) => Array.isArray(value))) return (defined as unknown[][]).flat();
   if (defined.every((value) => typeof value === "function")) {
     const fns = defined as ListFn[];
-    return (...args: unknown[]): unknown[] => fns.flatMap((fn, part) => fn(...args).map((item) => inPart(item, part)));
+    if (eager) return (...args: unknown[]): unknown[] => fns.flatMap((fn) => fn(...args));
+    return (): Effect[] =>
+      fns.map((fn, part) => lazyPart(`fused:part${part}`, (at) => ({ effects: fn(at) as Effect[] })));
   }
   if (defined.every((value) => typeof value === "boolean")) return defined.some((value) => value === true);
   if (defined.every((value) => typeof value === "number")) return Math.max(...(defined as number[]));
@@ -258,22 +271,14 @@ function combineValues(values: readonly unknown[]): unknown {
   return defined[defined.length - 1];
 }
 
-/**
- * Tag an effect with the part of a composed list it came from (`Effect.segment`), so a pause inside
- * the list resumes part by part (`work.resumeIndex`, R113). Anything a hook returns that is not an
- * effect (an aura's entries) is left as it is.
- */
-function inPart(item: unknown, part: number): unknown {
-  if (!isPlainObject(item) || typeof item.apply !== "function") return item;
-  const inner = Array.isArray(item.segment) ? (item.segment as number[]) : [];
-  return { ...item, segment: [part, ...inner] };
-}
-
 function combineObjects(objects: readonly Record<string, unknown>[]): Record<string, unknown> {
   const keys = [...new Set(objects.flatMap((object) => Object.keys(object)))];
   const out: Record<string, unknown> = {};
   for (const key of keys) {
-    const value = combineValues(objects.map((object) => object[key]));
+    const value = combineValues(
+      objects.map((object) => object[key]),
+      EAGER_KEYS.includes(key),
+    );
     if (value !== undefined) out[key] = value;
   }
   return out;
@@ -346,10 +351,10 @@ function withChoices(effect: Effect, targets: readonly Selection[], modes: reado
  * with no play behind it measures against the board as it stands.
  *
  * Every effect an ingredient's Cry returns is bound to that slice, because an effect reads
- * `ctx.targets` when it applies, and the context applying it is the fused card's; and it is tagged
- * with its ingredient (`Effect.segment`), so a pause inside one ingredient's list resumes into the
- * rest of that list and then every ingredient after it, however the board has since reshaped the
- * lists of the ones before (R113).
+ * `ctx.targets` when it applies, and the context applying it is the fused card's. And each
+ * ingredient's Cry is its own part of the list (`resolve.lazyPart`), built when the list reaches it,
+ * so it reads the board the ingredients before it left (R102), and a pause inside it resumes into
+ * the rest of that part and then every part after it (`prompts.applyResumable`, R113).
  */
 function fusedCry(faces: readonly Face[]): Hook | undefined {
   if (!faces.some((face) => face.script.cry !== undefined)) return undefined;
@@ -371,17 +376,21 @@ function fusedCry(faces: readonly Face[]): Hook | undefined {
           ? decls.map(() => [])
           : selectionsPerDeclaration(ctx.state, ctx.controller, ctx.self, decls, ctx.targets);
 
+    // Each ingredient's Cry is built as the list reaches it (`lazyPart`), so it reads the board the
+    // ingredients before it left (R102); its slice of the play's choices is fixed now, as step 1
+    // checked them.
     let declAt = 0;
-    return faces.flatMap((face, index) => {
+    return faces.map((face, index) => {
       const count = declsOf[index]?.length ?? 0;
       const targets = slices.slice(declAt, declAt + count).flat();
       declAt += count;
       const cry = face.script.cry;
-      if (cry === undefined) return [];
       const modes = modesOf[index] ?? [];
-      return cry({ ...ctx, targets, modes }).map((effect) => ({
-        ...withChoices(effect, targets, modes),
-        segment: [index, ...(effect.segment ?? [])],
+      return lazyPart(`fused:cry${index}`, (at) => ({
+        effects:
+          cry === undefined
+            ? []
+            : cry({ ...at, targets, modes }).map((effect) => withChoices(effect, targets, modes)),
       }));
     });
   };
@@ -445,7 +454,9 @@ function keepInstance(
   const attack = ingredients.reduce((sum, card) => sum + card.buffs.attack, 0);
   const health = ingredients.reduce((sum, card) => sum + card.buffs.health, 0);
   const granted = unionKeywords(ingredients.flatMap((card) => card.grantedKeywords));
+  const before = defOf(state, kept.defId);
 
+  gainPrintedKeywords(kept, before, def);
   kept.defId = def.id;
   kept.buffs = { attack, health };
   kept.grantedKeywords = granted;
@@ -457,6 +468,22 @@ function keepInstance(
     ceaseToExist(state, card);
   }
   return kept;
+}
+
+/**
+ * §5.2: "newly gained keywords apply at once". The fused face can print a keyword the kept card's
+ * own face did not — Jilliax's Divine Shield fused onto a Kpop Fanatic, a Radiant Saintess's Reborn
+ * onto a unit that came back through a granted one — and the card gains it with the new text, so a
+ * shield or a Reborn the card had spent is up again, as radiant #50's printed shield is after a
+ * granted one was spent (`effects/radiant.ts`). A keyword the kept face already printed is not newly
+ * gained, and stays spent. A Vanilla unit prints nothing on either face (§6.3).
+ */
+function gainPrintedKeywords(kept: CardInstance, before: CardDef, after: CardDef): void {
+  if (kept.vanilla) return;
+  const prints = (def: CardDef, kind: string): boolean =>
+    (kept.radiant ? def.radiant : def.base).keywords.some((keyword) => keyword.kind === kind);
+  if (prints(after, "Divine Shield") && !prints(before, "Divine Shield")) delete kept.divineShieldSpent;
+  if (prints(after, "Reborn") && !prints(before, "Reborn")) delete kept.rebornSpent;
 }
 
 /**

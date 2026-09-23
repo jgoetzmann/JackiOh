@@ -18,6 +18,9 @@
 //    a fused card's part fizzles on a card an earlier part took off the field — #68's damage on the
 //    meal's Reborn body, #61's copy of a card in a graveyard, #50's steal of a card bounced and
 //    replayed. #85 fuses the opponent's played card onto a unit, which is bounced and played again.
+//  - Round 6, lens L2. R174, R113: that holds across a prompt too — a crafted Cube + Scarab +
+//    Sorcerer's Discover splits the list across actions, and the Sorcerer's part still fizzles on the
+//    Reborn body of the unit the Cube's part ate.
 
 import type { Selection } from "@jackioh/shared";
 import { effectiveCost, type CardInstance } from "@jackioh/engine";
@@ -501,5 +504,49 @@ describe("R174: a later part of one Cry meets the stay the play chose", () => {
     // Turn 14, p2's start of turn: the steal was aimed at a stay that had already ended (R174, R76).
     untilActive(g, "p2");
     expect(g.card(prey).controller).toBe("p1");
+  });
+});
+
+const CRAFT_A_CARD = "core-099";
+const SCARAB = "core-007";
+const RENO = "core-053";
+
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`missing: ${what}`);
+  return value;
+}
+
+describe("R174: a later part of one effect list meets the stay the play chose, across a prompt too", () => {
+  it("R174 a crafted Cube + Scarab + Sorcerer that eats a Radiant Saintess does not hit her Reborn body after the Discover (R113, R83, R102)", () => {
+    const g = scenario({
+      seed: "r6craft-1057", // radiant Craft a Card's Discovers offer Cube, then Scarab, then Sorcerer
+      p1: {
+        hand: [{ def: CRAFT_A_CARD, radiant: true }, STOCKPILE],
+        mana: 4,
+        field: [{ def: SAINTESS, lane: 1 }],
+      },
+      p2: { hand: [STOCKPILE], field: [{ def: RENO, lane: 1 }] },
+    });
+    g.play(CRAFT_A_CARD);
+    g.answer(CUBE);
+    g.answer(SCARAB);
+    g.answer(SORCERER);
+    const card = must(g.hand("p1").find((held) => held.defId.startsWith("t-")), "the crafted card");
+    const saintess = must(g.unit("p1", 1), "Radiant Saintess");
+    const at = { pick: "instance" as const, instanceId: saintess.id };
+
+    // The Cube's part eats the Saintess and she is straight back through Reborn, a new arrival
+    // (R78, R83); the Scarab's part then asks, which ends the action with the Sorcerer's part owed.
+    g.play(card, { zone: 2, targets: [at, at] });
+    expect(g.state.pending?.kind).toBe("discover");
+    expect(g.unit("p1", 1)?.id).toBe(saintess.id);
+    const before = g.events.length;
+
+    // R174: the Sorcerer's 4 damage is aimed at the stay the Cube's part ended, so it fizzles — as it
+    // does when nothing asks in between. The answer resuming the list (R113) changes nothing.
+    const option = must(g.state.pending?.options[0], "a Discover option");
+    g.answer([option.selection]);
+    const hits = g.events.slice(before).filter((event) => event.type === "damage" && event.targetId === saintess.id);
+    expect({ hits: hits.length, zone: g.card(saintess).zone.z }).toEqual({ hits: 0, zone: "field" });
   });
 });

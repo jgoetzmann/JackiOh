@@ -58,7 +58,12 @@ export type GameEvent =
   | { type: "buffed"; instanceId: string; attack: number; health: number }
   | { type: "keywordGranted"; instanceId: string; keyword: Keyword }
   | { type: "counterChanged"; instanceId: string; counter: "plague" | "grade"; value: number }
-  | { type: "costChanged"; instanceId: string; cost: number }
+  /**
+   * R177: `hiddenFrom` is set on a change made to a card in a library — both players, who could not
+   * read it there (§3) — so a view keeps the event hidden from them for good, even once the card
+   * reads openly. The view uses it and never forwards it.
+   */
+  | { type: "costChanged"; instanceId: string; cost: number; hiddenFrom?: PlayerId[] }
   | { type: "modifierChanged"; player: PlayerId; modifierId: string; added: boolean }
   | { type: "radiantSet"; instanceId: string; defId: string; zone: Zone }
   /**

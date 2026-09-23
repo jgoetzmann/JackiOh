@@ -13,11 +13,43 @@
 //     can hold a Reborn body, a card drawn since, or a unit a Death has stolen since. The events
 //     still owed behind it say which.
 //
-// No instance field records a stay: the design keeps `CardInstance` as it is (docs/polish), and
-// the event stream already carries the answer.
+// No instance field records a stay: the design keeps `CardInstance` as it is (docs/polish). The
+// event stream answers the first question inside one action, but a sequence a prompt splits resumes
+// in a later action, whose event list begins after the pause: #68's damage in a crafted Cube +
+// Scarab + Sorcerer resumes after the Scarab's Discover, and the sacrifice before it is in the
+// action that asked. So R174's question is also kept in state, as the field's departures counted
+// (`GameState.fieldExits`): a sequence takes a mark when it begins (`exitMark`) and carries it
+// across any pause, and `leftFieldAfter` answers against it whatever action it resumes in.
 
 import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
+import type { GameState } from "./state";
+
+/** R174: the field's departures so far, as a mark to ask `leftFieldAfter` against later. */
+export function exitMark(state: GameState): number {
+  return state.fieldExits?.count ?? 0;
+}
+
+/**
+ * R174: a card has just left the field — died, bounced, exiled, returned to a library. Called from
+ * `zones.moveToZone`, the one funnel every such move goes through. A card that ceases to exist on
+ * the field (a Replace, a Fuse) is in no pile afterwards, so no reader finds it to ask.
+ */
+export function noteFieldExit(state: GameState, instanceId: string): void {
+  const exits = state.fieldExits ?? { count: 0, last: {} };
+  exits.count += 1;
+  exits.last[instanceId] = exits.count;
+  state.fieldExits = exits;
+}
+
+/**
+ * R174: whether a card has left the field since `mark` — even if it is back on it now, bounced and
+ * replayed or returned by Reborn, since what came back is a new arrival (R78, R83). A change of
+ * control is not leaving (R171), and neither is a Vanilla (§6.3).
+ */
+export function leftFieldAfter(state: GameState, mark: number, instanceId: string): boolean {
+  return (state.fieldExits?.last[instanceId] ?? 0) > mark;
+}
 
 /**
  * R174: whether a card has left the field in the events since `from` — died, was bounced or exiled,

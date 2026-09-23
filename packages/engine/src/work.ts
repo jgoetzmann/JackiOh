@@ -72,19 +72,22 @@ export const PAUSE_KEY = "__paused";
 
 /** The control block of a parked effect list: all JSON, so the tail survives the answer. */
 export type PausedStep = {
-  /** Index into the step's effect list to continue from. */
+  /** Index into the innermost list the pause stood in to continue from. */
   from: number;
   targets: Selection[];
   modes: string[];
   /**
-   * The parts of a composed list at the moment it paused, in order (`Effect.segment`): absent for a
-   * card's own list. `resumeIndex` reads `from` through them.
+   * The parts of a composed list the pause stood inside (`Effect.expand`), outermost first: the
+   * index of the part at each level. Absent for a pause in a card's own list. The continuation
+   * builds those parts again, finishes the innermost list from `from`, and then goes on with each
+   * enclosing list after the part it stood in (`prompts.applyResumable`, R102, R113).
    */
-  segments?: SegmentMark[];
+  part?: number[];
+  /** What each part in `part` handed its rebuild (`EffectPart.memo`), level by level. */
+  memo?: unknown[];
+  /** R174: the field's departures when the list began (`EffectContext.exitsFrom`). */
+  exitsFrom?: number;
 };
-
-/** One part of a composed effect list: its `Effect.segment` path and how many effects it had. */
-export type SegmentMark = { path: number[]; length: number };
 
 const handlers = new Map<WorkKind, WorkHandler>();
 let fallback: WorkHandler | undefined;
@@ -133,81 +136,10 @@ export function pausedOf(data: Record<string, unknown>): PausedStep | null {
     from: typeof step.from === "number" ? step.from : 0,
     targets: Array.isArray(step.targets) ? step.targets : [],
     modes: Array.isArray(step.modes) ? step.modes : [],
-    ...(Array.isArray(step.segments) ? { segments: step.segments } : {}),
+    ...(Array.isArray(step.part) ? { part: step.part.filter((at): at is number => typeof at === "number") } : {}),
+    ...(Array.isArray(step.memo) ? { memo: step.memo } : {}),
+    ...(typeof step.exitsFrom === "number" ? { exitsFrom: step.exitsFrom } : {}),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Composed lists: resuming part by part (R77, R102, R113)
-// ---------------------------------------------------------------------------
-
-type Segmented = { readonly segment?: readonly number[] };
-
-function pathOf(effect: Segmented | undefined): readonly number[] {
-  return effect?.segment ?? [];
-}
-
-/** Paths in list order: element by element, a prefix first. */
-function comparePath(a: readonly number[], b: readonly number[]): number {
-  for (let at = 0; at < Math.min(a.length, b.length); at += 1) {
-    const left = a[at] ?? 0;
-    const right = b[at] ?? 0;
-    if (left !== right) return left < right ? -1 : 1;
-  }
-  return a.length - b.length;
-}
-
-/**
- * The parts of a composed list, for a pause to record (`PausedStep.segments`), or undefined for a
- * list whose effects carry no `segment` — a card's own, which resumes by index as it always has.
- */
-export function segmentsOf(effects: readonly Segmented[]): SegmentMark[] | undefined {
-  if (!effects.some((effect) => effect.segment !== undefined)) return undefined;
-  const out: SegmentMark[] = [];
-  for (const effect of effects) {
-    const path = [...pathOf(effect)];
-    const last = out[out.length - 1];
-    if (last !== undefined && comparePath(last.path, path) === 0) last.length += 1;
-    else out.push({ path, length: 1 });
-  }
-  return out;
-}
-
-/**
- * Where a rebuilt list continues. A hook is re-entered on resume and rebuilds its list against the
- * board it now finds (this file's header), and a composed list — a fused Cry runs every ingredient's
- * (R77, R102) — can come back with a part of a different length: #22 Carnivorous Cube's half builds
- * its two effects only while its meal is on the field, and the meal is gone once they have run. So a
- * paused composed list is continued part by part: the part the pause stood in, at the same place
- * inside it, then every part after it — never an index into a list the board has since reshaped,
- * which skipped the next ingredient's effects and dropped them in silence (R113). A list with no
- * parts continues at `from`, as before.
- */
-export function resumeIndex(effects: readonly Segmented[], step: PausedStep | null): number {
-  const from = step?.from ?? 0;
-  const segments = step?.segments;
-  if (segments === undefined || segments.length === 0) return from;
-
-  let start = 0;
-  let stoodIn: SegmentMark | undefined;
-  let inside = 0;
-  for (const segment of segments) {
-    if (from < start + segment.length) {
-      stoodIn = segment;
-      inside = from - start;
-      break;
-    }
-    start += segment.length;
-  }
-  if (stoodIn === undefined) return effects.length;
-
-  let index = 0;
-  while (index < effects.length && comparePath(pathOf(effects[index]), stoodIn.path) < 0) index += 1;
-  for (let skipped = 0; skipped < inside; skipped += 1) {
-    if (index >= effects.length || comparePath(pathOf(effects[index]), stoodIn.path) !== 0) break;
-    index += 1;
-  }
-  return index;
 }
 
 /** The card's own captured data, with the control block taken back out. */

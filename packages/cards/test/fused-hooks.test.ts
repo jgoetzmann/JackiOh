@@ -16,10 +16,15 @@
 //    a slice measured against the board at step 5, where the crafted card itself stands.
 //  - R113, R122: answering a prompt takes the paused step up again, so the cursor resets and a pause
 //    inside the answered step is owed ahead of everything older.
+//  - Round 6, lenses L2 and "keywords and layers". R102, R41, §8 #68: each ingredient's list is built
+//    when the combined list reaches it, so it reads the board the ingredients before it left — a
+//    Cube crafted behind a Ceaseless Void eats nothing the Void exiled, and a Sorcerer crafted
+//    behind a Reno reads the hero Reno healed. §5.2: a Fuse that adds a printed Divine Shield or
+//    Reborn gives back a shield or a Reborn the kept card had spent.
 
 import { describe, expect, it } from "vitest";
 import type { Selection } from "@jackioh/shared";
-import { createRng, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
+import { createRng, defOf, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
 const JEWELOSCO_SCARAB = "core-007";
@@ -138,5 +143,140 @@ describe("R113, R122: a pause inside an answered step is owed ahead of what was 
     }
 
     expect(asked).toEqual(["first", "second", "second", "first", "second", "second"]);
+  });
+});
+
+const GARY = "core-004";
+const STOCKPILE = "core-005";
+const HIT_JOB = "core-016";
+const CEASELESS_VOID = "core-100";
+const CRAFT_A_CARD = "core-099";
+const KPOP = "core-050";
+const JILLIAX = "core-056";
+const SAINTESS = "core-081";
+const EXPERIMENTATION = "core-085";
+const KEYWORD_LIBRARY = [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA];
+
+function unitAt(g: Scenario, player: "p1" | "p2", lane: number): CardInstance {
+  const card = g.unit(player, lane);
+  if (card === null) throw new Error(`setup: ${player} should hold a unit in lane ${lane}`);
+  return card;
+}
+
+function kinds(g: Scenario, card: CardInstance): string[] {
+  return g.stats(card).keywords.map((keyword) => keyword.kind);
+}
+
+describe("R41, R77: a fused Cry's later part reads the board its earlier parts left", () => {
+  it("R41 a crafted Ceaseless Void + Carnivorous Cube whose Void exiled the meal has eaten nothing, so its Death summons nothing (R102, R174)", () => {
+    const g = scenario({
+      seed: "r6cube-17", // Craft a Card's Discovers offer Ceaseless Void, then Carnivorous Cube
+      p1: { hand: [CRAFT_A_CARD, HIT_JOB, STOCKPILE], mana: 10, field: [{ def: GARY, lane: 1 }] },
+      p2: { hand: [STOCKPILE], field: [{ def: RENO, lane: 1 }] },
+    });
+    g.play(CRAFT_A_CARD);
+    g.answer(CEASELESS_VOID);
+    g.answer(CARNIVOROUS_CUBE);
+    const card = must(g.hand("p1").find((held) => held.defId.startsWith("t-")), "the crafted card");
+    const gary = must(g.unit("p1", 1), "Gary");
+
+    // The Void's part exiles every other permanent, Gary included (§8 #100), so the Cube's part has
+    // nothing to tribute: the sacrifice fizzles (R174) and nothing is eaten (R41).
+    g.play(card, { zone: 3, targets: [{ pick: "instance", instanceId: gary.id }] });
+    g.expectInZone(gary, "exile");
+    const crafted = must(g.unit("p1", 3), "the crafted unit");
+    const before = g.events.length;
+
+    // R41: "nothing eaten → Death does nothing". The crafted card dies, and no Gary comes back.
+    g.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: crafted.id }] });
+    g.expectInZone(crafted, "graveyard");
+    const copies = g.events.slice(before).filter((event) => event.type === "summoned" && event.defId === GARY);
+    expect({ copies: copies.length, units: g.state.players.p1.units.filter((pile) => pile !== null).length }).toEqual({
+      copies: 0,
+      units: 0,
+    });
+  });
+});
+
+describe("§8 #68, R77: a fused Cry's later part reads the board its earlier parts left", () => {
+  it("§8 #68 a crafted Reno + Twisted Sorcerer reads the hero Reno has just set to 30, so it deals 4, not 8 (R102)", () => {
+    const g = scenario({
+      seed: "r6reno-115", // Craft a Card's Discovers offer Reno, then Twisted Sorcerer
+      p1: { hand: [CRAFT_A_CARD, STOCKPILE], mana: 10, health: 5 },
+      p2: { hand: [STOCKPILE], field: [{ def: RENO, lane: 1 }] },
+    });
+    g.play(CRAFT_A_CARD);
+    g.answer(RENO);
+    g.answer(TWISTED_SORCERER);
+    const card = must(g.hand("p1").find((held) => held.defId.startsWith("t-")), "the crafted card");
+    const before = g.events.length;
+
+    // Reno's part sets the hero to 30 (§8 #53), and then the Sorcerer's part resolves: "8 if your
+    // hero is below 10", with the threshold "read at resolution" (§8 #68's Engine cell). The hero is
+    // at 30 by then, so the enemy hero takes 4.
+    g.play(card, { zone: 1, targets: [{ pick: "hero", player: "p2" }] });
+    g.expectHealth("p1", 30);
+    const hits = g.events.slice(before).filter((event) => event.type === "damage" && event.targetId === "hero-p2");
+    expect(hits.map((event) => (event.type === "damage" ? event.amount : -1))).toEqual([4]);
+    g.expectHealth("p2", 26);
+  });
+});
+
+describe("§5.2, R77: a keyword a Fuse newly prints applies at once", () => {
+  it("R77 a Fuse that adds a printed Divine Shield gives a unit whose granted shield was spent a shield again (§5.2, §10.1)", () => {
+    const g = scenario({
+      active: "p2",
+      turn: 10,
+      p1: {
+        field: [{ def: KPOP, lane: 1 }],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        hand: [STOCKPILE],
+        library: [...KEYWORD_LIBRARY],
+      },
+      p2: { hand: [JILLIAX, STOCKPILE], library: [...KEYWORD_LIBRARY] },
+    });
+    const kpop = unitAt(g, "p1", 1);
+    // A granted Divine Shield (#63's or #80's pool, R21) that a hit has already spent (§4.4 step 1).
+    g.card(kpop).grantedKeywords = [{ kind: "Divine Shield" }];
+    g.card(kpop).divineShieldSpent = true;
+    expect(kinds(g, kpop)).not.toContain("Divine Shield");
+
+    // p2 plays Jilliax (Rush, Taunt, Lifesteal, Divine Shield); #85 fuses it onto the Kpop.
+    g.play(JILLIAX, { zone: 1 });
+
+    const fused = g.card(kpop);
+    expect(fused.defId).not.toBe(KPOP);
+    expect(g.unit("p2", 1)).toBeNull();
+    expect(defOf(g.state, fused.defId).base.keywords.map((keyword) => keyword.kind)).toContain("Divine Shield");
+    // The fused definition prints Jilliax's Divine Shield, which Kpop Fanatic's base face never
+    // printed: a keyword the card newly gains applies at once (§5.2), exactly as radiant #50's
+    // printed shield does after a granted one was spent (`radiant.gainPrintedShield`).
+    expect(kinds(g, kpop)).toContain("Divine Shield");
+  });
+
+  it("R77 a Reborn body fused with a card that prints Reborn has Reborn again (§5.2, §10.1, R83)", () => {
+    const g = scenario({
+      active: "p2",
+      turn: 10,
+      p1: {
+        field: [{ def: KPOP, lane: 1 }],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        hand: [STOCKPILE],
+        library: [...KEYWORD_LIBRARY],
+      },
+      p2: { hand: [SAINTESS, STOCKPILE], library: [...KEYWORD_LIBRARY] },
+    });
+    const kpop = unitAt(g, "p1", 1);
+    // A Kpop that came back through a granted Reborn: the body has used its Reborn (§4.5 step 4).
+    g.card(kpop).rebornSpent = true;
+
+    // p2 plays Radiant Saintess (Reborn printed); #85 fuses it onto the Kpop's Reborn body.
+    g.play(SAINTESS, { zone: 1 });
+
+    const fused = g.card(kpop);
+    expect(fused.defId).not.toBe(KPOP);
+    expect(defOf(g.state, fused.defId).base.keywords.map((keyword) => keyword.kind)).toContain("Reborn");
+    // The Saintess's printed Reborn is the fused card's text, which the Kpop never printed.
+    expect(kinds(g, kpop)).toContain("Reborn");
   });
 });

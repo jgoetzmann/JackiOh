@@ -279,18 +279,19 @@ export const SHEEP_TRIBUTE_VALUE = 2;
 /**
  * §3.2: "Sheep Tokens are worth 2 Tributes while on the field"; every other unit is worth 1.
  *
- * §7 gives the Sheep a Radiant face worth 3, so the value is read off the instance's face rather
- * than its definition — the same card is worth a different amount depending on which face is up,
- * which is exactly what a Radiant form is.
+ * §7 gives the Sheep a Radiant face worth 3, so the value is read off the face that is up — the
+ * Sheep's script declares it as `staticFlags.tributeWorth`, and `flagsOf` reads the flags of the
+ * face the instance wears, which is exactly what a Radiant form is.
  *
  * "Worth 2 Tributes" is the Sheep's text (§7), and §6.3's Vanilla removes a unit's text, so a
- * Vanilla Sheep — radiant #61's copy of one — is worth 1 like any other unit (R115's reading of
- * the flags a card's text sets, applied to the one that lives outside `Script.staticFlags`).
+ * Vanilla Sheep — radiant #61's copy of one — is worth 1 like any other unit (R115: `flagsOf` reads
+ * nothing off a Vanilla instance). And a fused card's text is both texts joined, with nothing about
+ * an ingredient dropped (R102), so a Sheep #85 fused a unit onto is still worth 2 — the fused flags
+ * take the larger worth, as they take the larger Tribute.
  */
-export function tributeValueOf(state: GameState, unit: CardInstance): number {
-  if (unit.vanilla) return 1;
-  if (defOf(state, unit.defId).index !== SHEEP_TOKEN_INDEX) return 1;
-  return unit.radiant ? RADIANT_SHEEP_TRIBUTE_VALUE : SHEEP_TRIBUTE_VALUE;
+export function tributeValueOf(_state: GameState, unit: CardInstance): number {
+  const worth = flagsOf(unit).tributeWorth;
+  return typeof worth === "number" && worth > 1 ? worth : 1;
 }
 
 /** §6.3: your own units, plus the enemy's for a card that says so (#55). Dormant cards never. */

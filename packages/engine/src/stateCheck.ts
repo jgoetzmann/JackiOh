@@ -30,21 +30,12 @@ import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, hasKeyword } from "@jackioh/shared";
 import { unitView } from "./layers";
 import { endOrphanedModifiers, installLastingModifiers } from "./modifiers";
-import { SELF_KEY, applyResumable, type ResumePlan } from "./prompts";
+import { SELF_KEY, runResumableList, type ResumePlan } from "./prompts";
 import type { EngineSink } from "./resolve";
 import { makeContext } from "./resolve";
 import { scriptOf } from "./scripts";
 import { findInstance, type CardInstance, type Resume, type WorkItem } from "./state";
-import {
-  PAUSE_KEY,
-  owe,
-  owedWork,
-  pausedOf,
-  registerWorkHandler,
-  resumeIndex,
-  segmentsOf,
-  type PausedStep,
-} from "./work";
+import { PAUSE_KEY, owe, pausedOf, registerWorkHandler, type PausedStep } from "./work";
 import {
   activeUnitsOf,
   cardAt,
@@ -278,6 +269,11 @@ function rebornStep(sink: EngineSink, pass: DeathPass): void {
     // Reborn body on its way out.
     const copy = entry.token === undefined ? findInstance(sink.state, entry.id) : rebornToken(entry.token);
     if (copy === undefined) continue;
+    // §4.5 step 4 returns the card from the graveyard step 1 moved it to. A Death hook of the same
+    // pass can have moved it on — exiled with the graveyard, returned to a hand — and it returns from
+    // nowhere else: taken off the field from there, it would stay in that pile as well, one card in
+    // two zones (§10.1).
+    if (entry.token === undefined && copy.zone.z !== "graveyard") continue;
     copy.grantedKeywords = copy.grantedKeywords.filter((k) => k.kind !== "Reborn");
     copy.vanilla = false;
     // R175: an X/X token's X/X is its printed face, so the body keeps it through the reset.
@@ -370,37 +366,37 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
       continue;
     }
 
-    const ctx = makeContext(sink, snapshot, {
-      controller: snapshot.controller,
-      targets: resumeAt?.targets ?? [],
-      modes: resumeAt?.modes ?? [],
-      // R89: a prompt this hook opens is answered in a later action, when the instance on the board
-      // is R78's reset one; the step it re-enters reads this snapshot instead (`prompts.runResume`).
-      data: { [SELF_KEY]: snapshot },
-    });
-    const effects = hook(ctx);
-    // A fused Death runs every ingredient's list (R77, R102), which continues part by part.
-    const from = resumeIndex(effects, resumeAt);
+    const ctx = {
+      ...makeContext(sink, snapshot, {
+        controller: snapshot.controller,
+        targets: resumeAt?.targets ?? [],
+        modes: resumeAt?.modes ?? [],
+        // R89: a prompt this hook opens is answered in a later action, when the instance on the board
+        // is R78's reset one; the step it re-enters reads this snapshot instead (`prompts.runResume`).
+        data: { [SELF_KEY]: snapshot },
+      }),
+      // R174: a hook the pause split keeps the mark its list began with.
+      ...(resumeAt?.exitsFrom === undefined ? {} : { exitsFrom: resumeAt.exitsFrom }),
+    };
+    const paused = resumeAt;
     resumeAt = null;
 
-    const owedBefore = owedWork(sink.state, DEATHS_WORK).length;
-    if (applyResumable(sink, ctx, planFor(pass, snapshot.controller), effects, from)) {
+    // A fused Death runs every ingredient's list (R77, R102), and a pause inside one continues in it.
+    // `applyResumable` parks the whole rest of the hook as this pass's item (`planFor`), so the item
+    // owes the cards after this one and steps 4 and 5 too. When the hook's very last effect asked,
+    // there was nothing of the hook to park, and the pass still owes the rest: the card is done, so
+    // the pass parks itself without it. Counting the pass's items before and after to tell the two
+    // apart was fooled by a nested pass — a sacrifice in the hook whose own Death asked — which
+    // parks an item of its own (R156).
+    const status = runResumableList(sink, ctx, planFor(pass, snapshot.controller), hook(ctx), paused);
+    if (status === "done") {
       pass.owed.shift();
       continue;
     }
-
-    if (sink.state.result !== null) return false;
-    // `applyResumable` parked this pass when the hook had effects left after the one that asked.
-    // When the *last* effect asked there was no tail to park, and the pass still owes the cards
-    // after this one and steps 4 and 5 — so it parks itself, at the index that ends this hook.
-    if (owedWork(sink.state, DEATHS_WORK).length === owedBefore) {
-      const segments = segmentsOf(effects);
-      oweDeaths(sink, pass, {
-        from: effects.length,
-        targets: [...ctx.targets],
-        modes: [...ctx.modes],
-        ...(segments === undefined ? {} : { segments }),
-      });
+    if (status === "over" || sink.state.result !== null) return false;
+    if (status === "asked") {
+      pass.owed.shift();
+      oweDeaths(sink, pass, null);
     }
     return false;
   }

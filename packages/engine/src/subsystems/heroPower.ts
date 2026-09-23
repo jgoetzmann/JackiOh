@@ -38,6 +38,7 @@ import { applyEffects, makeContext, type EngineSink } from "../resolve";
 import type { Effect, EffectContext, Hook } from "../script";
 import { stateCheck } from "../stateCheck";
 import { findInstance, type CardInstance, type GameState } from "../state";
+import { paused as isPaused } from "../work";
 
 /** R43: where the rolled power and its last use live on the instance. */
 export const POWER_KEY = "power";
@@ -404,6 +405,9 @@ export function activatePower(
 
   const ctx = makeContext(sink, card, { controller: player, targets: [...(args.targets ?? [])] });
   applyEffects([usePower({ instanceId: card.id })], ctx);
-  stateCheck(sink);
+  // R59: the check follows the whole power. One whose draw cast a card that is still asking is not
+  // whole yet — the unit the cast brought to 0 is on the field where its prompt offered it — and the
+  // answer's own check finishes it (§2.4's chain checks after each cast, R156).
+  if (!isPaused(sink)) stateCheck(sink);
   return null;
 }

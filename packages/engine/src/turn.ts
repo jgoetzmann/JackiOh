@@ -77,8 +77,12 @@ export function triggerOrder(sink: EngineSink, hook: HookName, only?: PlayerId):
  * `prompts.applyResumable`, the entries still due stay in `state.delayed`, and the caller parks the
  * rest of the turn boundary — which is what brings this function back for them.
  */
-function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId): void {
-  for (const effect of dueDelayed(sink.state, phase, player)) {
+function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId, dueBefore: number): void {
+  // R62, R68: the delayed effects due at this point are the ones that exist as it begins. One made
+  // while the stage is resolving — by the answer to an earlier one's question, say — is due at the
+  // next such point, as it is when nothing asks: `dueBefore` is the creation mark the stage began
+  // at, which a pause carries to the step that picks the stage up (R113).
+  for (const effect of dueDelayed(sink.state, phase, player).filter((due) => due.seq < dueBefore)) {
     // One entry at a time in R68's order: a prompt, or a game that has just ended, stops the run.
     if (isPaused(sink)) return;
     // R174: an earlier entry's resolution can end a later one — the state check after #50's first
@@ -127,23 +131,35 @@ export const START_OF_TURN_WORK = "@startOfTurn";
 
 /**
  * Which part of R62's opening is still owed: `delayed` still has start-of-turn delayed effects to
- * finish and owes everything after them; `triggers` has had its effects and owes the rest of the
+ * finish and owes everything after them; `settle` has had them and owes the loop their events wake
+ * (§10.3), then the triggers and the draw; `triggers` has had its effects and owes the rest of the
  * trigger queue and then the draw; `main` has drawn and owes only the phase the turn opens in.
  */
 const START_DELAYED_STEP = "delayed";
+const START_SETTLE_STEP = "settle";
 const START_TRIGGERS_STEP = "triggers";
 const START_MAIN_STEP = "main";
 
 /** Park the rest of the start of a turn (R113), exactly as `oweEndOfTurn` parks the rest of an end. */
-function oweStartOfTurn(sink: EngineSink, player: PlayerId, step: string): void {
-  const resume: Resume = {
+function oweStartOfTurn(sink: EngineSink, player: PlayerId, step: string, dueBefore?: number): void {
+  owe(sink, boundaryResume(START_OF_TURN_WORK, player, step, dueBefore));
+}
+
+/** A parked boundary's record: whose turn, and for a delayed stage the mark it began at. */
+function boundaryResume(hook: string, player: PlayerId, step: string, dueBefore?: number): Resume {
+  return {
     defId: "",
-    hook: START_OF_TURN_WORK,
+    hook,
     step,
     radiant: false,
-    data: { player },
+    data: { player, ...(dueBefore === undefined ? {} : { dueBefore }) },
   };
-  owe(sink, resume);
+}
+
+/** The mark a parked delayed stage began at; a record without one owes every entry due (R68). */
+function dueBeforeOf(data: Record<string, unknown>): number {
+  const mark: unknown = data.dueBefore;
+  return typeof mark === "number" ? mark : Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -184,18 +200,38 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   refreshMana(side);
   sink.events.push(manaEvent(player, side));
 
-  startOfTurnDelayed(sink, player);
+  startOfTurnDelayed(sink, player, state.nextSeq);
 }
 
 /** R62's first stage: the start-of-turn delayed effects, in creation order. */
-function startOfTurnDelayed(sink: EngineSink, player: PlayerId): void {
+function startOfTurnDelayed(sink: EngineSink, player: PlayerId, dueBefore: number): void {
   const state = sink.state;
 
-  runDelayed(sink, "start", player);
+  runDelayed(sink, "start", player, dueBefore);
   if (state.result !== null) return;
   if (state.pending !== null) {
     // The entries still due are in `state.delayed`, so the same step picks them up (R68's order).
-    oweStartOfTurn(sink, player, START_DELAYED_STEP);
+    oweStartOfTurn(sink, player, START_DELAYED_STEP, dueBefore);
+    return;
+  }
+
+  startOfTurnSettle(sink, player);
+}
+
+/**
+ * §10.3 between R62's first two stages: the events the delayed effects emitted reach the traps and
+ * the trigger queue, and what they wake resolves, before the start-of-turn triggers are queued —
+ * §6.2's "Delayed effects first (Kpop Fanatic's steal), then the trigger queue in R68 order". Left to
+ * the triggers' own loop, a trigger answering #50's steal was queued behind every start-of-turn hook,
+ * a backrow one included.
+ */
+function startOfTurnSettle(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweStartOfTurn(sink, player, START_SETTLE_STEP);
     return;
   }
 
@@ -263,11 +299,17 @@ function runOwedStartOfTurn(sink: EngineSink, item: WorkItem): void {
   if (player === null) return;
 
   if (item.resume.step === START_DELAYED_STEP) {
+    const dueBefore = dueBeforeOf(item.resume.data);
     if (!checkBeforeDelayed(sink)) {
-      if (sink.state.result === null) oweStartOfTurn(sink, player, START_DELAYED_STEP);
+      if (sink.state.result === null) oweStartOfTurn(sink, player, START_DELAYED_STEP, dueBefore);
       return;
     }
-    startOfTurnDelayed(sink, player);
+    startOfTurnDelayed(sink, player, dueBefore);
+    return;
+  }
+
+  if (item.resume.step === START_SETTLE_STEP) {
+    startOfTurnSettle(sink, player);
     return;
   }
 
@@ -337,11 +379,14 @@ export const END_OF_TURN_WORK = "@endOfTurn";
 /**
  * Which part of R62's order is still owed, named so a reader of `state.work` can see it:
  * `triggers` still has the end-of-turn trigger queue to finish before the `turnEnded` event is
- * even emitted; `delayed` has had its window and owes the delayed effects, cleanup, the turn cap
- * and the next turn.
+ * even emitted; `window` has had its trap window and owes the loop the window's events wake
+ * (§10.3), then everything after; `delayed` owes the delayed effects still due; `cleanup` has had
+ * them and owes the loop their events wake, then cleanup, the turn cap and the next turn.
  */
 const END_TRIGGERS_STEP = "triggers";
+const END_WINDOW_STEP = "window";
 const END_DELAYED_STEP = "delayed";
+const END_CLEANUP_STEP = "cleanup";
 
 /**
  * Whose turn a parked boundary belongs to — the one ending, or the one starting — read back
@@ -364,15 +409,8 @@ function turnPlayerOf(data: Record<string, unknown>): PlayerId | null {
  * take nor re-run the steps it is standing in. Pre-parking a sequence's continuation is what made
  * a played card's Cry fire twice (§10.5's driver, R1).
  */
-function oweEndOfTurn(sink: EngineSink, player: PlayerId, step: string): void {
-  const resume: Resume = {
-    defId: "",
-    hook: END_OF_TURN_WORK,
-    step,
-    radiant: false,
-    data: { player },
-  };
-  owe(sink, resume);
+function oweEndOfTurn(sink: EngineSink, player: PlayerId, step: string, dueBefore?: number): void {
+  owe(sink, boundaryResume(END_OF_TURN_WORK, player, step, dueBefore));
 }
 
 /**
@@ -434,22 +472,56 @@ function endOfTurnAfterTriggers(sink: EngineSink, player: PlayerId): void {
   runTrapWindow(sink, ended);
   if (state.result !== null) return;
   if (state.pending !== null) {
-    oweEndOfTurn(sink, player, END_DELAYED_STEP);
+    oweEndOfTurn(sink, player, END_WINDOW_STEP);
     return;
   }
 
-  endOfTurnAfterWindow(sink, player);
+  endOfTurnWindowSettle(sink, player);
 }
 
-/** R62's tail: the end-of-turn delayed effects, cleanup, the turn cap, the next turn. */
-function endOfTurnAfterWindow(sink: EngineSink, player: PlayerId): void {
+/**
+ * §10.3 after the window: a trap's firing is an effect like any other, so the events it emitted
+ * reach the traps and the trigger queue, and what they wake resolves, before R62 moves on to the
+ * delayed effects — at this turn's end, not in the next turn's opening loop, behind that turn's own
+ * start-of-turn hooks. A trigger answering Bread and Butter's token that finishes the opponent wins
+ * the game at the end of this turn (§4.5 step 2).
+ */
+function endOfTurnWindowSettle(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
 
-  runDelayed(sink, "end", player);
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweEndOfTurn(sink, player, END_WINDOW_STEP);
+    return;
+  }
+
+  endOfTurnAfterWindow(sink, player, state.nextSeq);
+}
+
+/** R62's tail: the end-of-turn delayed effects, then (`endOfTurnDelayedSettle`) the rest. */
+function endOfTurnAfterWindow(sink: EngineSink, player: PlayerId, dueBefore: number): void {
+  const state = sink.state;
+
+  runDelayed(sink, "end", player, dueBefore);
   if (state.result !== null) return;
   if (state.pending !== null) {
     // The entries still due are in `state.delayed`, so the same step picks them up (R68's order).
-    oweEndOfTurn(sink, player, END_DELAYED_STEP);
+    oweEndOfTurn(sink, player, END_DELAYED_STEP, dueBefore);
+    return;
+  }
+
+  endOfTurnDelayedSettle(sink, player);
+}
+
+/** §10.3 after the delayed effects, as after the window; then cleanup, the turn cap, the next turn. */
+function endOfTurnDelayedSettle(sink: EngineSink, player: PlayerId): void {
+  const state = sink.state;
+
+  settle(sink);
+  if (state.result !== null) return;
+  if (state.pending !== null) {
+    oweEndOfTurn(sink, player, END_CLEANUP_STEP);
     return;
   }
 
@@ -488,12 +560,23 @@ function runOwedEndOfTurn(sink: EngineSink, item: WorkItem): void {
     return;
   }
 
-  // The only other step this module parks: §2.2's tail, whose window has already had its event.
-  if (!checkBeforeDelayed(sink)) {
-    if (sink.state.result === null) oweEndOfTurn(sink, player, END_DELAYED_STEP);
+  if (item.resume.step === END_WINDOW_STEP) {
+    endOfTurnWindowSettle(sink, player);
     return;
   }
-  endOfTurnAfterWindow(sink, player);
+
+  if (item.resume.step === END_CLEANUP_STEP) {
+    endOfTurnDelayedSettle(sink, player);
+    return;
+  }
+
+  // `delayed`: a delayed effect asked, and the answer has finished it.
+  const dueBefore = dueBeforeOf(item.resume.data);
+  if (!checkBeforeDelayed(sink)) {
+    if (sink.state.result === null) oweEndOfTurn(sink, player, END_DELAYED_STEP, dueBefore);
+    return;
+  }
+  endOfTurnAfterWindow(sink, player, dueBefore);
 }
 
 registerWorkHandler(END_OF_TURN_WORK, runOwedEndOfTurn);

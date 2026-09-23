@@ -35,6 +35,7 @@ import { makeContext, type EngineSink } from "./resolve";
 import type { Effect, EffectContext, Hook, Script } from "./script";
 import { scriptsFor } from "./scripts";
 import { findInstance, type CardInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
+import { exitMark } from "./stays";
 import {
   beginWorkCascade,
   cardData,
@@ -42,9 +43,8 @@ import {
   parkWork,
   pausedOf,
   registerDefaultWorkHandler,
-  resumeIndex,
   scriptStepFor,
-  segmentsOf,
+  type PausedStep,
   type WorkPlan,
 } from "./work";
 
@@ -319,10 +319,26 @@ export function answerPrompt(sink: EngineSink, answer: AnswerInput): string | nu
   beginWorkCascade(sink);
   runResume(sink, resumeOf(pending), {
     controller: pending.playerId,
-    targets: [...answer.selection],
+    targets: inOfferedOrder(pending, answer.selection),
   });
   drainWork(sink);
   return null;
+}
+
+/**
+ * R221: an answer's picks are a set (R60's "N different cards"), taken in the order the prompt offered
+ * them. `legalActions` offers each set once, in that order, and `reduce` accepts any listing of it —
+ * so the listing must not change what the answer does, or a listing no offered answer makes would
+ * mean something else: #80 Zao Gao discards its picks in turn, and the graveyard's order is public.
+ */
+export function inOfferedOrder(pending: PendingChoice, selection: readonly Selection[]): Selection[] {
+  const used = new Set<number>();
+  const placed = selection.map((pick) => {
+    const at = pending.options.findIndex((option, index) => !used.has(index) && sameSelection(option.selection, pick));
+    if (at >= 0) used.add(at);
+    return { pick, at: at < 0 ? Number.MAX_SAFE_INTEGER : at };
+  });
+  return placed.sort((a, b) => a.at - b.at).map((entry) => entry.pick);
 }
 
 /**
@@ -393,43 +409,107 @@ function selfSnapshotOf(data: Record<string, unknown>): CardInstance | null {
 }
 
 /**
+ * How an effect list ended: whole (`done`); stopped by a prompt with what was left of it parked on
+ * `state.work` (`parked`); stopped by a prompt at its very last effect, so nothing was left to park
+ * (`asked`); or cut short because the game ended inside it (`over`, R216).
+ */
+export type ListStatus = "done" | "parked" | "asked" | "over";
+
+/** One list of the walk: a composed list's part is a list inside the list that holds it. */
+type Frame = { effects: readonly Effect[]; at: number };
+
+/**
  * Apply an effect list so that a prompt in the middle of it pauses the list instead of being
  * stepped over: the effects after the one that opened the prompt are parked as a work item naming
- * this same continuation and the index to continue from. Returns true when the whole list ran.
+ * this same continuation and where to continue from (§9.3, R113). Returns true when the whole list
+ * ran.
  *
  * A hook is a pure builder (CLAUDE.md rule 5), so re-entering it and skipping the effects that
  * already ran continues the sequence exactly; the alternative — holding the remaining `Effect[]`
  * in state — would be holding closures, which §9.3 forbids.
+ *
+ * A composed list (a fused hook, R102) is a list of parts, each built when the walk reaches it
+ * (`Effect.expand`), so an ingredient's list reads the board the ones before it left. The walk is a
+ * stack of lists, and a pause parks ONE item for all of it: the parts it stood inside and the place
+ * in the innermost one (`PausedStep.part`, `from`), so the continuation finishes that part and then
+ * goes on with every part after it, level by level. Parking once per level instead would owe a
+ * Death pass's remainder twice (`stateCheck.runDeathPass` continues the pass after its hook).
  */
 export function applyResumable(
   sink: EngineSink,
   ctx: EffectContext,
   plan: ResumePlan,
   effects: readonly Effect[],
-  from = 0,
+  paused: PausedStep | null = null,
 ): boolean {
-  for (let index = Math.max(0, from); index < effects.length; index += 1) {
+  return runResumableList(sink, ctx, plan, effects, paused) === "done";
+}
+
+/** `applyResumable`, saying how the list ended (`ListStatus`). */
+export function runResumableList(
+  sink: EngineSink,
+  ctx: EffectContext,
+  plan: ResumePlan,
+  effects: readonly Effect[],
+  paused: PausedStep | null = null,
+): ListStatus {
+  const stack: Frame[] = [];
+  const memos: unknown[] = [];
+  let list = effects;
+  // A resumed walk builds again the parts the pause stood inside, and only those: each part was
+  // built as the walk reached it, and the ones before it have run.
+  for (const [level, at] of (paused?.part ?? []).entries()) {
+    stack.push({ effects: list, at });
+    const part = list[at]?.expand;
+    const built = part === undefined ? { effects: [] } : part(ctx, paused?.memo?.[level]);
+    memos.push(built.memo);
+    list = built.effects;
+  }
+  stack.push({ effects: list, at: Math.max(0, paused?.from ?? 0) });
+
+  for (;;) {
+    const top = stack[stack.length - 1];
+    if (top === undefined) return "done";
+    if (top.at >= top.effects.length) {
+      // A part is done: the list that holds it goes on after it.
+      stack.pop();
+      memos.pop();
+      const parent = stack[stack.length - 1];
+      if (parent === undefined) return "done";
+      parent.at += 1;
+      continue;
+    }
     // R216: the game ended inside this list (a state check a draw's cast ran), so the rest of it
     // never resolves, and nothing is parked for a game that is over.
-    if (sink.state.result !== null) return false;
-    const before = sink.state.pending;
-    effects[index]?.apply(ctx);
+    if (sink.state.result !== null) return "over";
 
+    const effect = top.effects[top.at];
+    if (effect?.expand !== undefined) {
+      const built = effect.expand(ctx, undefined);
+      memos.push(built.memo);
+      stack.push({ effects: built.effects, at: 0 });
+      continue;
+    }
+
+    const before = sink.state.pending;
+    effect?.apply(ctx);
+    top.at += 1;
     const pending = sink.state.pending;
     if (pending === null || pending === before) continue;
 
-    if (index + 1 < effects.length) {
-      const segments = segmentsOf(effects);
-      parkWork(sink, plan, {
-        from: index + 1,
-        targets: [...ctx.targets],
-        modes: [...ctx.modes],
-        ...(segments === undefined ? {} : { segments }),
-      });
-    }
-    return false;
+    const left = stack.some((frame, level) =>
+      level === stack.length - 1 ? frame.at < frame.effects.length : frame.at + 1 < frame.effects.length,
+    );
+    if (!left) return "asked";
+    parkWork(sink, plan, {
+      from: top.at,
+      targets: [...ctx.targets],
+      modes: [...ctx.modes],
+      ...(stack.length > 1 ? { part: stack.slice(0, -1).map((frame) => frame.at), memo: [...memos] } : {}),
+      exitsFrom: ctx.exitsFrom ?? exitMark(sink.state),
+    });
+    return "parked";
   }
-  return true;
 }
 
 /**
@@ -465,12 +545,13 @@ export function runResume(
     radiant: resume.radiant,
     // R127: the script this continuation named, which a step with no instance still asks again in.
     defId: resume.defId,
+    // R174, R113: a paused list is the same run continued, so it keeps the mark it began with.
+    ...(paused?.exitsFrom === undefined ? {} : { exitsFrom: paused.exitsFrom }),
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };
-  const effects = hook(ctx);
-  // A composed list (a fused hook, R102) continues part by part, whatever the board did to it.
-  return applyResumable(sink, ctx, plan, effects, resumeIndex(effects, paused));
+  // A composed list (a fused hook, R102) continues in the part it stood in, then the rest.
+  return applyResumable(sink, ctx, plan, hook(ctx), paused);
 }
 
 /**

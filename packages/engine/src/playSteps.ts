@@ -52,6 +52,7 @@ import {
 } from "./playChoices";
 import {
   closePrompt,
+  inOfferedOrder,
   openPrompt,
   resumeOf,
   runHookResumable,
@@ -74,7 +75,7 @@ import {
 import { flagsOf } from "./scripts";
 import { sacrificeTogether, stateCheck } from "./stateCheck";
 import { settle } from "./triggers";
-import { triggerHoldersWithHook } from "./triggers";
+import { triggerHolderFor, triggerHoldersWithHook, type TriggerHolder } from "./triggers";
 import { beginWorkCascade, dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
 import {
   cardAt,
@@ -134,6 +135,12 @@ export type PlayRun = {
   at: number;
   /** Step 3's cursor: how many `onPlayHook` holders have run. */
   hookAt: number;
+  /**
+   * Step 3's holders, by id, in R68's order as the step began. The cursor indexes this list, never a
+   * fresh read of the board, which a hook's own answer can reshape (a hook that bounced its own card
+   * dropped the next one, R113).
+   */
+  hookIds?: string[];
   /** Step 5's cursor into `RESOLVE_PARTS`. */
   resolveAt: number;
   /** Step 6: whether this play has worked out how many repeats it owes yet. */
@@ -147,12 +154,30 @@ export type PlayRun = {
   /** Set while a prompt this pipeline opened is waiting; says which bucket the answer fills. */
   awaiting: null | "echoTarget" | "echoMode";
   /**
+   * R70, R81: a cast's own choices are made. A play carries its targets and modes in the action, and
+   * a cast has none, so step 5 asks the caster for them first, as prompts, into `repeat` (the same
+   * record an Echo repeat's fresh picks fill), and sets this once they are in.
+   */
+  castChosen?: boolean;
+  /**
    * R70: a cast rather than a play from hand — the same steps, entered at step 3 for 0, placed by
    * R64 at step 4 wherever the card is, and leaving the resolution loop to the effect that cast it.
    */
   cast?: boolean;
   /** The face the card was played with, set at step 4 for `cardResolved` (R34, R57). */
   radiant?: boolean;
+  /**
+   * R214: whether Gifted Program makes this play Radiant, as step 1 read it to know the face the
+   * play's choices answer. Step 3 applies this answer rather than asking the board again, which a
+   * Tribute's Death at step 2 can have changed (#22's copies of the Gifted Program it ate). A cast has
+   * no step 1 (R70), so its step 3 reads the board.
+   */
+  gifted?: boolean;
+  /**
+   * Step 4 has placed the card and announced the play; what is left of it is its resolution loop,
+   * which a trap's question can pause (§10.3, R17), so the step is re-entered at that loop.
+   */
+  placed?: boolean;
   /**
    * R90, R102: how many of `targets` each declaration took when step 1 read the play, which a fused
    * card's Cry splits its ingredients' choices by (`playChoices.DECLARATION_SLICES_KEY`).
@@ -261,6 +286,7 @@ export function validatePlay(
       echoQueued: false,
       repeat: null,
       awaiting: null,
+      gifted: giftedMakesRadiant(state, player, cost),
       ...slicesFor(state, player, card, cost, targets, modes),
     },
   };
@@ -363,12 +389,17 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
   // R213: #64 Gifted Program's own rule, which step 1 has already read to know the face the play's
   // choices answer (R214), so the two cannot disagree. Once, before the hooks: the cursor is 0 only
   // on the first entry.
-  if (run.hookAt === 0) giftedProgramStep(sink, run);
-  const holders = triggerHoldersWithHook(sink.state, "onPlayHook");
-  for (let at = run.hookAt; at < holders.length; at += 1) {
+  if (run.hookIds === undefined) {
+    giftedProgramStep(sink, run);
+    run.hookIds = triggerHoldersWithHook(sink.state, "onPlayHook").map((holder) => holder.card.id);
+  }
+  const ids = run.hookIds;
+  for (let at = run.hookAt; at < ids.length; at += 1) {
     run.hookAt = at + 1;
-    const holder = holders[at];
-    if (holder === undefined) continue;
+    // Each holder is read again as its turn comes: one an earlier hook took off the field, or out of
+    // the zone that registers the hook, has nothing to run (R153, R174).
+    const holder = holderWithOnPlayHook(sink.state, ids[at]);
+    if (holder === null) continue;
     runHookResumable(sink, holder.card, "onPlayHook", {
       controller: holder.controller,
       targets: [{ pick: "instance", instanceId: run.instanceId }],
@@ -376,6 +407,14 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
     });
     if (paused(sink)) return;
   }
+}
+
+/** The `onPlayHook` holder a card is right now, or null when its zone no longer registers one. */
+function holderWithOnPlayHook(state: GameState, id: string | undefined): TriggerHolder | null {
+  const card = id === undefined ? undefined : findInstance(state, id);
+  if (card === undefined || card.zone.z !== "field") return null;
+  const holder = triggerHolderFor(state, card);
+  return holder === null || holder.script.onPlayHook === undefined ? null : holder;
 }
 
 /**
@@ -389,7 +428,8 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
 function giftedProgramStep(sink: EngineSink, run: PlayRun): void {
   const card = findInstance(sink.state, run.instanceId);
   if (card === undefined) return;
-  if (!giftedMakesRadiant(sink.state, run.player, run.costPaid)) return;
+  const gifted = run.gifted ?? giftedMakesRadiant(sink.state, run.player, run.costPaid);
+  if (!gifted) return;
   // R177: reported whether or not the card was Radiant already. A face-down trap stays hidden from
   // the other seat, whose stream keeps its events redacted but present (R97, R33), so a cue only for
   // a card that changed would tell that seat the trap's face in hand. Whether Gifted Program applies
@@ -436,6 +476,25 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
  * arrives at 0 or less health is not collected before its own Cry (R118).
  */
 function placeStep(sink: EngineSink, run: PlayRun): void {
+  if (run.placed !== true) {
+    run.placed = true;
+    placeCard(sink, run);
+  }
+  // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
+  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`). The play has
+  // not resolved yet, so the loop holds §4.5's check until something in it has (R118).
+  //
+  // A trap that asks here pauses the loop with its events still owed — the other traps that answer
+  // the play (`triggers.OWED_TO_TRAPS`), the events after the one it answered, the triggers they
+  // queue — and a trap is a response that resolves to completion before the play goes on (§10.3,
+  // R118). So the step owes itself, and the answer brings it back to this loop rather than on to
+  // step 5: a Sheepish owed the play's `cardPlayed` behind a trap that asked still turns the unit
+  // into a Sheep before its Cry (R17).
+  if (run.cast !== true) settle(sink, { holdCheck: true });
+}
+
+/** Step 4's placement and announcement, once. */
+function placeCard(sink: EngineSink, run: PlayRun): void {
   const state = sink.state;
   // R210: step 2 held the named zone for this play; it is released here, whatever happens next.
   if (run.zone !== null) releaseZone(state, run.zone);
@@ -486,10 +545,6 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   // The repeats still resolve at step 6, which only takes what is queued.
   run.echoQueued = true;
   queueEchoRepeats(sink, card, run.player);
-  // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
-  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`). The play has
-  // not resolved yet, so the loop holds §4.5's check until something in it has (R118).
-  if (run.cast !== true) settle(sink, { holdCheck: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +647,7 @@ function standingTargets(run: PlayRun): Selection[] {
  * another permanent grants everything you play, and they come first.
  */
 function resolveStep(sink: EngineSink, run: PlayRun): void {
+  if (run.cast === true && !castChoicesMade(sink, run)) return;
   for (let at = run.resolveAt; at < RESOLVE_PARTS.length; at += 1) {
     run.resolveAt = at + 1;
     const card = stillResolving(sink.state, run);
@@ -618,6 +674,38 @@ function resolveStep(sink: EngineSink, run: PlayRun): void {
 
     if (paused(sink)) return;
   }
+}
+
+/**
+ * R70: "the caster picks its targets and modes", and R81: a choice made during resolution — a cast's
+ * among them — opens a `PendingChoice`. So a cast of a card that declares targets or modes asks its
+ * caster for them before its script runs, declaration by declaration, the way an Echo repeat asks
+ * for its fresh picks (§10.6) — and for the face step 5 resolves, since step 3 has already made it
+ * Radiant if it is going to be (R214). A cast whose caller named its choices (none in Core) keeps
+ * them. Returns false while a prompt is waiting.
+ */
+function castChoicesMade(sink: EngineSink, run: PlayRun): boolean {
+  if (run.castChosen === true) return true;
+  const card = stillResolving(sink.state, run);
+  if (card === null) return true;
+  if (run.repeat === null) {
+    const declares = declaredTargets(card).length > 0 || declaredModes(card).length > 0;
+    if (!declares || run.targets.length > 0 || run.modes.length > 0) {
+      run.castChosen = true;
+      return true;
+    }
+    run.repeat = { targets: [], modes: [], declAt: 0, modeAt: 0 };
+  }
+  if (!askRepeatChoices(sink, run, card, "resolve")) return false;
+  const chosen = run.repeat;
+  run.repeat = null;
+  run.castChosen = true;
+  if (chosen === null) return true;
+  run.targets = [...chosen.targets];
+  run.modes = [...chosen.modes];
+  // A fused card's Cry splits the choices by its ingredients' declarations (R90, R102).
+  Object.assign(run, slicesFor(sink.state, run.player, card, run.costPaid, run.targets, run.modes));
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -648,21 +736,32 @@ function labelOf(selection: Selection): string {
  * Returns true when every declaration has its answer and the repeat can resolve. A declaration the
  * board cannot satisfy is skipped rather than refused: the effect fizzles (R90, §8's conventions).
  */
-function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance): boolean {
+function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance, step: PlayStepName = "echo"): boolean {
   const repeat = run.repeat;
   if (repeat === null) return false;
   // A declaration that belongs to some modes only (`forModes`, #24) cannot be asked before the
   // mode it depends on, so such a card's repeat asks its modes first.
   if (targetsFollowModes(declaredTargets(card))) {
-    return askRepeatModes(sink, run, card, repeat) && askRepeatTargets(sink, run, card, repeat);
+    return askRepeatModes(sink, run, card, repeat, step) && askRepeatTargets(sink, run, card, repeat, step);
   }
-  return askRepeatTargets(sink, run, card, repeat) && askRepeatModes(sink, run, card, repeat);
+  return askRepeatTargets(sink, run, card, repeat, step) && askRepeatModes(sink, run, card, repeat, step);
+}
+
+/** What a prompt the pipeline opens calls itself: an Echo repeat's picks, or a cast's (R70). */
+function askLabel(step: PlayStepName, name: string): string {
+  return step === "echo" ? `Echo: ${name}` : `Cast: ${name}`;
 }
 
 type RepeatRecord = NonNullable<PlayRun["repeat"]>;
 
 /** The repeat's target declarations, each offered in turn; false while one is waiting (R81). */
-function askRepeatTargets(sink: EngineSink, run: PlayRun, card: CardInstance, repeat: RepeatRecord): boolean {
+function askRepeatTargets(
+  sink: EngineSink,
+  run: PlayRun,
+  card: CardInstance,
+  repeat: RepeatRecord,
+  step: PlayStepName,
+): boolean {
   const name = defOf(sink.state, card.defId).name;
   const targets = activeTargetDecls(declaredTargets(card), repeat.modes);
   for (let at = repeat.declAt; at < targets.length; at += 1) {
@@ -675,7 +774,7 @@ function askRepeatTargets(sink: EngineSink, run: PlayRun, card: CardInstance, re
     const opened = openPrompt(sink, {
       player: run.player,
       kind: decl.kind,
-      prompt: `Echo: ${name}`,
+      prompt: askLabel(step, name),
       options: options.map((selection) => ({
         key: `${selection.pick}:${labelOf(selection)}`,
         label: labelOf(selection),
@@ -683,7 +782,7 @@ function askRepeatTargets(sink: EngineSink, run: PlayRun, card: CardInstance, re
       })),
       min: decl.min,
       max: decl.max,
-      resume: resumeFor(run, PLAY_STEPS.indexOf("echo")),
+      resume: resumeFor(run, PLAY_STEPS.indexOf(step)),
     });
     if (opened !== null) return false;
     run.awaiting = null;
@@ -692,7 +791,13 @@ function askRepeatTargets(sink: EngineSink, run: PlayRun, card: CardInstance, re
 }
 
 /** The repeat's mode declarations, each offered in turn; false while one is waiting (R81). */
-function askRepeatModes(sink: EngineSink, run: PlayRun, card: CardInstance, repeat: RepeatRecord): boolean {
+function askRepeatModes(
+  sink: EngineSink,
+  run: PlayRun,
+  card: CardInstance,
+  repeat: RepeatRecord,
+  step: PlayStepName,
+): boolean {
   const name = defOf(sink.state, card.defId).name;
   const modes = declaredModes(card);
   for (let at = repeat.modeAt; at < modes.length; at += 1) {
@@ -703,13 +808,13 @@ function askRepeatModes(sink: EngineSink, run: PlayRun, card: CardInstance, repe
     const opened = openPrompt(sink, {
       player: run.player,
       kind: decl.kind,
-      prompt: `Echo: ${name}`,
+      prompt: askLabel(step, name),
       options: decl.options.map((option) => ({
         key: `mode:${option}`,
         label: option,
         selection: { pick: "mode", option },
       })),
-      resume: resumeFor(run, PLAY_STEPS.indexOf("echo")),
+      resume: resumeFor(run, PLAY_STEPS.indexOf(step)),
     });
     if (opened !== null) return false;
     run.awaiting = null;
@@ -862,7 +967,7 @@ const STEP_TABLE: readonly Step[] = [
   { name: "validate", run: () => {} },
   { name: "pay", run: payStep },
   { name: "giftedHook", run: giftedHookStep, repeats: true },
-  { name: "place", run: placeStep },
+  { name: "place", run: placeStep, repeats: true },
   { name: "resolve", run: resolveStep, repeats: true },
   { name: "echo", run: echoStep, repeats: true },
   { name: "finish", run: finishStep },
@@ -1049,7 +1154,7 @@ export function answerPlayPrompt(sink: EngineSink, answer: AnswerInput): string 
 
   // The answered prompt is this run's, so any tail owed for it earlier would repeat this step.
   dropWork(sink.state, (item) => isPlayResume(item.resume) && runOf(item.resume)?.instanceId === run.instanceId);
-  fileSelection(run, answer.selection);
+  fileSelection(run, inOfferedOrder(pending, answer.selection));
   // R113: taking the paused step up again resets the cursor, as `prompts.answerPrompt` does.
   beginWorkCascade(sink);
   drive(sink, run);

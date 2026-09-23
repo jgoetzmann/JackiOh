@@ -126,10 +126,32 @@ function fallsToFirstStrike(state: GameState, attacker: CardInstance, defender: 
 }
 
 /**
- * R44: the projection against the defending hero's health. §4.5 step 2 ends the game at 0 or less,
- * so "≥ health" is exactly the hit that would end it.
+ * §4.3, §4.4 step 8: what the defender's strike back heals its own hero in the same combat — its
+ * Lifesteal heals its controller by the damage it deals the attacker, and the hero it heals is the
+ * one the attack's Trample reaches. Nothing strikes back for a hero, a defender an attacker with First
+ * Strike destroys first (§4.3 step 1), or a hit the attacker's Divine Shield, Indestructible or Armor
+ * stops.
+ */
+function strikeBackHeal(state: GameState, attacker: CardInstance, target: AttackTarget): number {
+  if (target.kind !== "unit") return 0;
+  const defender = target.instance;
+  const theirs = unitView(state, defender);
+  if (!hasKeyword(theirs.keywords, "Lifesteal") || theirs.attack <= 0) return 0;
+  if (fallsToFirstStrike(state, defender, attacker)) return 0;
+  const mine = unitView(state, attacker);
+  if (hasKeyword(mine.keywords, "Divine Shield") && attacker.divineShieldSpent !== true) return 0;
+  if (hasKeyword(mine.keywords, "Indestructible")) return 0;
+  return Math.max(0, theirs.attack - armorOf(mine.keywords));
+}
+
+/**
+ * R44: the projection against the defending hero's health. §4.5 step 2 ends the game at 0 or less
+ * at the check after the combat, so "≥ health" is exactly the hit that would end it — net of what
+ * the same combat gives back: R176, a defender's Lifesteal strike back heals the hero in the same
+ * simultaneous step, so a Trample swing it outheals leaves the hero standing at that check.
  */
 export function isLethal(state: GameState, attacker: CardInstance, target: AttackTarget): boolean {
   const hero = defendingHero(target);
-  return projectedDamage(state, attacker, target) >= state.players[hero].hero.health;
+  const net = projectedDamage(state, attacker, target) - strikeBackHeal(state, attacker, target);
+  return net >= state.players[hero].hero.health;
 }

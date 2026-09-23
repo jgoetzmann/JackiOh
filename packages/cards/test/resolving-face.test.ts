@@ -10,7 +10,7 @@
 //    `legalActions` read the choices of the face step 5 will resolve.
 
 import type { ActionBody, Selection } from "@jackioh/shared";
-import { legalActions, type CardInstance } from "@jackioh/engine";
+import { createRng, legalActions, subsystems, type CardInstance, type EngineSink } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -192,5 +192,71 @@ describe("R214: a play's choices are the choices of the face it resolves with", 
     // Radiant Twisted Sorcerer deals 6 to the target the player named for it: p2's hero, 30 → 24.
     expect(resolvedFace(g, card)).toBe(true);
     g.expectHealth("p2", 24);
+  });
+});
+
+const GARY = "core-004";
+const JEWELOSCO_SCARAB = "core-007";
+const CARNIVOROUS_CUBE = "core-022";
+const SEVEN_SEVEN = "core-025";
+const BIG_FELINOR = "core-043";
+const LAVA_GOLEM = "core-055";
+
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what}`);
+  return value;
+}
+
+describe("R214: step 3 applies the face step 1 checked, whatever step 2 put on the board", () => {
+  it("R214 a Gifted Program a Tribute's Death puts on the field at step 2 does not change the face the play's choices were checked against (R213, §10.5 step 3)", () => {
+    const s = scenario({
+      p1: {
+        hand: [CARNIVOROUS_CUBE, LAVA_GOLEM, BIGOT],
+        field: [GARY, JEWELOSCO_SCARAB],
+        backrow: [GIFTED],
+        library: [RENO, RENO],
+        mana: 4,
+      },
+      p2: { field: [BIG_FELINOR, SEVEN_SEVEN], hand: [RENO], library: [RENO] },
+    });
+    // #99's result, built the way `099-craft-a-card.test.ts` builds one: Lava Golem + Bigot, a
+    // Unit with Tribute 3 costing 0, whose base face names an enemy non-Human unit to destroy and
+    // whose radiant face destroys every enemy non-Human unit and names nothing (R102, R214).
+    const sink: EngineSink = { state: s.state, events: [], rng: createRng(s.state.seed, s.state.rngCursor) };
+    const crafted = must(
+      subsystems.fuse(sink, { ingredients: [s.card(LAVA_GOLEM), s.card(BIGOT)], toHand: "p1" }),
+      "the crafted Lava Golem + Bigot",
+    );
+    // #22 eats the Gifted Program (R41), so none stands on p1's side any more.
+    const gifted = must(s.backrow("p1", 1), "p1's Gifted Program");
+    s.play(CARNIVOROUS_CUBE, { targets: [{ pick: "instance", instanceId: gifted.id }] });
+    const cube = must(s.unit("p1", 3), "p1's Carnivorous Cube");
+    const felinor = must(s.unit("p2", 1), "p2's Big Felinor");
+    const sevenSeven = must(s.unit("p2", 2), "p2's 4-mana 7/7");
+
+    // Step 1 sees no Gifted Program, so the face that answers the play's choices is the base one
+    // (R214), and legalActions offers its single-target Cry with the Tribute paid by the Cube.
+    const tributes = [cube.id, must(s.unit("p1", 1), "Gary").id, must(s.unit("p1", 2), "Scarab").id];
+    const offered = legalActions(s.state, "p1").some(
+      (action) =>
+        action.type === "play" &&
+        action.instanceId === crafted.id &&
+        action.targets?.length === 1 &&
+        action.targets[0]?.pick === "instance" &&
+        action.targets[0].instanceId === felinor.id &&
+        [...(action.tributes ?? [])].sort().join() === [...tributes].sort().join(),
+    );
+    expect(offered).toBe(true);
+
+    // Step 2 pays the Tribute: the Cube's Death summons two copies of the Gifted Program it ate.
+    s.play(crafted, { tributes, targets: [{ pick: "instance", instanceId: felinor.id }], zone: 4 });
+
+    // R214: "step 1 already knows" the face, and step 1 checked the play's choices against the base
+    // face, so that is the face step 5 resolves: the chosen Big Felinor is destroyed and nothing
+    // else. A Gifted Program that arrived after step 1 cannot turn it into a face whose choices no
+    // step checked, destroying the 7/7 the play never named.
+    expect(s.card(crafted.id).radiant).toBe(false);
+    s.expectInZone(felinor, "graveyard");
+    s.expectInZone(sevenSeven, "field");
   });
 });

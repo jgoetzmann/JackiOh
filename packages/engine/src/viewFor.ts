@@ -489,8 +489,15 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     case "discarded":
     case "drawn":
     case "addedToHand":
-    case "radiantSet":
       return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : event;
+
+    // R177: a Make Radiant on a card in a library (#42's roll over every card, top down) is one nobody
+    // could read where it happened (§3), and read openly once the card does, its place in the batch
+    // would say where it lay. The event's `zone` is where it happened, so it stays unread for good.
+    case "radiantSet":
+      return event.zone.z === "library" || hidden(event.instanceId)
+        ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID }
+        : event;
 
     /**
      * R154: the one identity R97's "judged by where the card sits now" cannot decide, so the row
@@ -547,9 +554,14 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     case "controlChanged":
       return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID } : event;
 
-    // R177: the new cost is the card's too, and over a library it would give the order away.
-    case "costChanged":
-      return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, cost: HIDDEN_COST } : event;
+    // R177: the new cost is the card's too, and over a library it would give the order away — so a
+    // change made in a library stays unread for good (`hiddenFrom`), whatever became of the card.
+    case "costChanged": {
+      const { hiddenFrom, ...shown } = event;
+      return hiddenFrom?.includes(viewer) === true || hidden(event.instanceId)
+        ? { ...shown, instanceId: HIDDEN_ID, cost: HIDDEN_COST }
+        : shown;
+    }
 
     case "healed":
       return hidden(event.targetId) ? { ...event, targetId: HIDDEN_ID } : event;

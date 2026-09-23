@@ -161,6 +161,9 @@ const CARDS_GAME_OVER_TEST = "../../cards/test/game-over.test.ts";
 /** R217 to R219's proofs: the hunt's fifth round. */
 const CARDS_CALL_TO_ARMS_TEST = "../../cards/test/069-call-to-arms.test.ts";
 const CARDS_CORPSE_EATER_TEST = "../../cards/test/089-corpse-eater.test.ts";
+/** R220 to R223's proofs: the hunt's sixth round. */
+const CARDS_TURN_CLOCK_TEST = "../../cards/test/turn-clock-and-legality.test.ts";
+const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1631,6 +1634,31 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by 089-corpse-eater.test.ts "R219 …": a unit #46 starved below 0 max health feeds nothing.
   it("R219 never lets a gained stat be a loss", () => {
     provenIn(219, CARDS_CORPSE_EATER_TEST);
+  });
+
+  // Proved by combat-windows.test.ts "R220 …": fixture traps in §4.2 step 4's window that destroy,
+  // steal or move the attacker or its target, or swap the boards, with and without a question
+  // first, and a My Pawn after a trap that destroyed the attacker.
+  it("R220 resolves a declared attack only while it stands as it was declared", () => {
+    provenIn(220, CARDS_COMBAT_WINDOWS_TEST);
+  });
+
+  // Proved by turn-clock-and-legality.test.ts "R221 …": #80 Zao Gao's two discards listed the other
+  // way round leave the graveyard an offered answer leaves.
+  it("R221 takes an answer's picks in the order the prompt offered them", () => {
+    provenIn(221, CARDS_TURN_CLOCK_TEST);
+  });
+
+  // Proved by 097-zephyrs.test.ts and hidden-information.test.ts "R222 …": the offer is the same
+  // whichever face-down trap the opponent holds and whatever the order of the caster's library.
+  it("R222 plays Zephyrs' dry run on what its player may read", () => {
+    provenIn(222, CARDS_ZEPHYRS_TEST, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R223 …": two games through createGame whose decks differ
+  // only in a card that never shows.
+  it("R223 numbers a deck's cards in an order that says nothing about the deck", () => {
+    provenIn(223, CARDS_HIDDEN_INFORMATION_TEST);
   });
 });
 

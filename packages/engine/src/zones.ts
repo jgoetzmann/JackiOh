@@ -6,6 +6,7 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { BACKROW_ZONES, UNIT_ZONES } from "./config";
 import { defOf } from "./catalog";
 import type { CardInstance, GameState, Pile, PlayerState } from "./state";
+import { noteFieldExit } from "./stays";
 
 export type ZoneSlot = { player: PlayerId; row: Row; lane: number };
 
@@ -321,8 +322,9 @@ export function moveToZone(
   const token = isUnitToken(state, instance);
   removeFromAnyZone(state, instance);
   // R174: leaving the field ends every delayed effect aimed at this card and every trigger it
-  // queued there, whatever comes back.
+  // queued there, whatever comes back, and ends the stay every effect aimed at it was aimed at.
   if (wasOnField) {
+    noteFieldExit(state, instance.id);
     forgetWatchers(state, instance.id);
     forgetQueuedTriggers(state, instance.id);
   }

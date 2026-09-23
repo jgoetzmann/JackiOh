@@ -8,9 +8,22 @@
 //    aura later starves has no killer.
 //  - R174: what a card queued while it stood on the field, and a delayed effect aimed at it, end
 //    with that stay, so a Reborn body is not acted on by either.
+//  - Round 6, lens L2. §4.5 step 4, §10.1: Reborn returns a collected unit from the graveyard step 1
+//    moved it to, and from nowhere else, so a Death hook of the same pass that moved it on (a later
+//    set's "exile your graveyard", built here as a fixture) does not leave it in two zones.
 
-import type { GameEvent, Selection } from "@jackioh/shared";
-import type { CardInstance } from "@jackioh/engine";
+import type { CardDef, CardType, GameEvent, PlayerId, Row, Selection } from "@jackioh/shared";
+import { PLAYER_IDS } from "@jackioh/shared";
+import {
+  newInstance,
+  placeOnField,
+  registerScripts,
+  registeredScripts,
+  type CardInstance,
+  type GameState,
+  type Script,
+} from "@jackioh/engine";
+import { exileMatching } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -226,5 +239,83 @@ describe("R174: what was queued for a card's old stay does not act on its Reborn
 
     // B fizzled: the body that came back is still p2's.
     expect(g.card(fiender).controller).toBe("p2");
+  });
+});
+
+const RENO = "core-053";
+const RADIANT_SAINTESS = "core-081";
+const TWISTING_NETHER = "core-088";
+
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`missing: ${what}`);
+  return value;
+}
+
+/** A fixture card: a transient def in the match state and its script in the registry. */
+function fixture(s: Scenario, id: string, type: CardType, script: Script, stats = { attack: 2, health: 2 }): void {
+  const face = type === "Unit" ? { ...stats, keywords: [], text: id } : { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+function placeFixture(s: Scenario, defId: string, player: PlayerId, row: Row, lane: number): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  if (!placeOnField(s.state, card, { player, row, lane })) throw new Error(`could not place ${defId}`);
+  card.summonedTurn = s.state.turn - 1;
+  return card;
+}
+
+/** Every pile of the state that holds this instance id (§10.1: a card is in one zone at a time). */
+function pilesHolding(state: GameState, id: string): string[] {
+  const out: string[] = [];
+  for (const player of PLAYER_IDS) {
+    const side = state.players[player];
+    for (const zone of ["hand", "library", "graveyard", "exile", "resolving"] as const) {
+      if (side[zone].some((card) => card.id === id)) out.push(`${player}.${zone}`);
+    }
+    side.units.forEach((pile, at) => {
+      if ((pile ?? []).some((card) => card.id === id)) out.push(`${player}.units.${at + 1}`);
+    });
+    side.backrow.forEach((card, at) => {
+      if (card?.id === id) out.push(`${player}.backrow.${at + 1}`);
+    });
+  }
+  return out;
+}
+
+describe("§4.5 step 4, §10.1: Reborn never leaves one card in two zones", () => {
+  it("§4.5 a Reborn unit a Death hook exiled out of the graveyard is not also put back on the field (R78, R127)", () => {
+    const g = scenario({
+      p1: { hand: [TWISTING_NETHER, STOCKPILE], field: [{ def: RADIANT_SAINTESS, lane: 1 }] },
+      p2: { hand: [STOCKPILE], field: [{ def: RENO, lane: 1 }] },
+    });
+    // "Death: exile your graveyard", the way a later set's grave-robber would print it.
+    fixture(g, "edge-r6-grave-robber", "Unit", { death: () => [exileMatching({ zones: ["graveyard"] })] });
+    placeFixture(g, "edge-r6-grave-robber", "p1", "units", 2);
+    const saintess = must(g.unit("p1", 1), "Radiant Saintess");
+
+    // Twisting Nether destroys both. §4.5 step 3 runs the grave-robber's Death in lane order after
+    // the Saintess's, and it exiles her from the graveyard she was collected to, where step 4 would
+    // have found her.
+    g.play(TWISTING_NETHER);
+
+    // Wherever she ends up — back on the field or left in exile — she is one card in one zone, and
+    // her `zone` says which.
+    const zone = g.card(saintess).zone;
+    const where = zone.z === "field" ? `${zone.player}.${zone.row}.${zone.lane}` : `${zone.player}.${zone.z}`;
+    expect(pilesHolding(g.state, saintess.id)).toEqual([where]);
   });
 });

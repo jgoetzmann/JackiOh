@@ -43,8 +43,8 @@ import { makeContext, type EngineSink } from "./resolve";
 import type { TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { leftFieldSince } from "./stays";
-import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
+import { exitMark, leftFieldAfter } from "./stays";
+import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Resume, type WorkItem } from "./state";
 import { EVENT_KEY, owe, oweUnnumbered, paused as isPaused, registerWorkHandler } from "./work";
 import { slotOf } from "./zones";
 import { cardAt, moveToZone, slotsOf } from "./zones";
@@ -378,12 +378,32 @@ function runOwedFiring(sink: EngineSink, item: WorkItem): void {
 registerWorkHandler(TRAP_FIRING_WORK, runOwedFiring);
 
 /**
+ * R220: whether an open declaration still stands as it was declared — its attacker on the field on
+ * the stay that declared it and still its declarer's, and its target still that attacker's enemy on
+ * the stay it was declared on. `combat.ts` owns what an attack is and registers the check at module
+ * scope, like the cast driver (`resolve.registerCastDriver`): it sits above this module, which it
+ * imports, so the layering forbids calling it directly. Unregistered, a declaration stands.
+ */
+export type DeclarationCheck = (state: GameState, open: DeclaredAttack) => boolean;
+
+let attackStands: DeclarationCheck = () => true;
+
+/** Registered by `combat.ts` at module scope. Returns the check it replaced. */
+export function registerDeclarationCheck(check: DeclarationCheck): DeclarationCheck {
+  const previous = attackStands;
+  attackStands = check;
+  return previous;
+}
+
+/**
  * §4.2 step 4, §6.3 "Cancel an attack": the window a declaration opens answers that declaration,
  * and only while it stands. Once a trap has cancelled it (R44), or the window has closed — #96's AI
  * turn can end the turn, and every declaration the AI makes opens and closes its own — there is no
  * attack left to answer: a cancelled attack resolves no combat, so it "would be lethal" to nobody,
- * and a second My Pawn stays armed and face-down (R99). A forced attack opens no window at all
- * (R121) and is not held back here.
+ * and a second My Pawn stays armed and face-down (R99). The same holds once a trap earlier in the
+ * window has destroyed, stolen or moved the attacker or its target (R220): that attack is over, and
+ * there is nothing for My Pawn to call off. A forced attack opens no window at all (R121) and is not
+ * held back here.
  */
 function declarationStands(state: GameState, event: GameEvent): boolean {
   if (event.type !== "attackDeclared" || event.forced) return true;
@@ -392,7 +412,8 @@ function declarationStands(state: GameState, event: GameEvent): boolean {
     open !== null &&
     !open.cancelled &&
     open.attackerId === event.attackerId &&
-    open.targetId === event.targetId
+    open.targetId === event.targetId &&
+    attackStands(state, open)
   );
 }
 
@@ -417,19 +438,24 @@ function liveMatch(state: GameState, match: TrapMatch, event: GameEvent): TrapMa
  * before a later one reads the flag: #60 Bear Honeypot's tokens kill it, and it is in its graveyard
  * or back through Reborn by the time the next trap fires. That stay has ended, so the next trap
  * meets a play that is no longer in play: #85 fuses nothing out of a graveyard, and a second #60's
- * tokens do not attack a Reborn body, which is a new arrival (R83). `from` is where this dispatch's
- * own events begin.
+ * tokens do not attack a Reborn body, which is a new arrival (R83). `mark` is the field's departures
+ * when the dispatch began (`stays.exitMark`), which a dispatch a prompt split carries to the traps it
+ * still owes (`triggers.runOwedTraps`), so the answer that killed the card counts too.
  */
-function standingEvent(sink: EngineSink, event: GameEvent, from: number): GameEvent {
+export function standingEvent(sink: EngineSink, event: GameEvent, mark: number): GameEvent {
   if (event.type !== "cardResolved" || !event.permanent) return event;
   const card = findInstance(sink.state, event.instanceId);
-  const stays = card !== undefined && isOnField(card) && !leftFieldSince(sink.events, from, event.instanceId);
+  const stays = card !== undefined && isOnField(card) && !leftFieldAfter(sink.state, mark, event.instanceId);
   return stays ? event : { ...event, permanent: false };
 }
 
-function dispatch(sink: EngineSink, event: GameEvent, matches: readonly TrapMatch[]): TrapRun {
+function dispatch(
+  sink: EngineSink,
+  event: GameEvent,
+  matches: readonly TrapMatch[],
+  mark: number = exitMark(sink.state),
+): TrapRun {
   const fired: string[] = [];
-  const from = sink.events.length;
   for (let index = 0; index < matches.length; index += 1) {
     const match = matches[index];
     if (match === undefined) continue;
@@ -443,7 +469,7 @@ function dispatch(sink: EngineSink, event: GameEvent, matches: readonly TrapMatc
     if (!declarationStands(sink.state, event)) continue;
     const live = liveMatch(sink.state, match, event);
     if (live === null) continue;
-    if (fireTrap(sink, live, standingEvent(sink, event, from))) fired.push(live.trap.id);
+    if (fireTrap(sink, live, standingEvent(sink, event, mark))) fired.push(live.trap.id);
   }
   return { fired, paused: isPaused(sink), owed: [] };
 }

@@ -7,7 +7,7 @@ import { defOf } from "../catalog";
 import type { DamageTarget } from "../damage";
 import type { EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
-import { leftFieldSince } from "../stays";
+import { exitMark, leftFieldAfter } from "../stays";
 import { adjacent, cardAt, slotOf, slotsOf, type ZoneSlot } from "../zones";
 
 export type TargetSpec =
@@ -48,8 +48,9 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
     if (instance === undefined) return null;
     // R174: a card chosen on the field is chosen as that stay. One an earlier effect of this same
     // list took off the field and that is back already — a fused card's #22 half sacrificed it and
-    // Reborn returned it — is a new arrival (R83), and what this effect was aimed at is gone.
-    if (instance.zone.z === "field" && leftFieldSince(ctx.events, ctx.eventsFrom ?? 0, instance.id)) return null;
+    // Reborn returned it — is a new arrival (R83), and what this effect was aimed at is gone, even
+    // when a prompt between the two split the list across actions (R113).
+    if (instance.zone.z === "field" && leftFieldSince(ctx, instance.id)) return null;
     return { kind: "unit", instance };
   }
   return null;
@@ -57,13 +58,18 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
 
 /**
  * R174: whether a card is on the field on the same stay it had when the running script began — on
- * the field now, and not taken off it by anything this script's events show. A card an earlier
- * effect of the list bounced, sacrificed or exiled has no stay left, even once it is back.
+ * the field now, and not taken off it since. A card an earlier effect of the list bounced,
+ * sacrificed or exiled has no stay left, even once it is back.
  */
 export function standsSinceScriptBegan(ctx: EffectContext, instanceId: string): boolean {
   const card = findInstance(ctx.state, instanceId);
   if (card === undefined || card.zone.z !== "field") return false;
-  return !leftFieldSince(ctx.events, ctx.eventsFrom ?? 0, instanceId);
+  return !leftFieldSince(ctx, instanceId);
+}
+
+/** R174: whether a card has left the field since the running script began (`ctx.exitsFrom`). */
+function leftFieldSince(ctx: EffectContext, instanceId: string): boolean {
+  return leftFieldAfter(ctx.state, ctx.exitsFrom ?? exitMark(ctx.state), instanceId);
 }
 
 /** The instance a `TargetSpec` names, or null when it named a hero or nothing. */

@@ -92,7 +92,7 @@
 
 import type { CardDef, CardType } from "@jackioh/shared";
 import type { EffectContext, Hook, Script, StaticFlags } from "@jackioh/engine";
-import { defOf, effectiveCost, zoneCards, type CardInstance } from "@jackioh/engine";
+import { defOf, effectiveCost, isUnitToken, zoneCards, type CardInstance } from "@jackioh/engine";
 import {
   addToHand,
   chooseMode,
@@ -159,9 +159,13 @@ function matchesBracket(ctx: EffectContext, card: CardInstance, bracket: Bracket
  * "Your library" (§8 Conventions: "your" means the controller), top card first. Reading state,
  * never touching it: `zoneCards` is the engine's read-only pile reader (engine/src/query.ts) and
  * hands back a copy (BUILD M3-T1).
+ *
+ * R218: a unit-token card in the library (#33's copy of a played Rush Token card, R34) leaves it only
+ * by being drawn or played (R11), and "choose one to hand" is neither, so the Tutor passes over it —
+ * as the reveal does (`discoverFromLibrary`) — and never offers a type or a bracket only it matches.
  */
 function libraryCards(ctx: EffectContext): readonly CardInstance[] {
-  return zoneCards(ctx.state, ctx.controller, "library");
+  return zoneCards(ctx.state, ctx.controller, "library").filter((card) => !isUnitToken(ctx.state, card));
 }
 
 /** A `chosenOptions` answer narrowed back to the option it must be, or null (never a cast). */

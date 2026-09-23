@@ -2,12 +2,13 @@
 // `legalActions` offers and `reduce` accepts must agree with SPEC and with each other (§2.3, §2.5,
 // §9.3, §10.2, R36, R43, R79, R103). Found by the polish-4 edge-case hunt
 // (docs/polish/4-edge-cases.md, lenses L8 and L9, and in round 4 the engine-invariants lens, which
-// found two target options sharing one key, and in round 5 a play naming a lane between two lanes);
-// every case here but the known gap failed before its fix.
+// found two target options sharing one key, and in round 5 a play naming a lane between two lanes,
+// and in round 6 an answer listed in an order no offered answer has, R221); every case here but the
+// known gap failed before its fix.
 
 import { describe, expect, it } from "vitest";
 import type { Action, ActionInput, GameEvent, Selection } from "@jackioh/shared";
-import { legalActions, reduce, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
+import { hashState, legalActions, reduce, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
 import { scenario } from "./_harness";
 
 const SCARAB = "core-007"; // Cry: Discover a 2-cost card — one prompt
@@ -28,6 +29,7 @@ const FIENDER = "core-092";
 const HEROIC = "core-098";
 const CRAFT = "core-099"; // two chained Discovers
 const FELINORS = "core-012";
+const ZAO_GAO = "core-080";
 const CHAOS_GOLEM = "core-095-1"; // a Token: no random pool or Discover may ever offer it (§5.1)
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
 
@@ -304,5 +306,39 @@ describe("§3.2, §9.3: a play's zone is one of the row's lanes", () => {
     });
     expect(result.error).toBeDefined();
     expect(result.state.players.p1.mana.current).toBe(mana);
+  });
+});
+
+describe("R221, §10.2, §10.6: every answer reduce accepts is one legalActions offers", () => {
+  it("R221 #80 Zao Gao's two discards listed the other way round mean the same as the answer legalActions offers (R16, R60)", () => {
+    const s = scenario({
+      p1: { hand: [ZAO_GAO, RENO, VANILLA, BIG_FELINOR], library: [RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO] },
+    });
+    s.play(ZAO_GAO);
+    const state = s.state;
+    expect(state.pending?.kind).toBe("hand");
+
+    const offered = legalActions(state, "p1").flatMap((action) => (action.type === "answer" ? [action] : []));
+    const meanings = new Map<string, string>();
+    for (const answer of offered) {
+      const result = reduce(state, { ...answer, playerId: "p1", nonce: "edge-r6-offered" } as Action);
+      expect(result.error).toBeUndefined();
+      meanings.set(hashState(result.state), result.state.players.p1.graveyard.map((card) => card.id).join(","));
+    }
+
+    // The same two cards, listed the other way round: reduce takes it (no prompt answer is
+    // order-checked, R60's "N different cards" is a set), so it has to be a play legalActions offers.
+    for (const answer of offered) {
+      const reversed = { ...answer, selection: [...answer.selection].reverse() };
+      const result = reduce(state, { ...reversed, playerId: "p1", nonce: "edge-r6-reversed" } as Action);
+      expect(result.error).toBeUndefined();
+      const graveyard = result.state.players.p1.graveyard.map((card) => card.id).join(",");
+      expect(
+        meanings.has(hashState(result.state)),
+        `answer ${JSON.stringify(reversed.selection)} leaves the graveyard ${graveyard}, which no offered answer ` +
+          `does (offered: ${[...meanings.values()].join(" | ")})`,
+      ).toBe(true);
+    }
   });
 });

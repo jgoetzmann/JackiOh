@@ -43,13 +43,14 @@
 import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
 import { defOf } from "./catalog";
+import { BACKROW_ZONES, CAST_ON_DRAW_CHAIN_CAP, LIBRARY_CAP, UNIT_ZONES } from "./config";
 import { applyResumable, runHookResumable } from "./prompts";
 import type { EngineSink, HookName } from "./resolve";
 import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { movesIn, type LaterMoves } from "./stays";
+import { exitMark, movesIn, type LaterMoves } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -57,7 +58,7 @@ import {
   type QueuedTrigger,
   type Resume,
 } from "./state";
-import { fireTrap, fireTrapsFor, isTrapWindowEvent, trapsWatching } from "./traps";
+import { fireTrap, fireTrapsFor, isTrapWindowEvent, standingEvent, trapsWatching } from "./traps";
 import { drainWork } from "./work";
 import { activeUnitsOf, cardAt, slotsOf } from "./zones";
 
@@ -92,8 +93,17 @@ export const TRIGGER_HOOKS = [
 /** The `hook` of the one queue entry that is not a card's trigger: an event owed to the traps. */
 export const OWED_TO_TRAPS = "@traps";
 
-/** How many times `settle` may go round before the board is called stuck (§10.3). */
-export const SETTLE_PASS_CAP = 1000;
+/**
+ * How many times `settle` may go round before the board is called stuck (§10.3). Each pass resolves
+ * something — a dispatch, owed work, a check or one queued trigger — so the cap has to hold every
+ * trigger one legal action can set off, and R58 bounds that from the rules: "draw your whole
+ * library" (#95) draws up to LIBRARY_CAP cards, each draw casts up to CAST_ON_DRAW_CHAIN_CAP cast-on-
+ * draw cards, and each cast is a play (R70) every permanent on either side may answer (#33 Unstable
+ * Clone Machine). A flat 1,000 threw on a Call to Chaos drawing 55 CN-Viruses beside a #33, a play
+ * the rules bound at about 1,100 triggers. A board still going past this is a loop, not a game.
+ */
+export const SETTLE_PASS_CAP =
+  LIBRARY_CAP * CAST_ON_DRAW_CHAIN_CAP * (UNIT_ZONES + BACKROW_ZONES) * PLAYER_IDS.length;
 
 const NO_TRIGGERS: readonly TriggerDef[] = [];
 
@@ -283,6 +293,12 @@ function owedTrapsOf(entry: QueuedTrigger): string[] {
   return Array.isArray(owed) ? owed.filter((id): id is string => typeof id === "string") : [];
 }
 
+/** The field's departures when the dispatch an owed entry finishes began (`stays.exitMark`). */
+function owedMarkOf(state: GameState, entry: QueuedTrigger): number {
+  const mark: unknown = entry.resume.data.exitsFrom;
+  return typeof mark === "number" ? mark : exitMark(state);
+}
+
 /** Append one of a card's triggers to the queue, behind everything already waiting (R68). */
 export function queueTrigger(
   sink: EngineSink,
@@ -359,7 +375,7 @@ export function runHooksInTriggerOrder(sink: SettleSink, hook: HookName, only?: 
  * see it, so a resume neither re-fires one that already fired nor wakes a Field Trap twice (§5.1).
  * It goes in front of every queued card trigger, because a trap is a response (§10.3).
  */
-function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]): QueuedTrigger {
+function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[], mark: number): QueuedTrigger {
   const state = sink.state;
   // R177: whether this entry exists at all hangs on which traps are still owed the event, and a
   // face-down one is read by its controller alone (R33) — a second #96 watches a declaration where
@@ -375,7 +391,7 @@ function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]
       hook: OWED_TO_TRAPS,
       step: TRIGGER_STEP,
       radiant: false,
-      data: { event, owed: [...owed] },
+      data: { event, owed: [...owed], exitsFrom: mark },
     },
   };
   const at = state.triggerQueue.findIndex((queued) => queued.hook !== OWED_TO_TRAPS);
@@ -393,29 +409,36 @@ function owedToTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]
  */
 function offerToTraps(sink: EngineSink, event: GameEvent): QueuedTrigger | null {
   if (isTrapWindowEvent(event)) return null;
+  // R174: the stays the dispatch begins with, which the traps it still owes meet the event against.
+  const mark = exitMark(sink.state);
   const dispatched = fireTrapsFor(sink, event);
   if (sink.state.result !== null) return null;
   if (sink.state.pending === null) return null;
   const owed = trapsWatching(sink.state, event)
     .map((match) => match.trap.id)
     .filter((id) => !dispatched.fired.includes(id));
-  return owed.length === 0 ? null : owedToTraps(sink, event, owed);
+  return owed.length === 0 ? null : owedToTraps(sink, event, owed, mark);
 }
 
-/** Finish a trap dispatch a prompt interrupted, and park again if another trap prompts. */
-function runOwedTraps(sink: EngineSink, event: GameEvent, owed: readonly string[]): void {
+/**
+ * Finish a trap dispatch a prompt interrupted, and park again if another trap prompts. Each trap
+ * meets the event as the board now stands (`traps.standingEvent`, R174): a played card the answer to
+ * an earlier trap's question killed is no longer in play for the next one, even though it died in a
+ * later action than the dispatch began in (#85 fuses nothing out of a graveyard, R61).
+ */
+function runOwedTraps(sink: EngineSink, event: GameEvent, owed: readonly string[], mark: number): void {
   let left = [...owed];
   for (const match of trapsWatching(sink.state, event)) {
     if (!left.includes(match.trap.id)) continue;
     if (sink.state.result !== null) return;
     if (sink.state.pending !== null) {
-      owedToTraps(sink, event, left);
+      owedToTraps(sink, event, left, mark);
       return;
     }
     left = left.filter((id) => id !== match.trap.id);
     // A trap the previous one destroyed, bounced or fused away never fires (R61).
     if (match.trap.zone.z !== "field") continue;
-    fireTrap(sink, match, event);
+    fireTrap(sink, match, standingEvent(sink, event, mark));
   }
 }
 
@@ -478,7 +501,7 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
 export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   const event = eventOfQueued(entry);
   if (entry.hook === OWED_TO_TRAPS) {
-    if (event !== null) runOwedTraps(sink, event, owedTrapsOf(entry));
+    if (event !== null) runOwedTraps(sink, event, owedTrapsOf(entry), owedMarkOf(sink.state, entry));
     return;
   }
 

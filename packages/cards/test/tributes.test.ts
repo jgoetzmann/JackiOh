@@ -160,3 +160,61 @@ describe("§6.3 Vanilla: a Vanilla Sheep Token has no text, so it is worth 1 Tri
     expect(result.error).toMatch(/Tribute 3/);
   });
 });
+
+const VANILLA = "core-008";
+const TIMMY = "core-011";
+const EXPERIMENTATION = "core-085";
+const TRIBUTE_LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA, VANILLA, VANILLA];
+
+function unitAt(g: Scenario, player: "p1" | "p2", lane: number): CardInstance {
+  const card = g.unit(player, lane);
+  if (card === null) throw new Error(`setup: ${player} should hold a unit in lane ${lane}`);
+  return card;
+}
+
+describe("R102, §3.2: a Sheep's worth is its text, and a Fuse keeps it", () => {
+  it("R102 a Sheep Token fused by Unlicensed Experimentation is still worth 2 Tributes (§3.2, §7, R77)", () => {
+    const g = scenario({
+      active: "p2",
+      turn: 10,
+      p1: {
+        // Mr. Vanilla is Immutable, so #85 never picks it (R23): the Sheep is the Fuse target.
+        field: [
+          { def: SHEEP, lane: 1 },
+          { def: VANILLA, lane: 2 },
+        ],
+        backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+        hand: [LAVA_GOLEM, STOCKPILE],
+        library: [...TRIBUTE_LIBRARY],
+      },
+      p2: { hand: [TIMMY, STOCKPILE], library: [...TRIBUTE_LIBRARY] },
+    });
+    const sheep = unitAt(g, "p1", 1);
+    const vanilla = unitAt(g, "p1", 2);
+    expect(tributeValueOf(g.state, sheep)).toBe(2);
+
+    g.play(TIMMY, { zone: 1 });
+    const fused = g.card(sheep);
+    expect(fused.defId).not.toBe(SHEEP);
+    expect(g.unit("p2", 1)).toBeNull();
+
+    // R77/R102: the fused card's text is both texts joined, and "nothing about an ingredient is
+    // silently dropped" — the Sheep's "worth 2 Tributes" (§7, §3.2) is part of that text.
+    expect(tributeValueOf(g.state, fused)).toBe(2);
+
+    g.endTurn();
+    expect(g.state.active).toBe("p1");
+    const golem = g.hand("p1").find((card) => card.defId === LAVA_GOLEM);
+    if (golem === undefined) throw new Error("setup: Lava Golem in hand");
+    const pair = [fused.id, vanilla.id].sort().join();
+    const offered = legalActions(g.state, "p1").some(
+      (action) =>
+        action.type === "play" &&
+        action.instanceId === golem.id &&
+        [...(action.tributes ?? [])].sort().join() === pair,
+    );
+    expect(offered).toBe(true);
+    g.play(golem, { zone: 3, tributes: [fused.id, vanilla.id] });
+    expect(g.unit("p1", 3)?.defId).toBe(LAVA_GOLEM);
+  });
+});

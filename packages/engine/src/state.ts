@@ -15,6 +15,7 @@ import { PLAYER_IDS } from "@jackioh/shared";
 import type { GameEvent, GameOverReason } from "@jackioh/shared";
 import { BACKROW_ZONES, DECK_SIZE, HERO_HEALTH, UNIT_ZONES } from "./config";
 import { registerCatalog, registeredCatalog } from "./catalog";
+import { createRng } from "./rng";
 
 export type Phase = "setup" | "mulligan" | "start" | "main" | "end" | "over";
 export type Position = "ATK" | "DEF";
@@ -197,6 +198,10 @@ export type DeclaredAttack = {
   targetId: string;
   /** Set by `cancelAttack` inside the window, so step 5 resolves no combat (§6.3, R44). */
   cancelled: boolean;
+  /** R220: the player who declared it, whose unit the attacker must still be at step 5. */
+  by?: PlayerId;
+  /** R220, R174: the field's departures when it was declared (`stays.exitMark`). */
+  exitsFrom?: number;
 };
 
 export type TurnLog = {
@@ -281,7 +286,18 @@ export type GameState = {
    * one keeps it here for the answer), and gone once the draw that began it has finished.
    */
   castChain?: number;
+  /**
+   * R174: the field's departures, counted, and each card's latest (`stays.ts`). An effect aimed at a
+   * card on the field is aimed at that stay, and a sequence a prompt splits resumes in a later
+   * action whose event list does not hold what happened before the pause, so "has this card left
+   * the field since" is read off this record, which survives the pause. Absent until a card first
+   * leaves the field.
+   */
+  fieldExits?: FieldExits;
 };
+
+/** R174: `count` departures so far; `last` maps a card to the departure that was its latest. */
+export type FieldExits = { count: number; last: Record<string, number> };
 
 function emptyRow<T>(size: number): (T | null)[] {
   return Array.from({ length: size }, () => null);
@@ -402,14 +418,27 @@ export function createGame(options: CreateGameOptions): GameState {
     applied: [],
   };
 
+  // R223: the numbers each deck's cards take are drawn in an order of the seed's own, so a card's id
+  // says nothing about where it stood in the list the deck was handed over in — which the server's
+  // store sorts by card id, so an id numbered in list order told the opponent how many of a deck's
+  // cards sort before it, hidden ones included (§9.1, R97). The library itself is still the list in
+  // order, for §2.1's shuffle, and the stream is not the match's rng, whose draws are untouched.
+  const numbering = createRng(`${options.seed}${INSTANCE_ID_STREAM}`);
   PLAYER_IDS.forEach((player, seat) => {
     const deck = options.decks[seat] ?? [];
     const side = state.players[player];
     side.library = deck.map((defId) => newInstance(state, defId, player, { z: "library", player }));
+    const ids = numbering.shuffle(side.library.map((card) => card.id));
+    side.library.forEach((card, at) => {
+      card.id = ids[at] ?? card.id;
+    });
   });
 
   return state;
 }
+
+/** R223: the seed suffix of the stream `createGame` numbers the decks' cards from. */
+export const INSTANCE_ID_STREAM = ":instance-ids";
 
 /**
  * A deep copy of a state. §10.1 keeps the state JSON-only, so a JSON round-trip is a faithful

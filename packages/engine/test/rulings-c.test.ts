@@ -50,7 +50,9 @@ import { printedCost } from "../src/mana";
 import { PLAY_WORK_KIND } from "../src/playSteps";
 import { DELAYED_HOOK } from "../src/effects/delay";
 import {
+  RADIANT_SHEEP_TRIBUTE_VALUE,
   SHEEP_TOKEN_INDEX,
+  SHEEP_TRIBUTE_VALUE,
   declaredTargets,
   legalZonesFor,
   legalTributeSets,
@@ -408,6 +410,8 @@ const heroicScript: Script = {
 };
 
 const SCRIPTS: Record<string, CardScripts> = {
+  // §3.2, §7: the Sheep's worth is its face's text, the static flag its script declares.
+  [sheep.id]: { base: { staticFlags: { tributeWorth: SHEEP_TRIBUTE_VALUE } }, radiant: { staticFlags: { tributeWorth: RADIANT_SHEEP_TRIBUTE_VALUE } } },
   [weakener.id]: both({
     aura: () => [{ applies: (unit) => unit.damage > 0, mod: { attack: -WEAKEN_BY } }],
   }),

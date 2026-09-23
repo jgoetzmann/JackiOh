@@ -23,10 +23,10 @@ import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
-import { runTrapWindow } from "./traps";
+import { registerDeclarationCheck, runTrapWindow } from "./traps";
 import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
 import { moveSourcedModifiers } from "./modifiers";
-import { leftFieldSince } from "./stays";
+import { exitMark, leftFieldAfter } from "./stays";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
@@ -432,8 +432,40 @@ function closeWindow(state: GameState, id: string): DeclaredAttack | null {
 }
 
 /**
+ * R220: whether a declaration still stands as it was declared, which §4.2 step 5 asks before it
+ * resolves anything and the traps later in the window ask before they answer it (`traps.ts`).
+ *
+ * §4.2 step 2 makes an attack "an enemy unit, or the enemy hero", and a trap in step 4's window can
+ * change that before step 5: destroy the attacker or its target, steal either, swap the boards. The
+ * attack is aimed at the stays that were declared (R174), so an attacker or a target that has left
+ * the field is gone even when a Reborn body stands in its zone — a new arrival, summoning sick
+ * (R83), which declared nothing. The attacker must still be the declarer's: p1 declared the attack,
+ * and a unit p2 now controls is not p1's to attack with. And the target must still be the
+ * attacker's enemy (R173 says the same of a forced attack). Otherwise the attack is over, like one
+ * My Pawn cancelled: no combat, and the exertion stays spent (R44). Hearthstone cancels an attack
+ * whose attacker or defender has left play.
+ */
+export function declaredAttackStands(state: GameState, open: DeclaredAttack): boolean {
+  if (open.cancelled) return false;
+  const mark = open.exitsFrom ?? exitMark(state);
+  const attacker = findInstance(state, open.attackerId);
+  if (attacker === undefined || !isActiveOnField(state, attacker)) return false;
+  if (leftFieldAfter(state, mark, attacker.id)) return false;
+  if (open.by !== undefined && attacker.controller !== open.by) return false;
+  const target = attackTargetOf(state, open.targetId);
+  if (target === null) return false;
+  if (target.kind === "unit") {
+    if (!isActiveOnField(state, target.instance)) return false;
+    if (leftFieldAfter(state, mark, target.instance.id)) return false;
+  }
+  return isEnemyOf(attacker, target);
+}
+
+registerDeclarationCheck(declaredAttackStands);
+
+/**
  * §4.2 step 5, once step 4's window has closed: resolve the combat the declaration still owes, then
- * run the state check.
+ * run the state check — when the declaration still stands (R220).
  *
  * The attacker and the target are read back out of `state.declaredAttack` by id rather than from
  * the caller's own variables, because the window can have replaced every instance in the state:
@@ -453,6 +485,7 @@ function resolveDeclaredAttack(sink: EngineSink, id: string): void {
   const open = closeWindow(state, id);
   if (open === null || open.cancelled) return;
   if (state.result !== null) return;
+  if (!declaredAttackStands(state, open)) return;
 
   const attacker = findInstance(state, open.attackerId);
   if (attacker === undefined) return;
@@ -508,6 +541,9 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
     attackerId: attacker.id,
     targetId,
     cancelled: false,
+    // R220: whose attack it is, and the stays it was declared on.
+    by: attacker.controller,
+    exitsFrom: exitMark(state),
   };
   state.nextSeq += 1;
   state.declaredAttack = declared;
@@ -597,7 +633,7 @@ export function forceAttacksOn(
   sink: EngineSink,
   attackers: readonly CardInstance[],
   target: AttackTarget,
-  from = sink.events.length,
+  since = exitMark(sink.state),
 ): void {
   for (let at = 0; at < attackers.length; at += 1) {
     const attacker = attackers[at];
@@ -605,16 +641,16 @@ export function forceAttacksOn(
     if (sink.state.result !== null) return;
     if (target.kind === "unit") {
       if (!isActiveOnField(sink.state, target.instance)) return;
-      if (leftFieldSince(sink.events, from, target.instance.id)) return;
+      if (leftFieldAfter(sink.state, since, target.instance.id)) return;
     }
     // R53, R113: the check after the last combat collected a unit whose Death asks something, and
     // that check belongs to that combat (R59). The run waits for the answer rather than walking on
     // over the prompt: the attackers still to come are owed, and the answer's drain brings them.
     if (isPaused(sink)) {
-      oweForcedRun(sink, attackers.slice(at), target, from);
+      oweForcedRun(sink, attackers.slice(at), target, since);
       return;
     }
-    if (leftFieldSince(sink.events, from, attacker.id)) continue;
+    if (leftFieldAfter(sink.state, since, attacker.id)) continue;
     forceAttack(sink, attacker, target);
   }
 }
@@ -626,21 +662,21 @@ export function forceAttacksOn(
  */
 export const FORCED_RUN_WORK = "@forcedRun";
 
-type OwedForcedRun = { attackers: string[]; target: { unit: string } | { hero: PlayerId } };
+type OwedForcedRun = { attackers: string[]; target: { unit: string } | { hero: PlayerId }; since?: number };
 
 /**
- * Park the rest of a run at the pause. R174 is read up to here — an attacker the run named that has
- * left the field since it began is dropped, and a target that has left it ends the run — because the
- * answer is a new action whose events begin after the pause, and that is all the resumed run reads.
+ * Park the rest of a run at the pause, with the mark it began at, so the answer's own departures
+ * count against the stays the run named too (R174).
  */
-function oweForcedRun(sink: EngineSink, rest: readonly CardInstance[], target: AttackTarget, from: number): void {
+function oweForcedRun(sink: EngineSink, rest: readonly CardInstance[], target: AttackTarget, since: number): void {
   if (sink.state.result !== null) return;
-  if (target.kind === "unit" && leftFieldSince(sink.events, from, target.instance.id)) return;
-  const attackers = rest.filter((unit) => !leftFieldSince(sink.events, from, unit.id)).map((unit) => unit.id);
+  if (target.kind === "unit" && leftFieldAfter(sink.state, since, target.instance.id)) return;
+  const attackers = rest.filter((unit) => !leftFieldAfter(sink.state, since, unit.id)).map((unit) => unit.id);
   if (attackers.length === 0) return;
   const owed: OwedForcedRun = {
     attackers,
     target: target.kind === "unit" ? { unit: target.instance.id } : { hero: target.player },
+    since,
   };
   owe(sink, { defId: "", hook: FORCED_RUN_WORK, step: "run", radiant: false, data: { run: owed } });
 }
@@ -663,9 +699,7 @@ function runOwedForcedRun(sink: EngineSink, item: WorkItem): void {
     const unit = typeof id === "string" ? findInstance(sink.state, id) : undefined;
     return unit === undefined ? [] : [unit];
   });
-  // Everything this action has done happened after the pause, which is where the run's R174 reading
-  // left off (`oweForcedRun`).
-  forceAttacksOn(sink, attackers, target, 0);
+  forceAttacksOn(sink, attackers, target, typeof owed.since === "number" ? owed.since : exitMark(sink.state));
 }
 
 registerWorkHandler(FORCED_RUN_WORK, runOwedForcedRun);
