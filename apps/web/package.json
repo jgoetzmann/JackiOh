@@ -10,7 +10,8 @@
     "// build:e2e": "A production build deletes what the suite drives. main.tsx:168 serves NotFound for /dev/hotseat, net.ts:670 and hotseat.tsx:97 return early, so `window.__jackioh` is absent: measured 0 occurrences of it in a `vite build` bundle and 7 in this one. The two bundles differ by 20 bytes and nothing else — MODE is the only thing this flag moves.",
     "build:e2e": "vite build --mode development",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:voice": "node scripts/gen-voice.mjs"
   },
   "dependencies": {
     "@jackioh/cards": "workspace:*",

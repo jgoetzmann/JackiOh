@@ -56,6 +56,19 @@ The dev hotseat route is `/dev/hotseat?seed=42&a=first20&b=first20`. It runs `re
 browser and exposes `window.__jackioh = { state, dispatch, seed, … }` whenever
 `import.meta.env.MODE !== "production"`, which is what the Cypress specs drive (BUILD M5-T3).
 
+## Regenerating the voice lines
+
+The voice files are generated from `src/audio/voice-lines.json` and committed, so CI never runs
+`say`. After editing a line or a persona, run `pnpm --filter @jackioh/web gen:voice` on a Mac (it
+needs macOS `say` and `afconvert`, and exits 2 anywhere else). It renders only the keys whose input
+hash changed, deletes orphan files, rewrites `src/audio/voice-manifest.json`, and fails if the set
+passes 3 MiB or a line runs past 4 s. `--only <defId>` limits it to one card and `--force` renders
+everything again (legacy voices such as Fred are not byte-deterministic, so expect a large diff).
+Commit the manifest together with `public/audio/voice/`. `node apps/web/scripts/gen-voice.mjs
+--check` needs no `say`, runs on any OS and is what the asset test calls. A line must stay flavour
+text: `voice-lines.test.ts` enforces the word limits and bans rules words. At runtime a file missing
+from the manifest falls back to the browser's `speechSynthesis`.
+
 ## Blocked on the engine
 
 `packages/engine` does not compile yet: `packages/engine/src/index.ts` re-exports `./combat`,

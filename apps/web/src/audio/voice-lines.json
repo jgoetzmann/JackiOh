@@ -1,0 +1,871 @@
+{
+  "version": 1,
+  "personas": {
+    "alien": {
+      "say": "Trinoids",
+      "rate": 170,
+      "pbas": 45,
+      "pmod": 20,
+      "web": {
+        "pitch": 0.5,
+        "rate": 0.9
+      },
+      "gain": 1.66
+    },
+    "announcer": {
+      "say": "Superstar",
+      "rate": 190,
+      "pbas": 50,
+      "pmod": 50,
+      "web": {
+        "pitch": 1.2,
+        "rate": 1.1
+      }
+    },
+    "brute": {
+      "say": "Fred",
+      "rate": 165,
+      "pbas": 28,
+      "pmod": 15,
+      "web": {
+        "pitch": 0.5,
+        "rate": 0.9
+      },
+      "gain": 1.71
+    },
+    "bubbles": {
+      "say": "Bubbles",
+      "rate": 180,
+      "pbas": 45,
+      "pmod": 30,
+      "web": {
+        "pitch": 1,
+        "rate": 1
+      },
+      "gain": 1.55
+    },
+    "cat": {
+      "say": "Kathy",
+      "rate": 210,
+      "pbas": 70,
+      "pmod": 70,
+      "web": {
+        "pitch": 1.8,
+        "rate": 1.2
+      },
+      "gain": 0.83
+    },
+    "crone": {
+      "say": "Grandma (English (US))",
+      "rate": 170,
+      "pbas": 50,
+      "pmod": 40,
+      "web": {
+        "pitch": 1.1,
+        "rate": 0.9
+      }
+    },
+    "digger": {
+      "say": "Karen",
+      "rate": 185,
+      "pbas": 45,
+      "pmod": 35,
+      "web": {
+        "pitch": 1,
+        "rate": 1
+      },
+      "gain": 0.62
+    },
+    "diva": {
+      "say": "Samantha",
+      "rate": 185,
+      "pbas": 55,
+      "pmod": 60,
+      "web": {
+        "pitch": 1.2,
+        "rate": 1
+      },
+      "gain": 0.61
+    },
+    "elder": {
+      "say": "Grandpa (English (UK))",
+      "rate": 165,
+      "pbas": 35,
+      "pmod": 30,
+      "web": {
+        "pitch": 0.8,
+        "rate": 0.9
+      },
+      "gain": 1.56
+    },
+    "goof": {
+      "say": "Boing",
+      "rate": 190,
+      "pbas": 50,
+      "pmod": 40,
+      "web": {
+        "pitch": 1.3,
+        "rate": 1.1
+      },
+      "gain": 2
+    },
+    "guard": {
+      "say": "Ralph",
+      "rate": 175,
+      "pbas": 38,
+      "pmod": 20,
+      "web": {
+        "pitch": 0.8,
+        "rate": 0.95
+      },
+      "gain": 1.53
+    },
+    "hero": {
+      "say": "Reed (English (US))",
+      "rate": 190,
+      "pbas": 45,
+      "pmod": 35,
+      "web": {
+        "pitch": 1,
+        "rate": 1
+      },
+      "gain": 1.16
+    },
+    "hustler": {
+      "say": "Rocko (English (US))",
+      "rate": 215,
+      "pbas": 50,
+      "pmod": 45,
+      "web": {
+        "pitch": 1,
+        "rate": 1.15
+      },
+      "gain": 1.22
+    },
+    "kid": {
+      "say": "Junior",
+      "rate": 225,
+      "pbas": 62,
+      "pmod": 50,
+      "web": {
+        "pitch": 1.4,
+        "rate": 1.2
+      },
+      "gain": 0.55
+    },
+    "narrator": {
+      "say": "Eddy (English (UK))",
+      "rate": 185,
+      "pbas": 45,
+      "pmod": 35,
+      "web": {
+        "pitch": 1,
+        "rate": 1
+      }
+    },
+    "plain": {
+      "say": "Eddy (English (US))",
+      "rate": 170,
+      "pbas": 40,
+      "pmod": 0,
+      "web": {
+        "pitch": 1,
+        "rate": 0.9
+      },
+      "gain": 1.16
+    },
+    "posh": {
+      "say": "Shelley (English (UK))",
+      "rate": 185,
+      "pbas": 52,
+      "pmod": 45,
+      "web": {
+        "pitch": 1.2,
+        "rate": 1
+      },
+      "gain": 0.84
+    },
+    "prof": {
+      "say": "Daniel",
+      "rate": 180,
+      "pbas": 42,
+      "pmod": 30,
+      "web": {
+        "pitch": 0.9,
+        "rate": 1
+      }
+    },
+    "robot": {
+      "say": "Zarvox",
+      "rate": 185,
+      "pbas": 40,
+      "pmod": 10,
+      "web": {
+        "pitch": 0.6,
+        "rate": 1
+      },
+      "gain": 1.72
+    },
+    "sheep": {
+      "say": "Bahh",
+      "rate": 180,
+      "pbas": 55,
+      "pmod": 40,
+      "web": {
+        "pitch": 1.5,
+        "rate": 1
+      },
+      "gain": 1.13
+    },
+    "snob": {
+      "say": "Albert",
+      "rate": 170,
+      "pbas": 40,
+      "pmod": 30,
+      "web": {
+        "pitch": 0.8,
+        "rate": 0.9
+      },
+      "gain": 1.32
+    },
+    "storyteller": {
+      "say": "Moira",
+      "rate": 180,
+      "pbas": 50,
+      "pmod": 40,
+      "web": {
+        "pitch": 1.1,
+        "rate": 0.95
+      },
+      "gain": 0.67
+    },
+    "whisper": {
+      "say": "Whisper",
+      "rate": 160,
+      "pbas": 40,
+      "pmod": 20,
+      "web": {
+        "pitch": 0.9,
+        "rate": 0.85
+      },
+      "gain": 1.46
+    },
+    "wobble": {
+      "say": "Wobble",
+      "rate": 180,
+      "pbas": 45,
+      "pmod": 40,
+      "web": {
+        "pitch": 1.2,
+        "rate": 1
+      },
+      "gain": 1.26
+    },
+    "zoomer": {
+      "say": "Flo (English (US))",
+      "rate": 205,
+      "pbas": 55,
+      "pmod": 50,
+      "web": {
+        "pitch": 1.3,
+        "rate": 1.15
+      },
+      "gain": 0.87
+    }
+  },
+  "cards": {
+    "core-001": {
+      "kind": "unit",
+      "persona": "guard",
+      "play": "Stand behind me. Way behind.",
+      "death": "Defense... offended."
+    },
+    "core-002": {
+      "kind": "unit",
+      "persona": "snob",
+      "play": "Ugh. Not your kind again.",
+      "death": "Tolerance wins. Again."
+    },
+    "core-003": {
+      "kind": "unit",
+      "persona": "guard",
+      "play": "For the right house!",
+      "death": "Be right back."
+    },
+    "core-004": {
+      "kind": "unit",
+      "persona": "hustler",
+      "play": "Double or nothing, baby!",
+      "death": "House always wins."
+    },
+    "core-005": {
+      "kind": "spell",
+      "persona": "narrator",
+      "cast": "Hoarding is self care."
+    },
+    "core-006": {
+      "kind": "spell",
+      "persona": "crone",
+      "cast": "Drink up, dearie."
+    },
+    "core-007": {
+      "kind": "unit",
+      "persona": "goof",
+      "play": "Clean up on aisle you!",
+      "death": "Price check... on death."
+    },
+    "core-008": {
+      "kind": "unit",
+      "persona": "plain",
+      "play": "Hello. I am very normal.",
+      "death": "Plain. Simple. Gone."
+    },
+    "core-009": {
+      "kind": "unit",
+      "persona": "goof",
+      "play": "Ooh! Pretty light! Pretty light!",
+      "death": "Totally worth it."
+    },
+    "core-010": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Restock, restock, restock!"
+    },
+    "core-011": {
+      "kind": "unit",
+      "persona": "kid",
+      "play": "Outta my way, slowpokes!",
+      "death": "Too... slow..."
+    },
+    "core-012": {
+      "kind": "unit",
+      "persona": "cat",
+      "play": "Meow. Meow again.",
+      "death": "Both of us?"
+    },
+    "core-013": {
+      "kind": "unit",
+      "persona": "robot",
+      "play": "Shredder online. Paperwork offline.",
+      "death": "Warranty void."
+    },
+    "core-014": {
+      "kind": "spell",
+      "persona": "robot",
+      "cast": "Defense contract approved."
+    },
+    "core-015": {
+      "kind": "unit",
+      "persona": "hero",
+      "play": "Me and my buddy!",
+      "death": "Tell Mister Token goodbye."
+    },
+    "core-016": {
+      "kind": "spell",
+      "persona": "hustler",
+      "cast": "Nothing personal, pal.",
+      "rate": 170,
+      "pbas": 32
+    },
+    "core-017": {
+      "kind": "spell",
+      "persona": "bubbles",
+      "cast": "Surf's up! Everybody out!"
+    },
+    "core-018": {
+      "kind": "trap",
+      "persona": "crone",
+      "cast": "Waste not, want toast."
+    },
+    "core-019": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Not too big. Not too small.",
+      "death": "Should have gone aggro."
+    },
+    "core-020": {
+      "kind": "unit",
+      "persona": "hero",
+      "play": "Allow me to make a point.",
+      "death": "Pointless."
+    },
+    "core-021": {
+      "kind": "spell",
+      "persona": "goof",
+      "cast": "Oops! Did I trip you?"
+    },
+    "core-022": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Nom. Nom nom. Cube.",
+      "death": "Indigestion..."
+    },
+    "core-023": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Wait. Haven't we done this?"
+    },
+    "core-024": {
+      "kind": "spell",
+      "persona": "hustler",
+      "cast": "Synergy! Leverage! Profit!"
+    },
+    "core-025": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Big. Honest. Boring.",
+      "death": "Fair enough."
+    },
+    "core-026": {
+      "kind": "spell",
+      "persona": "wobble",
+      "cast": "Taste the glow!"
+    },
+    "core-027": {
+      "kind": "spell",
+      "persona": "wobble",
+      "cast": "Mmm. Tastes like pennies."
+    },
+    "core-028": {
+      "kind": "spell",
+      "persona": "wobble",
+      "cast": "Ships in six to eight weeks."
+    },
+    "core-029": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Giga! Bean! Time!"
+    },
+    "core-030": {
+      "kind": "unit",
+      "persona": "whisper",
+      "play": "Shh. I'm filing.",
+      "death": "Overdue. Forever."
+    },
+    "core-031": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "Show your work!"
+    },
+    "core-032": {
+      "kind": "unit",
+      "persona": "hero",
+      "play": "Premium predator. No ads.",
+      "death": "Subscription cancelled."
+    },
+    "core-033": {
+      "kind": "spell",
+      "persona": "robot",
+      "cast": "Copy that. Copy that. Copy that."
+    },
+    "core-034": {
+      "kind": "spell",
+      "persona": "narrator",
+      "cast": "Oops. Also, oops."
+    },
+    "core-035": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Lights out, moon's up."
+    },
+    "core-036": {
+      "kind": "spell",
+      "persona": "goof",
+      "cast": "Jammed it! Sorry, not sorry."
+    },
+    "core-037": {
+      "kind": "unit",
+      "persona": "digger",
+      "play": "Finders keepers, dead folks.",
+      "death": "Dig me a nice one."
+    },
+    "core-038": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Faster! Faster! Faster!"
+    },
+    "core-039": {
+      "kind": "spell",
+      "persona": "zoomer",
+      "cast": "Reduce, reuse, replay!"
+    },
+    "core-040": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Remember us. Remember us."
+    },
+    "core-041": {
+      "kind": "trap",
+      "persona": "sheep",
+      "cast": "Baa. Surprise."
+    },
+    "core-042": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "Science has gone too far."
+    },
+    "core-043": {
+      "kind": "unit",
+      "persona": "cat",
+      "play": "Big cat. Bigger problems.",
+      "death": "Landed on my back?"
+    },
+    "core-044": {
+      "kind": "spell",
+      "persona": "hero",
+      "cast": "Bullseye, baby."
+    },
+    "core-045": {
+      "kind": "unit",
+      "persona": "hero",
+      "play": "En garde! And also, en garde!",
+      "death": "Well played. Ow."
+    },
+    "core-046": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Everybody calm down. Forever."
+    },
+    "core-047": {
+      "kind": "spell",
+      "persona": "storyteller",
+      "cast": "A fig a day!"
+    },
+    "core-048": {
+      "kind": "spell",
+      "persona": "kid",
+      "cast": "Reverse card! Everybody!"
+    },
+    "core-049": {
+      "kind": "spell",
+      "persona": "posh",
+      "cast": "Hop along. You're mine now."
+    },
+    "core-050": {
+      "kind": "unit",
+      "persona": "zoomer",
+      "play": "Oppa! I'm your biggest fan!",
+      "death": "Tell my bias goodbye."
+    },
+    "core-051": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "Pencils down. Pick one."
+    },
+    "core-051-1": {
+      "kind": "spell",
+      "persona": "zoomer",
+      "cast": "Blank page energy."
+    },
+    "core-052": {
+      "kind": "unit",
+      "persona": "goof",
+      "play": "Round and round we go!",
+      "death": "So... dizzy..."
+    },
+    "core-053": {
+      "kind": "unit",
+      "persona": "hustler",
+      "play": "Reno's here! Party's saved!",
+      "death": "Luck... ran out."
+    },
+    "core-054": {
+      "kind": "unit",
+      "persona": "diva",
+      "play": "Shopping spree! On the house!",
+      "death": "Out of stock."
+    },
+    "core-055": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Hot stuff. Coming through.",
+      "death": "Cooling... off..."
+    },
+    "core-056": {
+      "kind": "unit",
+      "persona": "robot",
+      "play": "Jilliax! Deluxe! Edition!",
+      "death": "Recall notice issued."
+    },
+    "core-057": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "Study group, assemble!"
+    },
+    "core-058": {
+      "kind": "spell",
+      "persona": "elder",
+      "cast": "Fresh tokens, farm to table!"
+    },
+    "core-059": {
+      "kind": "spell",
+      "persona": "narrator",
+      "cast": "Welcome in, whoever you are!"
+    },
+    "core-060": {
+      "kind": "trap",
+      "persona": "goof",
+      "cast": "Mmm, honey. Oh no. Bears."
+    },
+    "core-061": {
+      "kind": "unit",
+      "persona": "snob",
+      "play": "Peer review? Rejected.",
+      "death": "My grant... expired."
+    },
+    "core-062": {
+      "kind": "spell",
+      "persona": "crone",
+      "cast": "Here kitty kitty kitty!"
+    },
+    "core-063": {
+      "kind": "spell",
+      "persona": "posh",
+      "cast": "New face, who dis?"
+    },
+    "core-064": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "You're all special. Mostly you."
+    },
+    "core-065": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Hurts so good."
+    },
+    "core-065-1": {
+      "kind": "unit",
+      "persona": "goof",
+      "play": "Hug me. I dare you.",
+      "death": "Pop."
+    },
+    "core-066": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Rock solid. Rock steady.",
+      "death": "Just gravel now."
+    },
+    "core-067": {
+      "kind": "unit",
+      "persona": "zoomer",
+      "play": "No cap, this lane's mine.",
+      "death": "I'm literally dead."
+    },
+    "core-068": {
+      "kind": "unit",
+      "persona": "elder",
+      "play": "Twist and shout! Mostly shout!",
+      "death": "Untwisted..."
+    },
+    "core-069": {
+      "kind": "spell",
+      "persona": "hero",
+      "cast": "Everybody grab a sword!"
+    },
+    "core-070": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "This is for everything."
+    },
+    "core-071": {
+      "kind": "trap",
+      "persona": "zoomer",
+      "cast": "Unpaid, but motivated!"
+    },
+    "core-072": {
+      "kind": "spell",
+      "persona": "storyteller",
+      "cast": "Ah, the good old days."
+    },
+    "core-073": {
+      "kind": "spell",
+      "persona": "guard",
+      "cast": "Nice try. Not today."
+    },
+    "core-074": {
+      "kind": "spell",
+      "persona": "robot",
+      "cast": "Now responsive on all devices!"
+    },
+    "core-075": {
+      "kind": "spell",
+      "persona": "hustler",
+      "cast": "There's always more in the back."
+    },
+    "core-076": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "If you build it..."
+    },
+    "core-077": {
+      "kind": "unit",
+      "persona": "prof",
+      "play": "Grading on a curve, people!",
+      "death": "Class... dismissed."
+    },
+    "core-078": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Full send! No brakes!"
+    },
+    "core-079": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "Say it twice. Say it twice."
+    },
+    "core-080": {
+      "kind": "spell",
+      "persona": "narrator",
+      "cast": "Zao gao! Oh no, oh no!"
+    },
+    "core-081": {
+      "kind": "unit",
+      "persona": "diva",
+      "play": "Bask in my glow, darlings.",
+      "death": "Shine on without me."
+    },
+    "core-082": {
+      "kind": "spell",
+      "persona": "prof",
+      "cast": "Pick a number. Any number."
+    },
+    "core-083": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Abracadabra! Everything's fancy now!"
+    },
+    "core-084": {
+      "kind": "spell",
+      "persona": "guard",
+      "cast": "Going long! Go deep!"
+    },
+    "core-085": {
+      "kind": "trap",
+      "persona": "snob",
+      "cast": "No license. No problem."
+    },
+    "core-086": {
+      "kind": "unit",
+      "persona": "cat",
+      "play": "Mrow. Don't touch me.",
+      "death": "You're all mine now."
+    },
+    "core-087": {
+      "kind": "spell",
+      "persona": "goof",
+      "cast": "Chaos! Now pocket sized!"
+    },
+    "core-088": {
+      "kind": "spell",
+      "persona": "alien",
+      "cast": "Everybody. Into the void."
+    },
+    "core-089": {
+      "kind": "unit",
+      "persona": "alien",
+      "play": "Anyone gonna finish that?",
+      "death": "Finally... full."
+    },
+    "core-090": {
+      "kind": "spell",
+      "persona": "diva",
+      "cast": "Just a little pinch."
+    },
+    "core-090-1": {
+      "kind": "spell",
+      "persona": "goof",
+      "cast": "Achoo! Sorry. Achoo!"
+    },
+    "core-091": {
+      "kind": "unit",
+      "persona": "elder",
+      "play": "Trust the science. Please.",
+      "death": "Wash your hands."
+    },
+    "core-092": {
+      "kind": "unit",
+      "persona": "crone",
+      "play": "Cats. I need more cats.",
+      "death": "Who feeds them now?"
+    },
+    "core-093": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Style points! Grade me!"
+    },
+    "core-093-1": {
+      "kind": "spell",
+      "persona": "goof",
+      "cast": "Just a little something."
+    },
+    "core-094": {
+      "kind": "spell",
+      "persona": "snob",
+      "cast": "Greed is good. Mostly."
+    },
+    "core-095": {
+      "kind": "spell",
+      "persona": "announcer",
+      "cast": "Roll the dice! Pray nice!"
+    },
+    "core-095-1": {
+      "kind": "unit",
+      "persona": "brute",
+      "play": "Chaos golem! Smash everything!",
+      "death": "Order... restored.",
+      "pbas": 20
+    },
+    "core-096": {
+      "kind": "trap",
+      "persona": "snob",
+      "cast": "Checkmate, puppet."
+    },
+    "core-097": {
+      "kind": "spell",
+      "persona": "whisper",
+      "cast": "I know exactly what you need."
+    },
+    "core-098": {
+      "kind": "spell",
+      "persona": "hero",
+      "cast": "With great power... whatever."
+    },
+    "core-099": {
+      "kind": "spell",
+      "persona": "narrator",
+      "cast": "Some assembly required."
+    },
+    "core-100": {
+      "kind": "unit",
+      "persona": "alien",
+      "play": "Nothing lasts. Except me.",
+      "death": "Even I... end.",
+      "rate": 150,
+      "pbas": 25
+    },
+    "core-t-rush": {
+      "kind": "unit",
+      "persona": "kid",
+      "play": "Go go go go!",
+      "death": "Gone too fast."
+    },
+    "core-t-sheep": {
+      "kind": "unit",
+      "persona": "sheep",
+      "play": "Baa?",
+      "death": "Baa..."
+    },
+    "core-t-felinor": {
+      "kind": "unit",
+      "persona": "cat",
+      "play": "Mew!",
+      "death": "Mew..."
+    },
+    "core-t-bread": {
+      "kind": "unit",
+      "persona": "goof",
+      "play": "I'm bread. Butter me up.",
+      "death": "Crumbs."
+    }
+  }
+}
