@@ -78,6 +78,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@jackioh/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@jackioh/cards':
         specifier: workspace:*
         version: link:../../packages/cards

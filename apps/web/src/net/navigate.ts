@@ -52,6 +52,7 @@ export const paths = {
   decks: "/decks",
   play: "/play",
   account: "/account",
+  practice: "/practice",
   hotseat: "/dev/hotseat",
   match: (matchId: string): string => `/match/${matchId}`,
 } as const;

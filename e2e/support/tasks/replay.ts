@@ -20,6 +20,12 @@ export type ReplayHashPayload = {
   decks: [string[], string[]];
   log: unknown[];
   state: unknown;
+  /**
+   * Spec 13 (R180, R187): a practice game's handicaps, exactly as its `createGame` took them. The
+   * fold needs them to accept the AI seat's 25- or 30-card deck and to replay its extra mana,
+   * opening card and draws. Absent for every hotseat spec, whose payload is unchanged.
+   */
+  handicaps?: Partial<Record<"p1" | "p2", unknown>>;
 };
 
 export type ReplayHashResult = {
@@ -40,7 +46,16 @@ export function replayHash(projectRoot: string, payload: ReplayHashPayload): Rep
   const logFile = path.join(artifacts, `${payload.label}.json`);
   writeFileSync(
     logFile,
-    `${JSON.stringify({ seed: payload.seed, decks: payload.decks, log: payload.log }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        seed: payload.seed,
+        decks: payload.decks,
+        log: payload.log,
+        ...(payload.handicaps === undefined ? {} : { handicaps: payload.handicaps }),
+      },
+      null,
+      2,
+    )}\n`,
     "utf8",
   );
 
