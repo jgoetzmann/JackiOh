@@ -368,37 +368,15 @@ describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
     expect(state.players.p1.aiTurn).toBe(false);
   });
 
-  // ###################################################################################
-  // KNOWN FAILING TEST — it names a real engine gap and must stay until the gap is shut.
-  //
   // `subsystems/aiPolicy.playOutTurn` drives a NESTED `reduce` per action of the playout, and each
-  // of those settles its own events to completion (§10.3). It then pushes those finished events
-  // onto the CALLER's event list (`aiPolicy.ts`, `sink.events.push(...result.events)`), and the
-  // caller's own resolution loop copies everything on that list into `state.dispatch` and offers it
-  // to the traps and the trigger queue a second time (`triggers.collectEvents`, keyed on
-  // `sink.dispatched`). So every trap and trigger watching an event an AI turn emitted answers it
-  // twice. Below: one `manaChanged`, two firings of the Field Trap that watches it.
-  //
-  // It is not §4.2 step 4's window: the window withholds its own `attackDeclared` from the frontier
-  // (R100), and the same board with a trap that only cancels fires everything once. It is the
-  // playout's hand-over, and #96 My Pawn is simply its first live caller.
-  //
-  // WHY IT IS NOT FIXED HERE. The frontier cursor is a copy position on the SINK, and an effect
-  // never has the sink: `resolve.makeContext` hands a script a fresh `EffectContext` that shares
-  // `state`, `events` and `rng` but not the sink object, so neither `aiPlaysOutTurn` nor
-  // `playOutTurn` can mark what it appended as already dispatched. And a cursor cannot express it
-  // anyway — the playout's events land in the MIDDLE of the window's own (`trapFired`,
-  // `attackCancelled`, then the playout, then `enteredGraveyard`), and a monotonic cursor can only
-  // skip a prefix. The fix belongs in one of three files this agent does not own:
-  //   * `src/triggers.ts`  — give the frontier a per-event "already dispatched" mark instead of a
-  //                          cursor, which is the only shape that covers a middle range; or
-  //   * `src/resolve.ts`   — carry the sink on the `EffectContext` so an effect can mark its own
-  //                          contribution; or
-  //   * `src/subsystems/aiPolicy.ts` — stop pushing a nested reducer's events onto the caller's
-  //                          list, which costs the client the AI turn's animations (BUILD M5-T4).
-  // ###################################################################################
-  it.fails(
-    "§10.3 an AI turn's events are dispatched once, not again by the caller's own loop [KNOWN GAP: aiPolicy.playOutTurn pushes a nested reduce's settled events onto the caller's sink — see the block comment above]",
+  // of those settles its own events to completion (§10.3) before the playout copies them onto the
+  // caller's event list, so the client is told about them (R168). The caller's resolution loop must
+  // not offer them to the traps and the trigger queue again: `triggers.markDispatched` gives each of
+  // those events a per-event "already dispatched" mark, the one shape that covers a range in the
+  // MIDDLE of the window's own events (`trapFired`, `attackCancelled`, the playout, then
+  // `enteredGraveyard`), which a cursor cannot skip. Below: one Field Trap firing per `manaChanged`.
+  it(
+    "§10.3 an AI turn's events are dispatched once, not again by the caller's own loop",
     () => {
       const { state, attacker, backrow } = swing("ai-redispatch", [pawn.id, meter.id]);
       state.players.p2.mana = { current: 4, max: 4, nextTurnMod: 0, permMod: 0 };

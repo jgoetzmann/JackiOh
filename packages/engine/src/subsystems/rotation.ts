@@ -43,7 +43,10 @@ export type RotationArgs = {
   direction: RotationDirection;
   /** Whose seat "left" and "right" are read from: the rotating player (§3.1, §8 #52). */
   perspective: PlayerId;
-  /** #52 radiant: a card that would cross bounces to its owner's hand at cost 0 instead. */
+  /**
+   * #52 radiant: a card that would cross to the opponent of `perspective` bounces to its owner's
+   * hand at cost 0 instead; one crossing towards `perspective` still crosses (R14).
+   */
   radiant?: boolean;
 };
 
@@ -119,7 +122,10 @@ function bounceHome(sink: EngineSink, card: CardInstance, costOverride?: number)
 
   sink.events.push(event);
   addToHand(sink, card);
-  if (costOverride !== undefined) card.costOverride = costOverride;
+  // §8 #52 radiant: "bounced to their owner's hand costing 0" is a rider on a card that reaches the
+  // hand. A full hand burns it instead (§2.4, R4), and a burned card is an ordinary graveyard card
+  // that R78 would otherwise have carry the 0 into every later zone.
+  if (costOverride !== undefined && card.zone.z === "hand") card.costOverride = costOverride;
 }
 
 /**
@@ -156,10 +162,14 @@ export function rotateRings(sink: EngineSink, args: RotationArgs): RotationResul
   for (const entry of entries) {
     const crosses = entry.to.player !== entry.from.player;
 
-    // #52 radiant: crossing is replaced by a bounce at cost 0, in either direction, so no card
-    // ever changes control. The bounce still goes to the card's owner's hand (R12, R14).
-    // A Locked destination would have bounced it anyway, so this reading also covers that case.
-    if (radiant && crosses) {
+    // #52 radiant: "cards that would move to the opponent are bounced to their owner's hand
+    // costing 0 instead" — the cards the rotating player would lose, which are the ones leaving
+    // their side. "The opponent" is the rotating player's (§8 Conventions: "your" is the
+    // controller), so a card crossing the other way, onto the rotating player's side, is not one of
+    // them: the base clause the radiant cell does not restate still holds for it, and it crosses and
+    // changes control like any other (R14, R171). The bounce goes to the card's owner's hand (R12).
+    // A Locked destination would have bounced an outbound card anyway, so this also covers that case.
+    if (radiant && crosses && entry.from.player === args.perspective) {
       for (const card of entry.cards) {
         bounceHome(sink, card, 0);
         result.bounced.push(card.id);
@@ -181,8 +191,9 @@ export function rotateRings(sink: EngineSink, args: RotationArgs): RotationResul
 
     entry.cards.forEach((card, at) => {
       result.moved.push(card.id);
-      if (card.controller === before[at]) return;
-      enterNewSide(state, card);
+      const previous = before[at];
+      if (previous === undefined || card.controller === previous) return;
+      enterNewSide(sink, card, previous);
       result.crossed.push(card.id);
       sink.events.push({
         type: "controlChanged",

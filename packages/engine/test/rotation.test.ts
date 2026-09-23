@@ -226,7 +226,7 @@ describe("rotation (R14, M3-T7)", () => {
     expect(whereIs(state, staying)).toBe("p1 units 2");
   });
 
-  it("R14 radiant Silly Silas bounces every crossing card to its owner's hand at cost 0", () => {
+  it("R14 radiant Silly Silas bounces the cards that would cross to the opponent at cost 0, and takes the ones crossing to its side", () => {
     const state = game("rotate-radiant");
     const mine = put(state, plain.id, slot("p1", "units", 5));
     const theirs = put(state, plain.id, slot("p2", "units", 1));
@@ -234,23 +234,28 @@ describe("rotation (R14, M3-T7)", () => {
 
     const { events, result } = rotate(state, "right", { radiant: true });
 
-    // Both cards would have crossed, so both went home instead, each to its own owner (R12).
+    // §8 #52 radiant: "cards that would move to the opponent are bounced to their owner's hand
+    // costing 0 instead". p1's lane-5 card would move to p2, so it goes home at 0 (R12).
     expect(whereIs(state, mine)).toBe("hand");
-    expect(whereIs(state, theirs)).toBe("hand");
     expect(state.players.p1.hand.map((c) => c.id)).toContain(mine.id);
-    expect(state.players.p2.hand.map((c) => c.id)).toContain(theirs.id);
     expect(mine.costOverride).toBe(0);
-    expect(theirs.costOverride).toBe(0);
+    expect(result.bounced).toEqual([mine.id]);
+    expect(eventsOfType(events, "bounced").map((e) => e.instanceId)).toEqual([mine.id]);
 
-    // Nothing crossed, so no control changed.
-    expect(result.crossed).toEqual([]);
-    expect(eventsOfType(events, "controlChanged")).toEqual([]);
-    expect(result.bounced).toEqual([mine.id, theirs.id]);
-    expect(eventsOfType(events, "bounced").map((e) => e.instanceId)).toEqual([mine.id, theirs.id]);
+    // p2's lane-1 card moves to p1, not to the opponent: the base clause holds, so it crosses and
+    // changes control, entering p1's side this turn (R171) and keeping its owner (R12).
+    expect(whereIs(state, theirs)).toBe("p1 units 1");
+    expect(theirs.controller).toBe("p1");
+    expect(theirs.owner).toBe("p2");
+    expect(theirs.summonedTurn).toBe(state.turn);
+    expect(theirs.costOverride).toBeUndefined();
+    expect(result.crossed).toEqual([theirs.id]);
+    expect(eventsOfType(events, "controlChanged").map((e) => e.instanceId)).toEqual([theirs.id]);
 
     // A card that stays on its own side rotates as usual, at its printed cost.
     expect(whereIs(state, staying)).toBe("p1 units 3");
-    expect(result.moved).toEqual([staying.id]);
+    // Ring order from p1's seat: p1's lanes 1 to 5, then p2's 5 down to 1 (§3.1).
+    expect(result.moved).toEqual([staying.id, theirs.id]);
     expect(staying.costOverride).toBeUndefined();
   });
 

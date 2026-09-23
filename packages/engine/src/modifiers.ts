@@ -2,7 +2,7 @@
 
 import type { DistributiveOmit, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
-import type { DelayedEffect, GameState, PlayerModifier, Resume } from "./state";
+import { findInstance, type DelayedEffect, type GameState, type PlayerModifier, type Resume } from "./state";
 import type { EngineSink } from "./resolve";
 
 export function addModifier(
@@ -23,6 +23,45 @@ export function removeModifier(sink: EngineSink, player: PlayerId, id: string): 
   side.mods = side.mods.filter((mod) => mod.id !== id);
   if (side.mods.length !== before) {
     sink.events.push({ type: "modifierChanged", player, modifierId: id, added: false });
+  }
+}
+
+/**
+ * The modifiers a permanent installed and still owns (`sourceId`, #79 Twinspell) move with it when
+ * its controller changes (§5.1, §8 conventions: "your" is the controller). Each keeps its id, and
+ * the move is reported as the removal from one seat and the addition to the other, which is what
+ * R169's badges on both seats read.
+ */
+export function moveSourcedModifiers(sink: EngineSink, sourceId: string, from: PlayerId, to: PlayerId): void {
+  if (from === to) return;
+  const side = sink.state.players[from];
+  const moving = side.mods.filter((mod) => "sourceId" in mod && mod.sourceId === sourceId);
+  if (moving.length === 0) return;
+  side.mods = side.mods.filter((mod) => !moving.includes(mod));
+  for (const mod of moving) {
+    sink.events.push({ type: "modifierChanged", player: from, modifierId: mod.id, added: false });
+    sink.state.players[to].mods.push(mod);
+    sink.events.push({ type: "modifierChanged", player: to, modifierId: mod.id, added: true });
+  }
+}
+
+/**
+ * R209: a modifier a permanent installed and still owns (`sourceId`, #79 Twinspell's "the next
+ * Spell you play gains Echo") is that permanent's lasting effect (§5.1), so it lasts while the
+ * permanent stays on the field and ends when it leaves — destroyed (#36, #88), bounced (#52's
+ * radiant crossing, a Locked rotation or swap), exiled (#34, #100), eaten (#22), replaced (#83) or
+ * fused away (#85). A card that later stands on the field under the same id is a new arrival that
+ * installs its own (R174). The state check runs this, since it follows every action and every whole
+ * effect (§4.5, R59), and each removal is reported like any other (R169).
+ */
+export function endOrphanedModifiers(sink: EngineSink): void {
+  for (const player of PLAYER_IDS) {
+    for (const mod of [...sink.state.players[player].mods]) {
+      if (!("sourceId" in mod) || mod.sourceId === undefined) continue;
+      const source = findInstance(sink.state, mod.sourceId);
+      if (source !== undefined && source.zone.z === "field") continue;
+      removeModifier(sink, player, mod.id);
+    }
   }
 }
 
@@ -60,8 +99,16 @@ export function scheduleDelayed(
   owner: PlayerId,
   at: DelayedEffect["at"],
   resume: Resume,
+  watch?: string,
 ): DelayedEffect {
-  const effect: DelayedEffect = { id: `d${sink.state.nextSeq}`, seq: sink.state.nextSeq, owner, at, resume };
+  const effect: DelayedEffect = {
+    id: `d${sink.state.nextSeq}`,
+    seq: sink.state.nextSeq,
+    owner,
+    at,
+    resume,
+    ...(watch === undefined ? {} : { watch }),
+  };
   sink.state.nextSeq += 1;
   sink.state.delayed.push(effect);
   return effect;

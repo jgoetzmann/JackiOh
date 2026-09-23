@@ -53,6 +53,11 @@ export function delay(args: {
   hook?: string;
   /** What the continuation carries across the boundary — the only place it may keep anything. */
   data?: Record<string, unknown>;
+  /**
+   * R174: the card on the field this effect is aimed at, if any. The effect is forgotten the moment
+   * that card leaves the field, so it never lands on a card that left and came back (#50).
+   */
+  watch?: string;
 }): Effect {
   return {
     kind: "delay",
@@ -68,6 +73,7 @@ export function delay(args: {
         ctx.controller,
         { phase: args.at.phase, player: playerOf(ctx, args.at.player) },
         resume,
+        args.watch,
       );
     },
   };

@@ -28,7 +28,7 @@ import type { EngineSink, HookName } from "./resolve";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
-import { runTrapWindow } from "./traps";
+import { endHandedOverTurn, runTrapWindow } from "./traps";
 import { queueHooksInTriggerOrder, settle } from "./triggers";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, cardAt, slotsOf } from "./zones";
@@ -81,6 +81,11 @@ function runDelayed(sink: EngineSink, phase: "start" | "end", player: PlayerId):
   for (const effect of dueDelayed(sink.state, phase, player)) {
     // One entry at a time in R68's order: a prompt, or a game that has just ended, stops the run.
     if (isPaused(sink)) return;
+    // R174: an earlier entry's resolution can end a later one — the state check after #50's first
+    // steal kills a second steal's target, and `zones.forgetWatchers` drops the entry aimed at it
+    // even if Reborn brings the card straight back. The list above was read before either ran, so
+    // an entry is run only while `state.delayed` still holds it.
+    if (!sink.state.delayed.some((due) => due.id === effect.id)) continue;
     dropDelayed(sink.state, effect.id);
     runResume(sink, effect.resume, { controller: effect.owner });
     stateCheck(sink);
@@ -145,6 +150,16 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   const side = state.players[player];
   side.turnsStarted += 1;
   side.turnLog = { playedIds: [], cardsPlayed: 0 };
+  // "This turn" is this turn for both players (§6.2 Combo, #38's "cards you played earlier this
+  // turn"): a card the other player casts during it (a cast on draw, R40, R70) counts from zero,
+  // not on top of what they played on their own turn before. `unspentAtEnd` is the close of their
+  // last turn (§2.2 cleanup) and stays.
+  const other = state.players[opponentOf(player)];
+  other.turnLog = {
+    playedIds: [],
+    cardsPlayed: 0,
+    ...(other.turnLog.unspentAtEnd === undefined ? {} : { unspentAtEnd: other.turnLog.unspentAtEnd }),
+  };
   // R152's backstop: the lockout ends at the cleanup of the turn it was set for, so by now it is
   // already false for the player whose turn My Pawn took. This clears one set on the other player.
   side.aiTurn = false;
@@ -279,6 +294,7 @@ function cleanup(sink: EngineSink, player: PlayerId): void {
   expireModifiers(sink, player);
   const side = sink.state.players[player];
   side.turnLog.unspentAtEnd = side.mana.current;
+  if (side.aiTurn) endHandedOverTurn(sink);
   side.aiTurn = false;
   clearReturnFlags(sink.state, player);
 }
@@ -478,9 +494,23 @@ export function offerDraw(sink: EngineSink, player: PlayerId): void {
   sink.events.push({ type: "drawOffered", player });
 }
 
+/**
+ * R36: whether `player` has an offer to answer — the active opponent offered this turn and it has
+ * not been answered yet. `legalActions` and the reducer both ask this, so a declined offer is gone
+ * from both at once.
+ */
+export function hasStandingDrawOffer(state: GameState, player: PlayerId): boolean {
+  const offering = opponentOf(player);
+  return state.active === offering && state.players[offering].drawOffer.offeredTurn === state.turn;
+}
+
 export function answerDraw(sink: EngineSink, player: PlayerId, accept: boolean): void {
   sink.events.push({ type: "drawAnswered", player, accept });
   const offering = opponentOf(player);
+  // §2.5, R36: an offer is answered once; afterwards there is nothing standing to accept. The
+  // once-per-turn limit does not need the record: a declined offer blocks its player's next
+  // DRAW_OFFER_BLOCK_TURNS turns, this one included, and an accepted one ends the game.
+  delete sink.state.players[offering].drawOffer.offeredTurn;
   if (accept) {
     sink.state.result = { winner: "draw", reason: "draw-accepted" };
     sink.state.phase = "over";

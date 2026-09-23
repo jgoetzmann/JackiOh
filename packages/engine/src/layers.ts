@@ -35,6 +35,13 @@ export function faceOf(state: GameState, instance: CardInstance): { attack: numb
   };
 }
 
+/** §3.2, R13: a card in a unit zone that is not the top of its pile. */
+function isDormant(state: GameState, instance: CardInstance): boolean {
+  const zone = instance.zone;
+  if (zone.z !== "field" || zone.row !== "units") return false;
+  return cardAt(state, { player: zone.player, row: zone.row, lane: zone.lane })?.id !== instance.id;
+}
+
 /** Every permanent whose aura is in play, in lane order per side (§10.4 layer 5). */
 function auraSources(state: GameState): CardInstance[] {
   return PLAYER_IDS.flatMap((player: PlayerId) => [
@@ -96,8 +103,11 @@ export function unitView(state: GameState, instance: CardInstance): UnitView {
   attack += instance.buffs.attack;
   maxHealth += instance.buffs.health;
 
-  // Layer 5: auras.
-  const auras = auraMods(state, instance);
+  // Layer 5: auras. A card dormant under a Stack pile is "not on the field for effects" (§3.2, R13)
+  // and an aura is one, so none reaches it: it keeps its damage and its own layers 1 to 4, and the
+  // board's auras apply again the moment it resumes on top. Without this an aura that shrinks max
+  // health (#46) killed buried cards the top of the pile shielded.
+  const auras = isDormant(state, instance) ? [] : auraMods(state, instance);
   for (const mod of auras) {
     attack += mod.attack ?? 0;
     maxHealth += mod.maxHealth ?? 0;

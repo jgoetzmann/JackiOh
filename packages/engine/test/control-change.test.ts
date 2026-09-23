@@ -303,16 +303,26 @@ describe("R171 a change of control is an entry (§4.1)", () => {
     expect(whyCannotAttack(state, alongSpent, hero("p2"))).toBe("that unit has already acted this turn");
   });
 
-  it("R171 a radiant rotation crosses nothing and marks nothing", () => {
+  it("R171 a radiant rotation bounces what it would lose, marks what crosses onto its side, and nothing that moves along a side", () => {
     const state = playing("cc-rotate-radiant");
     const turn = state.turn;
+    // Rotating right from p1's seat: p1 lane 5 would cross to p2 and is bounced instead (R14);
+    // p2 lane 1 crosses onto p1's side as it would on the base face.
     const along = exhausted(put(state, plain.id, slot("p1", "units", 2)), turn - 1);
     const theirAlong = ready(put(state, plain.id, slot("p2", "units", 3)), turn - 1);
-    put(state, plain.id, slot("p1", "units", 5));
+    const outbound = put(state, plain.id, slot("p1", "units", 5));
+    const inbound = exhausted(put(state, plain.id, slot("p2", "units", 1)), turn - 1);
 
     const events = rotate(state, "right", true);
 
-    expect(eventsOfType(events, "controlChanged")).toEqual([]);
+    expect(eventsOfType(events, "controlChanged").map((e) => e.instanceId)).toEqual([inbound.id]);
+    expect(live(state, outbound).zone.z).toBe("hand");
+    expect(inbound.controller).toBe("p1");
+    expect(inbound.owner).toBe("p2");
+    expect(inbound.summonedTurn).toBe(turn);
+    expect(inbound.exertion).toEqual(FRESH);
+    expect(attackTargets(state, inbound)).toEqual([]);
+
     expect(along.summonedTurn).toBe(turn - 1);
     expect(along.exertion).toEqual({ attacked: true, switched: true });
     expect(theirAlong.summonedTurn).toBe(turn - 1);

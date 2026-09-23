@@ -30,7 +30,7 @@
 import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
 import { NON_ACTIVE_ACTION_TYPES, PROMPT_OPEN_ACTION_TYPES, opponentOf } from "@jackioh/shared";
 import { attackTargets, declareAttack, hasExertion, switchPosition, type AttackTarget } from "./combat";
-import { NONCE_HISTORY, TURN_CAP_PLAYER_TURNS } from "./config";
+import { NONCE_HISTORY, TIMEOUT_ANSWER_CAP, TURN_CAP_PLAYER_TURNS } from "./config";
 import { answerPlayPrompt, isPlayResume, runPlaySteps } from "./playSteps";
 import { playActionsFor } from "./playChoices";
 import { answerPrompt, promptAnswers } from "./prompts";
@@ -41,7 +41,7 @@ import { flagsOf } from "./scripts";
 import { cloneState, findInstance, type CardInstance, type GameState } from "./state";
 import { activatePower, whyCannotActivate } from "./subsystems/heroPower";
 import { settle } from "./triggers";
-import { answerDraw, canOfferDraw, concede, endTurn, offerDraw } from "./turn";
+import { answerDraw, canOfferDraw, concede, endTurn, hasStandingDrawOffer, offerDraw } from "./turn";
 import { activeUnitsOf } from "./zones";
 
 export type ReduceResult = { state: GameState; events: GameEvent[]; error?: string };
@@ -134,8 +134,7 @@ function applyAction(sink: EngineSink, action: Action): string | null {
       return null;
     }
     case "answerDraw": {
-      const offering = opponentOf(action.playerId);
-      if (state.players[offering].drawOffer.offeredTurn !== state.turn) return "there is no draw offer to answer";
+      if (!hasStandingDrawOffer(state, action.playerId)) return "there is no draw offer to answer";
       answerDraw(sink, action.playerId, action.accept);
       return null;
     }
@@ -145,23 +144,8 @@ function applyAction(sink: EngineSink, action: Action): string | null {
     case "endTurn":
       endTurn(sink);
       return null;
-    case "timeout": {
-      // R79: answer the prompt of whoever ran out of time, then end the turn if that was the
-      // active player. The AI policy answers, so a timeout is as deterministic as any action.
-      const pending = state.pending;
-      if (pending !== null) {
-        const answers = legalActions(state, pending.playerId);
-        const pick = answers[sink.rng.int(answers.length)];
-        if (pick !== undefined) {
-          const error = applyAction(sink, { ...pick, playerId: pending.playerId, nonce: action.nonce } as Action);
-          if (error !== null) return error;
-        }
-        if (pending.playerId !== state.active) return null;
-      }
-      if (state.pending !== null) return null;
-      if (state.phase === "main") endTurn(sink);
-      return null;
-    }
+    case "timeout":
+      return timeout(sink, action);
     case "disconnectExpired": {
       const winner = opponentOf(action.player);
       state.result = { winner, reason: "disconnect" };
@@ -179,6 +163,51 @@ function applyAction(sink: EngineSink, action: Action): string | null {
     default:
       return "unknown action";
   }
+}
+
+/**
+ * R79 and §2.5: `timeout` "answers only the prompts of the player whose clock ran out, using the AI
+ * policy, and ends the turn only when that is the active player". The AI policy answers, so a
+ * timeout is as deterministic as any action.
+ *
+ * - The non-active player's clock is a prompt clock: on expiry it answers that one prompt of theirs,
+ *   and with none of theirs open it does nothing — it never touches the active player's prompt or
+ *   turn.
+ * - The active player's clock is the turn clock: every prompt of theirs that is open, or that an
+ *   answer opens in turn (a chain like KY's Private Tutor's), is answered, and then the turn ends.
+ *   A prompt the other player holds stops it there, since that one has a clock of its own, and it
+ *   stops once the turn has passed, so nothing on the next turn is answered for anybody.
+ */
+function timeout(sink: EngineSink, action: Extract<Action, { type: "timeout" }>): string | null {
+  const who = action.playerId;
+  const turn = sink.state.turn;
+  const turnClock = who === sink.state.active;
+
+  for (let step = 0; step < TIMEOUT_ANSWER_CAP; step += 1) {
+    const state = sink.state;
+    if (state.result !== null || state.turn !== turn) return null;
+
+    const pending = state.pending;
+    if (pending !== null) {
+      if (pending.playerId !== who) return null;
+      // R79: the AI policy answers, and it never concedes (R84), so the draw is over the prompt's
+      // own answers — the concede R211 also offers is not one of them.
+      const answers = legalActions(state, who).filter((body) => body.type !== "concede");
+      const pick = answers[sink.rng.int(answers.length)];
+      if (pick === undefined) return null;
+      const error = applyAction(sink, { ...pick, playerId: who, nonce: action.nonce } as Action);
+      if (error !== null) return error;
+      if (!turnClock) return null;
+      // The answer's own resolution loop, so a prompt it leads to is open before the next look.
+      settle(sink);
+      continue;
+    }
+
+    if (!turnClock || state.active !== who || state.phase !== "main") return null;
+    endTurn(sink);
+    settle(sink);
+  }
+  return null;
 }
 
 /** §2.5: when nothing but ending the turn is left, the turn ends by itself. */
@@ -282,19 +311,26 @@ export function legalActions(state: GameState, player: PlayerId): ActionBody[] {
 
   const pending = state.pending;
   if (pending !== null) {
-    if (pending.playerId !== player) return [];
+    // R211: a prompt blocks everything but its own answer and the actions that end a game, and
+    // `reduce` accepts a concede from either seat while it is open (§2.5, BUILD M1-T3) — so both
+    // seats are offered it, as they are at every other moment of a live game. §10.7's policy never
+    // takes it (R84), so what the policy draws from is still that prompt's answers alone.
+    const concede: ActionBody = { type: "concede" };
+    if (pending.playerId !== player) return [concede];
     if (pending.kind === "mulligan") {
-      return mulliganSubsets(pending.options.map((option) => option.key)).map((keep) => ({
-        type: "mulligan" as const,
-        keep,
-      }));
+      return [
+        ...mulliganSubsets(pending.options.map((option) => option.key)).map((keep) => ({
+          type: "mulligan" as const,
+          keep,
+        })),
+        concede,
+      ];
     }
-    return promptAnswers(pending);
+    return [...promptAnswers(pending), concede];
   }
 
   const out: ActionBody[] = [];
-  const offering = opponentOf(player);
-  if (state.players[offering].drawOffer.offeredTurn === state.turn && state.active === offering) {
+  if (hasStandingDrawOffer(state, player)) {
     out.push({ type: "answerDraw", accept: true }, { type: "answerDraw", accept: false });
   }
 

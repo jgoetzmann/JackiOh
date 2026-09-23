@@ -27,9 +27,18 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-079");
 
-/** The two faces differ only in how many extra resolutions the next spell gets. */
+/**
+ * The two faces differ only in how many extra resolutions the next spell gets.
+ *
+ * R209: the grant is this permanent's lasting effect, so the engine ends the rider the moment the
+ * card leaves the field (bounced, destroyed, exiled, eaten, replaced, fused away) and reads the
+ * amount off the face the card wears when a Spell takes it — `echoGrant` — so a Twinspell made
+ * Radiant on the field (#49 radiant) grants "Echo +2" from then on without its Cry firing again
+ * (§5.2). The rider's own `amount` is what the badge shows until then (R169).
+ */
 function twinspell(amount: number): Script {
   return {
+    staticFlags: { echoGrant: amount },
     cry: (ctx) => {
       const source = ctx.self;
       return [

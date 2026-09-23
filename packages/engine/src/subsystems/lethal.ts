@@ -12,6 +12,7 @@ import type { AttackTarget } from "../combat";
 import { heroArmorOf, heroDamageCap } from "../damage";
 import { unitView } from "../layers";
 import type { CardInstance, GameState } from "../state";
+import { adjacent, cardAt, slotOf } from "../zones";
 
 /**
  * The hero a hit on this target can reach: the hero itself, or, through Trample, the target unit's
@@ -41,8 +42,9 @@ export function projectedHeroDamage(state: GameState, player: PlayerId, amount: 
  * §4.4 step 9: what a Trample source's hit on a unit passes on to that unit's hero. Steps 1, 2, 4
  * and the zero rule can all end the hit on the unit, and then nothing tramples through.
  *
- * R44 counts the excess of the declared attack. Cleave's extra instances (step 10) are their own
- * hits on other units and are not part of the projection the ruling names.
+ * R176: every hit of the attack counts, Cleave's (step 10) included — R63 makes Cleave belong to
+ * the attack rather than to the hit on the defender, and R44 counts "Trample excess from an attack
+ * on a unit". `projectedDamage` below asks this once per unit the attack strikes.
  */
 function trampleExcess(
   state: GameState,
@@ -77,7 +79,50 @@ export function projectedDamage(state: GameState, attacker: CardInstance, target
   const attack = unitView(state, attacker).attack;
   const hero = defendingHero(target);
   if (target.kind === "hero") return projectedHeroDamage(state, hero, attack);
-  return projectedHeroDamage(state, hero, trampleExcess(state, attacker, target.instance, attack));
+  // R176, §4.3 step 1: an attacker a First Strike defender destroys first deals nothing at all —
+  // no hit on the defender and so no Cleave either — so nothing of it can reach the hero.
+  if (fallsToFirstStrike(state, attacker, target.instance)) return 0;
+  // Each hit is its own damage instance on the hero, so Armor and the cap apply to each (§4.4).
+  return struckBy(state, attacker, target.instance).reduce(
+    (total, unit) => total + projectedHeroDamage(state, hero, trampleExcess(state, attacker, unit, attack)),
+    0,
+  );
+}
+
+/**
+ * The units one attack on `defender` strikes: the defender, then — §4.4 step 10 — each unit
+ * adjacent to it on its own side when the attacker has Cleave. Adjacency never crosses sides (§3.1)
+ * and a card dormant under a Stack is not struck (R13).
+ */
+function struckBy(state: GameState, attacker: CardInstance, defender: CardInstance): CardInstance[] {
+  if (!hasKeyword(unitView(state, attacker).keywords, "Cleave")) return [defender];
+  const at = slotOf(state, defender);
+  if (at === null) return [defender];
+  const neighbours = adjacent(at).flatMap((ref) => {
+    const card = cardAt(state, ref);
+    return card === null ? [] : [card];
+  });
+  return [defender, ...neighbours];
+}
+
+/**
+ * §4.3 step 1 and R93, projected: a defender with First Strike, against an attacker without it,
+ * strikes first, and an attacker that falls there never lands its own hit. The strike back runs the
+ * §4.4 steps that can stop it — Divine Shield, Armor, Indestructible and the zero rule — and a
+ * Poisonous defender destroys with any damage at all (step 7).
+ */
+function fallsToFirstStrike(state: GameState, attacker: CardInstance, defender: CardInstance): boolean {
+  const mine = unitView(state, attacker);
+  const theirs = unitView(state, defender);
+  if (!hasKeyword(theirs.keywords, "First Strike") || hasKeyword(mine.keywords, "First Strike")) return false;
+  if (theirs.attack <= 0) return false;
+
+  if (hasKeyword(mine.keywords, "Divine Shield") && attacker.divineShieldSpent !== true) return false;
+  if (hasKeyword(mine.keywords, "Indestructible")) return false;
+  const dealt = Math.max(0, theirs.attack - armorOf(mine.keywords));
+  if (dealt <= 0) return false;
+  if (hasKeyword(theirs.keywords, "Poisonous")) return true;
+  return dealt >= mine.health;
 }
 
 /**

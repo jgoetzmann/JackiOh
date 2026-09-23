@@ -25,6 +25,8 @@ import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
 import { runTrapWindow } from "./traps";
 import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
+import { moveSourcedModifiers } from "./modifiers";
+import { leftFieldSince } from "./stays";
 import { owe, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
@@ -81,10 +83,16 @@ export function isSick(state: GameState, unit: CardInstance): boolean {
  * changes control on the field calls this at the moment it emits `controlChanged`, for every card
  * that changes sides (a card dormant under a Stack and a backrow card included), and for nothing
  * else: a card moving along its own side has not entered anything.
+ *
+ * `from` is the controller the card had before. A player modifier a permanent installed and still
+ * owns (#79 Twinspell's "the next Spell you play gains Echo +1", `sourceId`) is that permanent's
+ * lasting effect (§5.1), and §8's conventions read its "you" as the controller, so it follows the
+ * card to its new side rather than staying with the player it left.
  */
-export function enterNewSide(state: GameState, card: CardInstance): void {
-  card.summonedTurn = state.turn;
+export function enterNewSide(sink: EngineSink, card: CardInstance, from: PlayerId): void {
+  card.summonedTurn = sink.state.turn;
   card.exertion = { attacked: false, switched: false };
+  moveSourcedModifiers(sink, card.id, from, card.controller);
 }
 
 /**
@@ -553,6 +561,11 @@ export function forceAttack(sink: EngineSink, attacker: CardInstance, target: At
   if (state.result !== null) return;
   if (!isActiveOnField(state, attacker)) return;
   if (target.kind === "unit" && !isActiveOnField(state, target.instance)) return;
+  // R173: the compulsion waives position, sickness and Taunt (R53), never whose side the target is
+  // on. A target that is not this attacker's enemy — it changed sides mid-run, or had crossed to
+  // the attacker's side before the run began — is not attacked, and the attacker is passed over in
+  // silence, as R96 passes over one that is gone.
+  if (!isEnemyOf(attacker, target)) return;
 
   sink.events.push({
     type: "attackDeclared",
@@ -565,15 +578,26 @@ export function forceAttack(sink: EngineSink, attacker: CardInstance, target: At
   stateCheck(sink);
 }
 
+/** §4.2 step 2: an attack is made on an enemy unit or the enemy hero, forced or not (R173). */
+function isEnemyOf(attacker: CardInstance, target: AttackTarget): boolean {
+  const enemy = opponentOf(attacker.controller);
+  return target.kind === "hero" ? target.player === enemy : target.instance.controller === enemy;
+}
+
 /**
  * R53: the named units attack the named target one at a time, in the order given (lane order, as
  * `activeUnitsOf` reports it), each its own combat with its own state check, and the sequence stops
- * as soon as the target is no longer on the field.
+ * as soon as the target is no longer on the field — and R174 has a target that left and came back
+ * (a Reborn body) count as gone, since what is standing there now is a new arrival (R83).
  */
 export function forceAttacksOn(sink: EngineSink, attackers: readonly CardInstance[], target: AttackTarget): void {
+  const from = sink.events.length;
   for (const attacker of attackers) {
     if (sink.state.result !== null) return;
-    if (target.kind === "unit" && !isActiveOnField(sink.state, target.instance)) return;
+    if (target.kind === "unit") {
+      if (!isActiveOnField(sink.state, target.instance)) return;
+      if (leftFieldSince(sink.events, from, target.instance.id)) return;
+    }
     forceAttack(sink, attacker, target);
   }
 }

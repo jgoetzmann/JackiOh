@@ -138,6 +138,24 @@ const CARDS_FULLSEND_TEST = "../../cards/test/078-fullsend.test.ts";
 const WEB_ANIMATION_TARGETS_TEST = "../../../apps/web/src/game/animation-targets.test.tsx";
 /** R171's and R172's card-side proofs: the six control-change cards and the stolen Reborn bodies. */
 const CARDS_CONTROL_CHANGE_TEST = "../../cards/test/control-change.test.ts";
+/** R173 to R179's proofs: the polish-4 edge-case hunt, one file per topic (docs/polish/4-edge-cases.md). */
+const CARDS_FORCED_ATTACKS_TEST = "../../cards/test/forced-attacks.test.ts";
+const CARDS_RE_ENTRY_TEST = "../../cards/test/re-entry.test.ts";
+const CARDS_COMBAT_WINDOWS_TEST = "../../cards/test/combat-windows.test.ts";
+const CARDS_HIDDEN_INFORMATION_TEST = "../../cards/test/hidden-information.test.ts";
+const CARDS_ECHO_AND_EXILE_TEST = "../../cards/test/echo-and-exile.test.ts";
+const CARDS_FUSE_REGISTRY_TEST = "../../cards/test/fuse-registry.test.ts";
+/** R209 to R211's proofs: the hunt's second round (docs/polish/4-edge-cases.md). */
+const CARDS_LASTING_EFFECTS_TEST = "../../cards/test/lasting-effects.test.ts";
+const CARDS_PLAYS_AND_CASTS_TEST = "../../cards/test/plays-and-casts.test.ts";
+const CARDS_PLAY_CHOICES_TEST = "../../cards/test/play-choices.test.ts";
+/** R212 to R214's proofs, and the round's proofs of older rows: the hunt's third round. */
+const CARDS_TRIGGER_STAYS_TEST = "../../cards/test/trigger-stays.test.ts";
+const CARDS_RESOLVING_FACE_TEST = "../../cards/test/resolving-face.test.ts";
+const CARDS_AFTER_RESOLUTION_TEST = "../../cards/test/after-resolution.test.ts";
+const CARDS_STACKS_AND_REBORN_TEST = "../../cards/test/stacks-and-reborn.test.ts";
+const CARDS_HAND_RETURNS_TEST = "../../cards/test/hand-returns.test.ts";
+const CARDS_TRIBUTES_TEST = "../../cards/test/tributes.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -178,10 +196,12 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by rulings-a.test.ts "R4 caps the hand at 10 and burns an extra draw to the graveyard";
-  // callToChaos.test.ts "R4 a full hand burns what the draw and the added cards cannot fit".
+  // callToChaos.test.ts "R4 a full hand burns what the draw and the added cards cannot fit";
+  // effects-cost.test.ts and the cards package's hand-returns.test.ts "R4 …" (a burned card keeps
+  // its cost: #31's +1 and #37r's 1 less are the price of a return it never made).
   it("R4 caps the hand at 10 and burns the overflow to the graveyard", () => {
     expect(config.HAND_CAP).toBe(10);
-    provenIn(4, "rulings-a.test.ts", "callToChaos.test.ts");
+    provenIn(4, "rulings-a.test.ts", "callToChaos.test.ts", "effects-cost.test.ts", CARDS_HAND_RETURNS_TEST);
   });
 
   // Proved by rulings-a.test.ts "R5 does not restrict attacks by lane: any unit may attack any enemy unit or
@@ -243,9 +263,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R13 keeps a card under a Stack off the field: it neither acts nor can be
   // targeted"; combat-validation.test.ts "R13 refuses an attack by a card dormant under a Stack (§3.2)",
   // "R13 refuses a dormant card under a Stack as a target too (§3.2)"; effects-radiant.test.ts "R13 offers
-  // only the top of a Stack pile, never the dormant card beneath".
+  // only the top of a Stack pile, never the dormant card beneath"; the cards package's
+  // stacks-and-reborn.test.ts "R13 …" (§4.5's check never collects a dormant card).
   it("R13 keeps a card dormant under a Stack off the field", () => {
-    provenIn(13, "rulings-a.test.ts", "combat-validation.test.ts", "effects-radiant.test.ts");
+    provenIn(13, "rulings-a.test.ts", "combat-validation.test.ts", "effects-radiant.test.ts", CARDS_STACKS_AND_REBORN_TEST);
   });
 
   // M4 owns #52 Silly Silas itself; the rotation subsystem is the machinery its script calls.
@@ -419,9 +440,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // M4 owns #83 Transmogulate and its pool: its card test proves the ruling on the real script.
   // Proved by rulings-a.test.ts "R35 replaces a board card in place with its own type, and the replaced card
   // ceases to exist"; effects-transform.test.ts "R35 the replaced card ceases to exist: no graveyard, no
-  // exile and no Death", "R35 replaces a hand card and keeps a library card at its index".
+  // exile and no Death", "R35 replaces a hand card and keeps a library card at its index"; the cards
+  // package's hidden-information.test.ts "R35 …" (an Immutable library card is replaced too).
   it("R35 replaces a board card in place with its own type, and the replaced card ceases to exist", () => {
-    provenIn(35, "rulings-a.test.ts", "effects-transform.test.ts");
+    provenIn(35, "rulings-a.test.ts", "effects-transform.test.ts", CARDS_HIDDEN_INFORMATION_TEST);
   });
 
   // Proved by rulings-a.test.ts "R36 lets only the active player offer a draw, once a turn, and a decline
@@ -669,9 +691,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-b.test.ts "R68 orders triggers active side first, units by lane, then backrow, hand and
   // graveyard, delayed by creation"; turn.test.ts "R68 resolves two end-of-turn triggers on one side in
   // lane order"; statecheck.test.ts "R68: one effect kills six units in one check and fires six Death
-  // triggers, active side first, then lane order".
+  // triggers, active side first, then lane order"; the cards package's tributes.test.ts "R68 …" (a
+  // Tribute's Deaths in lane order, whatever order the play lists them in).
   it("R68 orders triggers by side, then lane, then hand and graveyard, and delayed effects by creation", () => {
-    provenIn(68, "rulings-b.test.ts", "turn.test.ts", "statecheck.test.ts");
+    provenIn(68, "rulings-b.test.ts", "turn.test.ts", "statecheck.test.ts", CARDS_TRIBUTES_TEST);
   });
 
   // Proved by rulings-b.test.ts "R69 collects an Indestructible unit whose max health falls to 0, and leaves
@@ -1355,9 +1378,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-c.test.ts "R155 flags a Spell that asks to return as step 7 lands it in the
   // graveyard, and clears it that turn", "R155 makes the flag alone the graveyard's gate, so this
   // turn's play log is not enough"; trigger-zones.test.ts "R155 the flag, not the turn log, is what
-  // lets a graveyard spell answer its return".
+  // lets a graveyard spell answer its return"; the cards package's hand-returns.test.ts "R155 …" (the
+  // flag is cleared as the card leaves the graveyard).
   it("R155 sets the return-to-hand flag at step 7 and clears it at the end of that turn", () => {
-    provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts");
+    provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts", CARDS_HAND_RETURNS_TEST);
   });
 
   // Proved by death-pause.test.ts "R156 owes step 3 in full rather than firing a Death hook into an
@@ -1492,6 +1516,87 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // control-change.test.ts with #81 Radiant Saintess and radiant #3 Right-house defender.
   it("R172 has a stolen unit die as its controller's: Death for that player, Reborn on that side", () => {
     provenIn(172, "control-change.test.ts", CARDS_CONTROL_CHANGE_TEST);
+  });
+
+  // Proved by forced-attacks.test.ts's "R173 …" tests: #86 stealing #9 mid-run, and radiant #60's
+  // tokens against a #52 Silly Silas that crossed onto their side.
+  it("R173 makes a forced attack on an enemy only: a target on the attacker's own side is passed over", () => {
+    provenIn(173, CARDS_FORCED_ATTACKS_TEST);
+  });
+
+  // Proved by re-entry.test.ts's "R174 …" tests (#50's steal after a Stack, a bounce and replay, a
+  // Reborn), forced-attacks.test.ts's (a run against a Reborn body), after-resolution.test.ts's (a
+  // trap answering a play an earlier trap took off the field) and tributes.test.ts's (a target the
+  // play's own Tribute sacrificed).
+  it("R174 makes a card that left the field and came back a new arrival for the effects aimed at it", () => {
+    provenIn(174, CARDS_RE_ENTRY_TEST, CARDS_FORCED_ATTACKS_TEST, CARDS_AFTER_RESOLUTION_TEST, CARDS_TRIBUTES_TEST);
+  });
+
+  // Proved by re-entry.test.ts's "R175 …" tests: a Rush Token given Reborn, and a Reborn Fiender
+  // fused by #85 that died on top of its pile; stacks-and-reborn.test.ts's: a Bread Token's X/X.
+  it("R175 has Reborn bring back a unit token, and return a unit onto the pile it died on top of", () => {
+    provenIn(175, CARDS_RE_ENTRY_TEST, CARDS_STACKS_AND_REBORN_TEST);
+  });
+
+  // Proved by combat-windows.test.ts's "R176 …" tests: First Strike first, and Cleave's Trample.
+  it("R176 has My Pawn's projection follow the combat: First Strike first, every Cleave hit counted", () => {
+    provenIn(176, CARDS_COMBAT_WINDOWS_TEST);
+  });
+
+  // Proved by hidden-information.test.ts's "R177 …" tests: a face-down prompt option, Transmogulate's
+  // replacements (kept hidden after their replacement goes public), cost changes and buffs in a
+  // hidden hand or a library, and a modifier id no hidden card numbered. The row's known limit, a
+  // face-down trap named in `legalActions` by an id seen while it was public, is pinned by an
+  // expected failure in turn-clock-and-legality.test.ts.
+  it("R177 hides what R97 did not name: face-down prompt options, replaced hidden cards, hidden costs", () => {
+    provenIn(177, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by echo-and-exile.test.ts's "R178 …" tests: True Strike and Pocket Chaos with Twinspell.
+  it("R178 makes a Spell's 'exile this' its landing, and takes Twinspell's grant as the Spell is played", () => {
+    provenIn(178, CARDS_ECHO_AND_EXILE_TEST);
+  });
+
+  // Proved by fuse-registry.test.ts's "R179 …" test: two matches, one process, one fusion slot.
+  it("R179 names a fused definition's ingredients in its id, so matches in one process never share one", () => {
+    provenIn(179, CARDS_FUSE_REGISTRY_TEST);
+  });
+
+  // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,
+  // destroyed, and stolen and made Radiant by #49.
+  it("R209 has a permanent's lasting effect last while it is on the field, and follow its face", () => {
+    provenIn(209, CARDS_LASTING_EFFECTS_TEST);
+  });
+
+  // Proved by plays-and-casts.test.ts's "R210 …" tests: The Rock tributing a Reborn unit, and a
+  // radiant Right-house defender whose Death summons into the row The Rock is going to.
+  it("R210 holds the zone a play names while its Tribute is paid", () => {
+    provenIn(210, CARDS_PLAYS_AND_CASTS_TEST);
+  });
+
+  // Proved by prompts.test.ts and reduce.test.ts "R211 …" (a fixture prompt, the mulligan) and the
+  // cards package's play-choices.test.ts with #51 KY's Private Tutor's prompt.
+  it("R211 offers concede to both seats while a prompt is open, which the policy never takes", () => {
+    provenIn(211, "prompts.test.ts", "reduce.test.ts", CARDS_PLAY_CHOICES_TEST);
+  });
+
+  // Proved by stays.test.ts "R212 …" (the event stream's reading) and the cards package's
+  // trigger-stays.test.ts "R212 …": #91 and #32 on a Reborn body, #89 drawn after a death, and #32
+  // drawing for the player who controlled it at the kill that #86's Death then stole it from.
+  it("R212 offers an event to the cards as they stood when it happened", () => {
+    provenIn(212, "stays.test.ts", CARDS_TRIGGER_STAYS_TEST);
+  });
+
+  // Proved by resolving-face.test.ts "R213 …": a Gifted Program stolen after firing, one bounced and
+  // replayed, and a cheap card played before one arrived.
+  it("R213 counts Gifted Program's first cheap card over its controller's plays that turn", () => {
+    provenIn(213, CARDS_RESOLVING_FACE_TEST);
+  });
+
+  // Proved by resolving-face.test.ts "R214 …": #87 radiant's skip, #48 radiant's enemy-only switch
+  // and a crafted Bigot + Twisted Sorcerer, each made Radiant by #64 as it is played.
+  it("R214 reads a play's targets and modes against the face it will resolve with", () => {
+    provenIn(214, CARDS_RESOLVING_FACE_TEST);
   });
 });
 

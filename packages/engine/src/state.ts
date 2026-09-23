@@ -52,7 +52,11 @@ export type CardInstance = {
   tauntSuppressedTurn?: number;
   /** A backrow card whose identity is public, e.g. a Field Trap that has fired (R33). */
   faceUp?: boolean;
-  /** Instance id of the last damage source, for "destroys a unit" (R42). */
+  /**
+   * Instance id of the source whose damage instance was lethal — the hit that took this unit from
+   * above 0 health to 0 or less, or a Poisonous hit — for "destroys a unit" (R42, R89). Unset while
+   * no hit has killed it (`damage.creditKiller`).
+   */
   lastDamagedBy?: string;
   /** Divine Shield has absorbed a hit and is gone until granted again (§6.1). */
   divineShieldSpent?: boolean;
@@ -91,6 +95,13 @@ export type DelayedEffect = {
   at: { phase: "start" | "end"; player: PlayerId };
   /** A serializable continuation: script id, hook name, captured data (§10.6). */
   resume: Resume;
+  /**
+   * R174: the instance this effect is aimed at, when it is aimed at one on the field (#50 Kpop
+   * Fanatic's chosen permanent). The entry is dropped the moment that card leaves the field
+   * (`zones.moveToZone`), so a card that comes back — bounced and replayed, or a Reborn body — is a
+   * new arrival the effect never chose, and R76's "fizzles if the target has left the field" holds.
+   */
+  watch?: string;
 };
 
 export type Resume = {
@@ -192,6 +203,13 @@ export type TurnLog = {
   playedIds: string[];
   cardsPlayed: number;
   unspentAtEnd?: number;
+  /**
+   * The cost each play this turn actually paid (R56), in play order beside `playedIds`, a cast's 0
+   * included (R70). #64 Gifted Program's "the first card costing 1 or less you play each turn" is
+   * the player's count, not the card's (R213). Optional so a log written without it reads as no
+   * plays; `startTurn` rebuilds the log, which clears it.
+   */
+  costsPaid?: number[];
 };
 
 export type PlayerState = {

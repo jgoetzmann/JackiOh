@@ -12,6 +12,7 @@ import { legalActions, reduce } from "../reduce";
 import type { EngineSink } from "../resolve";
 import type { Rng } from "../rng";
 import type { GameState } from "../state";
+import { markDispatched } from "../triggers";
 
 /**
  * A playout covers one turn, so this ceiling is far above any reachable turn; it exists only so a
@@ -40,8 +41,9 @@ export function policyActions(state: GameState, player: PlayerId, options: Polic
 
 /**
  * One step of the policy (§10.7): end the turn when nothing else is on offer, otherwise end it with
- * AI_END_TURN_PROBABILITY, otherwise pick uniformly. With a prompt open `legalActions` offers only
- * its answers, so the same uniform draw is what "prompts are answered uniformly" means (R44).
+ * AI_END_TURN_PROBABILITY, otherwise pick uniformly. With a prompt open `legalActions` offers its
+ * answers and the concede R211 adds, which the skipped set removes, so the same uniform draw is what
+ * "prompts are answered uniformly" means (R44).
  * Returns null only when the player has no action at all.
  */
 export function chooseAction(
@@ -97,15 +99,21 @@ function adoptState(sink: EngineSink, next: GameState): void {
 
 /**
  * Play this player's turn out with the policy (R44: "it plays out the turn while the opponent is
- * locked out"). Stops when the turn has passed to the other player, when the open prompt is
- * somebody else's, when the game is over, or at AI_PLAYOUT_STEP_CAP.
+ * locked out"). Stops when the turn it started on is over — passed to the other player, or back to
+ * this player as a later turn of their own (R152) — when the open prompt is somebody else's, when
+ * the game is over, or at AI_PLAYOUT_STEP_CAP.
  */
 export function playOutTurn(sink: EngineSink, player: PlayerId, options: PolicyOptions = {}): PlayoutResult {
   const actions: Action[] = [];
+  // R44, R152: the AI plays out the rest of THIS turn. The turn it ends can come straight back to
+  // the same player inside that one reduction — R82 auto-ends an opponent who has nothing to do — and
+  // that later turn is the player's own, so the playout stops at the first turn it did not start on.
+  const turn = sink.state.turn;
 
   for (let step = 0; step < AI_PLAYOUT_STEP_CAP; step += 1) {
     const state = sink.state;
     if (state.result !== null) return { actions, stopped: "gameOver" };
+    if (state.turn !== turn) return { actions, stopped: "turnEnded" };
     if (state.pending !== null) {
       // Someone else's prompt blocks every action of ours (§9.3), so the playout waits.
       if (state.pending.playerId !== player) return { actions, stopped: "promptElsewhere" };
@@ -121,7 +129,10 @@ export function playOutTurn(sink: EngineSink, player: PlayerId, options: PolicyO
     if (result.error !== undefined) return { actions, stopped: "rejected", error: result.error };
 
     adoptState(sink, result.state);
+    // §10.3: `reduce` has already run these through its own resolution loop, so they are reported
+    // (R168's window) but never offered to the traps and the trigger queue a second time.
     sink.events.push(...result.events);
+    markDispatched(result.events);
     actions.push(action);
   }
 

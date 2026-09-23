@@ -34,10 +34,10 @@
 import type { Action, ActionInput, CardDef, GameEvent } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { registerCatalog, registeredCatalog } from "../src/catalog";
-import { castTailOf } from "../src/echo";
+import { PLAY_WORK_KIND, runOf } from "../src/playSteps";
 import { openPrompt, resumeSelf } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
-import { CAST_CRY_WORK, castCard } from "../src/resolve";
+import { castCard } from "../src/resolve";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
 import { DEATHS_WORK, owedDeathsOf, stateCheck } from "../src/stateCheck";
@@ -421,9 +421,11 @@ describe("a prompt inside a cast's Cry (§10.5, R70, R113, R122)", () => {
     expect(eventsOfType(events, "cardResolved")).toEqual([]);
     expect(inGraveyard(state, card)).toBe(false);
 
-    // R113: the tail is owed, as plain data, and survives a round trip (§9.3, §10.1).
-    const parked = only(owedWork(state, CAST_CRY_WORK));
-    expect(castTailOf(parked.resume)?.instanceId).toBe(card.id);
+    // R113: the tail is owed, as plain data, and survives a round trip (§9.3, §10.1). A cast is
+    // §10.5's pipeline (R70), so what it owes is the rest of that pipeline, marked as a cast.
+    const parked = only(owedWork(state, PLAY_WORK_KIND));
+    expect(runOf(parked.resume)?.instanceId).toBe(card.id);
+    expect(runOf(parked.resume)?.cast).toBe(true);
     expect(JSON.parse(JSON.stringify(parked))).toEqual(parked);
 
     const done = answer(roundTrip(state));

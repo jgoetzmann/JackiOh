@@ -15,6 +15,9 @@ import { sideOf, testid } from "./contract.ts";
 
 export type LogProps = { view: PlayerView };
 
+/** R97: the id an event carries in place of a card this seat may not read (`view.ts`). */
+const HIDDEN_CARD = "hidden";
+
 type Naming = {
   /** A card's printed name, or its def id when no catalog is loaded (see catalog.ts). */
   def: (defId: string) => string;
@@ -82,13 +85,20 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string {
     case "shuffledIn":
       return `${name.seat(event.player)} shuffled a card into the library`;
     case "buffed":
-      return `${name.instance(event.instanceId)} gained +${event.attack}/+${event.health}`;
+      // R177: a buff on a card this seat may not read arrives as the sentinel with 0/0, which says
+      // nothing of its size, so the line does not claim one.
+      return event.instanceId === HIDDEN_CARD
+        ? "A hidden card was buffed"
+        : `${name.instance(event.instanceId)} gained +${event.attack}/+${event.health}`;
     case "keywordGranted":
       return `${name.instance(event.instanceId)} gained ${event.keyword.kind}`;
     case "counterChanged":
       return `${name.instance(event.instanceId)} ${event.counter} counters: ${event.value}`;
     case "costChanged":
-      return `${name.instance(event.instanceId)} now costs ${event.cost}`;
+      // R177: a card this seat may not read arrives with its cost redacted to a negative sentinel.
+      return event.cost < 0
+        ? `${name.instance(event.instanceId)} changed cost`
+        : `${name.instance(event.instanceId)} now costs ${event.cost}`;
     case "modifierChanged":
       return `${name.seat(event.player)} ${event.added ? "gained" : "lost"} ${event.modifierId}`;
     case "radiantSet":

@@ -13,6 +13,18 @@ function cardOf(ctx: EffectContext, spec: TargetSpec): CardInstance | null {
   return target === null || target.kind !== "unit" ? null : target.instance;
 }
 
+/**
+ * R4: a price a card is given as it returns to a hand — #31's "return to hand with cost +1", #37r's
+ * and #72's "it costs 1 less", #72r's "it costs 0" — is the card's price in that hand. A full hand
+ * burns the card instead (§2.4), and a burned card is an ordinary graveyard card that R78 would carry
+ * the change into every later zone, so with `inHandOnly` the change lands only on a card that is in
+ * a hand when it applies: written after the move, it is skipped for a card the move burned. The same
+ * reading `addToHand`'s own riders and radiant #52's "costing 0" already have.
+ */
+function priced(card: CardInstance, inHandOnly: boolean | undefined): boolean {
+  return inHandOnly !== true || card.zone.z === "hand";
+}
+
 /** R65: the event reports what the card costs now, which is `effectiveCost` and nothing else. */
 function emitCost(ctx: EffectContext, card: CardInstance): void {
   ctx.events.push({ type: "costChanged", instanceId: card.id, cost: effectiveCost(ctx.state, card) });
@@ -22,12 +34,12 @@ function emitCost(ctx: EffectContext, card: CardInstance): void {
  * Add to this instance's `costMod` (#7 Jewelosco Scarab's −1, #31 KY's Math Equation's +1 per
  * return, #37r Gravedigger). The change is permanent and travels with the card between zones (R78).
  */
-export function setCostMod(args: { target?: TargetSpec; amount: number }): Effect {
+export function setCostMod(args: { target?: TargetSpec; amount: number; inHandOnly?: boolean }): Effect {
   return {
     kind: "setCostMod",
     apply(ctx): void {
       const card = cardOf(ctx, args.target ?? { of: "self" });
-      if (card === null) return;
+      if (card === null || !priced(card, args.inHandOnly)) return;
       const amount = Math.trunc(args.amount);
       if (amount === 0) return;
       card.costMod += amount;
@@ -41,12 +53,12 @@ export function setCostMod(args: { target?: TargetSpec; amount: number }): Effec
  * Golem, Craft a Card's 0 (R77). R65 starts the calculation from the override in place of the
  * printed cost, then still adds `costMod` and the player's discounts.
  */
-export function setCostOverride(args: { target?: TargetSpec; cost: number }): Effect {
+export function setCostOverride(args: { target?: TargetSpec; cost: number; inHandOnly?: boolean }): Effect {
   return {
     kind: "setCostOverride",
     apply(ctx): void {
       const card = cardOf(ctx, args.target ?? { of: "self" });
-      if (card === null) return;
+      if (card === null || !priced(card, args.inHandOnly)) return;
       card.costOverride = Math.max(0, Math.trunc(args.cost));
       emitCost(ctx, card);
     },

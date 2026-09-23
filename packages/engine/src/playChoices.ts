@@ -96,6 +96,83 @@ export function declaredModes(card: CardInstance): ModeDecl[] {
   return scriptOf(card).modes ?? [];
 }
 
+/**
+ * The target declarations a play with these modes answers (R90, §8 Conventions). A declaration that
+ * belongs to some modes only (`forModes`, #24's damage and heal target) asks for nothing when none
+ * of them was chosen, so it takes no slot of the flat `targets` list — and one that does belong to
+ * the chosen mode asks for its minimum like any other, which is what stops a damage mode from
+ * naming nobody while a target exists.
+ */
+export function activeTargetDecls(decls: readonly TargetDecl[], modes: readonly string[]): TargetDecl[] {
+  return decls.filter((decl) => decl.forModes === undefined || decl.forModes.some((mode) => modes.includes(mode)));
+}
+
+/** Whether any declaration depends on the modes, so the modes are chosen before the targets. */
+export function targetsFollowModes(decls: readonly TargetDecl[]): boolean {
+  return decls.some((decl) => decl.forModes !== undefined);
+}
+
+// ---------------------------------------------------------------------------
+// The face a play resolves with (§10.5 step 3, R213, R214)
+// ---------------------------------------------------------------------------
+
+/** Every permanent that acts for this player: the tops of their unit piles and their backrow (§3.2). */
+function permanentsOf(state: GameState, player: PlayerId): CardInstance[] {
+  return ROWS.flatMap((row) =>
+    slotsOf(player, row).flatMap((ref) => {
+      const held = cardAt(state, ref);
+      return held === null ? [] : [held];
+    }),
+  );
+}
+
+/**
+ * §8 #64 Gifted Program, §10.5 step 3: whether a play this player makes now, paying `costPaid`
+ * (R56's cost actually paid, 0 for a cast, R70), is made Radiant as it is played.
+ *
+ * R213: "the first card costing 1 or less YOU play each turn" is counted over the player's plays,
+ * which the turn log keeps (`costsPaid`), and not over the Field Spell's own history. So the count
+ * stays with the player whatever happens to the card: a Gifted Program that fired for its owner and
+ * was then stolen has not used up its thief's first cheap card, one that was bounced and played
+ * again has not given its player a second, and a card costing 1 or less played before a Gifted
+ * Program arrived was already the first — Hearthstone's Pint-Sized Summoner counts the same way.
+ * Each Gifted Program asks with its own face's threshold (2 or less on the radiant one), and the
+ * card's text is its controller's (§8 Conventions), so only the permanents on this player's side
+ * count. A Vanilla one has no text (`flagsOf`). It never catches its own play: step 3 runs before
+ * step 4 puts it on the field (R119).
+ */
+export function giftedMakesRadiant(state: GameState, player: PlayerId, costPaid: number): boolean {
+  const earlier = state.players[player].turnLog.costsPaid ?? [];
+  return permanentsOf(state, player).some((held) => {
+    const threshold = flagsOf(held).giftedProgram;
+    if (threshold === undefined || costPaid > threshold) return false;
+    return !earlier.some((paid) => paid <= threshold);
+  });
+}
+
+/**
+ * R214: the card whose declarations a play's targets and modes answer — the card as it will
+ * resolve. §10.5 step 3 can make it Radiant as it is played (#64), after step 1 has read the choices
+ * and before step 5 resolves them, and a Radiant face can declare other choices than the face in
+ * hand: #87's "you may skip adding it", #48's "all enemy units, or all units", a crafted card whose
+ * radiant Bigot names no target. So step 1 checks, and `legalActions` offers, the choices of the
+ * face step 5 will run, which is known at step 1: the cost it pays is.
+ */
+export function resolvingFace(state: GameState, player: PlayerId, card: CardInstance, costPaid: number): CardInstance {
+  if (card.radiant || !giftedMakesRadiant(state, player, costPaid)) return card;
+  return { ...card, radiant: true };
+}
+
+/** What a play of this card with these prices would pay, read the way §10.5 step 1 reads it (R65). */
+function costWith(state: GameState, card: CardInstance, x: number | undefined, embiggen: boolean | undefined): number {
+  const probe: CardInstance = {
+    ...card,
+    x: choosesX(state, card) ? (x ?? 0) : card.x,
+    embiggened: hasEmbiggenPrice(state, card) ? embiggen === true : card.embiggened,
+  };
+  return effectiveCost(state, probe);
+}
+
 // ---------------------------------------------------------------------------
 // Zone, X and embiggen
 // ---------------------------------------------------------------------------
@@ -146,9 +223,18 @@ export function legalZonesFor(state: GameState, player: PlayerId, card: CardInst
   return refs.map((ref) => ({ row: ref.row, lane: ref.lane }));
 }
 
+/**
+ * §2.3: whether the player chooses X when playing this card — an X-cost card whose X is not fixed
+ * by a `cost` hook. #98 Heroic Power prints X but "its X is fixed by its power" (§2.3, R43, R65):
+ * its cost hook answers the X, so there is nothing to choose and no X travels in its play.
+ */
+export function choosesX(state: GameState, instance: CardInstance): boolean {
+  return isXCost(state, instance) && scriptOf(instance).cost === undefined;
+}
+
 /** §2.3: "X is chosen at play time, 0 ≤ X ≤ current mana". Not an X-cost card, no X values. */
 export function legalXValues(state: GameState, player: PlayerId, card: CardInstance): number[] {
-  if (!isXCost(state, card)) return [];
+  if (!choosesX(state, card)) return [];
   const mana = state.players[player].mana.current;
   return Array.from({ length: Math.max(0, mana) + 1 }, (_, i) => i);
 }
@@ -403,6 +489,22 @@ function takeFor(decl: TargetDecl, offered: number): number {
   return Math.min(decl.min, offered);
 }
 
+/**
+ * R90's reading of a flat `targets` list: one slice per declaration, in declaration order, measured
+ * against what the board offers each declaration now. A fused card reads its ingredients' slices
+ * this way (R102), each ingredient's script getting only the declarations it made.
+ */
+export function selectionsPerDeclaration(
+  state: GameState,
+  player: PlayerId,
+  card: CardInstance,
+  decls: readonly TargetDecl[],
+  selections: readonly Selection[],
+): Selection[][] {
+  const offered = decls.map((decl) => legalSelectionsFor(state, player, card, decl));
+  return splitSelections(decls, offered, selections);
+}
+
 function splitSelections(
   decls: readonly TargetDecl[],
   offered: readonly Selection[][],
@@ -484,16 +586,32 @@ export function playChoiceCombinations(
   const modeDecls = declaredModes(card);
   if (targetDecls.length === 0 && modeDecls.length === 0) return [{}];
 
-  const perDecl = targetDecls.map((decl, index) =>
-    subsetsFor(legalSelectionsFor(state, player, card, decl), decl, index === targetDecls.length - 1),
-  );
-  const targetCombos = crossProduct(perDecl, MAX_CHOICE_COMBINATIONS).map((slices) => slices.flat());
+  const targetCombosFor = (decls: readonly TargetDecl[]): Selection[][] => {
+    const perDecl = decls.map((decl, index) =>
+      subsetsFor(legalSelectionsFor(state, player, card, decl), decl, index === decls.length - 1),
+    );
+    return crossProduct(perDecl, MAX_CHOICE_COMBINATIONS).map((slices) => slices.flat());
+  };
   const modeCombos = crossProduct(
     modeDecls.map((decl) => decl.options),
     MAX_CHOICE_COMBINATIONS,
   );
 
   const out: PlayChoices[] = [];
+  if (targetsFollowModes(targetDecls)) {
+    // The target declarations a play answers depend on its modes (`forModes`), so each mode choice
+    // is enumerated with the targets it asks for.
+    for (const modes of modeDecls.length === 0 ? [[]] : modeCombos) {
+      const active = activeTargetDecls(targetDecls, modes);
+      for (const targets of active.length === 0 ? [undefined] : targetCombosFor(active)) {
+        out.push({ ...(targets === undefined ? {} : { targets }), ...(modeDecls.length === 0 ? {} : { modes }) });
+        if (out.length >= MAX_CHOICE_COMBINATIONS) return out;
+      }
+    }
+    return out;
+  }
+
+  const targetCombos = targetCombosFor(targetDecls);
   const targetAnswers: (Selection[] | undefined)[] = targetDecls.length === 0 ? [undefined] : targetCombos;
   const modeAnswers: (string[] | undefined)[] = modeDecls.length === 0 ? [undefined] : modeCombos;
 
@@ -512,7 +630,7 @@ export function playChoiceCombinations(
  */
 export function playActionsFor(state: GameState, player: PlayerId, card: CardInstance): PlayAction[] {
   const out: PlayAction[] = [];
-  const xValues: (number | undefined)[] = isXCost(state, card) ? legalXValues(state, player, card) : [undefined];
+  const xValues: (number | undefined)[] = choosesX(state, card) ? legalXValues(state, player, card) : [undefined];
   const embiggens: (boolean | undefined)[] = hasEmbiggenPrice(state, card)
     ? legalEmbiggenChoices(state, card)
     : [undefined];
@@ -522,10 +640,13 @@ export function playActionsFor(state: GameState, player: PlayerId, card: CardIns
   for (const x of xValues) {
     for (const embiggen of embiggens) {
       const probe: CardInstance = { ...card, x: x ?? card.x, embiggened: embiggen ?? card.embiggened };
-      if (effectiveCost(state, probe) > state.players[player].mana.current) continue;
+      const cost = effectiveCost(state, probe);
+      if (cost > state.players[player].mana.current) continue;
+      // R214: the choices of the face step 5 will resolve, which this price decides (#64).
+      const face = resolvingFace(state, player, card, cost);
       for (const tributes of tributeSets) {
         for (const zone of zones) {
-          for (const choices of playChoiceCombinations(state, player, card)) {
+          for (const choices of playChoiceCombinations(state, player, face)) {
             out.push({
               type: "play",
               instanceId: card.id,
@@ -578,6 +699,9 @@ function refuseZone(state: GameState, player: PlayerId, card: CardInstance, zone
 function refuseX(state: GameState, player: PlayerId, card: CardInstance, x?: number): string | null {
   const name = defOf(state, card.defId).name;
   if (!isXCost(state, card)) return x === undefined ? null : `${name} does not cost X`;
+  // R43: an X the card's own cost hook fixes (#98) is not the player's to choose, so whatever the
+  // action names is ignored — never recorded on the card, never read by the cost (`playSteps`).
+  if (!choosesX(state, card)) return null;
   const value = x ?? 0;
   if (!Number.isInteger(value)) return "X must be a whole number";
   if (value < 0) return "X cannot be negative";
@@ -625,9 +749,15 @@ function refuseTargets(
   player: PlayerId,
   card: CardInstance,
   selections: readonly Selection[],
+  modes: readonly string[],
 ): string | null {
   const name = defOf(state, card.defId).name;
-  const decls = declaredTargets(card);
+  const declared = declaredTargets(card);
+  // R90: a declaration that belongs to modes the play did not choose asks for nothing.
+  const decls = activeTargetDecls(declared, modes);
+  if (decls.length === 0 && declared.length > 0) {
+    return selections.length === 0 ? null : `${name} takes no targets for that choice`;
+  }
   // R90: "a card that declared nothing takes nothing".
   if (decls.length === 0) return selections.length === 0 ? null : `${name} takes no targets`;
 
@@ -691,12 +821,17 @@ export function whyChoicesRefused(
   card: CardInstance,
   action: PlayAction,
 ): string | null {
-  return (
+  const price =
     refuseZone(state, player, card, action.zone) ??
     refuseX(state, player, card, action.x) ??
     refuseEmbiggen(state, card, action.embiggen) ??
-    refuseTributes(state, player, card, action.tributes) ??
-    refuseTargets(state, player, card, action.targets ?? []) ??
-    refuseModes(state, card, action.modes ?? [])
+    refuseTributes(state, player, card, action.tributes);
+  if (price !== null) return price;
+  // R214: the targets and modes are the resolving face's, so they are read against it. The Tribute
+  // above is paid at step 2, before step 3 can change the face, so it is the face in hand's.
+  const face = resolvingFace(state, player, card, costWith(state, card, action.x, action.embiggen));
+  return (
+    refuseTargets(state, player, face, action.targets ?? [], action.modes ?? []) ??
+    refuseModes(state, face, action.modes ?? [])
   );
 }

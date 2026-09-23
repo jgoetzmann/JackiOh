@@ -8,7 +8,7 @@
 
 import type { PlayerId, Row } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
-import { enterNewSide } from "../combat";
+import { enterNewSide, isActiveOnField } from "../combat";
 import type { Effect, EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import {
@@ -52,7 +52,11 @@ function destinationFor(ctx: EffectContext, thief: PlayerId, from: ZoneSlot): Zo
 function takeControl(ctx: EffectContext, card: CardInstance): boolean {
   const from = slotOf(ctx.state, card);
   if (from === null) return false;
+  // R13: only the top of a Stack pile is on the field. A card dormant under one — #50's chosen
+  // permanent after a Stack card was played onto it — is not there to be taken.
+  if (!isActiveOnField(ctx.state, card)) return false;
   if (card.controller === ctx.controller) return false;
+  const previous = card.controller;
 
   const to = destinationFor(ctx, ctx.controller, from);
   if (to === null) return false;
@@ -66,7 +70,7 @@ function takeControl(ctx: EffectContext, card: CardInstance): boolean {
   }
 
   // R171: the card has entered its new controller's side on this turn.
-  enterNewSide(ctx.state, card);
+  enterNewSide(ctx, card, previous);
 
   // R33: a stolen face-down trap stays face-down, and the new controller is the one who may read
   // it — the controller decides that, so `faceUp` is deliberately untouched here.

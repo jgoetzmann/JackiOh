@@ -171,13 +171,14 @@ function swapBoardNow(ctx: EffectContext): void {
       continue;
     }
 
+    const before = entry.cards.map((card) => card.controller);
     placeContents(state, entry.cards, entry.to);
 
     // Every destination is on the other side, so every card that landed changed controller (R73),
     // dormant Stack cards included: they are in the zone and moved with it (§3.2). Each one has
     // entered its new side (R171).
-    for (const card of entry.cards) {
-      enterNewSide(state, card);
+    entry.cards.forEach((card, at) => {
+      enterNewSide(ctx, card, before[at] ?? card.owner);
       ctx.events.push({
         type: "controlChanged",
         instanceId: card.id,
@@ -185,7 +186,7 @@ function swapBoardNow(ctx: EffectContext): void {
         row: entry.to.row,
         lane: entry.to.lane,
       });
-    }
+    });
   }
 }
 

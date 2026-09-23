@@ -40,7 +40,8 @@ import { applyEffects, makeContext, type EngineSink } from "./resolve";
 import type { TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import type { CardInstance, GameState, Resume, WorkItem } from "./state";
+import { leftFieldSince } from "./stays";
+import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { slotOf } from "./zones";
 import { cardAt, moveToZone, slotsOf } from "./zones";
@@ -179,9 +180,21 @@ function isOwnArrival(trap: CardInstance, event: GameEvent): boolean {
 export function trapsWatching(state: GameState, event: GameEvent): TrapMatch[] {
   return trapsInOrder(state).flatMap((trap) => {
     if (isOwnArrival(trap, event)) return [];
+    if (isSpent(state, trap)) return [];
     const triggers = trapTriggersOf(trap).filter((trigger) => trigger.on.includes(event.type));
     return triggers.length === 0 ? [] : [{ trap, triggers }];
   });
+}
+
+/**
+ * §5.1: a Trap "fires …, then goes to the graveyard"; only a Field Trap "stays after firing and can
+ * fire again". A Trap is face-down until it fires (R33), so a face-up one that is still in the
+ * backrow is one whose firing has not finished — #96 My Pawn's effects are a whole AI turn — and it
+ * answers nothing more: it has fired, and firing is once. `fireTrap` turns it face-up before its
+ * effects run for exactly this reason.
+ */
+export function isSpent(state: GameState, trap: CardInstance): boolean {
+  return trap.faceUp === true && !isFieldTrap(state, trap);
 }
 
 /**
@@ -202,6 +215,21 @@ export function consumeTrap(sink: EngineSink, instance: CardInstance): void {
     defId: instance.defId,
     owner: instance.owner,
   });
+}
+
+/**
+ * R152, §3.2, §5.1: #96 My Pawn's effect is the rest of the turn it handed to the AI, so that
+ * effect ends at the cleanup of that turn (`turn.ts` calls this there) — and a Trap "goes to the
+ * graveyard" when its effect ends. The trap is still face-up in its backrow (`isSpent`), because
+ * `fireTrap` is still on the stack underneath the AI's playout, and the next turn begins inside that
+ * same playout: consuming it only once the playout returns left it in the backrow through the
+ * opponent's start of turn, where #37 Gravedigger could not find it in the graveyard. A trap its own
+ * AI turn moved off the field (exiled, destroyed) is no longer in a backrow and is not touched.
+ */
+export function endHandedOverTurn(sink: EngineSink): void {
+  for (const trap of trapsInOrder(sink.state)) {
+    if (isSpent(sink.state, trap)) consumeTrap(sink, trap);
+  }
 }
 
 /**
@@ -231,18 +259,81 @@ export function fireTrap(sink: EngineSink, match: TrapMatch, event: GameEvent): 
     lane: at?.lane ?? 0,
   });
 
+  // §5.1: it has fired, and it is face-up from this moment (R33) — which also keeps it out of every
+  // dispatch its own effects start, since a Trap fires once (`isSpent`).
+  trap.faceUp = true;
   for (const trigger of armed) {
     applyEffects(trigger.run({ ...ctx, event }), ctx);
   }
 
   // R52: everything the trap did belongs to the trap's controller, whoever caused the event.
-  consumeTrap(sink, trap);
+  //
+  // §3.2 sends a backrow card to its owner's graveyard when its effect ends, so the trap is
+  // consumed where it is NOW — found again by id, because #96 My Pawn's AI turn replaces every
+  // instance in the state (`aiPolicy.adoptState`) and `trap` is then the object from before it.
+  // Only a trap still on the field is consumed: one its own effects moved off it — exiled by the
+  // AI's #34 Collateral Damage, destroyed — is where that move put it, and exile is a pile nothing
+  // takes a card back out of (§6.3). One whose turn-long effect has already ended was consumed by
+  // `turn.cleanup` at the end of that turn (R152) and is in the graveyard by now.
+  const live = findInstance(sink.state, trap.id);
+  if (live !== undefined && isOnField(live)) consumeTrap(sink, live);
   stateCheck(sink);
   return true;
 }
 
+/**
+ * §4.2 step 4, §6.3 "Cancel an attack": the window a declaration opens answers that declaration,
+ * and only while it stands. Once a trap has cancelled it (R44), or the window has closed — #96's AI
+ * turn can end the turn, and every declaration the AI makes opens and closes its own — there is no
+ * attack left to answer: a cancelled attack resolves no combat, so it "would be lethal" to nobody,
+ * and a second My Pawn stays armed and face-down (R99). A forced attack opens no window at all
+ * (R121) and is not held back here.
+ */
+function declarationStands(state: GameState, event: GameEvent): boolean {
+  if (event.type !== "attackDeclared" || event.forced) return true;
+  const open = state.declaredAttack;
+  return (
+    open !== null &&
+    !open.cancelled &&
+    open.attackerId === event.attackerId &&
+    open.targetId === event.targetId
+  );
+}
+
+/**
+ * The match as the board holds it now. A dispatch reads its matches when the window opens, and a
+ * trap that fired before this one can have replaced every instance (#96's AI turn, `adoptState`),
+ * moved this trap off the field or turned it face-up, so each is found again by id before it is
+ * offered the event: a trap no longer on the field, or already spent, never fires (R61, §5.1).
+ */
+function liveMatch(state: GameState, match: TrapMatch, event: GameEvent): TrapMatch | null {
+  const trap = findInstance(state, match.trap.id);
+  if (trap === undefined || !isOnField(trap) || !isTrapType(state, trap)) return null;
+  if (isSpent(state, trap) || isOwnArrival(trap, event)) return null;
+  const triggers = trapTriggersOf(trap).filter((trigger) => trigger.on.includes(event.type));
+  return triggers.length === 0 ? null : { trap, triggers };
+}
+
+/**
+ * R174, R61: the event as a trap later in the same dispatch meets it. `cardResolved`'s `permanent`
+ * is step 7's answer to "is the played card still in play", read as the card landed — but the traps
+ * that answer the play fire one after another, and an earlier one can take the card off the field
+ * before a later one reads the flag: #60 Bear Honeypot's tokens kill it, and it is in its graveyard
+ * or back through Reborn by the time the next trap fires. That stay has ended, so the next trap
+ * meets a play that is no longer in play: #85 fuses nothing out of a graveyard, and a second #60's
+ * tokens do not attack a Reborn body, which is a new arrival (R83). `from` is where this dispatch's
+ * own events begin.
+ */
+function standingEvent(sink: EngineSink, event: GameEvent, from: number): GameEvent {
+  if (event.type !== "cardResolved" || !event.permanent) return event;
+  const card = findInstance(sink.state, event.instanceId);
+  const stays = card !== undefined && isOnField(card) && !leftFieldSince(sink.events, from, event.instanceId);
+  return stays ? event : { ...event, permanent: false };
+}
+
 function dispatch(sink: EngineSink, event: GameEvent, matches: readonly TrapMatch[]): TrapRun {
   const fired: string[] = [];
+  const from = sink.events.length;
   for (let index = 0; index < matches.length; index += 1) {
     const match = matches[index];
     if (match === undefined) continue;
@@ -251,9 +342,12 @@ function dispatch(sink: EngineSink, event: GameEvent, matches: readonly TrapMatc
     if (isPaused(sink)) {
       return { fired, paused: true, owed: matches.slice(index).map((rest) => rest.trap.id) };
     }
-    // A trap the previous one destroyed, bounced or fused away never fires (R61).
-    if (!isOnField(match.trap)) continue;
-    if (fireTrap(sink, match, event)) fired.push(match.trap.id);
+    // A trap the previous one destroyed, bounced or fused away never fires (R61), and nothing is
+    // offered an attack a trap before it has already called off (§6.3).
+    if (!declarationStands(sink.state, event)) continue;
+    const live = liveMatch(sink.state, match, event);
+    if (live === null) continue;
+    if (fireTrap(sink, live, standingEvent(sink, event, from))) fired.push(live.trap.id);
   }
   return { fired, paused: isPaused(sink), owed: [] };
 }

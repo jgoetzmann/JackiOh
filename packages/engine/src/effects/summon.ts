@@ -9,7 +9,9 @@
 
 import type { CardDef, CardType, PlayerId, Row, Tag } from "@jackioh/shared";
 import { defOf, query, queryCost, type CatalogQueryArgs } from "../catalog";
+import { runHook } from "../resolve";
 import type { Effect, EffectContext } from "../script";
+import { scriptOf } from "../scripts";
 import { newInstance, type CardInstance } from "../state";
 import {
   fillBoardZones,
@@ -104,6 +106,15 @@ function summonOnto(ctx: EffectContext, card: CardInstance, ref: ZoneSlot, at: S
     row: ref.row,
     lane: ref.lane,
   });
+  // R43, R151: "one created later rolls when it is created", as it arrives anywhere a card can be
+  // looked at, and the field is such a place. A #98 Heroic Power that #22's Death summons as a copy
+  // or #95 summons into the backrow reaches neither a hand nor a library, the two arrivals
+  // `draw.ts` rolls on, and would otherwise hold no power and never be offered `activatePower`. The
+  // hook keeps a power the card already rolled (`heroPower.ensurePower`), so a card that arrives
+  // with its answer takes no rng draw.
+  if (scriptOf(card).startOfGame !== undefined) {
+    runHook(ctx, card, "startOfGame", { controller: card.owner });
+  }
   return true;
 }
 
@@ -223,6 +234,8 @@ function cloneOf(
   if (source.statsOverride !== undefined) {
     copy.statsOverride = { attack: source.statsOverride.attack, health: source.statsOverride.health };
   }
+  // §7: a Bread Token's "Armor X" is carried beside its X/X, so a copy keeps both halves (R57).
+  if (source.armorOverride !== undefined) copy.armorOverride = source.armorOverride;
   return copy;
 }
 
@@ -359,6 +372,8 @@ export function fillBoard(args: {
   player?: PlayerSpec;
   radiant?: boolean;
   statsOverride?: StatsOverride;
+  /** §7: the Bread Token's "Armor X", carried beside `statsOverride` (#22 radiant's copies). */
+  armorOverride?: number;
 }): Effect {
   return {
     kind: "fillBoard",
@@ -371,6 +386,7 @@ export function fillBoard(args: {
           lane: ref.lane,
           ...(args.radiant === undefined ? {} : { radiant: args.radiant }),
           ...(args.statsOverride === undefined ? {} : { statsOverride: args.statsOverride }),
+          ...(args.armorOverride === undefined ? {} : { armorOverride: args.armorOverride }),
         });
       }
     },

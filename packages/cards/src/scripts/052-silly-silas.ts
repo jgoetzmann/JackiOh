@@ -38,8 +38,11 @@
 //     `controller` and is why `faceUp` is untouched (R33);
 //   * a Locked or Reborn-reserved destination bounces the card to its owner's hand instead (R14,
 //     R88), where the hand cap applies (R4) and a unit token ceases to exist on the way (R11);
-//   * `radiant: true` replaces crossing with that same bounce at `costOverride: 0`, in either
-//     direction, so no card changes control at all on the radiant face (R14, R65).
+//   * `radiant: true` replaces an OUTBOUND crossing — a card leaving this player's side for the
+//     opponent's, "cards that would move to the opponent" — with that same bounce at
+//     `costOverride: 0`. The opponent's cards crossing onto this side are not moving "to the
+//     opponent", so the base clause holds for them and they cross and change control (R14, R65,
+//     R171): the radiant face loses nothing and still takes what the rotation brings over.
 //
 // BASE AND RADIANT SHARE ONE HOOK. The only difference between the faces is `ctx.radiant`, which
 // `rotateRings` already honours through its own `radiant` argument — so the wrapper passes

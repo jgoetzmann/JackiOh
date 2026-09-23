@@ -29,6 +29,7 @@
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, hasKeyword } from "@jackioh/shared";
 import { unitView } from "./layers";
+import { endOrphanedModifiers } from "./modifiers";
 import { applyResumable, type ResumePlan } from "./prompts";
 import type { EngineSink } from "./resolve";
 import { makeContext } from "./resolve";
@@ -45,19 +46,32 @@ import {
 import {
   activeUnitsOf,
   cardAt,
-  dormantUnitsOf,
+  isUnitToken,
   moveToZone,
   placeOnField,
   releaseZone,
   reserveZone,
+  resetInstance,
   slotOf,
   slotsOf,
   type ZoneSlot,
 } from "./zones";
 
-/** Every unit on the field, top of pile first, then dormant Stack cards (§3.2). */
+/**
+ * Every unit on the field: the card that acts in each unit zone, the top of its pile (§3.2).
+ *
+ * §4.5 step 1 collects "units with health 0 or less", and a card dormant under a Stack is not on
+ * the field (§3.2, R13, R174) — so the check never reaches under a pile. The top shields what is
+ * buried: an aura or a layer-2 Felinor that stops reaching a buried card cannot kill it there, and a
+ * dormant card that could not survive is judged the moment it resumes on top, when the check reads
+ * it with the board's auras again. It keeps its damage meanwhile (§3.2), and nothing can mark it
+ * destroyed, since nothing can target it (R90). Collecting buried cards killed a damaged card the
+ * moment a Stack card buried it and a positive aura stopped reaching it, and let a buried Reborn
+ * card come back on top of the card acting in its zone (R175 returns onto a pile only a unit that
+ * died on top of it).
+ */
 function unitsOf(sink: EngineSink, player: PlayerId): CardInstance[] {
-  return [...activeUnitsOf(sink.state, player), ...dormantUnitsOf(sink.state, player)];
+  return activeUnitsOf(sink.state, player);
 }
 
 /**
@@ -103,8 +117,11 @@ function resolveIndestructibleMarks(sink: EngineSink): void {
       const view = unitView(sink.state, unit);
       if (!hasKeyword(view.keywords, "Indestructible") || view.maxHealth <= 0) continue;
       unit.markedDestroyed = false;
-      unit.position = "ATK";
       unit.tauntSuppressedTurn = sink.state.turn;
+      // R91: a unit already in Attack Position has nothing to switch, so nothing is reported — the
+      // event is §10.10's 90° turn, and a unit that did not move must not be seen to.
+      if (view.position === "ATK") continue;
+      unit.position = "ATK";
       sink.events.push({ type: "positionSwitched", instanceId: unit.id, position: "ATK" });
     }
     for (const card of backrowOf(sink, player)) {
@@ -150,9 +167,32 @@ const PASS_KEY = "pass";
  */
 export type DeathPass = {
   owed: CardInstance[];
-  reborn: { id: string; at: ZoneSlot }[];
+  /**
+   * `token` is set for a unit token, which ceased to exist as it left the field (R11) and so cannot
+   * be found again by id: it is the card as it left, which step 4 brings back instead (R175).
+   * `face` is the X/X a token was summoned with (§7's `statsOverride`, and the Bread Token's
+   * `armorOverride`), which is its printed face (§10.4 layer 1) and so comes back with it (R175).
+   */
+  reborn: { id: string; at: ZoneSlot; token?: CardInstance; face?: RebornFace }[];
   collected: { id: string; defId: string; owner: PlayerId }[];
 };
+
+/**
+ * R175: the face a Reborn body comes back with when the card was summoned X/X. §10.4 layer 1 reads a
+ * token's printed stats off `statsOverride` ("printed 0/0; always summoned as X/X", §7), so it is the
+ * card's face and not a change to it: R78's reset takes the override off a card that leaves the field
+ * for a pile, but a body that returns at 1 health returns as the card it was printed as, and a Bread
+ * Token that came back 0/0 at 0 health would only die again at the next pass.
+ */
+type RebornFace = { statsOverride?: { attack: number; health: number }; armorOverride?: number };
+
+function rebornFaceOf(unit: CardInstance): RebornFace | undefined {
+  if (unit.statsOverride === undefined && unit.armorOverride === undefined) return undefined;
+  return {
+    ...(unit.statsOverride === undefined ? {} : { statsOverride: { ...unit.statsOverride } }),
+    ...(unit.armorOverride === undefined ? {} : { armorOverride: unit.armorOverride }),
+  };
+}
 
 /** Plain JSON, never a live array: what is parked must survive a round trip (§9.3, §10.1). */
 function passJson(pass: DeathPass): DeathPass {
@@ -231,11 +271,21 @@ function rebornStep(sink: EngineSink, pass: DeathPass): void {
     releaseZone(sink.state, entry.at);
     // R127's shape at the level of a unit: the pass names it by id, so a Death hook that exiled or
     // unmade it in between leaves nothing to bring back rather than a stale object to resurrect.
-    const copy = findInstance(sink.state, entry.id);
+    // A unit token is the exception R175 makes: it ceased to exist as it left (R11), so no pile
+    // holds it and the pass carries the card as it left instead, reset the way R78 resets any
+    // Reborn body on its way out.
+    const copy = entry.token === undefined ? findInstance(sink.state, entry.id) : rebornToken(entry.token);
     if (copy === undefined) continue;
     copy.grantedKeywords = copy.grantedKeywords.filter((k) => k.kind !== "Reborn");
     copy.vanilla = false;
-    const back = placeOnField(sink.state, copy, entry.at);
+    // R175: an X/X token's X/X is its printed face, so the body keeps it through the reset.
+    if (entry.face?.statsOverride !== undefined) copy.statsOverride = { ...entry.face.statsOverride };
+    if (entry.face?.armorOverride !== undefined) copy.armorOverride = entry.face.armorOverride;
+    // R175: a unit that died on top of a Stack pile left the card beneath to resume in its zone
+    // (§3.2), and that card did not enter anything, so the zone is still the one R64 reserved. The
+    // body returns on top of the pile, and the card beneath goes dormant again. With no pile the
+    // zone is empty, which `stack` never changes: every other card was kept out by the reservation.
+    const back = placeOnField(sink.state, copy, entry.at, { stack: true });
     if (!back) continue;
     const view = unitView(sink.state, copy);
     copy.damage = Math.max(0, view.maxHealth - 1);
@@ -254,6 +304,18 @@ function rebornStep(sink: EngineSink, pass: DeathPass): void {
       lane: entry.at.lane,
     });
   }
+}
+
+/**
+ * R175: the body a unit token with Reborn comes back as. The snapshot is the token as it left the
+ * field, so R78's reset is applied here, where `moveToZone` would have applied it had the token
+ * reached a pile: damage, buffs, granted keywords, counters, memory, exertion and controller go,
+ * and the zone is set by `placeOnField`.
+ */
+function rebornToken(snapshot: CardInstance): CardInstance {
+  const body = JSON.parse(JSON.stringify(snapshot)) as CardInstance;
+  resetInstance(body);
+  return body;
 }
 
 /**
@@ -362,24 +424,48 @@ registerWorkHandler(DEATHS_WORK, runOwedDeaths);
 /** §4.5 loops until nothing changes; this bounds a pathological loop loudly (R69, R89). */
 export const STATE_CHECK_PASS_CAP = 100;
 
+/** How a collected card left: the state check's own collection, or a Sacrifice (§6.3). */
+type DeathCause = "collected" | "sacrificed";
+
 /**
  * §4.5 step 1: collect, in R68's order, and move them all at once — units by health or a destroy
  * mark, backrow cards by a destroy mark, since they have no health of their own — leaving the pass
  * that steps 3 to 5 still owe.
+ *
+ * "At once" is two loops, not one. Every collected card is read — its layers for R89's `destroyed`
+ * event, its Reborn for step 4 and its snapshot for step 3 — before any of them moves, because a
+ * card's layers depend on the others: an aura source (#65.1 Spikey Pillow's −2 attack) or a Felinor
+ * a #92 Felinor Fiender counts at layer 2 that was moved first would leave the next card read
+ * without it, so what it "was as it died" would hang on nothing but lane order.
+ *
+ * A Sacrifice (§6.3) "counts as a death" and reaches the same pass through `sacrificeNow`: it is no
+ * damage instance, so it names no killer (R42), and it bypasses Indestructible, which is why the
+ * caller rather than `isDying` decides it dies.
  */
-function collect(sink: EngineSink, dying: readonly CardInstance[]): DeathPass {
+function collect(sink: EngineSink, dying: readonly CardInstance[], cause: DeathCause = "collected"): DeathPass {
   const pass: DeathPass = { owed: [], reborn: [], collected: [] };
 
-  for (const unit of dying) {
+  const read = dying.map((unit) => {
     const view = unitView(sink.state, unit);
-    const at = slotOf(sink.state, unit);
-    const hasReborn = hasKeyword(view.keywords, "Reborn");
-    // R78 resets an instance as it leaves, so the Death hook of step 3 reads this snapshot (R89).
-    pass.owed.push(JSON.parse(JSON.stringify(unit)) as CardInstance);
+    return {
+      unit,
+      view,
+      at: slotOf(sink.state, unit),
+      token: isUnitToken(sink.state, unit),
+      // R78 resets an instance as it leaves, so the Death hook of step 3 reads this snapshot (R89).
+      snapshot: JSON.parse(JSON.stringify(unit)) as CardInstance,
+    };
+  });
+
+  for (const { unit, view, at, token, snapshot } of read) {
+    pass.owed.push(snapshot);
     pass.collected.push({ id: unit.id, defId: unit.defId, owner: unit.owner });
-    if (hasReborn && at !== null) {
+    if (hasKeyword(view.keywords, "Reborn") && at !== null) {
       reserveZone(sink.state, at);
-      pass.reborn.push({ id: unit.id, at });
+      // R175: a unit token ceases to exist below and no pile will hold it, so its return is
+      // carried by the pass itself, with the X/X it was summoned as.
+      const face = rebornFaceOf(unit);
+      pass.reborn.push({ id: unit.id, at, ...(token ? { token: snapshot } : {}), ...(face === undefined ? {} : { face }) });
     }
     sink.state.counters.destroyed += 1;
     // R89: the event carries what the card was, since R78 resets the instance as it leaves.
@@ -390,7 +476,11 @@ function collect(sink: EngineSink, dying: readonly CardInstance[]): DeathPass {
       owner: unit.owner,
       attack: view.attack,
       maxHealth: view.maxHealth,
-      killerId: unit.lastDamagedBy ?? null,
+      // R42, R89: the unit whose damage instance was lethal. `damage.ts` credits a hit only as it
+      // takes the unit from above 0 health to 0 or less (or Poisonous marks it), and a destroy
+      // effect clears the credit as it marks (`effects/destroy.ts`), so a unit a spell destroyed or
+      // an aura starved after some unit damaged it has no killer. A sacrifice has none either.
+      killerId: cause === "sacrificed" ? null : (unit.lastDamagedBy ?? null),
     });
     moveToZone(sink.state, unit, "graveyard");
   }
@@ -398,14 +488,69 @@ function collect(sink: EngineSink, dying: readonly CardInstance[]): DeathPass {
   return pass;
 }
 
+/**
+ * §6.3 Sacrifice: the card goes from the field to its owner's graveyard at once, bypassing
+ * Indestructible, and "counts as a death" — so it is §4.5's death in full rather than a move with a
+ * Death hook bolted on: the destroyed counter (R55) and the `destroyed` event (R89), its Death hook
+ * off the snapshot (R78), and §6.1's Reborn, which returns a sacrificed Reborn unit to the zone it
+ * reserved at 1 health (R64, R83), exactly as the state check returns a unit that died there. A
+ * Death hook that asks pauses the rest of the pass on `state.work` like any other (R113). Step 2's
+ * hero check is left to the state check that follows the whole effect (R59): a sacrifice is one
+ * effect among the list that made it, and nothing about it touches a hero.
+ */
+export function sacrificeNow(sink: EngineSink, card: CardInstance): void {
+  runDeathPass(sink, collect(sink, [card], "sacrificed"), null);
+}
+
+/**
+ * §6.3 Tribute: "sacrifice X of your units" is one payment, the tributed set of R101, so the set
+ * dies together, the way §4.5 step 1 moves everything it collects at once: every unit is read before
+ * any of them moves, then all move, and their Death hooks fire in R68's order — "Death triggers use
+ * the same side and lane order (§4.5)" — not in the order a play happened to list them. Listed one
+ * by one, the first sacrifice's Death ran before the others had died, so the client chose the order
+ * the Deaths resolved in (#81's Death radiating a unit #86's Death was about to steal, or not).
+ */
+export function sacrificeTogether(sink: EngineSink, cards: readonly CardInstance[]): void {
+  if (cards.length === 0) return;
+  // R68's walk: the active player's side, then the opponent's; units, then the backrow; lane 1 up.
+  const order: PlayerId[] = sink.state.active === "p1" ? ["p1", "p2"] : ["p2", "p1"];
+  const ordered = order.flatMap((player) =>
+    (["units", "backrow"] as const).flatMap((row) =>
+      slotsOf(player, row).flatMap((ref) =>
+        cards.filter((card) => {
+          const at = slotOf(sink.state, card);
+          return at !== null && at.player === ref.player && at.row === ref.row && at.lane === ref.lane;
+        }),
+      ),
+    ),
+  );
+  runDeathPass(sink, collect(sink, ordered, "sacrificed"), null);
+}
+
+/**
+ * R42: `lastDamagedBy` names the hit that took a unit to 0 or less health. A unit the check leaves
+ * standing above 0 — healed, buffed, or given back its health by an aura leaving — was killed by no
+ * hit, so an older credit must not name the killer of a death the layers cause later.
+ */
+function forgetSpentKillers(sink: EngineSink, survivors: readonly CardInstance[]): void {
+  for (const unit of survivors) {
+    if (unit.lastDamagedBy === undefined) continue;
+    if (unitView(sink.state, unit).health > 0) delete unit.lastDamagedBy;
+  }
+}
+
 export function stateCheck(sink: EngineSink): void {
   for (let pass = 0; pass < STATE_CHECK_PASS_CAP; pass += 1) {
     if (sink.state.result !== null) return;
     resolveIndestructibleMarks(sink);
+    endOrphanedModifiers(sink);
 
     const order: PlayerId[] = sink.state.active === "p1" ? ["p1", "p2"] : ["p2", "p1"];
+    const units = order.flatMap((player) => unitsOf(sink, player));
+    const dyingUnits = units.filter((unit) => isDying(sink, unit));
+    forgetSpentKillers(sink, units.filter((unit) => !dyingUnits.includes(unit)));
     const dying = [
-      ...order.flatMap((player) => unitsOf(sink, player).filter((unit) => isDying(sink, unit))),
+      ...dyingUnits,
       ...order.flatMap((player) =>
         backrowOf(sink, player).filter((card) => card.markedDestroyed === true),
       ),

@@ -16,6 +16,7 @@ import {
   type Resume,
   type WorkItem,
 } from "./state";
+import { stateCheck } from "./stateCheck";
 import { owe, paused, registerWorkHandler } from "./work";
 import { cardAt, isUnitToken, moveToZone, slotsOf } from "./zones";
 
@@ -285,11 +286,27 @@ export function completeDraw(
       return "cast";
     }
 
-    drawOne(sink, player, chain + 1);
+    continueChain(sink, player, chain + 1, before);
     return "cast";
   }
 
   return addToHand(sink, card) === "burned" ? "burned" : "drawn";
+}
+
+/**
+ * §2.4's repeat, after a cast-on-draw cast has resolved whole — its Echo repeats and its landing
+ * included, since a cast is §10.5's pipeline (R70). §4.5 and R59 run the state check "after one
+ * cast-on-draw cast", so a hero the cast brought to 0 ends the game here and the draw does not
+ * repeat into the card beneath, and a unit it killed has died before the next card is cast. A Death
+ * hook that asks stops the chain like any other pause, owing the draw it would have made.
+ */
+function continueChain(sink: EngineSink, player: PlayerId, chain: number, before: PendingChoice | null): void {
+  stateCheck(sink);
+  if (stopped(sink, before)) {
+    if (sink.state.result === null) oweChain(sink, player, chain);
+    return;
+  }
+  drawOne(sink, player, chain);
 }
 
 /**
@@ -343,11 +360,15 @@ export function draw(sink: EngineSink, player: PlayerId, count: number): DrawOut
   return out;
 }
 
-/** `work.ts`'s handler for a chain a cast-on-draw prompt split: the same chain, at the same count. */
+/**
+ * `work.ts`'s handler for a chain a cast-on-draw prompt split: the same chain, at the same count.
+ * The cast that paused has finished by now — its own items were parked ahead of this one (R113) —
+ * so the state check it is owed runs before the draw repeats, as it does in an unbroken chain.
+ */
 function runOwedDrawChain(sink: EngineSink, item: WorkItem): void {
   const owed = owedDrawChainOf(item.resume);
   if (owed === null) return;
-  drawOne(sink, owed.player, owed.chain);
+  continueChain(sink, owed.player, owed.chain, sink.state.pending);
 }
 
 /** `work.ts`'s handler for the whole draws a "draw N" still owed when one of them paused. */

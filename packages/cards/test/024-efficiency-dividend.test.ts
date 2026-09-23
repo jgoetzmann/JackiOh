@@ -36,13 +36,15 @@ function nextRefresh(s: Scenario): number {
 }
 
 describe("#24 Efficiency Dividend", () => {
-  it("R81 declares three modes and one optional target, both read off the play", () => {
+  it("R81 declares three modes and the damage and heal modes' target, both read off the play", () => {
     expect(base.modes).toEqual([{ kind: "mode", options: ["damage", "heal", "mana"] }]);
     const decl = base.targets?.[0];
     expect(base.targets).toHaveLength(1);
     expect(decl?.kind).toBe("target");
-    // The mana mode names no target, so the declaration's minimum is 0; R90 fizzles an unnamed one.
-    expect(decl?.min).toBe(0);
+    // The target belongs to the damage and heal modes, which must name one (§8 Conventions: a hero
+    // is always a legal target); the mana mode names none (R90).
+    expect(decl?.forModes).toEqual(["damage", "heal"]);
+    expect(decl?.min).toBe(1);
     expect(decl?.max).toBe(1);
     expect(decl?.filter?.side).toBe("any");
     expect(decl?.filter?.of).toEqual(["unit", "hero"]);

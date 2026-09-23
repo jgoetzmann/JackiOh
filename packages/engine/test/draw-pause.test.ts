@@ -44,7 +44,7 @@ import {
 } from "../src/draw";
 import { openPrompt, resumeSelf } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
-import { CAST_CRY_WORK } from "../src/resolve";
+import { PLAY_WORK_KIND } from "../src/playSteps";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
 import { newInstance, type CardInstance, type GameState } from "../src/state";
@@ -253,7 +253,7 @@ describe("a prompt inside §2.4's cast-on-draw chain (R58, R113, R117, R122)", (
     // cast's own tail (§10.5 steps 6 and 7), and only last the draw the chain still owes.
     expect(state.work.map((item) => item.resume.hook)).toEqual([
       "cry",
-      CAST_CRY_WORK,
+      PLAY_WORK_KIND,
       DRAW_CHAIN_WORK,
     ]);
 
@@ -382,7 +382,7 @@ describe("a prompt inside §2.4's 'draw N' loop (R58, R113, R117, R122)", () => 
     // cast's own tail ahead of both. §9.3: all plain data.
     expect(state.work.map((item) => item.resume.hook)).toEqual([
       "cry",
-      CAST_CRY_WORK,
+      PLAY_WORK_KIND,
       DRAW_CHAIN_WORK,
       DRAW_COUNT_WORK,
     ]);

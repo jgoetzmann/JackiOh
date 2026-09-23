@@ -396,7 +396,7 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
     // the whole point — the played card ceased to exist in the first one, and an ingredient only
     // ever contributes its DEFINITION, so it still fuses. Re-resolving it by id would have found
     // nothing, dropped below FUSE_MIN_INGREDIENTS and silently changed nothing.
-    expect(Object.keys(state.transientDefs).sort()).toEqual(["t-1", "t-2"]);
+    expect(Object.keys(state.transientDefs).sort()).toEqual(["t-1:rn-alpha+rn-beta", "t-2:rn-alpha+rn-beta"]);
 
     // Both targets survived as the fused cards, in their own lanes (R77 keeps the instance).
     const keptFirst = cardAt(state, slot("p1", "units", 2));
@@ -439,7 +439,7 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
 
     expect(draws(sink)).toBe(1);
     // Exactly ONE fusion happened, so exactly one target was consumed into a fused card.
-    expect(Object.keys(state.transientDefs)).toEqual(["t-1"]);
+    expect(Object.keys(state.transientDefs)).toEqual(["t-1:rn-alpha+rn-beta"]);
     const fusedCount = [first, second].filter((card) => card.defId !== beta.id).length;
     expect(fusedCount).toBe(1);
   });
@@ -474,8 +474,8 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
 
     // The transient definition is the subsystem's, in match state where `defOf` finds it (§10.1).
     const ids = Object.keys(state.transientDefs);
-    expect(ids).toEqual(["t-1"]);
-    const fused = state.transientDefs["t-1"];
+    expect(ids).toEqual(["t-1:rn-alpha+rn-beta"]);
+    const fused = state.transientDefs["t-1:rn-alpha+rn-beta"];
     if (fused === undefined) throw new Error("expected a transient def");
 
     // R77's sums, on BOTH faces, so Make Radiant still works on the result (§5.2).
@@ -491,7 +491,7 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
     expect(state.players.p1.hand).toHaveLength(1);
     const result = state.players.p1.hand[0];
     if (result === undefined) throw new Error("expected the crafted card in hand");
-    expect(result.defId).toBe("t-1");
+    expect(result.defId).toBe("t-1:rn-alpha+rn-beta");
     expect(result.radiant).toBe(false);
     expect(result.costOverride).toBe(0);
     expect(effectiveCost(state, result)).toBe(0);
@@ -503,7 +503,7 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
         type: "fused",
         instanceIds: expect.any(Array) as string[],
         resultInstanceId: result.id,
-        defId: "t-1",
+        defId: "t-1:rn-alpha+rn-beta",
       },
     ]);
   });
@@ -546,7 +546,7 @@ describe("fuseCards (§6.3 Fuse, §8.5 #99, §8.4 #85, R77, R102)", () => {
     );
 
     // R77: the fused card IS the target, in its own zone, with its damage intact.
-    expect(victim.defId).toBe("t-1");
+    expect(victim.defId).toBe("t-1:rn-beta+rn-alpha");
     expect(victim.zone).toEqual({ z: "field", player: "p1", row: "units", lane: 1 });
     expect(victim.damage).toBe(1);
     expect(unitView(state, victim)).toMatchObject({ attack: 3, maxHealth: 4, health: 3 });

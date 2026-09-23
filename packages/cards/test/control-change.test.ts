@@ -7,6 +7,10 @@
 // R172 is the case the brief asked to check: a stolen unit dies as its controller's. Its Death runs
 // for that player (#81, radiant #3) and a Reborn body comes back on that player's side, sick.
 //
+// Two cases the hunt's second round added at the end, where a card crossing the centre line meets
+// another rule: radiant #52 still takes the opponent's card that crosses onto its side (R14), and a
+// played #52 that crossed onto #85's side is not a Fuse target for itself (R61).
+//
 // The engine-fixture proofs of the same rows are `packages/engine/test/control-change.test.ts` and
 // `control-change.property.test.ts`; this file is the proof through `scenario()` that the cards
 // reach the rule.
@@ -41,6 +45,7 @@ const TIMMY = "core-011";
 const WEAPONS = "core-014";
 const SORCERER = "core-068";
 const SHEEPISH = "core-041";
+const UNLICENSED = "core-085";
 const LIBRARY = [VANILLA, VANILLA, VANILLA, VANILLA];
 
 const SICK = /summoning sick/;
@@ -344,7 +349,7 @@ describe("R171 with the cards that change control", () => {
     g.expectHealth("p2", before - 7);
   });
 
-  it("R171 #52 radiant: nothing crosses, so nothing is marked", () => {
+  it("R171 #52 radiant: only the card crossing onto its side is marked; the one it would lose goes home", () => {
     const g = scenario({
       p1: {
         hand: [{ def: SILAS, radiant: true }, VANILLA],
@@ -353,10 +358,22 @@ describe("R171 with the cards that change control", () => {
       p2: { field: [{ def: SEVEN_SEVEN, lane: 1 }, { def: VANILLA, lane: 4 }] },
     });
     const ready = unitAt(g, "p1", 3);
+    const outbound = unitAt(g, "p1", 5);
+    const inbound = unitAt(g, "p2", 1);
 
     g.play(SILAS, { zone: 1, modes: ["right"] });
 
-    expect(g.lastEvents.filter((event) => event.type === "controlChanged")).toEqual([]);
+    // "Cards that would move to the opponent are bounced": p1's lane-5 Vanilla goes home at 0 and
+    // never changes sides, so it is not marked (R14).
+    g.expectInZone(outbound, "hand");
+    // p2's lane-1 7/7 moves to p1, which the radiant cell does not touch: it crosses, changes
+    // control, and has entered p1's side this turn (R14, R171).
+    expect(g.lastEvents.filter((event) => event.type === "controlChanged").map((event) => event.instanceId)).toEqual([
+      inbound.id,
+    ]);
+    expect(g.card(inbound).summonedTurn).toBe(g.state.turn);
+    expect(offeredAttacks(g, inbound)).toEqual([]);
+    // A card moving along its own side is not marked at all.
     expect(g.card(ready).summonedTurn).toBeUndefined();
     expect(offeredAttacks(g, ready)).toContain("hero-p2");
   });
@@ -376,6 +393,37 @@ describe("R171 with the cards that change control", () => {
     expect(offeredAttacks(g, prey)).toEqual([vanilla.id]);
     g.attack(prey, vanilla);
     g.expectInZone(vanilla, "graveyard");
+  });
+
+  it("R171 #14: Rush from the aura lapses when the aura leaves, so a stolen unit and one played this turn are sick again", () => {
+    const g = scenario({
+      p1: { hand: [VANILLA, MIND_CONTROL, MAGIC_JAMMED], mana: 10, backrow: [{ def: WEAPONS, lane: 1 }] },
+      p2: { field: [{ def: SEVEN_SEVEN, lane: 3 }, { def: VANILLA, lane: 5 }] },
+    });
+    const weapons = backrowAt(g, "p1", 1);
+    const prey = unitAt(g, "p2", 3);
+    const target = unitAt(g, "p2", 5);
+
+    g.play(VANILLA);
+    const fresh = unitAt(g, "p1", 1);
+    g.play(MIND_CONTROL, { targets: at(prey) });
+
+    // Both entered p1's side this turn, and the aura's Rush lets both attack a unit.
+    for (const unit of [fresh, prey]) {
+      expectEnteredNow(g, unit);
+      expect(g.stats(unit).keywords.map((k) => k.kind)).toContain("Rush");
+      expect(offeredAttacks(g, unit)).toEqual([target.id]);
+    }
+
+    // #36 Magic Jammed on p1's own Field Spell: the aura, and the Rush it granted, are gone.
+    g.play(MAGIC_JAMMED, { targets: at(weapons) });
+    g.expectInZone(weapons, "graveyard");
+
+    for (const unit of [fresh, prey]) {
+      expect(g.stats(unit).keywords.map((k) => k.kind)).not.toContain("Rush");
+      expect(offeredAttacks(g, unit)).toEqual([]);
+      expect(() => g.attack(unit, target)).toThrow(SICK);
+    }
   });
 
   it("R171 #49 radiant: making a stolen #56 Radiant gives it Charge, so it may attack the hero at once", () => {
@@ -488,5 +536,66 @@ describe("R172 a stolen unit dies as its controller's", () => {
     expect(g.card(defender).controller).toBe("p1");
     expect(g.card(defender).owner).toBe("p2");
     for (let lane = 1; lane <= 3; lane += 1) expect(g.unit("p2", lane)).toBeNull();
+  });
+});
+
+describe("R61: a played permanent rotated onto the trap's side is not its own Fuse target", () => {
+  it("R61 Unlicensed Experimentation fuses a played Silly Silas that crossed to its side onto its controller's other Unit, never onto Silas himself (§8 #85, R77)", () => {
+    // Seed chosen so that, with the played card wrongly among the candidates, the random pick lands
+    // on Silas himself: the trap then fires, is consumed and fuses nothing although Pointmaster was
+    // a legal target all along.
+    const g = scenario({
+      seed: "ue-self-0",
+      p1: { hand: [SILAS, VANILLA], library: [...LIBRARY] },
+      p2: {
+        hand: [VANILLA],
+        field: [{ def: POINTMASTER, lane: 2 }],
+        backrow: [{ def: UNLICENSED, lane: 3, faceUp: false }],
+        library: [...LIBRARY],
+      },
+    });
+    const silas = g.card(SILAS);
+    const pointmaster = unitAt(g, "p2", 2);
+
+    // Silas enters p1's lane 5 and rotates right: he crosses to p2's lane 5 (§3.1), and
+    // Pointmaster steps from p2's lane 2 to p2's lane 1.
+    g.play(silas, { zone: 5, modes: ["right"] });
+
+    // p2's trap answers p1's played Unit (R17): "Fuse it onto a random permanent of yours of that
+    // type". "It" is the played card, so the permanent it is fused onto is another one: the only
+    // candidate is Pointmaster, and the fusion happens.
+    expect(g.events.some((event) => event.type === "trapFired")).toBe(true);
+    const fused = g.events.filter((event) => event.type === "fused");
+    expect(fused).toHaveLength(1);
+    expect(fused[0]).toMatchObject({ resultInstanceId: pointmaster.id });
+    expect(g.unit("p2", 5)).toBeNull();
+  });
+});
+
+describe("R14: radiant Silly Silas bounces only the cards that would move to the opponent", () => {
+  it("R14 radiant Silly Silas still takes the opponent's card that crosses to its controller's side (§8 #52 radiant, §8 Conventions, R171)", () => {
+    const g = scenario({
+      p1: { hand: [{ def: SILAS, radiant: true }, VANILLA], library: [...LIBRARY] },
+      p2: { hand: [VANILLA], field: [{ def: VANILLA, lane: 1 }], library: [...LIBRARY] },
+    });
+    const inbound = unitAt(g, "p2", 1);
+
+    // Right from p1's seat: p2's lane 1 steps to p1's lane 1. That card moves to p1, not "to the
+    // opponent", so the radiant clause does not touch it and the base clause keeps it: it crosses
+    // and changes control (§8 Conventions: every base clause the radiant cell does not restate is
+    // kept), entering p1's side this turn (R171).
+    g.play(SILAS, { zone: 3, modes: ["right"] });
+
+    expect(g.unit("p1", 1)?.id).toBe(inbound.id);
+    expect(g.card(inbound).controller).toBe("p1");
+    expect(g.card(inbound).owner).toBe("p2");
+    expect(g.card(inbound).summonedTurn).toBe(g.state.turn);
+    expect(g.lastEvents).toContainEqual({
+      type: "controlChanged",
+      instanceId: inbound.id,
+      controller: "p1",
+      row: "units",
+      lane: 1,
+    });
   });
 });

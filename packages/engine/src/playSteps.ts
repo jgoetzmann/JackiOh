@@ -28,20 +28,23 @@ import { defOf } from "./catalog";
 import { dealDamage } from "./damage";
 import { draw } from "./draw";
 import {
-  CAST_TAIL_WORK,
-  castTailOf,
+  dropEchoRepeats,
+  echoRepeatsOwed,
   landAfterResolution,
   queueEchoRepeats,
   takeEchoRepeat,
 } from "./echo";
-import { sacrifice } from "./effects";
 import { effectiveCost, isXCost, manaEvent, modifierIsLive, spendMana } from "./mana";
 import { removeModifier } from "./modifiers";
 import {
+  activeTargetDecls,
+  choosesX,
   declaredModes,
   declaredTargets,
+  giftedMakesRadiant,
   legalSelectionsFor,
   playsOnStack,
+  targetsFollowModes,
   whyChoicesRefused,
 } from "./playChoices";
 import {
@@ -53,10 +56,10 @@ import {
   type AnswerInput,
 } from "./prompts";
 import {
-  applyEffects,
   flagReturnToHandAtEndOfTurn,
-  makeContext,
+  registerCastDriver,
   type EngineSink,
+  type HookOptions,
 } from "./resolve";
 import {
   findInstance,
@@ -65,10 +68,21 @@ import {
   type Resume,
   type WorkItem,
 } from "./state";
+import { flagsOf } from "./scripts";
+import { sacrificeTogether, stateCheck } from "./stateCheck";
 import { settle } from "./triggers";
 import { triggerHoldersWithHook } from "./triggers";
 import { dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
-import { firstFreeZone, placeOnField, type ZoneSlot } from "./zones";
+import {
+  cardAt,
+  firstFreeZone,
+  placeOnField,
+  releaseZone,
+  removeFromAnyZone,
+  reserveZone,
+  slotsOf,
+  type ZoneSlot,
+} from "./zones";
 
 export type PlayAction = Extract<ActionBody, { type: "play" }>;
 
@@ -121,10 +135,21 @@ export type PlayRun = {
   resolveAt: number;
   /** Step 6: whether this play has worked out how many repeats it owes yet. */
   echoQueued: boolean;
-  /** Step 6: the repeat being re-resolved, with the fresh answers collected so far. */
-  repeat: null | { targets: Selection[]; modes: string[]; declAt: number; modeAt: number };
+  /**
+   * Step 6: the repeat being re-resolved, with the fresh answers collected so far, and `partAt`,
+   * its cursor into `RESOLVE_PARTS` once the answers are in — a repeat is step 5 again, granted
+   * Combo parts included, and #78's Combo draw can pause it before its script runs.
+   */
+  repeat: null | { targets: Selection[]; modes: string[]; declAt: number; modeAt: number; partAt?: number };
   /** Set while a prompt this pipeline opened is waiting; says which bucket the answer fills. */
   awaiting: null | "echoTarget" | "echoMode";
+  /**
+   * R70: a cast rather than a play from hand — the same steps, entered at step 3 for 0, placed by
+   * R64 at step 4 wherever the card is, and leaving the resolution loop to the effect that cast it.
+   */
+  cast?: boolean;
+  /** The face the card was played with, set at step 4 for `cardResolved` (R34, R57). */
+  radiant?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -191,7 +216,7 @@ export function validatePlay(
   const refused = whyChoicesRefused(state, player, card, action);
   if (refused !== null) return { error: refused };
 
-  if (isXCost(state, card)) card.x = action.x ?? 0;
+  if (choosesX(state, card)) card.x = action.x ?? 0;
   if (typeof defOf(state, card.defId).cost === "object") card.embiggened = action.embiggen === true;
 
   const cost = effectiveCost(state, card);
@@ -237,17 +262,18 @@ export function validatePlay(
 /**
  * §6.3 Tribute: sacrifice the units this play named. How many they must be worth, whether an enemy
  * unit counts (#55) and that a Sheep Token counts 2 were all settled in step 1, so this is the
- * payment and nothing else — which is why it sacrifices what it was given (R41's backrow meal
- * included) rather than judging it again.
+ * payment and nothing else — which is why it sacrifices what it was given rather than judging it
+ * again. The set is one payment and dies together, its Death hooks in R68's order whatever order the
+ * play listed it in (`stateCheck.sacrificeTogether`), so `legalActions`, which offers each set once,
+ * and `reduce`, which accepts any listing of it, mean the same play.
  */
-function payTributes(sink: EngineSink, run: PlayRun, card: CardInstance): void {
+function payTributes(sink: EngineSink, run: PlayRun): void {
   if (run.tributes.length === 0) return;
-  const picks: Selection[] = run.tributes.map((id) => ({ pick: "instance", instanceId: id }));
-  const ctx = makeContext(sink, card, { controller: run.player, targets: picks });
-  applyEffects(
-    picks.map((_, index) => sacrifice({ target: { of: "chosen", index }, allowEnemy: true })),
-    ctx,
-  );
+  const units = run.tributes.flatMap((id) => {
+    const unit = findInstance(sink.state, id);
+    return unit === undefined || unit.zone.z !== "field" ? [] : [unit];
+  });
+  sacrificeTogether(sink, units);
 }
 
 /**
@@ -280,7 +306,13 @@ function payStep(sink: EngineSink, run: PlayRun): void {
 
   spendMana(side, run.costPaid);
   sink.events.push(manaEvent(run.player, side));
-  payTributes(sink, run, card);
+  // R210: the zone step 1 accepted is the play's until step 4 puts the card in it. A Tribute is
+  // paid here, and a tributed unit's Death — #3 radiant's summon, #22's copies, #86's steals — lands
+  // cards by R64 and R15 in the very row the play is going to; held like a Reborn zone (R64), the
+  // named zone is closed to them, so they take the next one and the played card is never left with
+  // no zone at all.
+  if (run.zone !== null && run.tributes.length > 0) reserveZone(sink.state, run.zone);
+  payTributes(sink, run);
   consumeUsedDiscounts(sink, run, card);
 }
 
@@ -289,13 +321,19 @@ function payStep(sink: EngineSink, run: PlayRun): void {
 // ---------------------------------------------------------------------------
 
 /**
- * §10.5 step 3: "the Gifted Program hook may set `radiant` now". Every `onPlayHook` on the board
- * runs in R68's order, before the card is moved and before anything resolves, with the played card
- * as its selection and the cost paid in `data` (§8 #64 "Pre-resolution hook; cost = cost paid;
- * per-turn flag"). The cursor is advanced before each hook runs, so a hook that opens a prompt
+ * §10.5 step 3: "the Gifted Program hook may set `radiant` now". #64 itself is a static flag the
+ * engine reads first (`giftedProgramStep`, R213), because step 1 has to know the face the play will
+ * resolve with before it reads the play's choices (R214). Then every `onPlayHook` on the board runs
+ * in R68's order, before the card is moved and before anything resolves, with the played card as its
+ * selection and the cost paid in `data` — no Core card has one now, and the engine's fixtures keep
+ * the hook honest. The cursor is advanced before each hook runs, so a hook that opens a prompt
  * continues with the hooks after it instead of running any of them twice.
  */
 function giftedHookStep(sink: EngineSink, run: PlayRun): void {
+  // R213: #64 Gifted Program's own rule, which step 1 has already read to know the face the play's
+  // choices answer (R214), so the two cannot disagree. Once, before the hooks: the cursor is 0 only
+  // on the first entry.
+  if (run.hookAt === 0) giftedProgramStep(sink, run);
   const holders = triggerHoldersWithHook(sink.state, "onPlayHook");
   for (let at = run.hookAt; at < holders.length; at += 1) {
     run.hookAt = at + 1;
@@ -308,6 +346,22 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
     });
     if (paused(sink)) return;
   }
+}
+
+/**
+ * §8 #64 Gifted Program: "the first card costing 1 or less you play each turn becomes Radiant as it
+ * is played" (2 or less on its radiant face). The card is a static flag the engine reads here —
+ * `playChoices.giftedMakesRadiant` counts the player's plays this turn (R213) — so step 1 can know
+ * the face this play will resolve with before it checks the play's choices (R214), as a hook that
+ * only ran now could not tell it. Setting the flag is §6.3's Make Radiant: in hand the card's stats
+ * and text swap on the next read (§5.2, R74), and the event says so.
+ */
+function giftedProgramStep(sink: EngineSink, run: PlayRun): void {
+  const card = findInstance(sink.state, run.instanceId);
+  if (card === undefined || card.radiant) return;
+  if (!giftedMakesRadiant(sink.state, run.player, run.costPaid)) return;
+  card.radiant = true;
+  sink.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });
 }
 
 // ---------------------------------------------------------------------------
@@ -347,31 +401,58 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
  */
 function placeStep(sink: EngineSink, run: PlayRun): void {
   const state = sink.state;
+  // R210: step 2 held the named zone for this play; it is released here, whatever happens next.
+  if (run.zone !== null) releaseZone(state, run.zone);
   const card = findInstance(state, run.instanceId);
   if (card === undefined) return;
   const side = state.players[run.player];
 
-  const at = side.hand.findIndex((held) => held.id === card.id);
-  if (at >= 0) side.hand.splice(at, 1);
+  if (run.cast === true) {
+    // R70, §6.3 Cast: a cast card leaves wherever it was — a library for a cast on draw (§2.4), no
+    // pile at all for one an effect made (#95) — and a permanent takes the leftmost empty,
+    // unlocked zone of its row (R64), as a play that names none does. Not `moveToZone`: that resets
+    // the instance (R78), and a cast is a play, which does not.
+    removeFromAnyZone(state, card);
+    const type = defOf(state, card.defId).type;
+    run.zone = type === "Spell" ? null : firstFreeZone(state, run.player, type === "Unit" ? "units" : "backrow");
+  } else {
+    const at = side.hand.findIndex((held) => held.id === card.id);
+    if (at >= 0) side.hand.splice(at, 1);
+  }
 
-  if (run.zone !== null) {
-    // §3.2/§6.2 Stack: step 1 already accepted an occupied unit zone for a Stack card, so the
-    // placement is the one that builds the pile — the arriving card goes on top and the card
-    // beneath stops acting (R13). Every other card needs the zone empty, which is what `stack:
-    // false` keeps `placeOnField` insisting on.
-    placeOnField(state, card, run.zone, { stack: playsOnStack(state, card) });
+  // §3.2/§6.2 Stack: step 1 already accepted an occupied unit zone for a Stack card, so the
+  // placement is the one that builds the pile — the arriving card goes on top and the card beneath
+  // stops acting (R13). Every other card needs the zone empty, which is what `stack: false` keeps
+  // `placeOnField` insisting on. R210 keeps the zone the play's, so a refusal is a broken
+  // invariant rather than a game rule; should one ever happen, the card waits in `resolving` and
+  // step 7 lands it in its graveyard, as R138 has a permanent with no zone do, rather than being
+  // left in no pile at all (§10.1).
+  if (run.zone !== null && placeOnField(state, card, run.zone, { stack: playsOnStack(state, card) })) {
     card.summonedTurn = state.turn;
   } else {
+    run.zone = null;
     card.zone = { z: "resolving", player: run.player };
     side.resolving.push(card);
   }
 
   side.turnLog.playedIds.push(card.id);
   side.turnLog.cardsPlayed += 1;
+  // R213: what this play paid, which the next play's Gifted Program check counts (R56, R70).
+  side.turnLog.costsPaid = [...(side.turnLog.costsPaid ?? []), run.costPaid];
   state.counters.played += 1;
+  run.radiant = card.radiant;
 
   playedEvents(sink, run, card);
-  settle(sink);
+  // §6.2 Echo, R30: the Spell GAINS its Echo as it is played — "the next Spell you play gains Echo
+  // +1" — so the grant is taken here, from the player who played it, and not at step 6 after the
+  // Spell's own text has run. Taken later, a Spell that moves Twinspell to the other side (#87's
+  // board swap) or out of play took nothing, and Twinspell stayed for the other player's next one.
+  // The repeats still resolve at step 6, which only takes what is queued.
+  run.echoQueued = true;
+  queueEchoRepeats(sink, card, run.player);
+  // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
+  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`).
+  if (run.cast !== true) settle(sink);
 }
 
 // ---------------------------------------------------------------------------
@@ -395,15 +476,38 @@ function stillResolving(state: GameState, run: PlayRun): CardInstance | null {
 }
 
 /**
+ * The permanents whose lasting effect is #38 Quickstriker's (`staticFlags.quickstriker`), on this
+ * player's side of the field. The played card is never one of them: a permanent does not answer
+ * its own arrival (R119), and a Quickstriker being played is on the field by step 5.
+ */
+function quickstrikersOf(state: GameState, player: PlayerId, played: CardInstance): CardInstance[] {
+  return (["units", "backrow"] as const).flatMap((row) =>
+    slotsOf(player, row).flatMap((ref) => {
+      const held = cardAt(state, ref);
+      if (held === null || held.id === played.id || flagsOf(held).quickstriker !== true) return [];
+      return [held];
+    }),
+  );
+}
+
+/**
  * #38 Quickstriker: "your cards gain 'Combo X: deal X damage to the enemy hero', X = cards you
- * played earlier this turn". The modifier says the Field Spell is out; the count says how much.
+ * played earlier this turn" — one of the two granted Combo parts §10.5 step 5 resolves before the
+ * card's own script. It is the Field Spell's lasting effect, so it is read off the permanents on the
+ * field now (one hit per Quickstriker) rather than from a trigger on `cardPlayed`, which popped
+ * whenever that event was dispatched: a cast's events wait for the loop of the effect that cast it
+ * (R70), so a cast-on-draw chain of two read the count after the chain, 1 and 1, instead of 0 and 1.
+ * A `quickstrikerDamage` modifier counts the same way.
  */
 function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): void {
   const state = sink.state;
   const amount = playedEarlierThisTurn(state, run.player);
   if (amount <= 0) return;
-  for (const mod of state.players[run.player].mods) {
-    if (mod.kind !== "quickstrikerDamage" || !modifierIsLive(state, mod)) continue;
+  const grants =
+    quickstrikersOf(state, run.player, card).length +
+    state.players[run.player].mods.filter((mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod))
+      .length;
+  for (let hit = 0; hit < grants; hit += 1) {
     dealDamage(sink, {
       source: card,
       target: { kind: "hero", player: opponentOf(run.player) },
@@ -420,6 +524,22 @@ function comboDrawStep(sink: EngineSink, run: PlayRun): void {
     if (mod.kind !== "comboDraw" || !modifierIsLive(state, mod)) continue;
     draw(sink, run.player, Math.max(0, mod.amount));
   }
+}
+
+/**
+ * R174: the targets step 5 hands the card's script. §10.5 step 1 checks a play's targets and its
+ * Tribute each on its own (R90), so one play may name a unit both as a target and as a Tribute —
+ * #55 Lava Golem's enemy tribute, crafted onto #68 Twisted Sorcerer's "deal 4 damage to a target".
+ * Step 2 sacrifices it before anything resolves, and an effect aimed at a card on the field is aimed
+ * at that stay: the unit has left the field, so its slot names nothing and the effect fizzles (§8
+ * Conventions), even when Reborn has put a new body in its zone. The slot is kept, as `none`, so the
+ * declarations after it still read their own (R90).
+ */
+function standingTargets(run: PlayRun): Selection[] {
+  if (run.tributes.length === 0) return run.targets;
+  return run.targets.map((selection) =>
+    selection.pick === "instance" && run.tributes.includes(selection.instanceId) ? { pick: "none" } : selection,
+  );
 }
 
 /**
@@ -444,7 +564,7 @@ function resolveStep(sink: EngineSink, run: PlayRun): void {
       case "script":
         runHookResumable(sink, card, "cry", {
           controller: run.player,
-          targets: run.targets,
+          targets: standingTargets(run),
           modes: run.modes,
         });
         break;
@@ -487,9 +607,20 @@ function labelOf(selection: Selection): string {
 function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance): boolean {
   const repeat = run.repeat;
   if (repeat === null) return false;
-  const name = defOf(sink.state, card.defId).name;
+  // A declaration that belongs to some modes only (`forModes`, #24) cannot be asked before the
+  // mode it depends on, so such a card's repeat asks its modes first.
+  if (targetsFollowModes(declaredTargets(card))) {
+    return askRepeatModes(sink, run, card, repeat) && askRepeatTargets(sink, run, card, repeat);
+  }
+  return askRepeatTargets(sink, run, card, repeat) && askRepeatModes(sink, run, card, repeat);
+}
 
-  const targets = declaredTargets(card);
+type RepeatRecord = NonNullable<PlayRun["repeat"]>;
+
+/** The repeat's target declarations, each offered in turn; false while one is waiting (R81). */
+function askRepeatTargets(sink: EngineSink, run: PlayRun, card: CardInstance, repeat: RepeatRecord): boolean {
+  const name = defOf(sink.state, card.defId).name;
+  const targets = activeTargetDecls(declaredTargets(card), repeat.modes);
   for (let at = repeat.declAt; at < targets.length; at += 1) {
     repeat.declAt = at + 1;
     const decl = targets[at];
@@ -513,7 +644,12 @@ function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance): b
     if (opened !== null) return false;
     run.awaiting = null;
   }
+  return true;
+}
 
+/** The repeat's mode declarations, each offered in turn; false while one is waiting (R81). */
+function askRepeatModes(sink: EngineSink, run: PlayRun, card: CardInstance, repeat: RepeatRecord): boolean {
+  const name = defOf(sink.state, card.defId).name;
   const modes = declaredModes(card);
   for (let at = repeat.modeAt; at < modes.length; at += 1) {
     repeat.modeAt = at + 1;
@@ -534,7 +670,6 @@ function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance): b
     if (opened !== null) return false;
     run.awaiting = null;
   }
-
   return true;
 }
 
@@ -543,10 +678,26 @@ function askRepeatChoices(sink: EngineSink, run: PlayRun, card: CardInstance): b
  * `state.echoQueue` and resolve one at a time, so a prompt inside one pauses the rest (§6.1). This
  * is the step an owed pipeline re-enters, and it picks up from whatever the queue and the current
  * repeat record say, which is why it can be entered any number of times.
+ *
+ * Then §4.5's check, once the last resolution is over and before step 7 (R59): the check runs after
+ * "a card's whole Cry, spell, trap or triggered script", and step 7's `cardResolved` is what #60 Bear
+ * Honeypot and #85 Unlicensed Experimentation answer, so they must meet the board the card left —
+ * without the units its Cry or spell has killed. It sits here rather than in step 7 because this
+ * step is re-entered at itself: a Death hook that asks pauses the play here, and the answer brings
+ * it back through a check that finds nothing left to do, and on to step 7.
  */
 function echoStep(sink: EngineSink, run: PlayRun): void {
+  resolveEchoRepeats(sink, run);
+  if (paused(sink)) return;
+  stateCheck(sink);
+}
+
+function resolveEchoRepeats(sink: EngineSink, run: PlayRun): void {
   const opening = stillResolving(sink.state, run);
-  if (opening === null) return;
+  if (opening === null) {
+    dropEchoRepeats(sink.state, run.instanceId);
+    return;
+  }
   if (!run.echoQueued) {
     // Once per resolution: `queueEchoRepeats` consumes R30's grant (`echo.ts`).
     run.echoQueued = true;
@@ -555,24 +706,70 @@ function echoStep(sink: EngineSink, run: PlayRun): void {
 
   for (;;) {
     const card = stillResolving(sink.state, run);
-    if (card === null) return;
+    if (card === null) {
+      dropEchoRepeats(sink.state, run.instanceId);
+      return;
+    }
 
     if (run.repeat === null) {
+      if (echoRepeatsOwed(sink.state, run.instanceId) <= 0) return;
+      // §4.5: the resolution before this repeat was a whole spell script, and the state check runs
+      // after every one (R59) — so its deaths, their Death hooks and a hero at 0 are settled before
+      // the repeat asks anything. A dead unit is not offered again, and a game the first resolution
+      // won ends there. A Death hook that asks pauses the repeats here; they wait in state.
+      stateCheck(sink);
+      if (paused(sink)) return;
+      if (stillResolving(sink.state, run) === null) {
+        dropEchoRepeats(sink.state, run.instanceId);
+        return;
+      }
       if (!takeEchoRepeat(sink.state, run.instanceId)) return;
       run.repeat = { targets: [], modes: [], declAt: 0, modeAt: 0 };
     }
 
     if (!askRepeatChoices(sink, run, card)) return;
-
-    const repeat = run.repeat;
-    run.repeat = null;
-    runHookResumable(sink, card, "cry", {
-      controller: run.player,
-      targets: repeat?.targets ?? [],
-      modes: repeat?.modes ?? [],
-    });
-    if (paused(sink)) return;
+    if (!resolveRepeat(sink, run)) return;
   }
+}
+
+/**
+ * One Echo repeat, once its fresh answers are in: step 5 again, whole — #38 Quickstriker's and #78
+ * /fullsend's granted Combo parts, then the card's own script (§10.5 step 6: "repeat step 5"). The
+ * repeat record keeps its place in `RESOLVE_PARTS`, so a Combo draw that pauses resumes at the next
+ * part rather than drawing again; the record is let go as the script starts, as before, because the
+ * script's own tail is parked by `runHookResumable` and resumes ahead of this step (R113).
+ *
+ * Returns false when a prompt (or the end of the game) stopped the repeat.
+ */
+function resolveRepeat(sink: EngineSink, run: PlayRun): boolean {
+  const repeat = run.repeat;
+  if (repeat === null) return true;
+  for (let at = repeat.partAt ?? 0; at < RESOLVE_PARTS.length; at += 1) {
+    repeat.partAt = at + 1;
+    const card = stillResolving(sink.state, run);
+    if (card === null) break;
+    switch (RESOLVE_PARTS[at]) {
+      case "quickstriker":
+        quickstrikerCombo(sink, run, card);
+        break;
+      case "comboDraw":
+        comboDrawStep(sink, run);
+        break;
+      case "script":
+        run.repeat = null;
+        runHookResumable(sink, card, "cry", {
+          controller: run.player,
+          targets: repeat.targets,
+          modes: repeat.modes,
+        });
+        break;
+      default:
+        break;
+    }
+    if (paused(sink)) return false;
+  }
+  run.repeat = null;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -597,9 +794,10 @@ function finishStep(sink: EngineSink, run: PlayRun): void {
     defId: run.defId,
     player: run.player,
     // The same number step 4's `cardPlayed` reported: `run.costPaid` is the mana step 2 actually
-    // charged, after every modifier and with R65's X and embiggen prices in it. A cast's tail
-    // carries 0 (R70), which `runOwedCastTail` puts on the run it drives.
+    // charged, after every modifier and with R65's X and embiggen prices in it. A cast carries 0
+    // (R70), which `castThroughPipeline` puts on the run it drives.
     costPaid: run.costPaid,
+    radiant: run.radiant ?? false,
   });
   flagReturnToHandAtEndOfTurn(sink.state, run.instanceId);
 }
@@ -624,7 +822,9 @@ const STEP_TABLE: readonly Step[] = [
   { name: "resolve", run: resolveStep, repeats: true },
   { name: "echo", run: echoStep, repeats: true },
   { name: "finish", run: finishStep },
-  { name: "settle", run: (sink) => settle(sink) },
+  // §10.5 step 8. A cast settles nothing of its own: it runs inside another effect, whose loop
+  // takes its events, and §2.4's chain runs the state check a cast on draw is owed (R59).
+  { name: "settle", run: (sink, run) => (run.cast === true ? undefined : settle(sink)) },
 ];
 
 /**
@@ -723,41 +923,46 @@ function runOwedPlay(sink: EngineSink, item: WorkItem): void {
 registerWorkHandler(PLAY_WORK_KIND, runOwedPlay);
 
 /**
- * `work.ts`'s handler for a cast's tail (R70, `echo.ts`'s `CAST_TAIL_WORK`): §10.5 steps 6 to 8 for
- * a card `resolve.castCard` has already played for 0, placed and resolved. It is the same driver
- * the play pipeline uses, entered at step 6, which is what makes a cast's repeats ask fresh prompts
- * and pause each other exactly as a play's do (§10.6, R81, R113) — and what makes the card land at
- * step 7, after the last repeat, rather than before the first.
+ * R70: a cast is a play, "free … with cost paid 0", so it runs this pipeline from step 3 — step 1
+ * has nothing to validate, since the effect chose the card, and step 2 pays nothing. Everything else
+ * is a play's: #64 Gifted Program's hook at step 3, the placement, counters, `cardPlayed` and the
+ * Echo gained as it is played at step 4 (R178), #38 Quickstriker's and #78 /fullsend's granted Combo
+ * parts before the card's own script at step 5, the repeats with fresh prompts at step 6 and the
+ * landing and `cardResolved` at step 7. A step that asks parks the rest of the cast as an ordinary
+ * `"play"` item at the moment it pauses (R113, R117), exactly as a play does.
  *
- * `resolve.ts` cannot call this directly: it sits below `prompts.ts`, which this module needs, so
- * the hand-over is an owed `WorkItem` and the resolution loop delivers it (see `echo.ts`'s header).
- * The repeats are already on `state.echoQueue` — `castCard` queued them, consuming R30's grant —
- * hence `echoQueued: true`.
+ * `resolve.castCard` is the entry point; it reaches this through the driver registered below,
+ * because `resolve.ts` sits under `prompts.ts` and cannot import the pipeline itself.
  */
-function runOwedCastTail(sink: EngineSink, item: WorkItem): void {
-  const plan = castTailOf(item.resume);
-  if (plan === null) return;
+function castThroughPipeline(sink: EngineSink, instance: CardInstance, options: HookOptions): void {
+  // The card an effect casts may be in no pile yet — drawn off the library (§2.4) or made from the
+  // catalog (#95) — and the pipeline finds its card by id, so it waits in the resolving zone from
+  // the start, as a card being played does (§10.5 step 4, R98).
+  const player = instance.controller;
+  removeFromAnyZone(sink.state, instance);
+  instance.zone = { z: "resolving", player };
+  sink.state.players[player].resolving.push(instance);
 
   drive(sink, {
-    instanceId: plan.instanceId,
-    defId: plan.defId,
-    player: plan.controller,
+    instanceId: instance.id,
+    defId: instance.defId,
+    player,
     costPaid: 0,
-    // Steps 1 to 5 were the cast's: the card is placed and its script has run (R70).
     zone: null,
-    targets: [...plan.targets],
-    modes: [...plan.modes],
+    targets: [...(options.targets ?? [])],
+    modes: [...(options.modes ?? [])],
     tributes: [],
-    at: PLAY_STEPS.indexOf("echo"),
+    at: PLAY_STEPS.indexOf("giftedHook"),
     hookAt: 0,
-    resolveAt: RESOLVE_PARTS.length,
-    echoQueued: true,
+    resolveAt: 0,
+    echoQueued: false,
     repeat: null,
     awaiting: null,
+    cast: true,
   });
 }
 
-registerWorkHandler(CAST_TAIL_WORK, runOwedCastTail);
+registerCastDriver(castThroughPipeline);
 
 // ---------------------------------------------------------------------------
 // Entry points

@@ -30,6 +30,7 @@ import {
   loseHealth,
   recruit,
   summon,
+  targetsInScope,
   type TargetScope,
 } from "../effects";
 import { manaEvent, spendMana } from "../mana";
@@ -351,6 +352,34 @@ export function whyCannotActivate(state: GameState, player: PlayerId, instanceId
 }
 
 /**
+ * §9.3 "reduce refuses illegal actions itself", for what an `activatePower` carries. R103 lets the
+ * action name one thing: the ping's target, which must be a target the ping could reach — a unit on
+ * the field (never one dormant under a Stack, R13, nor a card in a hand or the backrow) or a hero,
+ * exactly what the prompt would have offered (`PING_SCOPE`). Every other power takes nothing, so a
+ * selection sent with one is refused rather than read — above all a Discover's answer, which only
+ * the Discover's own prompt may carry (§6.3: its options are drawn by the engine, not named by the
+ * client).
+ */
+function whyTargetsRefused(
+  sink: EngineSink,
+  player: PlayerId,
+  card: CardInstance,
+  targets: readonly Selection[],
+): string | null {
+  if (targets.length === 0) return null;
+  if (powerOf(card)?.name !== "ping") return "that power takes no target";
+  if (targets.length > 1) return "that power takes one target";
+  const [pick] = targets;
+  const legal = targetsInScope(makeContext(sink, card, { controller: player }), PING_SCOPE);
+  const reachable = legal.some(
+    (option) =>
+      (option.pick === "instance" && pick?.pick === "instance" && option.instanceId === pick.instanceId) ||
+      (option.pick === "hero" && pick?.pick === "hero" && option.player === pick.player),
+  );
+  return reachable ? null : "that is not a target the power can reach";
+}
+
+/**
  * The `activatePower` action of §10.2: validate, spend the power's X, activate it once. The targets
  * the action carried travel into the activation as the play's selections do (R81), so a power that
  * needs one takes it from there instead of opening a prompt.
@@ -365,6 +394,9 @@ export function activatePower(
 
   const card = findInstance(sink.state, args.instanceId);
   if (card === undefined) return `no card ${args.instanceId}`;
+
+  const refused = whyTargetsRefused(sink, player, card, args.targets ?? []);
+  if (refused !== null) return refused;
 
   const side = sink.state.players[player];
   spendMana(side, powerCostOf(card));

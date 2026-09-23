@@ -185,6 +185,10 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
       const at = pile.findIndex((card) => card.id === instance.id);
       if (at >= 0) {
         pile.splice(at, 1);
+        // R155: §5.1's end-of-turn return belongs to the Spell its own play landed in the graveyard
+        // (§10.5 step 7). A card that leaves the graveyard has spent that landing, so whatever puts
+        // it back there this turn — a discard (#76), a burn — is no play of its, and it stays (R153).
+        if (zone === "graveyard") delete instance.returnToHandAtEndOfTurn;
         return;
       }
     }
@@ -223,6 +227,46 @@ export function resetInstance(instance: CardInstance): void {
   delete instance.rebornSpent;
 }
 
+/**
+ * R174: drop the delayed effects aimed at a card that is leaving the field (`DelayedEffect.watch`).
+ * The card that may later stand in the same zone under the same id — bounced and replayed, or back
+ * through Reborn — is a new arrival (R78, R83), and an effect aimed at the old one fizzles (R76).
+ */
+function forgetWatchers(state: GameState, instanceId: string): void {
+  if (!state.delayed.some((effect) => effect.watch === instanceId)) return;
+  state.delayed = state.delayed.filter((effect) => effect.watch !== instanceId);
+}
+
+/** The zones a queue entry names when the card answered from the field (`triggers.queueTrigger`). */
+const FIELD_TRIGGER_ZONES: readonly unknown[] = ["field", "backrow"];
+
+/**
+ * R174: drop the triggers and turn hooks this card queued while it stood on the field. They belong
+ * to that stay: a Reborn body or a replayed card under the same id is a reset instance that has
+ * entered the field again (R78, R83), so an entry queued before it left — #91's Plague Token for the
+ * hit that killed it, #37's start-of-turn hook queued before it died — never acts on what came
+ * back. Without Reborn the entry already fizzled, because a card in a graveyard answers none of
+ * its field triggers (R153); this makes the card that returns answer none of them either.
+ */
+function forgetQueuedTriggers(state: GameState, instanceId: string): void {
+  const owned = (entry: GameState["triggerQueue"][number]): boolean =>
+    entry.instanceId === instanceId && FIELD_TRIGGER_ZONES.includes(entry.resume.data.zone);
+  if (!state.triggerQueue.some(owned)) return;
+  state.triggerQueue = state.triggerQueue.filter((entry) => !owned(entry));
+}
+
+/**
+ * §2.3: X and the embiggen price are chosen at play time and stored on the played instance, and
+ * R65 has an X-cost card cost 0 and an embiggen card its base price everywhere outside play. So the
+ * choice ends with the play: a Spell that leaves the resolving zone (to its graveyard, to exile, or
+ * straight to a hand) drops it, as R78's reset drops it from a permanent leaving the field. Without
+ * this #24 Efficiency Dividend returned to hand at the X it was last played for.
+ */
+function endPlayChoices(instance: CardInstance): void {
+  delete instance.x;
+  delete instance.embiggened;
+}
+
 export type MoveResult = "moved" | "vanished";
 
 /**
@@ -247,6 +291,13 @@ export function moveToZone(
   const wasOnField = from === "field";
   const token = isUnitToken(state, instance);
   removeFromAnyZone(state, instance);
+  // R174: leaving the field ends every delayed effect aimed at this card and every trigger it
+  // queued there, whatever comes back.
+  if (wasOnField) {
+    forgetWatchers(state, instance.id);
+    forgetQueuedTriggers(state, instance.id);
+  }
+  if (from === "resolving") endPlayChoices(instance);
 
   // R11: a unit token ceases to exist when it leaves the field, and a unit-token card ceases to
   // exist when it would reach a graveyard or exile. One may live in a hand or library (#75) and

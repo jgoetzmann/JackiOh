@@ -11,8 +11,9 @@
 // action carries, never a prompt) and eaten with `sacrifice`, which bypasses Indestructible and
 // counts as a death.
 //
-// What is remembered is `memory.eaten = { defId, radiant, row, statsOverride? }` (§10.1): R41 keeps
-// the eaten card's radiant flag and `statsOverride` on every copy, and copies of a backrow card go
+// What is remembered is `memory.eaten = { defId, radiant, row, statsOverride?, armorOverride? }`
+// (§10.1): R41 keeps the eaten card's radiant flag and `statsOverride` (with §7's `armorOverride`
+// beside it) on every copy, and copies of a backrow card go
 // to the backrow — which the remembered `row` records, so Death needs no catalog lookup. R41's two
 // fizzles are one condition each: nothing to tribute → the Cry does nothing and remembers nothing;
 // nothing eaten → Death does nothing. It can never eat itself: the declared target excludes it and
@@ -35,6 +36,8 @@ type Eaten = {
   row: Row;
   /** R41, R57: a token eaten with §7 stats copies with those stats. */
   statsOverride?: { attack: number; health: number };
+  /** §7: a Bread Token's "Armor X" is the other half of its X/X, so a copy keeps it beside them. */
+  armorOverride?: number;
 };
 
 const EATEN = "eaten";
@@ -81,6 +84,7 @@ function mealOf(ctx: EffectContext): Eaten | null {
     ...(card.statsOverride === undefined
       ? {}
       : { statsOverride: { attack: card.statsOverride.attack, health: card.statsOverride.health } }),
+    ...(card.armorOverride === undefined ? {} : { armorOverride: card.armorOverride }),
   };
 }
 
@@ -95,6 +99,7 @@ function eatenOf(ctx: EffectContext): Eaten | null {
     radiant: value.radiant === true,
     row,
     ...(value.statsOverride === undefined ? {} : { statsOverride: value.statsOverride }),
+    ...(typeof value.armorOverride === "number" ? { armorOverride: value.armorOverride } : {}),
   };
 }
 
@@ -104,6 +109,7 @@ function copyOf(eaten: Eaten): Effect {
     defId: eaten.defId,
     radiant: eaten.radiant,
     ...(eaten.statsOverride === undefined ? {} : { statsOverride: eaten.statsOverride }),
+    ...(eaten.armorOverride === undefined ? {} : { armorOverride: eaten.armorOverride }),
   });
 }
 
@@ -137,6 +143,7 @@ export const radiant: Script = {
           defId: eaten.defId,
           radiant: eaten.radiant,
           ...(eaten.statsOverride === undefined ? {} : { statsOverride: eaten.statsOverride }),
+          ...(eaten.armorOverride === undefined ? {} : { armorOverride: eaten.armorOverride }),
         }),
       ];
     }

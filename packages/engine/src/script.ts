@@ -91,6 +91,15 @@ export type StaticFlags = {
   deftDuelist?: boolean;
   /** R30: this card's own Echo, so its play resolves this many extra times. */
   echo?: number;
+  /** R30, R209: the Echo this permanent's rider gives the next Spell, read off its face now (#79). */
+  echoGrant?: number;
+  /** #38: while on the field, its controller's cards gain "Combo X: X damage to the enemy hero". */
+  quickstriker?: boolean;
+  /**
+   * #64 Gifted Program: while on the field, the first card costing this much or less its controller
+   * plays each turn becomes Radiant as it is played (§10.5 step 3, R56, R213).
+   */
+  giftedProgram?: number;
   /** Tribute cost in units, Sheep Tokens counting 2 (§6.3). */
   tribute?: number;
   /** R101: only a card that says so may pay its Tribute with the opponent's units (§8 #55). */

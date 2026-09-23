@@ -4,7 +4,8 @@
 // (R35). Vanilla is a flag the layers read (§10.4): stats, buffs and damage are other layers and
 // must survive it, and the definition is shared by every copy of the card, so it is never edited.
 
-import type { CardDef, CardType, Row } from "@jackioh/shared";
+import type { CardDef, CardType, PlayerId, Row } from "@jackioh/shared";
+import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf } from "../catalog";
 import { unitHas } from "../layers";
 import type { Effect, EffectContext } from "../script";
@@ -120,11 +121,16 @@ export function transform(args: TransformTarget & { defId: string; radiant?: boo
     apply(ctx): void {
       const old = instanceOf(ctx, args);
       if (old === null) return;
-      if (unitHas(ctx.state, old, "Immutable")) return;
+      // R23: Immutable blocks a Transform, which is what a Replace is on the field (§6.3). Off the
+      // field a Replace is no Transform — the card is not rewritten, it ceases to exist and another
+      // takes its place — so R35's "other zones: any card from the pool, same counts" replaces an
+      // Immutable card too, and a library keeps its count whatever it held (§9.1).
+      if (old.zone.z === "field" && unitHas(ctx.state, old, "Immutable")) return;
 
       const def = defOf(ctx.state, args.defId);
       const radiant = args.radiant === true;
       const fromDefId = old.defId;
+      const hiddenFrom = unreadableBy(ctx, old);
       const replacement =
         old.zone.z === "field"
           ? replaceOnField(ctx, old, def, radiant)
@@ -137,9 +143,25 @@ export function transform(args: TransformTarget & { defId: string; radiant?: boo
         fromDefId,
         toDefId: replacement.defId,
         newInstanceId: replacement.id,
+        ...(hiddenFrom.length === 0 ? {} : { hiddenFrom }),
       });
     },
   };
+}
+
+/**
+ * R177: who could not read this card where it is, read before it ceases to exist there — a library
+ * card is hidden from both players (§9.1), a hand card from the other one, and a face-down trap from
+ * everyone but its controller (R33). A card that ceases to exist leaves no zone of its own to be
+ * judged by later, so the event records this for the view.
+ */
+function unreadableBy(ctx: EffectContext, card: CardInstance): PlayerId[] {
+  const zone = card.zone;
+  if (zone.z === "library") return [...PLAYER_IDS];
+  if (zone.z === "hand") return [opponentOf(zone.player)];
+  if (zone.z !== "field" || zone.row !== "backrow" || card.faceUp === true) return [];
+  const type = defOf(ctx.state, card.defId).type;
+  return type === "Trap" || type === "Field Trap" ? [opponentOf(card.controller)] : [];
 }
 
 /**

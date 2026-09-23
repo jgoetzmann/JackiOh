@@ -41,6 +41,7 @@
 // review's B-2 and B-3 found.
 
 import type { GameEvent, GameEventType, PlayerId } from "@jackioh/shared";
+import { PLAYER_IDS } from "@jackioh/shared";
 import { defOf } from "./catalog";
 import { applyResumable, runHookResumable } from "./prompts";
 import type { EngineSink, HookName } from "./resolve";
@@ -48,6 +49,7 @@ import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
+import { movesIn, type LaterMoves } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -253,9 +255,17 @@ const TRIGGER_STEP = "trigger" as unknown as Resume["step"];
  * `state.nextSeq` numbers a queue entry, as it numbers a modifier, a delayed effect and a parked
  * work item, so R68's creation order is one counter and ids stay deterministic under replay. The
  * `t` prefix keeps them apart from `prompts.ts`'s `q…` choice ids, which count on `nextId`.
+ *
+ * R177: except the entry of a card in a hand. The counter also numbers the modifiers, whose ids both
+ * seats read (R169), so a number a hidden card took would show in them: #89 Corpse Eater answers
+ * every death from its owner's hand, even one it gains nothing from (a token's, R11), and the next
+ * modifier's id would then tell the opponent the hand holds one. Nothing orders or finds a queue
+ * entry by its number, so a hand card's entry borrows the counter's current value without moving it,
+ * told apart by the queue's length.
  */
-function nextEntryId(state: GameState): { id: string; seq: number } {
+function nextEntryId(state: GameState, hidden = false): { id: string; seq: number } {
   const seq = state.nextSeq;
+  if (hidden) return { id: `h${seq}.${state.triggerQueue.length}`, seq };
   state.nextSeq += 1;
   return { id: `t${seq}`, seq };
 }
@@ -280,7 +290,7 @@ export function queueTrigger(
   def: TriggerDef,
   event: GameEvent,
 ): QueuedTrigger {
-  const { id, seq } = nextEntryId(sink.state);
+  const { id, seq } = nextEntryId(sink.state, holder.zone === "hand");
   const entry: QueuedTrigger = {
     id,
     seq,
@@ -407,21 +417,47 @@ function runOwedTraps(sink: EngineSink, event: GameEvent, owed: readonly string[
 }
 
 /**
+ * R212: the events that happened after the one being dispatched — the rest of the frontier, and
+ * whatever the traps that answered it have emitted since and the frontier has not collected yet. A
+ * sink that never collected anything (a caller dispatching by hand) has nothing uncollected.
+ */
+function eventsAfterDispatched(sink: EngineSink): GameEvent[] {
+  const collected = (sink as SettleSink).dispatched ?? sink.events.length;
+  return [...sink.state.dispatch.map((item) => item.event), ...sink.events.slice(collected)];
+}
+
+/**
  * Offer one event to the traps and then queue every other trigger that wakes on it, in R68's order
  * (§10.3 steps C and D). Queueing only reads the board, so this can never pause halfway through the
  * queueing itself — which is what makes the frontier safe to flush into state the instant a prompt
  * opens somewhere else.
+ *
+ * R212: the board an event is offered to is the board as it stood when the event happened, and the
+ * events owed behind it say how the board has moved since. The loop dispatches an event after
+ * whatever ran first — the state check a combat, an Echo repeat or a whole Cry is followed by (§4.5,
+ * §10.3), and the Death hooks and Reborn inside it — so a card that has moved zones since the event
+ * happened is on a stay that did not see it: a Reborn body does not answer the hit that killed the
+ * unit or the kill its last stay made (R174), and a card drawn since answers no death from before it
+ * reached the hand (§8 #89). A card whose controller has changed since answers for the player who
+ * controlled it then: #32 Prem Panther's kill is its controller's as the kill happens, even when the
+ * victim's Death then steals the Panther (#86).
  */
 export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger[] {
   const queued: QueuedTrigger[] = [];
   const owed = offerToTraps(sink, event);
   if (owed !== null) queued.push(owed);
 
+  let later: LaterMoves | null = null;
   for (const holder of cardsInTriggerOrder(sink.state)) {
     // §10.3: the traps have already had this event; queueing them too would fire them twice.
     if (holder.isTrap) continue;
-    for (const def of triggersOnEvent(holder, event.type)) {
-      queued.push(queueTrigger(sink, holder, def, event));
+    const defs = triggersOnEvent(holder, event.type);
+    if (defs.length === 0) continue;
+    later ??= movesIn(eventsAfterDispatched(sink));
+    if (later.moved.has(holder.card.id)) continue;
+    const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
+    for (const def of defs) {
+      queued.push(queueTrigger(sink, { ...holder, controller }, def, event));
     }
   }
   return queued;
@@ -455,14 +491,24 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
     // R153, and the same re-reading as a trigger above: a card the queue caught on the field and
     // that is in a hand or a graveyard by the time its entry pops no longer registers this hook.
     if (!zoneRegistersHook(sink.state, holder, hook)) return;
+    // §6.2: a start- or end-of-turn hook is its CONTROLLER's, on its controller's own turn — which
+    // is why the queue was built for one player (`triggerHoldersWithHook`'s `only`). A card that
+    // changed sides while its entry waited (a Death earlier in the same queue stole it) is now the
+    // other player's, on a turn that is not theirs, so the entry fizzles rather than firing for them.
+    const queuedFor: unknown = entry.resume.data.controller;
+    if (typeof queuedFor === "string" && holder.controller !== queuedFor) return;
     runHookResumable(sink, card, hook, { controller: holder.controller });
     return;
   }
 
   const def = holder.triggers.find((candidate) => candidate.id === entry.hook);
   if (def === undefined || !def.on.includes(event.type)) return;
+  // R212: an event trigger answers for the player who controlled its card when the event happened,
+  // which is what its entry captured — a change of control since does not hand the answer over.
+  const queuedFor: unknown = entry.resume.data.controller;
+  const controller = PLAYER_IDS.find((player) => player === queuedFor) ?? holder.controller;
   const ctx = {
-    ...makeContext(sink, card, { controller: holder.controller, data: entry.resume.data }),
+    ...makeContext(sink, card, { controller, data: entry.resume.data }),
     event,
   };
   // Resumable, so a prompt inside the list stops the list there instead of being stepped over.
@@ -471,7 +517,7 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   // `hook: "triggers" | "handTriggers"` with the trigger id as the step. Until then a trigger that
   // asks mid-list continues in its card's `resume` table, which is where every §6.3 choose effect
   // already sends the answer.
-  applyResumable(sink, ctx, { ...entry.resume, owner: holder.controller }, def.run(ctx));
+  applyResumable(sink, ctx, { ...entry.resume, owner: controller }, def.run(ctx));
 }
 
 /**
@@ -484,6 +530,22 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
 export type SettleSink = EngineSink & { dispatched?: number };
 
 /**
+ * Events some other resolution loop has already dispatched, by object identity. #96 My Pawn's AI turn
+ * drives `reduce` once per action, and each of those settles its own events before the playout
+ * copies them onto the enclosing action's list so the client is told about them (R168); the
+ * enclosing loop must not hand them to the traps and the trigger queue again (§10.3: an event is
+ * offered once), or every trigger of the AI turn fires twice. A `WeakSet` holds no game state and
+ * outlives nothing it names: the events are the enclosing action's own objects, collected within
+ * that same action.
+ */
+const dispatchedElsewhere = new WeakSet<GameEvent>();
+
+/** Mark events a nested `reduce` has already dispatched (see `dispatchedElsewhere`). */
+export function markDispatched(events: readonly GameEvent[]): void {
+  for (const event of events) dispatchedElsewhere.add(event);
+}
+
+/**
  * §10.1: an emitted event joins the frontier — "events still owed to the traps and the trigger
  * queue" — in emission order, with an id and `seq` from `state.nextSeq` (R68's one counter), so the
  * frontier a replay builds is the frontier the live game had.
@@ -494,6 +556,7 @@ function collectEvents(sink: SettleSink): void {
     sink.dispatched = at + 1;
     const event = sink.events[at];
     if (event === undefined) continue;
+    if (dispatchedElsewhere.has(event)) continue;
     const seq = state.nextSeq;
     state.nextSeq += 1;
     state.dispatch.push({ id: `e${seq}`, seq, event });

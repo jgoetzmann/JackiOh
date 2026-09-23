@@ -19,7 +19,7 @@
 // other ingredients cease to exist without dying. So the only instance-level work here is the def
 // id, the summed buffs and the united granted keywords; everything else is deliberately untouched.
 
-import type { CardDef, CardFace, CardType, Keyword, PlayerId, Rarity, Tag } from "@jackioh/shared";
+import type { CardDef, CardFace, CardType, Keyword, PlayerId, Rarity, Selection, Tag } from "@jackioh/shared";
 import { keywordKey } from "@jackioh/shared";
 import { defOf } from "../catalog";
 import { FUSE_COST_CAP } from "../config";
@@ -27,7 +27,8 @@ import { addToHand } from "../draw";
 import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
-import type { Script } from "../script";
+import { activeTargetDecls, selectionsPerDeclaration } from "../playChoices";
+import type { Effect, Hook, Script } from "../script";
 import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
 import { removeFromAnyZone } from "../zones";
@@ -156,13 +157,24 @@ function rarestOf(defs: readonly CardDef[]): Rarity {
 }
 
 /**
- * A `t-<n>` id, the spelling §10.1 gives a transient def. It depends only on how many transient
- * defs the state already holds, so the same action list always produces the same id (§9.3).
+ * The id a transient def gets (R102, R179): `t-<n>`, where n depends only on how many transient defs
+ * the state already holds, so the same action list always produces the same id (§9.3) — followed by
+ * the ids of the ingredients it was fused from, `t-<n>:<a>+<b>`.
+ *
+ * The suffix is what keeps the script registry right. A def is match state, but its scripts are code
+ * and live in the process-wide registry under the def's id (see this file's header), and one server
+ * process runs every match (§9.2) and folds a match's log to rebuild it (§9.3). With a bare `t-<n>`,
+ * two matches that fused different pairs into the same slot shared one registry entry, and the
+ * later fusion replaced the scripts of the earlier match's card. The fused scripts are a function of
+ * the ingredients' ids and nothing else (`fusedScript`), so an id that carries them names the same
+ * scripts in every match that can mint it.
  */
-function nextTransientId(state: GameState): string {
+function nextTransientId(state: GameState, defs: readonly CardDef[]): string {
+  const taken = (n: number): boolean =>
+    Object.keys(state.transientDefs).some((id) => id === `t-${n}` || id.startsWith(`t-${n}:`));
   let n = Object.keys(state.transientDefs).length + 1;
-  while (state.transientDefs[`t-${n}`] !== undefined) n += 1;
-  return `t-${n}`;
+  while (taken(n)) n += 1;
+  return `t-${n}:${defs.map((def) => def.id).join("+")}`;
 }
 
 function buildDef(
@@ -171,7 +183,7 @@ function buildDef(
   defs: readonly CardDef[],
   targetDef: CardDef | null,
 ): CardDef {
-  const id = nextTransientId(state);
+  const id = nextTransientId(state, defs);
   return {
     id,
     // Transient defs are not catalog cards, so no random pool or Discover can reach one (§5.1);
@@ -281,8 +293,55 @@ function fusedSetStat(scripts: readonly Script[]): Script["setStat"] | undefined
   };
 }
 
+type Face = { defId: string; script: Script };
+
+/** An effect that resolves with one ingredient's own play choices, whatever context applies it. */
+function withChoices(effect: Effect, targets: readonly Selection[], modes: readonly string[]): Effect {
+  return { ...effect, apply: (ctx) => effect.apply({ ...ctx, targets: [...targets], modes: [...modes] }) };
+}
+
+/**
+ * R102 concatenates the ingredients' declared targets and modes in ingredient order, and R90 reads
+ * that flat list declaration by declaration — so each ingredient's Cry must resolve with its OWN
+ * slice of the play's choices, not the whole list. Handed the whole list, every ingredient read its
+ * first slot: a crafted Bigot + Twisted Sorcerer aimed the Sorcerer's 4 damage at the unit Bigot
+ * destroyed, and an Archivist + Silly Silas rotated by Archivist's "highest". Modes split by each
+ * ingredient's count of mode declarations; targets split by R90's rule over the declarations that
+ * the ingredient's own modes make active (`forModes`), measured against the board as it stands.
+ * Every effect an ingredient's Cry returns is bound to that slice, because an effect reads
+ * `ctx.targets` when it applies, and the context applying it is the fused card's.
+ */
+function fusedCry(faces: readonly Face[]): Hook | undefined {
+  if (!faces.some((face) => face.script.cry !== undefined)) return undefined;
+  return (ctx) => {
+    const modesOf: string[][] = [];
+    let modeAt = 0;
+    for (const face of faces) {
+      const count = face.script.modes?.length ?? 0;
+      modesOf.push(ctx.modes.slice(modeAt, modeAt + count));
+      modeAt += count;
+    }
+    const declsOf = faces.map((face, index) => activeTargetDecls(face.script.targets ?? [], modesOf[index] ?? []));
+    const slices =
+      ctx.self === null
+        ? declsOf.flat().map(() => [])
+        : selectionsPerDeclaration(ctx.state, ctx.controller, ctx.self, declsOf.flat(), ctx.targets);
+
+    let declAt = 0;
+    return faces.flatMap((face, index) => {
+      const count = declsOf[index]?.length ?? 0;
+      const targets = slices.slice(declAt, declAt + count).flat();
+      declAt += count;
+      const cry = face.script.cry;
+      if (cry === undefined) return [];
+      const modes = modesOf[index] ?? [];
+      return cry({ ...ctx, targets, modes }).map((effect) => withChoices(effect, targets, modes));
+    });
+  };
+}
+
 function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
-  const faces = defs.map((def) => {
+  const faces: Face[] = defs.map((def) => {
     const pair = scriptsFor(def.id);
     return { defId: def.id, script: radiant ? pair.radiant : pair.base };
   });
@@ -290,7 +349,12 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
     faces.map((face) => scriptRecord(face.script, face.defId)),
   ) as Script;
   const setStat = fusedSetStat(faces.map((face) => face.script));
-  return setStat === undefined ? combined : { ...combined, setStat };
+  const cry = fusedCry(faces);
+  return {
+    ...combined,
+    ...(setStat === undefined ? {} : { setStat }),
+    ...(cry === undefined ? {} : { cry }),
+  };
 }
 
 // ---------------------------------------------------------------------------

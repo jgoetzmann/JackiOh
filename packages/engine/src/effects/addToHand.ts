@@ -28,11 +28,28 @@ type HandRiders = {
   costMod?: number;
 };
 
-/** `costMod` ADDS (R65 sums it); `costOverride` and `radiant` replace. */
-function applyRiders(card: CardInstance, riders: HandRiders): void {
+/**
+ * `costMod` ADDS (R65 sums it); `costOverride` and `radiant` replace.
+ *
+ * The two halves land at different moments. A card generated or made Radiant is Radiant wherever it
+ * ends up (R74), so the flag goes on first. A cost rider ("it costs 1 less", "they cost 1") is a
+ * price for the card in the hand, so it goes on only once the card has reached one: a full hand
+ * burns it instead (§2.4, R4), and a burned card is an ordinary graveyard card that R78 would
+ * otherwise have carry the rider into every later zone.
+ */
+function applyRadiantRider(card: CardInstance, riders: HandRiders): void {
   if (riders.radiant === true) card.radiant = true;
+}
+
+function applyCostRiders(card: CardInstance, riders: HandRiders): void {
   if (riders.costOverride !== undefined) card.costOverride = riders.costOverride;
   if (riders.costMod !== undefined) card.costMod += riders.costMod;
+}
+
+/** §2.4's pipeline, with the riders applied around it as `applyRadiantRider` explains. */
+function putInHandWith(ctx: EffectContext, card: CardInstance, riders: HandRiders): void {
+  applyRadiantRider(card, riders);
+  if (putInHand(ctx, card) === "hand") applyCostRiders(card, riders);
 }
 
 /**
@@ -43,8 +60,7 @@ function applyRiders(card: CardInstance, riders: HandRiders): void {
 function createInHand(ctx: EffectContext, defId: string, riders: HandRiders): void {
   const player = playerOf(ctx, riders.player ?? "self");
   const card = newInstance(ctx.state, defId, player, { z: "hand", player });
-  applyRiders(card, riders);
-  putInHand(ctx, card);
+  putInHandWith(ctx, card, riders);
 }
 
 /**
@@ -75,8 +91,7 @@ export function addToHand(args: {
       if (args.instance !== undefined) {
         const card = instanceOf(ctx, args.instance);
         if (card === null || card.zone.z === "hand") return;
-        applyRiders(card, args);
-        putInHand(ctx, card);
+        putInHandWith(ctx, card, args);
         return;
       }
       if (args.defId === undefined) return;
