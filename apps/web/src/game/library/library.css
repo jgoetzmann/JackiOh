@@ -1,0 +1,592 @@
+/* The deck library (BUILD M9-T2): Hearthstone's collection manager in the app's dark tokens.
+   A book of card pages with page-turn arrows at its edges, and a decklist of mana-gem bars.
+   Two numbers are NOT here on purpose: the page card's width and the grid gap arrive from
+   library.ts as --lib-card-w and --lib-gap, and the card aspect is inline on every .cf, so the
+   page-size arithmetic and the layout cannot drift apart. */
+
+.library.app-shell--wide {
+  height: 100vh;
+  height: 100dvh;
+  padding: 10px 16px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.lib-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lib-top .screen-nav {
+  margin: 0;
+}
+
+.app-shell .lib-top .link-button {
+  padding: 0;
+}
+
+.app-shell .lib-top h1 {
+  font-size: 20px;
+}
+
+.lib-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 22vw, 340px);
+  gap: 16px;
+}
+
+/* --- the book ----------------------------------------------------------------------------- */
+
+/* The page indicator sits in the book's bottom padding rather than in a row of its own: at a
+   1440×900 window the third row of cards has only a few pixels to spare. */
+.lib-book {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 12px 24px;
+  border: 1px solid color-mix(in srgb, var(--radiant) 22%, var(--line));
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--radiant) 7%, var(--bg-raised)), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--radiant) 5%, var(--bg-raised)), var(--bg-sunken));
+  box-shadow: inset 0 0 40px rgb(0 0 0 / 45%);
+}
+
+.lib-grid {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(var(--lib-cols), var(--lib-card-w));
+  grid-auto-rows: max-content;
+  gap: var(--lib-gap);
+  justify-content: center;
+  align-content: center;
+}
+
+.app-shell .lib-arrow {
+  align-self: center;
+  width: 44px;
+  height: 96px;
+  padding: 0;
+  border-radius: 22px;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--radiant);
+  background: color-mix(in srgb, var(--bg-sunken) 80%, transparent);
+  border-color: color-mix(in srgb, var(--radiant) 35%, var(--line));
+}
+
+.app-shell .lib-page-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  max-width: none;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .lib-page-card {
+  position: relative;
+  width: var(--lib-card-w);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 120ms;
+}
+
+.app-shell .lib-page-card:hover:not(:disabled) {
+  background: none;
+  transform: translateY(-3px);
+}
+
+.lib-page-card[data-in-deck="true"] .cf {
+  opacity: 0.4;
+  filter: grayscale(0.7);
+}
+
+.lib-in-deck {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--legal);
+  background: var(--bg-sunken);
+  color: var(--legal);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* --- the right pane: deck list, or the open deck --------------------------------------------- */
+
+.lib-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-raised);
+}
+
+.lib-side-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lib-side-head h2 {
+  flex: 1;
+}
+
+.lib-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--selected);
+  color: var(--selected);
+  font-size: 11px;
+}
+
+.lib-hint {
+  color: var(--text-dim);
+}
+
+.lib-decks,
+.lib-bars,
+.lib-errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lib-decks,
+.lib-bars {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lib-deck-row {
+  display: flex;
+  gap: 4px;
+}
+
+.app-shell .lib-deck-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 8px 10px;
+}
+
+.lib-deck-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell .lib-deck-delete {
+  padding: 0 12px;
+  color: var(--text-dim);
+}
+
+.app-shell .lib-danger {
+  border-color: var(--opponent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--opponent) 30%, var(--bg-raised));
+}
+
+.lib-name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: inherit;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+/* A bar is Hearthstone's: the mana gem on the left, the name, and a count only past one copy. */
+.app-shell .lib-bar {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 0;
+  overflow: hidden;
+  text-align: left;
+  border-color: var(--line);
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-sunken), color-mix(in srgb, var(--bg-raised) 80%, var(--line-bright)));
+  font-weight: 550;
+}
+
+.lib-bar-cost {
+  flex: 0 0 34px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mana) 60%, white), var(--mana) 70%);
+  color: #fff;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
+}
+
+.lib-bar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-bar-count {
+  color: var(--selected);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-errors {
+  max-height: 30%;
+  overflow-y: auto;
+}
+
+.lib-errors:empty {
+  display: none;
+}
+
+.lib-errors li {
+  border: 1px solid var(--opponent);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  padding: 6px 10px;
+}
+
+.lib-deck-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lib-saved {
+  color: var(--legal);
+}
+
+.lib-preview {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  filter: drop-shadow(0 12px 28px rgb(0 0 0 / 60%));
+}
+
+/* --- the card face ---------------------------------------------------------------------------
+   .cf is the size container; everything inside it is sized in cqi, so a card is the same card at
+   150px on a page and at 400px in the inspector. */
+
+.cf {
+  container-type: inline-size;
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+}
+
+.cf-frame {
+  --cf-tint: var(--line-bright);
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2cqi;
+  padding: 5cqi 5cqi 6cqi;
+  border: 1.4cqi solid color-mix(in srgb, var(--cf-tint) 70%, var(--line));
+  border-radius: 6cqi;
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--cf-tint) 35%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--bg-raised), var(--bg-sunken));
+  box-shadow: 0 1.5cqi 5cqi rgb(0 0 0 / 50%);
+  overflow: hidden;
+}
+
+.cf[data-type="Spell"] .cf-frame {
+  --cf-tint: var(--grade);
+}
+
+.cf[data-type="Field Spell"] .cf-frame {
+  --cf-tint: var(--legal);
+}
+
+.cf[data-type="Trap"] .cf-frame,
+.cf[data-type="Field Trap"] .cf-frame {
+  --cf-tint: var(--plague);
+}
+
+.cf[data-radiant="true"] .cf-frame {
+  --cf-tint: var(--radiant);
+  border-color: var(--radiant);
+  box-shadow:
+    0 0 5cqi color-mix(in srgb, var(--radiant) 55%, transparent),
+    0 1.5cqi 5cqi rgb(0 0 0 / 50%);
+}
+
+.cf-frame[data-stats="true"] {
+  padding-bottom: 17cqi;
+}
+
+.cf-cost {
+  position: absolute;
+  top: 3cqi;
+  left: 3cqi;
+  width: 17cqi;
+  height: 17cqi;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mana) 55%, white), var(--mana) 70%);
+  border: 0.8cqi solid color-mix(in srgb, var(--mana) 50%, white);
+  color: #fff;
+  font-size: 9.5cqi;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0.5cqi 1cqi rgb(0 0 0 / 70%);
+}
+
+.cf-name {
+  min-height: 15cqi;
+  margin-left: 17cqi;
+  display: flex;
+  align-items: center;
+  font-size: 7.4cqi;
+  font-weight: 750;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.cf-type {
+  display: flex;
+  justify-content: space-between;
+  gap: 2cqi;
+  padding-bottom: 2cqi;
+  border-bottom: 0.5cqi solid var(--line-bright);
+  color: var(--text-dim);
+  font-size: 4.8cqi;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cf-radiant-mark {
+  color: var(--radiant);
+  font-weight: 700;
+}
+
+.cf-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2cqi;
+  padding: 3cqi 1cqi 0;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.cf-keywords {
+  font-size: 6cqi;
+  font-weight: 750;
+}
+
+.cf-text {
+  font-size: 6.2cqi;
+  overflow-wrap: anywhere;
+}
+
+.cf-text[data-length="l"] {
+  font-size: 5.2cqi;
+}
+
+.cf-text[data-length="xl"] {
+  font-size: 4.3cqi;
+}
+
+.cf-attack,
+.cf-health {
+  position: absolute;
+  bottom: 3cqi;
+  width: 15cqi;
+  height: 15cqi;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 8.5cqi;
+  font-weight: 800;
+  text-shadow: 0 0.5cqi 1cqi rgb(0 0 0 / 70%);
+}
+
+.cf-attack {
+  left: 3cqi;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--selected) 60%, white), var(--selected) 75%);
+}
+
+.cf-health {
+  right: 3cqi;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--opponent) 60%, white), var(--opponent) 75%);
+}
+
+.cf-back {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6%/ 4.3%;
+  border: 3px solid color-mix(in srgb, var(--radiant) 40%, var(--line));
+  background:
+    repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--radiant) 8%, transparent) 10px 11px),
+    radial-gradient(circle, color-mix(in srgb, var(--you) 35%, var(--bg-raised)), var(--bg-sunken));
+  color: var(--radiant);
+}
+
+.cf-back span {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.cf-back small {
+  color: var(--text-dim);
+}
+
+/* --- the inspector -------------------------------------------------------------------------- */
+
+.insp {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg-sunken) 85%, transparent);
+  backdrop-filter: blur(6px);
+  overscroll-behavior: contain;
+}
+
+.insp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.insp-bar h2 {
+  margin-right: 8px;
+}
+
+.insp-card {
+  position: relative;
+  width: min(400px, 80vw, calc((100dvh - 190px) * var(--card-aspect)));
+  aspect-ratio: var(--card-aspect);
+  transform-style: preserve-3d;
+  transition: transform calc(520ms * var(--anim-scale)) cubic-bezier(0.3, 1.35, 0.5, 1);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.insp-card:active {
+  cursor: grabbing;
+}
+
+.insp-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.insp-face--back {
+  transform: rotateY(180deg);
+}
+
+.insp-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: 6% / 4.3%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--glare-x, 50%) var(--glare-y, 50%),
+    rgb(255 255 255 / 22%),
+    transparent 55%
+  );
+  mix-blend-mode: screen;
+}
+
+.insp-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* --- narrow screens: the pane stacks under the book, and the page keeps scrolling ------------ */
+
+@media (max-width: 860px) {
+  .library.app-shell--wide {
+    height: auto;
+    overflow: visible;
+  }
+
+  .lib-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lib-book {
+    height: min(78vh, 760px);
+    padding: 10px 8px 24px;
+    gap: 6px;
+  }
+
+  .app-shell .lib-arrow {
+    width: 30px;
+    height: 72px;
+    font-size: 26px;
+  }
+
+  .lib-side {
+    max-height: 80vh;
+  }
+}
