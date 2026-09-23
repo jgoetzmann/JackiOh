@@ -157,7 +157,9 @@ describe("candidateActions (B14)", () => {
     expect(state.pending?.playerId).toBe(AI);
 
     const candidates = candidateActions(state, AI);
-    expect(candidates.map(actionKey).sort()).toEqual(legalActions(state, AI).map(actionKey).sort());
+    // R211 offers concede beside the prompt's answers, and the AI never takes it (R84, R188).
+    const answers = legalActions(state, AI).filter((action) => action.type !== "concede");
+    expect(candidates.map(actionKey).sort()).toEqual(answers.map(actionKey).sort());
     expect(candidates.every((action) => action.type === "answer")).toBe(true);
     expect(candidates).toHaveLength(3);
   });
