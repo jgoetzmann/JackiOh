@@ -43,7 +43,7 @@ begin
   raise notice 'OK (CHECK 1): all % public tables have RLS enabled', total;
 end $$;
 
-\echo '=== CHECK 2: the 13 tables BUILD M6 names ==='
+\echo '=== CHECK 2: the 14 tables BUILD M6 and M9 name ==='
 select count(*) as public_tables from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r';
@@ -54,9 +54,10 @@ do $$
 declare
   -- BUILD M6-T1..T4: profiles/invite_codes/code_attempts (0001), cards/collection/
   -- collection_grants (0002), loadouts/loadout_decks/loadout_deck_cards (0003),
-  -- matches/match_actions/tickets/results (0004).
+  -- matches/match_actions/tickets/results (0004); BUILD M9-T1: decks (0006). CHECKs 1, 5
+  -- and 6 hold every one of them to RLS and to no client write.
   expected constant text[] := array[
-    'cards', 'code_attempts', 'collection', 'collection_grants', 'invite_codes',
+    'cards', 'code_attempts', 'collection', 'collection_grants', 'decks', 'invite_codes',
     'loadout_deck_cards', 'loadout_decks', 'loadouts', 'match_actions', 'matches',
     'profiles', 'results', 'tickets'];
   actual  text[];

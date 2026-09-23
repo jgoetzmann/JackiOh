@@ -13,8 +13,8 @@
  * Two invariants carry the weight:
  *
  *  - **The deck is frozen at enqueue.** §9.4: "Decks are frozen into the queue ticket." Nothing
- *    below re-reads `loadouts` after the ticket exists, so a loadout edited while queued cannot
- *    change the match that ticket becomes (M7-T3's second acceptance item).
+ *    below re-reads `loadouts` (or, R172, `decks`) after the ticket exists, so a deck edited while
+ *    queued cannot change the match that ticket becomes (M7-T3's second acceptance item).
  *  - **Both tickets are claimed in one atomic statement**, `tickets.claimPair`. A match is
  *    created *only* after that statement returns true, so two matchers racing over the same
  *    ticket cannot pair it twice (M7-T3's race test). Losing the race is not an error: it means
@@ -26,9 +26,9 @@
 
 import { ratingWindow } from "../config";
 import { callerProfile } from "./collection";
+import { deckChoiceOf, frozenDeckFor } from "./decks";
 import { ApiError, badRequest, ok, route, type Route } from "./http";
-import { deckFor, validateStoredLoadout } from "./loadouts";
-import type { MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
+import type { DeckChoice, MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
 
 /** Unit conversion, not configuration: `ratingWindow` speaks seconds, tickets are stamped in ms. */
 const MS_PER_SECOND = 1000;
@@ -127,7 +127,8 @@ function deckIndexOf(body: Readonly<Record<string, unknown>>): number {
 async function enqueue(
   deps: ServerDeps,
   profile: Profile,
-  deckIndex: number,
+  /** A loadout deck or, R172, one of the caller's library decks. */
+  choice: DeckChoice,
   /** R143: the seed this enqueue asked for, or null. Only ever non-null in end-to-end mode. */
   seed: string | null = null,
 ): Promise<Ticket> {
@@ -142,19 +143,19 @@ async function enqueue(
   }
 
   // §9.4: "checked by one validator module shared by client and server, at save and again at
-  // queue". The queue-time re-check is `validateStoredLoadout`, which also rejects a stale
-  // catalog version, and `deckFor` picks the deck being frozen.
-  const loadout = await validateStoredLoadout(deps, profile.id, deps.catalog.version);
-  const deck = deckFor(loadout, deckIndex);
+  // queue". For a loadout deck the queue-time re-check is `validateStoredLoadout`, which also
+  // rejects a stale catalog version, and `deckFor` picks the deck being frozen; for a library deck
+  // (R172) it is the strict single-deck check. `frozenDeckFor` is both.
+  const { deck, catalogVersion } = await frozenDeckFor(deps, profile.id, choice);
 
   const ticket: Ticket = {
     id: deps.ids.uuid(),
     profileId: profile.id,
     rating: profile.rating,
-    // §9.4, §9.5: frozen. `deckFor` already copied it; this is the copy that lands in the ticket
-    // and, later, in the match — the stored loadout is never read again.
+    // §9.4, §9.5: frozen. `frozenDeckFor` already copied it; this is the copy that lands in the
+    // ticket and, later, in the match — neither the loadout nor the library is read again.
     deck,
-    catalogVersion: loadout.catalogVersion,
+    catalogVersion,
     enqueuedAt: deps.timers.now(),
     status: "open",
     matchId: null,
@@ -178,7 +179,7 @@ async function enqueue(
   // consumed and never dropped.
   if (seed !== null) e2eSeedByTicket.set(ticket.id, seed);
 
-  deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, deckIndex });
+  deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, ...choice });
   return ticket;
 }
 
@@ -383,7 +384,7 @@ export function createQueueRoutes(): Route[] {
       // R143: an optional `seed`, accepted only by an end-to-end test server and rejected — never
       // ignored — anywhere else.
       const seed = seedOverrideOf(deps, req.body);
-      const ticket = await enqueue(deps, profile, deckIndexOf(req.body), seed);
+      const ticket = await enqueue(deps, profile, deckChoiceOf(req.body, deckIndexOf), seed);
       await tryPair(deps);
       const current = await deps.store.tickets.get(ticket.id);
       return ok({

@@ -9,6 +9,8 @@
  *    open set pairs the same way.
  *  - **R167**: a queued player may cancel, and cancelling is idempotent. Cancel never unmakes a
  *    pairing; it only closes a ticket that is still open.
+ *  - **R172**: a `deckId` queues one of the caller's library decks instead of a loadout deck,
+ *    validated strictly and frozen into the ticket exactly as a loadout deck is.
  *
  * Everything runs on `createManualTimers()` through `createTestDeps()`, so `enqueuedAt` and the
  * widening window are set by this file rather than by the host clock, and `deps.ids` is the
@@ -21,13 +23,18 @@
  * take part.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ratingWindow } from "../../src/config";
+import { loadCatalog } from "../../src/api/catalog";
+import { grantEntireCatalog, ownedMap } from "../../src/api/collection";
+import { createDeckRoutes } from "../../src/api/decks";
 import { createRouter, type Router } from "../../src/api/http";
+import { sharedDeckValidator } from "../../src/api/loadout-validator";
 import { createLoadoutRoutes } from "../../src/api/loadouts";
 import { createQueueRoutes, tryPair } from "../../src/api/queue";
-import type { Ticket } from "../../src/api/ports";
+import type { CatalogInfo, StoredDeck, Ticket } from "../../src/api/ports";
 import {
+  completeDeck,
   createFakeMatchDirectory,
   createTestDeps,
   jsonRequest,
@@ -561,5 +568,170 @@ describe("§9.8 — decks are frozen into the queue ticket (§9.4, §9.5)", () =
 
     expect((await readJson<QueueBody>(await enqueue(rival, 0))).status).toBe("matched");
     expect(deckInMatchFor(deps, "early")).toEqual(substitute);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R172
+// ---------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R172: `deckId`, naming one of the caller's own library decks, is the alternative to a
+ * loadout `deckIndex`. These run the real catalog and the real single-deck adapter, because "an
+ * incomplete deck is refused" is the shared validator's verdict and the permissive default would
+ * accept anything; the deck routes share the router, so "edits the deck while queued" is the
+ * request a player would make.
+ */
+describe("R172 — a match may use a library deck (§9.4, §9.5, §9.8)", () => {
+  let catalog: CatalogInfo;
+
+  beforeAll(async () => {
+    catalog = await loadCatalog();
+  });
+
+  function libraryRouter(): { target: TestDeps; route: Router } {
+    const target = createTestDeps({ catalog, validateDeck: sharedDeckValidator });
+    target.matches = createFakeMatchDirectory(target.store);
+    return { target, route: createRouter([...createQueueRoutes(), ...createDeckRoutes()], target) };
+  }
+
+  /** An active profile holding R111's launch grant, which L5 checks a library deck against. */
+  async function player(target: TestDeps, id: string): Promise<string> {
+    const token = activeProfile(target, id);
+    await grantEntireCatalog(target, id);
+    return token;
+  }
+
+  async function saveDeck(
+    target: TestDeps,
+    route: Router,
+    token: string,
+    cards: readonly string[],
+    deckId?: string,
+  ): Promise<StoredDeck> {
+    const body = { catalogVersion: target.catalog.version, name: "Library deck", cards };
+    const response = await route(
+      deckId === undefined
+        ? jsonRequest("POST", "/api/decks", body, { token })
+        : jsonRequest("PUT", `/api/decks/${deckId}`, body, { token }),
+    );
+    expect(response.status).toBe(200);
+    const deck = (await readJson<{ deck?: StoredDeck }>(response)).deck;
+    if (deck === undefined) throw new Error("the save returned no deck");
+    return deck;
+  }
+
+  function queue(route: Router, token: string, body: Record<string, unknown>): Promise<Response> {
+    return route(jsonRequest("POST", "/api/queue", body, { token }));
+  }
+
+  it("R172 freezes a library deck into the ticket, and needs no loadout at all", async () => {
+    const { target, route } = libraryRouter();
+    const token = await player(target, "librarian");
+    const deck = await saveDeck(target, route, token, await completeDeck(target, "librarian"));
+    // PREMISE: R165's refusal would fire on the loadout path; this one never reads a loadout.
+    expect(await target.store.loadouts.get("librarian")).toBeNull();
+
+    const queued = await queue(route, token, { deckId: deck.id });
+    const body = await readJson<QueueBody>(queued);
+
+    expect(queued.status).toBe(200);
+    expect(body.status).toBe("open");
+    const ticket = await target.store.tickets.get(body.ticketId ?? "");
+    expect(ticket?.deck).toEqual(deck.cards);
+    // A library deck stores no catalog version (R171); it was checked against the current one.
+    expect(ticket?.catalogVersion).toBe(target.catalog.version);
+  });
+
+  it("R172 refuses an incomplete library deck with 422 and the shared validator's sentence", async () => {
+    const { target, route } = libraryRouter();
+    const token = await player(target, "hasty");
+    const short = (await completeDeck(target, "hasty")).slice(0, -1);
+    const deck = await saveDeck(target, route, token, short);
+    const expected = sharedDeckValidator({
+      cards: short,
+      name: deck.name,
+      catalogVersion: target.catalog.version,
+      catalog: target.catalog,
+      owned: await ownedMap(target, "hasty"),
+      allowIncomplete: false,
+    });
+    // PREMISE: it saved (R171) and the strict check refuses it.
+    expect(expected).not.toEqual([]);
+
+    const refused = await queue(route, token, { deckId: deck.id });
+    const body = await readJson<{ error?: { code: string; message: string; details?: unknown } }>(refused);
+
+    expect(refused.status).toBe(422);
+    expect(body.error?.code).toBe("loadout_invalid");
+    expect(body.error?.message).toBe(expected[0]?.message);
+    expect(body.error?.details).toEqual(expected);
+    expect(await target.store.tickets.countOpen()).toBe(0);
+  });
+
+  it("R172 answers another profile's deckId with 404, never 403, and queues nothing", async () => {
+    const { target, route } = libraryRouter();
+    const owner = await player(target, "owner");
+    const thief = await player(target, "thief");
+    const deck = await saveDeck(target, route, owner, await completeDeck(target, "owner"));
+
+    for (const deckId of [deck.id, "not-a-deck-id"]) {
+      const refused = await queue(route, thief, { deckId });
+      expect(refused.status).toBe(404);
+      expect((await readJson<QueueBody>(refused)).error?.code).toBe("not_found");
+    }
+    expect(await target.store.tickets.countOpen()).toBe(0);
+  });
+
+  it("R172 editing or deleting the library deck after enqueue does not change the match (§9.8)", async () => {
+    const { target, route } = libraryRouter();
+    const swapper = await player(target, "lib-swapper");
+    const rival = await player(target, "lib-rival");
+    const frozen = await completeDeck(target, "lib-swapper");
+    const substitute = await completeDeck(target, "lib-swapper", frozen.length);
+    // PREMISE: disjoint, so "the match used the frozen deck" cannot also be "it used the edit".
+    expect(frozen.filter((cardId) => substitute.includes(cardId))).toEqual([]);
+
+    const deck = await saveDeck(target, route, swapper, frozen);
+    const ticketId = (await readJson<QueueBody>(await queue(route, swapper, { deckId: deck.id }))).ticketId ?? "";
+
+    // The edit, then the delete, through the routes a player would use while queued.
+    expect((await saveDeck(target, route, swapper, substitute, deck.id)).cards).toEqual(substitute);
+    expect((await target.store.tickets.get(ticketId))?.deck).toEqual(frozen);
+    expect((await route(jsonRequest("DELETE", `/api/decks/${deck.id}`, undefined, { token: swapper }))).status).toBe(200);
+
+    const rivalDeck = await saveDeck(target, route, rival, substitute);
+    expect((await readJson<QueueBody>(await queue(route, rival, { deckId: rivalDeck.id }))).status).toBe("matched");
+
+    const started = target.matches.started.at(-1);
+    expect(started?.seats.find((seat) => seat.profileId === "lib-swapper")?.deck).toEqual(frozen);
+    expect(started?.seats.find((seat) => seat.profileId === "lib-rival")?.deck).toEqual(substitute);
+  });
+
+  it("R172's control: the same edit made BEFORE the enqueue is the deck the ticket freezes", async () => {
+    const { target, route } = libraryRouter();
+    const token = await player(target, "early-editor");
+    const first = await completeDeck(target, "early-editor");
+    const second = await completeDeck(target, "early-editor", first.length);
+    const deck = await saveDeck(target, route, token, first);
+    await saveDeck(target, route, token, second, deck.id);
+
+    const ticketId = (await readJson<QueueBody>(await queue(route, token, { deckId: deck.id }))).ticketId ?? "";
+    expect((await target.store.tickets.get(ticketId))?.deck).toEqual(second);
+  });
+
+  it("R172 takes exactly one of deckIndex or deckId, and the deckIndex path keeps its message", async () => {
+    const { target, route } = libraryRouter();
+    const token = await player(target, "confused");
+    const deck = await saveDeck(target, route, token, await completeDeck(target, "confused"));
+
+    for (const body of [{ deckIndex: 0, deckId: deck.id }, {}, { deckId: "" }, { deckId: 7 }]) {
+      const refused = await queue(route, token, body);
+      expect(refused.status, JSON.stringify(body)).toBe(400);
+      expect((await readJson<QueueBody>(refused)).error?.code).toBe("bad_request");
+    }
+    const fractional = await readJson<QueueBody>(await queue(route, token, { deckIndex: 0.5 }));
+    expect(fractional.error?.message).toBe('"deckIndex" must be a whole number');
+    expect(await target.store.tickets.countOpen()).toBe(0);
   });
 });

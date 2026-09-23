@@ -115,6 +115,7 @@ the policy in the third column. `service_role` bypasses RLS and is the only writ
 | `loadouts` | own row | `profile_id = auth.uid()` | **none** — saving is all-three-decks-or-nothing (§9.4) |
 | `loadout_decks` | own rows | `profile_id = auth.uid()` | none |
 | `loadout_deck_cards` | own rows | `profile_id = auth.uid()` | none |
+| `decks` | own rows | `profile_id = auth.uid()` | **none** — the server saves a library deck after the shared validator passes it (R171) |
 | `tickets` | own rows | `profile_id = auth.uid()` | none — enqueue freezes a deck (§9.5) |
 | `matches` | **none** | no policy | none — holds `seed` and both decks (§3.1) |
 | `match_actions` | **none** | no policy | none — append-only by trigger (§9.3) |
@@ -471,8 +472,9 @@ step that is not yet implemented says which BUILD task delivers it.
    set in the shell still overrides it, and a missing file is a warning rather than an error.
 4. **Apply the migrations.** `pnpm --filter @jackioh/server db:migrate`, which applies
    `0001_profiles_and_invites.sql` → `0002_collection.sql` → `0003_loadouts.sql` →
-   `0004_matches.sql` in order and records them in `app.migrations`. Expected result: 13 tables in
-   `public`, all with RLS enabled, plus the private `app` schema.
+   `0004_matches.sql` → `0005_service_role_reads_auth_users.sql` → `0006_decks.sql` in order and
+   records them in `app.migrations`. Expected result: 14 tables in `public`, all with RLS enabled,
+   plus the private `app` schema.
 5. **Verify the invariants before trusting anything.** `sh apps/server/test/sql/run.sh` runs all of
    §12's checks against a throwaway Docker Postgres, which is the fast way to confirm the migrations
    are intact before you point them at a real project. Against the project itself, in Studio's SQL
@@ -555,8 +557,8 @@ in order, and then asserts:
 
 | File | What it proves |
 | --- | --- |
-| `01_schema_invariants.sql` | 13 tables in `public`, **every one with RLS enabled**; `loadout_card_unique` is on `(profile_id, card_id)` and refuses a cross-deck duplicate inserted by raw SQL (BUILD M6-T3); no `SECURITY DEFINER` function in `public`; no non-SELECT policy and no INSERT/UPDATE/DELETE privilege for `anon` or `authenticated` anywhere; the `auth.users` trigger creates a `pending` profile; the six-step redemption returns `email_unverified`, and one identical `invalid_code` for both a missing and a revoked code; success flips the profile to `active` and the activation trigger grants every non-token card to both `collection` and `collection_grants`; `collection_grants` refuses an UPDATE; a stale catalog version raises `update required`. |
-| `02_rls_as_client.sql` | Acting as the `authenticated` role inside a transaction (so `SET LOCAL` really takes effect): a profile sees exactly its own `profiles`, `collection`, `collection_grants`, `loadouts` and `loadout_deck_cards` rows and **zero** of the other profile's; `invite_codes`, `code_attempts`, `matches` and `match_actions` are refused outright; every client write — `collection` insert, `profiles` update, `loadout_deck_cards` insert — is refused, as are `app.redeem_invite_code` and `app.save_loadout`. This is §3's trust boundary, executed. |
+| `01_schema_invariants.sql` | 14 tables in `public`, **every one with RLS enabled**; `loadout_card_unique` is on `(profile_id, card_id)` and refuses a cross-deck duplicate inserted by raw SQL (BUILD M6-T3); no `SECURITY DEFINER` function in `public`; no non-SELECT policy and no INSERT/UPDATE/DELETE privilege for `anon` or `authenticated` anywhere; the `auth.users` trigger creates a `pending` profile; the six-step redemption returns `email_unverified`, and one identical `invalid_code` for both a missing and a revoked code; success flips the profile to `active` and the activation trigger grants every non-token card to both `collection` and `collection_grants`; `collection_grants` refuses an UPDATE; a stale catalog version raises `update required`. |
+| `02_rls_as_client.sql` | Acting as the `authenticated` role inside a transaction (so `SET LOCAL` really takes effect): a profile sees exactly its own `profiles`, `collection`, `collection_grants`, `loadouts`, `loadout_deck_cards` and `decks` rows and **zero** of the other profile's; `invite_codes`, `code_attempts`, `matches` and `match_actions` are refused outright; every client write — `collection` insert, `profiles` update, `loadout_deck_cards` insert, `decks` insert — is refused, as are `app.redeem_invite_code` and `app.save_loadout`. This is §3's trust boundary, executed. |
 | `03_match_lifecycle.sql` | `save_loadout` naming the rule it failed; `create_room` → `join_room` (own room refused, a live room refused a second joiner, both players marked in-match, the ceiling stamped on join); `append_match_action` assigning `seq` and returning the **original** seq for a replayed nonce without a second row (BUILD M6-T4); a server action with no author; `live_matches()` returning what a restarting server would fold; `end_match` writing one `results` row, moving both ratings, clearing both `current_match_id`, and staying idempotent on a second call; the room code reusable once the match is `over`; one queued ticket per profile; `claim_ticket_pair` returning true once and **false** to the second matcher (BUILD M7-T3's race test); the reaper turning a match past its ceiling into a `match-ceiling` draw and clearing both players. |
 
 Each SPEC §11 row this schema implements is proved under a `### Rnnn: … ###` heading, which is how
@@ -614,7 +616,9 @@ apps/server/
                                         loadout_card_unique (L4), app.save_loadout
         0004_matches.sql                tickets, matches, match_actions, results,
                                         app.join_room, app.claim_ticket_pair, app.end_match
+        0006_decks.sql                  decks, the account's deck library (R171)
     api/       codes.ts collection.ts loadouts.ts queue.ts results.ts      M6-T1..T3, M7-T2, M7-T3
+               decks.ts (/api/decks, frozenDeckFor)                        M9-T1
     match/     actor.ts protocol.ts                                        M6-T4, M7-T1
     auth/      jwt.ts (JWKS verification, seat resolution)                 M6-T1
   test/

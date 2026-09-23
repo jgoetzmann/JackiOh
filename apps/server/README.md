@@ -144,11 +144,15 @@ top of every handler:
 | `GET` | `/api/collection` | active | The entitlement ledger. There is deliberately no write route |
 | `GET` | `/api/loadout` | active | The three decks and the version they were validated against |
 | `PUT` | `/api/loadout` | active | `saveLoadout`: all three decks in one transaction or nothing |
-| `POST` | `/api/queue` | active | Enqueue with the chosen deck frozen into the ticket |
+| `GET` | `/api/decks` | active | R171: the library, most recently saved first, with the catalog version and the cap |
+| `POST` | `/api/decks` | active | Save a new library deck `{ catalogVersion, name, cards }`; a short deck saves, an illegal one gets 422 with the validator's issues, and 409 at the cap |
+| `PUT` | `/api/decks/:id` | active | Replace one of your decks; another profile's id is 404 |
+| `DELETE` | `/api/decks/:id` | active | Delete one of your decks; 404 when it is not yours |
+| `POST` | `/api/queue` | active | Enqueue with the chosen deck frozen into the ticket: `{ deckIndex }` for a loadout deck or `{ deckId }` for a complete library deck (R172) |
 | `DELETE` | `/api/queue` | active | Leave the queue |
 | `GET` | `/api/queue/population` | none | §9.5: a number, so the client shows a population instead of an endless spinner |
-| `POST` | `/api/rooms` | active | Create a room; returns a 6-character code |
-| `POST` | `/api/rooms/:code/join` | active | Claim it. Atomic: a race produces one match and one 409 |
+| `POST` | `/api/rooms` | active | Create a room with `{ deckIndex }` or `{ deckId }`; returns a 6-character code and echoes the choice |
+| `POST` | `/api/rooms/:code/join` | active | Claim it, with `{ deckIndex }` or `{ deckId }`. Atomic: a race produces one match and one 409 |
 
 ## WebSocket surface
 

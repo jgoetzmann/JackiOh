@@ -9,23 +9,29 @@
  *    set a seed, and `e2e/cypress/e2e/05-reconnect.cy.ts` and `06-room-code.cy.ts` both post one.
  *  - **R149**, the bounded mint: a code is retried a fixed number of times against the codes still
  *    in use, and then the caller is told none is available rather than the server retrying for ever.
+ *  - **R172**, a library deck: both endpoints take a `deckId` instead of a `deckIndex`, and the deck
+ *    it names is validated strictly and frozen exactly as a loadout deck is.
  *
  * `createRoomRoutes` takes its loadout module as a parameter (`LoadLoadouts`), which is the seam
  * these tests drive it through: the room rules are what is under test, not the ledger behind them.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { loadCatalog } from "../../src/api/catalog";
+import { grantEntireCatalog, ownedMap } from "../../src/api/collection";
+import { createDeckRoutes, frozenDeckFor } from "../../src/api/decks";
 import { createRouter, type Router } from "../../src/api/http";
-import { createLoadoutRoutes, deckFor, validateStoredLoadout } from "../../src/api/loadouts";
-import type { Ids, ServerDeps, StoredLoadout } from "../../src/api/ports";
+import { sharedDeckValidator } from "../../src/api/loadout-validator";
+import { createLoadoutRoutes } from "../../src/api/loadouts";
+import type { CatalogInfo, Ids, ServerDeps, StoredDeck } from "../../src/api/ports";
 import { CODE_ALPHABET, ROOM_CODE_LENGTH } from "../../src/config";
 import {
   createRoomRoutes,
   e2eRoomSeedCount,
   type LoadLoadouts,
 } from "../../src/match/rooms";
-import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
+import { completeDeck, createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
 
 const DECK = ["core-001", "core-002", "core-003"];
 const HOST = "host";
@@ -58,15 +64,13 @@ function roomIds(codes?: readonly string[]): Ids {
   };
 }
 
-/** The `LoadoutsModule` seam: one stored loadout whose deck 0 is `DECK`. */
+/** The `LoadoutsModule` seam: every choice freezes `DECK`. */
 const loadouts: LoadLoadouts = async () => ({
-  validateStoredLoadout: async (deps: ServerDeps): Promise<StoredLoadout> => ({
-    catalogVersion: deps.catalog.version,
-    decks: [[...DECK], [], []],
-    updatedAt: 0,
-  }),
-  deckFor: (loadout, deckIndex) => [...(loadout.decks[deckIndex] ?? [])],
+  frozenDeckFor: async (deps: ServerDeps) => ({ deck: [...DECK], catalogVersion: deps.catalog.version }),
 });
+
+/** The real deck module behind the seam `createRoomRoutes` was given for exactly this. */
+const realLoadouts: LoadLoadouts = async () => ({ frozenDeckFor });
 
 function harness(
   options: { e2e?: boolean; codes?: readonly string[] } = {},
@@ -267,8 +271,6 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
     ];
   }
 
-  /** The real loadout module behind the seam `createRoomRoutes` was given for exactly this. */
-  const realLoadouts: LoadLoadouts = async () => ({ validateStoredLoadout, deckFor });
 
   function freezeHarness(): {
     deps: TestDeps;
@@ -362,5 +364,161 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
 
     expect((await join(h.router, h.guest, code, { deckIndex: 1 })).status).toBe(200);
     expect(deckInMatchFor(h, HOST)).toEqual(c);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R172 — a room may be played with a library deck
+// ---------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R172 on the room half: `POST /api/rooms` and `POST /api/rooms/:code/join` both take a
+ * `deckId` naming one of the caller's own library decks. Like the §9.8 block above these run the real
+ * deck module behind the seam, on the real catalog with the real single-deck adapter, so the strict
+ * check that refuses an incomplete deck is the shared validator's; the deck routes share the router,
+ * so an edit made while the room waits is the request a player would send.
+ */
+describe("R172 — a room may be played with a library deck (§9.4, §9.5, §9.8)", () => {
+  let catalog: CatalogInfo;
+
+  beforeAll(async () => {
+    catalog = await loadCatalog();
+  });
+
+  async function libraryHarness(): Promise<{ deps: TestDeps; router: Router; host: string; guest: string }> {
+    const deps = createTestDeps({ ids: roomIds(), catalog, validateDeck: sharedDeckValidator });
+    const host = deps.auth.addUser({ userId: "user-host", email: "host@example.test" });
+    const guest = deps.auth.addUser({ userId: "user-guest", email: "guest@example.test" });
+    deps.store.seedProfile({ id: HOST, userId: "user-host", status: "active" });
+    deps.store.seedProfile({ id: GUEST, userId: "user-guest", status: "active" });
+    // L5: a library deck is checked against the collection, so both hold R111's launch grant.
+    await grantEntireCatalog(deps, HOST);
+    await grantEntireCatalog(deps, GUEST);
+    return {
+      deps,
+      router: createRouter([...createRoomRoutes(realLoadouts), ...createDeckRoutes()], deps),
+      host,
+      guest,
+    };
+  }
+
+  async function saveDeck(
+    h: Awaited<ReturnType<typeof libraryHarness>>,
+    token: string,
+    cards: readonly string[],
+    deckId?: string,
+  ): Promise<StoredDeck> {
+    const body = { catalogVersion: h.deps.catalog.version, name: "Library deck", cards };
+    const response = await h.router(
+      deckId === undefined
+        ? jsonRequest("POST", "/api/decks", body, { token })
+        : jsonRequest("PUT", `/api/decks/${deckId}`, body, { token }),
+    );
+    expect(response.status).toBe(200);
+    const deck = (await readJson<{ deck?: StoredDeck }>(response)).deck;
+    if (deck === undefined) throw new Error("the save returned no deck");
+    return deck;
+  }
+
+  function post(router: Router, token: string, path: string, body: Record<string, unknown>): Promise<Response> {
+    return router(jsonRequest("POST", path, body, { token }));
+  }
+
+  function seatDeck(h: Awaited<ReturnType<typeof libraryHarness>>, profileId: string): string[] | undefined {
+    return h.deps.matches.started.at(-1)?.seats.find((seat) => seat.profileId === profileId)?.deck;
+  }
+
+  it("R172 freezes library decks on create and on join, echoes the deckId, and needs no loadout", async () => {
+    const h = await libraryHarness();
+    const hostCards = await completeDeck(h.deps, HOST);
+    const guestCards = await completeDeck(h.deps, GUEST, hostCards.length);
+    const hostDeck = await saveDeck(h, h.host, hostCards);
+    const guestDeck = await saveDeck(h, h.guest, guestCards);
+    // PREMISE: neither player has a loadout, so the loadout path would refuse both (R165).
+    expect(await h.deps.store.loadouts.get(HOST)).toBeNull();
+    expect(await h.deps.store.loadouts.get(GUEST)).toBeNull();
+
+    const created = await post(h.router, h.host, "/api/rooms", { deckId: hostDeck.id });
+    expect(created.status).toBe(200);
+    const room = await readJson<{ code: string; expiresAt: number; deckId?: string; deckIndex?: number }>(created);
+    // The room echoes the choice it froze, and only that one.
+    expect(room.deckId).toBe(hostDeck.id);
+    expect(room.deckIndex).toBeUndefined();
+    expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(hostCards);
+
+    expect((await post(h.router, h.guest, `/api/rooms/${room.code}/join`, { deckId: guestDeck.id })).status).toBe(200);
+    expect(seatDeck(h, HOST)).toEqual(hostCards);
+    expect(seatDeck(h, GUEST)).toEqual(guestCards);
+  });
+
+  it("R172 refuses an incomplete deck with 422 and another profile's deck with 404, at both doors", async () => {
+    const h = await libraryHarness();
+    const full = await completeDeck(h.deps, HOST);
+    const short = await saveDeck(h, h.host, full.slice(0, -1));
+    const guestsDeck = await saveDeck(h, h.guest, full);
+    const expected = sharedDeckValidator({
+      cards: short.cards,
+      name: short.name,
+      catalogVersion: h.deps.catalog.version,
+      catalog: h.deps.catalog,
+      owned: await ownedMap(h.deps, HOST),
+      allowIncomplete: false,
+    });
+    // PREMISE: the short deck saved (R171) and the strict check refuses it.
+    expect(expected).not.toEqual([]);
+
+    const incomplete = await post(h.router, h.host, "/api/rooms", { deckId: short.id });
+    const body = await readJson<{ error?: { code: string; message: string; details?: unknown } }>(incomplete);
+    expect(incomplete.status).toBe(422);
+    expect(body.error?.message).toBe(expected[0]?.message);
+    expect(body.error?.details).toEqual(expected);
+    const foreign = await post(h.router, h.host, "/api/rooms", { deckId: guestsDeck.id });
+    expect(foreign.status).toBe(404);
+    expect((await readJson<ErrorBody>(foreign)).error.code).toBe("not_found");
+    expect(h.deps.store.tables.rooms).toHaveLength(0);
+
+    // The join door, against a room the host opens with a legal deck.
+    const legal = await saveDeck(h, h.host, full);
+    const { code } = await readJson<{ code: string }>(
+      await post(h.router, h.host, "/api/rooms", { deckId: legal.id }),
+    );
+    const guestShort = await saveDeck(h, h.guest, full.slice(0, -1));
+    expect((await post(h.router, h.guest, `/api/rooms/${code}/join`, { deckId: legal.id })).status).toBe(404);
+    expect((await post(h.router, h.guest, `/api/rooms/${code}/join`, { deckId: guestShort.id })).status).toBe(422);
+    expect(h.deps.matches.started).toHaveLength(0);
+  });
+
+  it("R172 editing or deleting the host's library deck after the create does not change the match (§9.8)", async () => {
+    const h = await libraryHarness();
+    const frozen = await completeDeck(h.deps, HOST);
+    const substitute = await completeDeck(h.deps, HOST, frozen.length);
+    // PREMISE: disjoint, so the frozen deck and the edited one cannot be mistaken for each other.
+    expect(frozen.filter((cardId) => substitute.includes(cardId))).toEqual([]);
+    const deck = await saveDeck(h, h.host, frozen);
+    const { code } = await readJson<{ code: string }>(
+      await post(h.router, h.host, "/api/rooms", { deckId: deck.id }),
+    );
+
+    expect((await saveDeck(h, h.host, substitute, deck.id)).cards).toEqual(substitute);
+    expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(frozen);
+    const removed = await h.router(jsonRequest("DELETE", `/api/decks/${deck.id}`, undefined, { token: h.host }));
+    expect(removed.status).toBe(200);
+
+    const guestDeck = await saveDeck(h, h.guest, substitute);
+    expect((await post(h.router, h.guest, `/api/rooms/${code}/join`, { deckId: guestDeck.id })).status).toBe(200);
+    expect(seatDeck(h, HOST)).toEqual(frozen);
+  });
+
+  it("R172 takes exactly one of deckIndex or deckId, and deckIndex keeps its range and message", async () => {
+    const h = await libraryHarness();
+    const deck = await saveDeck(h, h.host, await completeDeck(h.deps, HOST));
+
+    for (const body of [{ deckIndex: 0, deckId: deck.id }, {}]) {
+      expect((await post(h.router, h.host, "/api/rooms", body)).status).toBe(400);
+      expect((await post(h.router, h.guest, "/api/rooms/AAA234/join", body)).status).toBe(400);
+    }
+    const outOfRange = await post(h.router, h.host, "/api/rooms", { deckIndex: 5 });
+    expect((await readJson<ErrorBody>(outOfRange)).error.message).toBe('"deckIndex" must be 0, 1 or 2');
+    expect(h.deps.store.tables.rooms).toHaveLength(0);
   });
 });

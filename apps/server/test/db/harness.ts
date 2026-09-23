@@ -129,7 +129,7 @@ export function memoryHarness(): StoreHarness {
 /** Every table the migrations create, children first. `cards` is seeded once and kept. */
 const TRUNCATE = `truncate
   public.results, public.match_actions, public.tickets, public.matches,
-  public.loadout_deck_cards, public.loadout_decks, public.loadouts,
+  public.decks, public.loadout_deck_cards, public.loadout_decks, public.loadouts,
   public.collection_grants, public.collection,
   public.code_attempts, public.invite_codes, public.profiles, auth.users
   restart identity cascade`;
