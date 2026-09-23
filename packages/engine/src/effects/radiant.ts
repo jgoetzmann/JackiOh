@@ -138,13 +138,40 @@ export function setRadiantRandom(args: {
     apply(ctx): void {
       const player = playerOf(ctx, args.player ?? "self");
       const zones = Array.isArray(args.zones) ? args.zones : [args.zones];
-      const pool = poolOf(ctx, player, zones);
-      if (pool.length === 0) return;
-
       const count = Math.max(0, Math.trunc(args.count ?? 1));
-      for (const card of ctx.rng.shuffle(pool).slice(0, count)) makeRadiant(ctx, card);
+      const pool = poolOf(ctx, player, zones);
+      const picked = pool.length === 0 ? [] : ctx.rng.shuffle(pool).slice(0, count);
+      for (const card of picked) makeRadiant(ctx, card);
+      cueUnpicked(ctx, player, zones, count - picked.length, new Set(picked.map((card) => card.id)));
     },
   };
+}
+
+/**
+ * R177 over a random pick: R60 picks among the non-Radiant cards only, so when a hidden hand or
+ * library holds fewer of them than the pick wants, fewer cards change — and a cue for the changed
+ * cards alone would tell the other seat how many of the hidden ones were Radiant already (none at all
+ * for an all-Radiant hand under #27). So the picks R60 could not make are cued on the zones' Radiant
+ * cards in their own order, as a Make Radiant on a card that was already Radiant is (R177), until the
+ * cues number what the pick wanted or the zones run out — and the zones' sizes are public. No card
+ * changes and no random number is drawn for them (R129). A public card's face is public either way,
+ * so only cards hidden from someone are cued.
+ */
+function cueUnpicked(
+  ctx: EffectContext,
+  player: PlayerId,
+  zones: readonly RadiantZone[],
+  missing: number,
+  picked: ReadonlySet<string>,
+): void {
+  if (missing <= 0) return;
+  let left = missing;
+  for (const card of poolOf(ctx, player, zones, { radiantToo: true })) {
+    if (left <= 0) return;
+    if (picked.has(card.id) || !card.radiant || !hiddenFromSomeone(ctx, card)) continue;
+    makeRadiant(ctx, card);
+    left -= 1;
+  }
 }
 
 /** §6.1's Lucky X keeps "the best"; for a chance roll that is a success beating a failure (R32). */

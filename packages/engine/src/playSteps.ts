@@ -76,7 +76,8 @@ import { flagsOf } from "./scripts";
 import { sacrificeTogether, stateCheck } from "./stateCheck";
 import { settle } from "./triggers";
 import { triggerHolderFor, triggerHoldersWithHook, type TriggerHolder } from "./triggers";
-import { beginWorkCascade, dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
+import { exitMark, leftFieldAfter } from "./stays";
+import { beginWorkCascade, drainWork, dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
 import {
   cardAt,
   firstFreeZone,
@@ -183,6 +184,21 @@ export type PlayRun = {
    * card's Cry splits its ingredients' choices by (`playChoices.DECLARATION_SLICES_KEY`).
    */
   targetSlices?: number[];
+  /**
+   * R174: the field's departures when the play's choices were checked — at step 1 for a play, and
+   * for a cast once its caster has made them (R70) — so a declared target a Tribute (step 2) or a
+   * trap answering the play (step 4) took off the field is gone for step 5, even back through Reborn.
+   */
+  exitsFrom?: number;
+  /** R174: the field's departures when step 3 read its holders (`hookIds`), whose stays it runs. */
+  hooksFrom?: number;
+  /**
+   * R174: the field's departures once step 4 had put the card on the field. The play follows that
+   * stay and no other: a card that has left it since — a trap at step 4 killed it, its own Cry did —
+   * is no longer the card being played even when Reborn has put a new body in its zone (R83), so
+   * that body has no Cry to resolve (R1, R118) and is not in play for step 7 (R61).
+   */
+  placedFrom?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -288,6 +304,7 @@ export function validatePlay(
       awaiting: null,
       gifted: giftedMakesRadiant(state, player, cost),
       ...slicesFor(state, player, card, cost, targets, modes),
+      exitsFrom: exitMark(state),
     },
   };
 }
@@ -392,13 +409,17 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
   if (run.hookIds === undefined) {
     giftedProgramStep(sink, run);
     run.hookIds = triggerHoldersWithHook(sink.state, "onPlayHook").map((holder) => holder.card.id);
+    run.hooksFrom = exitMark(sink.state);
   }
   const ids = run.hookIds;
   for (let at = run.hookAt; at < ids.length; at += 1) {
     run.hookAt = at + 1;
     // Each holder is read again as its turn comes: one an earlier hook took off the field, or out of
-    // the zone that registers the hook, has nothing to run (R153, R174).
-    const holder = holderWithOnPlayHook(sink.state, ids[at]);
+    // the zone that registers the hook, has nothing to run (R153, R174) — and one that has left the
+    // field since the step began is not the holder it was, even back through Reborn: a new arrival
+    // that did not stand there as the play reached step 3 (R83), as a hook queued before a death
+    // does not fire for the body that came back.
+    const holder = holderWithOnPlayHook(sink.state, ids[at], run.hooksFrom);
     if (holder === null) continue;
     runHookResumable(sink, holder.card, "onPlayHook", {
       controller: holder.controller,
@@ -409,10 +430,14 @@ function giftedHookStep(sink: EngineSink, run: PlayRun): void {
   }
 }
 
-/** The `onPlayHook` holder a card is right now, or null when its zone no longer registers one. */
-function holderWithOnPlayHook(state: GameState, id: string | undefined): TriggerHolder | null {
+/**
+ * The `onPlayHook` holder a card is right now, or null when its zone no longer registers one, or
+ * when it has left the field since `from` — the stay step 3 began with has ended (R174).
+ */
+function holderWithOnPlayHook(state: GameState, id: string | undefined, from: number | undefined): TriggerHolder | null {
   const card = id === undefined ? undefined : findInstance(state, id);
   if (card === undefined || card.zone.z !== "field") return null;
+  if (from !== undefined && leftFieldAfter(state, from, card.id)) return null;
   const holder = triggerHolderFor(state, card);
   return holder === null || holder.script.onPlayHook === undefined ? null : holder;
 }
@@ -524,6 +549,7 @@ function placeCard(sink: EngineSink, run: PlayRun): void {
   // left in no pile at all (§10.1).
   if (run.zone !== null && placeOnField(state, card, run.zone, { stack: playsOnStack(state, card) })) {
     card.summonedTurn = state.turn;
+    run.placedFrom = exitMark(state);
   } else {
     run.zone = null;
     card.zone = { z: "resolving", player: run.player };
@@ -564,22 +590,31 @@ function stillResolving(state: GameState, run: PlayRun): CardInstance | null {
   const card = findInstance(state, run.instanceId);
   if (card === undefined || card.defId !== run.defId) return null;
   const zone = card.zone.z;
-  return zone === "field" || zone === "resolving" ? card : null;
+  if (zone === "resolving") return card;
+  if (zone !== "field") return null;
+  // R174, R118: the stay step 4 put it on. One it has left since — a trap answering the play killed
+  // it at step 4 — is gone for the play, and a Reborn body in its zone is a new arrival whose "Cry
+  // does not fire" (§4.5 step 4, R1).
+  return run.placedFrom !== undefined && leftFieldAfter(state, run.placedFrom, card.id) ? null : card;
 }
 
 /**
- * The permanents whose lasting effect is #38 Quickstriker's (`staticFlags.quickstriker`), on this
- * player's side of the field. The played card is never one of them: a permanent does not answer
- * its own arrival (R119), and a Quickstriker being played is on the field by step 5.
+ * How many times #38 Quickstriker's lasting effect (`staticFlags.quickstriker`) is granted from this
+ * player's side of the field: once per Quickstriker, and a card fused from two carries both (R102).
+ * The played card is never one of them: a permanent does not answer its own arrival (R119), and a
+ * Quickstriker being played is on the field by step 5.
  */
-function quickstrikersOf(state: GameState, player: PlayerId, played: CardInstance): CardInstance[] {
-  return (["units", "backrow"] as const).flatMap((row) =>
-    slotsOf(player, row).flatMap((ref) => {
+function quickstrikerGrants(state: GameState, player: PlayerId, played: CardInstance): number {
+  let grants = 0;
+  for (const row of ["units", "backrow"] as const) {
+    for (const ref of slotsOf(player, row)) {
       const held = cardAt(state, ref);
-      if (held === null || held.id === played.id || flagsOf(held).quickstriker !== true) return [];
-      return [held];
-    }),
-  );
+      if (held === null || held.id === played.id) continue;
+      const flag = flagsOf(held).quickstriker;
+      grants += flag === true ? 1 : typeof flag === "number" ? Math.max(0, Math.trunc(flag)) : 0;
+    }
+  }
+  return grants;
 }
 
 /**
@@ -596,7 +631,7 @@ function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): 
   const amount = playedEarlierThisTurn(state, run.player);
   if (amount <= 0) return;
   const grants =
-    quickstrikersOf(state, run.player, card).length +
+    quickstrikerGrants(state, run.player, card) +
     state.players[run.player].mods.filter((mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod))
       .length;
   for (let hit = 0; hit < grants; hit += 1) {
@@ -666,6 +701,8 @@ function resolveStep(sink: EngineSink, run: PlayRun): void {
           targets: standingTargets(run),
           modes: run.modes,
           ...(run.targetSlices === undefined ? {} : { data: { [DECLARATION_SLICES_KEY]: run.targetSlices } }),
+          // R174: the choices are aimed at the stays step 1 checked them on (a cast's, once made).
+          ...(run.exitsFrom === undefined ? {} : { exitsFrom: run.exitsFrom }),
         });
         break;
       default:
@@ -703,6 +740,8 @@ function castChoicesMade(sink: EngineSink, run: PlayRun): boolean {
   if (chosen === null) return true;
   run.targets = [...chosen.targets];
   run.modes = [...chosen.modes];
+  // R174: the cast's choices were made against the board as its caster answered.
+  run.exitsFrom = exitMark(sink.state);
   // A fused card's Cry splits the choices by its ingredients' declarations (R90, R102).
   Object.assign(run, slicesFor(sink.state, run.player, card, run.costPaid, run.targets, run.modes));
   return true;
@@ -947,6 +986,8 @@ function finishStep(sink: EngineSink, run: PlayRun): void {
     // (R70), which `castThroughPipeline` puts on the run it drives.
     costPaid: run.costPaid,
     radiant: run.radiant ?? false,
+    // R174, R61: whether the card is still in play is asked of the stay step 4 put it on.
+    ...(run.placedFrom === undefined ? {} : { placedFrom: run.placedFrom }),
   });
   flagReturnToHandAtEndOfTurn(sink.state, run.instanceId);
 }
@@ -1111,6 +1152,7 @@ function castThroughPipeline(sink: EngineSink, instance: CardInstance, options: 
     repeat: null,
     awaiting: null,
     cast: true,
+    exitsFrom: exitMark(sink.state),
   });
 }
 
@@ -1158,5 +1200,10 @@ export function answerPlayPrompt(sink: EngineSink, answer: AnswerInput): string 
   // R113: taking the paused step up again resets the cursor, as `prompts.answerPrompt` does.
   beginWorkCascade(sink);
   drive(sink, run);
+  // R122: the action that answers finishes what the prompt interrupted — the draw chain a cast's
+  // own question stopped (§2.4), the steps a trap's play owes — before the resolution loop moves, as
+  // `prompts.answerPrompt` does; otherwise the traps answered the cast's events before the draw
+  // repeated into the card beneath it.
+  drainWork(sink);
   return null;
 }

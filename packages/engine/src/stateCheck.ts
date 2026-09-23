@@ -28,6 +28,7 @@
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, hasKeyword } from "@jackioh/shared";
+import { endGame } from "./gameOver";
 import { unitView } from "./layers";
 import { endOrphanedModifiers, installLastingModifiers } from "./modifiers";
 import { SELF_KEY, runResumableList, type ResumePlan } from "./prompts";
@@ -84,9 +85,7 @@ function heroCheck(sink: EngineSink): boolean {
   if (dead.length === 0) return false;
   const winner = dead.length === 2 ? "draw" : (dead[0] === "p1" ? "p2" : "p1");
   const reason = dead.length === 2 ? "both-heroes-dead" : "hero-death";
-  sink.state.result = { winner, reason };
-  sink.state.phase = "over";
-  sink.events.push({ type: "gameOver", winner, reason });
+  endGame(sink, winner, reason);
   return true;
 }
 
@@ -377,6 +376,8 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
       }),
       // R174: a hook the pause split keeps the mark its list began with.
       ...(resumeAt?.exitsFrom === undefined ? {} : { exitsFrom: resumeAt.exitsFrom }),
+      // R136: and the units its head summoned before the pause.
+      ...(resumeAt?.summoned === undefined ? {} : { summoned: resumeAt.summoned }),
     };
     const paused = resumeAt;
     resumeAt = null;

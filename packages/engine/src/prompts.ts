@@ -37,14 +37,17 @@ import { scriptsFor } from "./scripts";
 import { findInstance, type CardInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
 import { exitMark } from "./stays";
 import {
+  RUN_MARKS_KEY,
   beginWorkCascade,
   cardData,
   drainWork,
   parkWork,
   pausedOf,
   registerDefaultWorkHandler,
+  runMarksOf,
   scriptStepFor,
   type PausedStep,
+  type RunMarks,
   type WorkPlan,
 } from "./work";
 
@@ -166,13 +169,34 @@ export function resumeSelf(
   data: Record<string, unknown> = {},
 ): Resume {
   const self = ctx.self;
-  return resumeAt({
+  const built = resumeAt({
     defId: self?.defId ?? ctx.defId ?? "",
     step,
     radiant: ctx.radiant,
     ...(self === null ? {} : { instanceId: self.id }),
     data: { ...cardData(ctx.data), ...data },
   });
+  // R113, §10.6: the answer re-invokes the same script, so the step it re-enters is the same run —
+  // it reads the stays the run began with (R174) and counts the units it summoned (R136), whichever
+  // action it resumes in. A delayed effect is not the run continued and drops this (`effects/delay`).
+  return { ...built, data: { ...built.data, [RUN_MARKS_KEY]: runMarks(ctx) } };
+}
+
+/** R136: the units a run has summoned so far — those of earlier actions, then this action's. */
+export function summonedSoFar(ctx: EffectContext): string[] {
+  const now = ctx.events
+    .slice(ctx.eventsFrom)
+    .flatMap((event) => (event.type === "summoned" ? [event.instanceId] : []));
+  return [...(ctx.summoned ?? []), ...now];
+}
+
+/** What a continuation of this run carries of it (`work.RunMarks`). */
+function runMarks(ctx: EffectContext): RunMarks {
+  const summoned = summonedSoFar(ctx);
+  return {
+    exitsFrom: ctx.exitsFrom ?? exitMark(ctx.state),
+    ...(summoned.length === 0 ? {} : { summoned }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -501,12 +525,13 @@ export function runResumableList(
       level === stack.length - 1 ? frame.at < frame.effects.length : frame.at + 1 < frame.effects.length,
     );
     if (!left) return "asked";
+    const marks = runMarks(ctx);
     parkWork(sink, plan, {
       from: top.at,
       targets: [...ctx.targets],
       modes: [...ctx.modes],
       ...(stack.length > 1 ? { part: stack.slice(0, -1).map((frame) => frame.at), memo: [...memos] } : {}),
-      exitsFrom: ctx.exitsFrom ?? exitMark(sink.state),
+      ...marks,
     });
     return "parked";
   }
@@ -527,6 +552,10 @@ export function runResume(
   options: ResumeOptions = {},
 ): boolean {
   const paused = pausedOf(resume.data);
+  // R113: an answered step (`resumeSelf`) and a parked tail (`PausedStep`) are the run continued.
+  const run = runMarksOf(resume.data);
+  const exitsFrom = paused?.exitsFrom ?? run?.exitsFrom;
+  const summoned = paused?.summoned ?? run?.summoned;
   const data = cardData(resume.data);
   const instance =
     selfSnapshotOf(data) ??
@@ -546,7 +575,9 @@ export function runResume(
     // R127: the script this continuation named, which a step with no instance still asks again in.
     defId: resume.defId,
     // R174, R113: a paused list is the same run continued, so it keeps the mark it began with.
-    ...(paused?.exitsFrom === undefined ? {} : { exitsFrom: paused.exitsFrom }),
+    ...(exitsFrom === undefined ? {} : { exitsFrom }),
+    // R136: and it reads the units its head summoned, in whichever action that happened.
+    ...(summoned === undefined || summoned.length === 0 ? {} : { summoned }),
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };
@@ -563,18 +594,31 @@ export function runHookResumable(
   sink: EngineSink,
   instance: { id: string; defId: string; controller: PlayerId; radiant: boolean },
   hookName: string,
-  options: { controller?: PlayerId; targets?: readonly Selection[]; modes?: readonly string[]; data?: Record<string, unknown> } = {},
+  options: {
+    controller?: PlayerId;
+    targets?: readonly Selection[];
+    modes?: readonly string[];
+    data?: Record<string, unknown>;
+    /**
+     * R174: the stays the hook's choices were made against, when they were made before the hook
+     * runs — a play's declared targets, checked at §10.5 step 1 — so a card taken off the field
+     * between the choice and the hook (a Tribute at step 2, a trap at step 4) is gone for it.
+     */
+    exitsFrom?: number;
+  } = {},
 ): boolean {
+  const resume = resumeAt({
+    defId: instance.defId,
+    hook: hookName,
+    step: "",
+    radiant: instance.radiant,
+    instanceId: instance.id,
+    data: options.data ?? {},
+  });
+  const marks: RunMarks | null = options.exitsFrom === undefined ? null : { exitsFrom: options.exitsFrom };
   return runResume(
     sink,
-    resumeAt({
-      defId: instance.defId,
-      hook: hookName,
-      step: "",
-      radiant: instance.radiant,
-      instanceId: instance.id,
-      data: options.data ?? {},
-    }),
+    marks === null ? resume : { ...resume, data: { ...resume.data, [RUN_MARKS_KEY]: marks } },
     {
       controller: options.controller ?? instance.controller,
       ...(options.targets === undefined ? {} : { targets: options.targets }),

@@ -19,12 +19,19 @@
 // a nested death paused still owes the rest (R156); a delayed effect made while its point resolves
 // waits for the next (R68); and step 3's hooks resume by the holders the step began with.
 //
+// Round 7 (lens L7) added the cases at the end: a queued trigger's tail after a prompt runs the face
+// its head ran (§5.2, R113); step 3's hooks, the played card's Cry and the traps owed its
+// `cardPlayed` follow the stays they began with, not a Reborn body or a card in a hand (R174, R118);
+// the answer to a cast's own choice finishes the draw chain before the traps answer the cast (R122);
+// and a list a prompt split still reads what its head summoned (R136) and the stays it began with,
+// in the step the answer re-enters as much as in its tail (R174).
+//
 // No Core card opens a prompt from a delayed effect, a cast on draw, a trap's list or a Death hook,
 // so each case builds the prompting continuation out of engine verbs on a fixture card (a transient
 // def, the way a fusion's is held) and uses real cards for everything else.
 
 import { describe, expect, it } from "vitest";
-import type { CardDef, CardType, PlayerId, Row, TargetDecl } from "@jackioh/shared";
+import type { CardDef, CardType, Keyword, PlayerId, Row, TargetDecl } from "@jackioh/shared";
 import {
   createRng,
   newInstance,
@@ -36,6 +43,7 @@ import {
   unitView,
   type CardInstance,
   type EngineSink,
+  type GameState,
   type Script,
 } from "@jackioh/engine";
 import {
@@ -44,9 +52,14 @@ import {
   chooseMode,
   chooseTarget,
   damage,
+  damageAll,
   delay,
   destroy,
+  forcedAttacks,
   sacrifice,
+  setRadiant,
+  steal,
+  summon,
 } from "@jackioh/engine/effects";
 import { scenario, type Scenario } from "./_harness";
 
@@ -687,5 +700,423 @@ describe("§10.5 step 3, R113: step 3's hooks resume where they stopped, whateve
     // Both hooks were on the field when the play reached step 3, in R68's order: the first one
     // leaving on its own answer does not drop the second (R113: a sequence is never dropped).
     s.expectHealth("p2", 29);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 7 (lens L7): the stays and faces a paused or queued list carries, the plays a trap answering
+// at step 4 has taken off the field, and the order an answer to a cast's own choice finishes in.
+// ---------------------------------------------------------------------------
+
+/** A fixture def with its own base and radiant scripts and a face of its own, held like a fusion's. */
+function fixtureFaces(
+  state: GameState,
+  id: string,
+  type: CardType,
+  scripts: { base: Script; radiant: Script },
+  options: { stats?: { attack: number; health: number }; keywords?: Keyword[] } = {},
+): void {
+  const stats = options.stats ?? { attack: 2, health: 2 };
+  const keywords = options.keywords ?? [];
+  const face = type === "Unit" ? { ...stats, keywords, text: id } : { keywords, text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: scripts });
+}
+
+describe("§5.2, R113: a queued trigger's parked tail runs the face its head ran", () => {
+  it("R113 a trigger whose card turned Radiant while it waited in the queue finishes on the radiant text after its prompt (§5.2)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // Lane 2: on any play, deal the enemy hero 1 (radiant 2), ask something, then deal it 10
+    // (radiant 20). The same trigger id on both faces, as a card's radiant face keeps its triggers.
+    const asking = (first: number, second: number): Script => ({
+      triggers: [
+        {
+          id: "edge-r7-l7-face",
+          on: ["cardPlayed"],
+          run: () => [
+            damage({ to: { of: "enemyHero" }, amount: first }),
+            chooseMode({ options: ["ok"], step: "ok", prompt: "a question" }),
+            damage({ to: { of: "enemyHero" }, amount: second }),
+          ],
+        },
+      ],
+      resume: { ok: () => [] },
+    });
+    fixtureFaces(s.state, "edge-r7-l7-face", "Unit", { base: asking(1, 10), radiant: asking(2, 20) });
+    const faced = placeFixture(s, "edge-r7-l7-face", "p1", "units", 2);
+
+    // Lane 1, ahead of it in R68's order: on any play, make the lane-2 unit Radiant.
+    const radiates: Script = {
+      triggers: [
+        { id: "edge-r7-l7-radiates", on: ["cardPlayed"], run: () => [setRadiant({ instanceId: faced.id })] },
+      ],
+    };
+    fixtureFaces(s.state, "edge-r7-l7-radiates", "Unit", { base: radiates, radiant: radiates });
+    placeFixture(s, "edge-r7-l7-radiates", "p1", "units", 1);
+
+    // Both triggers are queued on Reno's `cardPlayed` while the lane-2 unit is still base. The first
+    // makes it Radiant, so by the time its own trigger resolves it runs the radiant text (§5.2:
+    // "ongoing triggers use the radiant text from then on"; `runQueuedTrigger` reads the card again).
+    s.play(RENO, { zone: 3 });
+    expect(s.card(faced).radiant).toBe(true);
+    must(s.state.pending, "the lane-2 trigger's question");
+    // Its first damage came from the radiant text.
+    s.expectHealth("p2", 28);
+
+    s.answer("ok");
+    // One trigger, one face: the rest of its list after the prompt is the radiant text's 20, not the
+    // base text's 10 (R113: the paused list continues, it is not a different list).
+    s.expectHealth("p2", 8);
+  });
+});
+
+describe("R174, §10.5 step 3: step 3's hooks are the stays the step began with", () => {
+  it("R174 a Reborn body is not run as an onPlayHook holder of the play whose earlier hook's answer killed it (§10.5 step 3, R83)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // Lane 2: a Reborn unit whose onPlayHook deals the enemy hero 5.
+    const pings: Script = { onPlayHook: () => [damage({ to: { of: "enemyHero" }, amount: 5 })] };
+    fixtureFaces(s.state, "edge-r7-l7-pinger", "Unit", { base: pings, radiant: pings }, { keywords: [{ kind: "Reborn" }] });
+    const pinger = placeFixture(s, "edge-r7-l7-pinger", "p1", "units", 2);
+
+    // Lane 1, ahead of it in R68's order: its onPlayHook asks, and the answer sacrifices the pinger.
+    const asks: Script = {
+      onPlayHook: () => [chooseMode({ options: ["ok"], step: "ok", prompt: "a question" })],
+      resume: { ok: () => [sacrifice({ target: { of: "instance", instanceId: pinger.id } })] },
+    };
+    fixtureFaces(s.state, "edge-r7-l7-asker", "Unit", { base: asks, radiant: asks });
+    placeFixture(s, "edge-r7-l7-asker", "p1", "units", 1);
+
+    s.play(RENO, { zone: 3 });
+    must(s.state.pending, "the lane-1 hook's question");
+    s.answer("ok");
+
+    // The sacrifice is a death in full, and Reborn has put a new body in lane 2 (§4.5 step 4).
+    expect(s.card(pinger).rebornSpent).toBe(true);
+    s.expectInZone(pinger, "field");
+    // R174: the stay step 3 began with has ended, and the body is a new arrival that was not a holder
+    // when the play reached step 3 (as a start-of-turn hook queued before a death does not fire for
+    // the Reborn body, R174), so it deals nothing for this play.
+    s.expectHealth("p2", 30);
+  });
+});
+
+describe("R1, R118, R174: a played unit a trap killed at step 4 does not Cry with its Reborn body", () => {
+  it("R118 a trap that asks and then destroys the played Reborn unit leaves the play no Cry to resolve (R1, R174, §10.5 step 5)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // p1's 0-cost Reborn unit whose Cry deals the enemy hero 5.
+    const cries: Script = { cry: () => [damage({ to: { of: "enemyHero" }, amount: 5 })] };
+    fixtureFaces(s.state, "edge-r7-l7-crier", "Unit", { base: cries, radiant: cries }, { keywords: [{ kind: "Reborn" }] });
+    const crier = newInstance(s.state, "edge-r7-l7-crier", "p1", { z: "hand", player: "p1" });
+    s.state.players.p1.hand.push(crier);
+
+    // p2's trap: when the opponent plays a card, ask p2 something, then destroy the played card.
+    const trap: Script = {
+      triggers: [
+        {
+          id: "edge-r7-l7-kill-on-play",
+          on: ["cardPlayed"],
+          when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player !== ctx.controller,
+          run: (ctx) => [
+            chooseMode({
+              options: ["ok"],
+              step: "ok",
+              prompt: "a question",
+              data: { played: ctx.event.type === "cardPlayed" ? ctx.event.instanceId : "" },
+            }),
+          ],
+        },
+      ],
+      resume: { ok: (ctx) => [destroy({ target: { of: "instance", instanceId: String(ctx.data.played) } })] },
+    };
+    fixtureFaces(s.state, "edge-r7-l7-kill-on-play", "Trap", { base: trap, radiant: trap });
+    placeFixture(s, "edge-r7-l7-kill-on-play", "p2", "backrow", 1);
+
+    s.play(crier, { zone: 1 });
+    expect(must(s.state.pending, "the trap's question").playerId).toBe("p2");
+    s.answer("ok");
+
+    // The trap resolved to completion before the play went on (§10.3): the unit died and Reborn put a
+    // new body in its zone (§4.5 step 4).
+    expect(s.card(crier).rebornSpent).toBe(true);
+    s.expectInZone(crier, "field");
+    // R118: the Cry is lost where the trap has taken the card off the field. The body is a new
+    // arrival (R174, R83), and R1: Reborn never fires a Cry.
+    s.expectHealth("p2", 30);
+  });
+});
+
+/** p2's trap that asks p2 when the opponent plays a card, and then applies `after` to the played card. */
+function askThenOnPlayed(s: Scenario, id: string, after: (playedId: string) => ReturnType<typeof destroy>): void {
+  const trap: Script = {
+    triggers: [
+      {
+        id,
+        on: ["cardPlayed"],
+        when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player !== ctx.controller,
+        run: (ctx) => [
+          chooseMode({
+            options: ["ok"],
+            step: "ok",
+            prompt: "a question",
+            data: { played: ctx.event.type === "cardPlayed" ? ctx.event.instanceId : "" },
+          }),
+        ],
+      },
+    ],
+    resume: { ok: (ctx) => [after(String(ctx.data.played))] },
+  };
+  fixtureFaces(s.state, id, "Trap", { base: trap, radiant: trap });
+  placeFixture(s, id, "p2", "backrow", 1);
+}
+
+
+describe("R174, R17: Sheepish owed the play behind a trap that took the unit off the field transforms nothing", () => {
+  it("R174 a unit the first trap's answer bounced to its owner's hand is not turned into a Sheep Token card there (R17, §8 #41)", () => {
+    const s = scenario({
+      p1: { hand: [TEMPO_TIMMY, RENO], mana: 4 },
+      p2: { backrow: [{ def: SHEEPISH, lane: 2 }], hand: [RENO] },
+    });
+    askThenOnPlayed(s, "edge-r7-l7-bounce-on-play", (playedId) =>
+      bounce({ target: { of: "instance", instanceId: playedId } }),
+    );
+    const timmy = s.card(TEMPO_TIMMY);
+
+    s.play(TEMPO_TIMMY, { zone: 1 });
+    expect(must(s.state.pending, "the first trap's question").playerId).toBe("p2");
+    s.answer("ok");
+
+    // The first trap resolved to completion (§10.3): Timmy is back in p1's hand.
+    expect(s.state.pending).toBeNull();
+    // R174: a trap answering a play meets it as no longer in play once an earlier trap answering the
+    // same play has taken the card off the field. Sheepish transforms the unit the opponent played
+    // (§8 #41), on the field; it never reaches into a hand to rewrite a card there.
+    expect(s.hand("p1").some((card) => card.defId === SHEEP_TOKEN), "a Sheep Token card in p1's hand").toBe(false);
+    s.expectInZone(timmy, "hand");
+  });
+
+  it("R174 a unit the first trap's answer killed and Reborn brought back is not transformed as the unit that was played (R17, R83)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { backrow: [{ def: SHEEPISH, lane: 2 }], hand: [RENO] },
+    });
+    const plain: Script = {};
+    fixtureFaces(s.state, "edge-r7-l7-reborn-unit", "Unit", { base: plain, radiant: plain }, { keywords: [{ kind: "Reborn" }] });
+    const unit = newInstance(s.state, "edge-r7-l7-reborn-unit", "p1", { z: "hand", player: "p1" });
+    s.state.players.p1.hand.push(unit);
+    askThenOnPlayed(s, "edge-r7-l7-destroy-on-play", (playedId) =>
+      destroy({ target: { of: "instance", instanceId: playedId } }),
+    );
+
+    s.play(unit, { zone: 1 });
+    must(s.state.pending, "the first trap's question");
+    s.answer("ok");
+
+    // The unit died and its Reborn body stands in lane 1: a new arrival nobody played (R83).
+    expect(s.events.some((event) => event.type === "destroyed" && event.instanceId === unit.id)).toBe(true);
+    // R174: the play Sheepish answers is no longer in play, so the body is not transformed.
+    const lane1 = s.unit("p1", 1);
+    expect(lane1?.defId, "lane 1 should hold the Reborn body, not a Sheep Token").toBe("edge-r7-l7-reborn-unit");
+    expect(lane1?.id).toBe(unit.id);
+    expect(lane1?.rebornSpent).toBe(true);
+  });
+});
+
+const BEAR_HONEYPOT = "core-060";
+
+describe("R122, §2.4: the answer to a cast's own choice finishes the draw chain before the traps answer the cast", () => {
+  it("R122 the cast-on-draw card under a cast that asked for its target is cast before Bear Honeypot answers the first cast (R113, R70, §2.4)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO] },
+      p2: { backrow: [BEAR_HONEYPOT], hand: [RENO] },
+    });
+    // Top card: a cast-on-draw Spell that declares a target, so its cast asks for it (R70, R81).
+    const targeted: Script = {
+      staticFlags: { castOnDraw: true },
+      targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit", "hero"] } }],
+      cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+    };
+    fixtureFaces(s.state, "edge-r7-l7-cod-targeted", "Spell", { base: targeted, radiant: targeted });
+    // Under it: a cast-on-draw Spell that deals 1 damage to each enemy unit.
+    const sweep: Script = {
+      staticFlags: { castOnDraw: true },
+      cry: () => [damageAll({ amount: 1, side: "enemy" })],
+    };
+    fixtureFaces(s.state, "edge-r7-l7-cod-sweep", "Spell", { base: sweep, radiant: sweep });
+    const first = newInstance(s.state, "edge-r7-l7-cod-targeted", "p1", { z: "library", player: "p1" });
+    const second = newInstance(s.state, "edge-r7-l7-cod-sweep", "p1", { z: "library", player: "p1" });
+    s.state.players.p1.library.unshift(first, second);
+
+    // p1's turn draw casts the first; its cast asks p1 for a target (R70, R81).
+    s.startTurn();
+    expect(must(s.state.pending, "the cast's target prompt").playerId).toBe("p1");
+    s.answer([{ pick: "hero", player: "p2" }]);
+
+    // §2.4: the draw repeats as soon as the cast has resolved, so the sweep is cast inside the same
+    // draw, and the cast's events reach the traps with the rest of the draw's (a cast leaves them to
+    // the effect that cast it, R70). R122: the answer finishes what the prompt interrupted before
+    // the resolution loop moves. So Bear Honeypot's tokens arrive after the sweep: nothing hits them.
+    const types = s.lastEvents.map((event) => event.type);
+    const sweepDrawn = s.lastEvents.findIndex((event) => event.type === "drawn" && event.instanceId === second.id);
+    const trapFired = types.indexOf("trapFired");
+    expect(sweepDrawn, `events: ${types.join(", ")}`).toBeGreaterThanOrEqual(0);
+    expect(trapFired, `events: ${types.join(", ")}`).toBeGreaterThan(sweepDrawn);
+    const tokens = [1, 2, 3, 4, 5].flatMap((lane) => {
+      const unit = s.unit("p2", lane);
+      return unit !== null && unit.defId === RUSH_TOKEN ? [unit] : [];
+    });
+    expect(tokens).toHaveLength(2);
+    for (const token of tokens) expect(token.damage).toBe(0);
+  });
+});
+
+describe("R136, R113: a list a prompt split still reads the events its own head emitted", () => {
+  it("R136 the Rush Token a trap's list summoned before its prompt is still one of \"they\" that attack after the answer (R113, §8 #60)", () => {
+    const s = scenario({
+      p1: { hand: [RENO, RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // p2's trap, #60 Bear Honeypot's list with a question in the middle: when the opponent's card
+    // resolves, summon a Rush Token, ask p2 something, then the tokens this list summoned attack it.
+    const trap: Script = {
+      triggers: [
+        {
+          id: "edge-r7-l7-honeypot-asks",
+          on: ["cardResolved"],
+          when: (ctx) => ctx.event.type === "cardResolved" && ctx.event.player !== ctx.controller && ctx.event.permanent,
+          run: (ctx) => [
+            summon({ defId: RUSH_TOKEN }),
+            chooseMode({ options: ["ok"], step: "ok", prompt: "a question" }),
+            forcedAttacks({
+              attackers: { side: "self", defId: RUSH_TOKEN, summonedThisScript: true },
+              target: { instanceId: ctx.event.type === "cardResolved" ? ctx.event.instanceId : "" },
+            }),
+          ],
+        },
+      ],
+      resume: { ok: () => [] },
+    };
+    fixtureFaces(s.state, "edge-r7-l7-honeypot-asks", "Trap", { base: trap, radiant: trap });
+    placeFixture(s, "edge-r7-l7-honeypot-asks", "p2", "backrow", 1);
+
+    s.play(RENO, { zone: 1 });
+    const reno = must(s.unit("p1", 1), "p1's Reno");
+    must(s.state.pending, "the trap's question");
+    const token = must(s.unit("p2", 1), "the Rush Token the trap summoned");
+    expect(token.defId).toBe(RUSH_TOKEN);
+    s.answer("ok");
+
+    // R113: the list after the prompt is the same list, and R136's "the events its own script
+    // emitted" include the summon before the prompt: the token attacks Reno (3 damage) and dies to
+    // Reno's 4 strike back.
+    expect(s.card(reno).damage).toBe(3);
+    s.expectInZone(token, "gone");
+  });
+});
+
+describe("R174, R113: \"this unit\" later in a list a prompt split is the stay the list began with", () => {
+  it("R174 a Cry that sacrificed its own unit before its prompt does not buff the Reborn body after the answer (R83, R113)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    // A 0-cost 2/2 Reborn unit whose Cry sacrifices itself, asks something, then gives itself +5/+5.
+    const cry: Script = {
+      cry: () => [
+        sacrifice({ target: { of: "self" } }),
+        chooseMode({ options: ["ok"], step: "ok", prompt: "a question" }),
+        buff({ target: { of: "self" }, attack: 5, health: 5 }),
+      ],
+      resume: { ok: () => [] },
+    };
+    fixtureFaces(s.state, "edge-r7-l7-self-sac", "Unit", { base: cry, radiant: cry }, { keywords: [{ kind: "Reborn" }] });
+    const unit = newInstance(s.state, "edge-r7-l7-self-sac", "p1", { z: "hand", player: "p1" });
+    s.state.players.p1.hand.push(unit);
+
+    s.play(unit, { zone: 1 });
+    must(s.state.pending, "the Cry's question");
+    // The sacrifice is a death in full: Reborn has already put a new body in lane 1 (§4.5 step 4).
+    expect(s.card(unit).rebornSpent).toBe(true);
+    s.answer("ok");
+
+    // R174: an effect later in the same list aimed at a card an earlier effect took off the field
+    // fizzles even once the card is back, and a prompt between them changes none of this (R113). The
+    // body is a new arrival (R83): it stays the printed 2/2 at 1 health.
+    s.expectInZone(unit, "field");
+    s.expectStats(unit, { attack: 2, maxHealth: 2, health: 1 });
+  });
+});
+
+describe("R174, R113: the step a prompt's answer re-enters reads the stays the resolution began with", () => {
+  it("R174 a delayed steal an answered step schedules on a unit its own list sacrificed before the prompt fizzles, Reborn body or not (R76, R83, R113)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], mana: 4 },
+      p2: { hand: [RENO] },
+    });
+    const plain: Script = {};
+    fixtureFaces(s.state, "edge-r7-l7-enemy-reborn", "Unit", { base: plain, radiant: plain }, { keywords: [{ kind: "Reborn" }] });
+    const victim = placeFixture(s, "edge-r7-l7-enemy-reborn", "p2", "units", 1);
+
+    // A 0-cost Spell: sacrifice the chosen enemy unit, ask something, and on the answer schedule
+    // "at the start of your next turn, steal it", watching it (#50 Kpop Fanatic's steal, R76).
+    const spell: Script = {
+      targets: [{ kind: "target", min: 1, max: 1, filter: { side: "enemy", of: ["unit"] } }],
+      cry: (ctx) => {
+        const chosen = ctx.targets[0];
+        const id = chosen?.pick === "instance" ? chosen.instanceId : "";
+        return [
+          sacrifice({ target: { of: "chosen" }, allowEnemy: true }),
+          chooseMode({ options: ["ok"], step: "ok", prompt: "a question", data: { victim: id } }),
+        ];
+      },
+      resume: {
+        ok: (ctx) => [
+          delay({
+            at: { phase: "start", player: "self" },
+            step: "steal",
+            hook: "resume",
+            watch: String(ctx.data.victim),
+            data: { victim: ctx.data.victim },
+          }),
+        ],
+        steal: (ctx) => [steal({ instanceId: String(ctx.data.victim) })],
+      },
+    };
+    fixtureFaces(s.state, "edge-r7-l7-sac-then-steal", "Spell", { base: spell, radiant: spell });
+    const card = newInstance(s.state, "edge-r7-l7-sac-then-steal", "p1", { z: "hand", player: "p1" });
+    s.state.players.p1.hand.push(card);
+
+    s.play(card, { targets: [{ pick: "instance", instanceId: victim.id }] });
+    must(s.state.pending, "the Spell's question");
+    // The sacrifice is a death in full: the victim's Reborn body already stands in p2's lane 1.
+    expect(s.card(victim).rebornSpent).toBe(true);
+    s.answer("ok");
+
+    // R174: the steal is aimed at the stay the play chose, which the sacrifice ended before the
+    // question. The answer continues the same resolution (R113, §10.6), so it is never scheduled for
+    // the body that came back, as it is not when a fused card's parts do the same (re-entry.test.ts).
+    const scheduled = s.state.delayed.filter((effect) => effect.resume.defId === "edge-r7-l7-sac-then-steal");
+    expect(scheduled).toEqual([]);
   });
 });

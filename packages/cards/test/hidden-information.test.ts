@@ -4,10 +4,23 @@
 // games that differ only in hidden cards, the test builds both and asserts the viewer cannot tell
 // them apart. Round 6 found #97 Zephyrs' offer reading a face-down trap and the library's order
 // (R222), a library-wide discount whose events spelled out the library's order once a card read
-// openly (R177), and instance ids numbered in the order the store sorts a deck in (R223).
+// openly (R177), and instance ids numbered in the order the store sorts a deck in (R223). Round 7
+// found a random Make Radiant cueing only the cards it changed, which counted a hidden hand's Radiant
+// cards (R177), and #83's library replacements numbered top down, which located a revealed library
+// card by its id (R223).
 
 import type { Action, ActionBody, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
-import { beginGame, createGame, legalActions, reduce, viewFor, type GameState } from "@jackioh/engine";
+import {
+  beginGame,
+  createGame,
+  defOf,
+  effectiveCost,
+  legalActions,
+  reduce,
+  viewFor,
+  type GameState,
+  type PendingChoice,
+} from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -742,3 +755,123 @@ describe("R223: instance ids and the order a deck was submitted in", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Round 7 (lens L10): a random Make Radiant's cue count, and the ids a Replace mints in a library.
+// ---------------------------------------------------------------------------
+
+const RAPID = "core-010";
+const TUTOR = "core-051";
+
+function idNumber(id: string): number {
+  const n = Number(id.replace(/^c/, ""));
+  if (!Number.isInteger(n)) throw new Error(`not an instance id: ${id}`);
+  return n;
+}
+
+describe("R177: a random Make Radiant over a hidden hand", () => {
+  /**
+   * p1 plays Stockpile; its first draw is #27 Blood Ridden Glowy Jelly Bean, which casts itself and
+   * makes a random non-Radiant card of p1's hand Radiant (R60). p1's hand then holds two cards, both
+   * Radiant or both not — hidden from p2 (§9.1, §10.8).
+   */
+  function bloodRiddenGame(handRadiant: boolean): Scenario {
+    const s = scenario({
+      seed: "hunt-r7-blood-ridden",
+      p1: {
+        hand: [STOCKPILE, { def: HIT_JOB, radiant: handRadiant }, { def: RAPID, radiant: handRadiant }],
+        library: [BLOOD_RIDDEN, SEVEN_SEVEN, SEVEN_SEVEN, SEVEN_SEVEN],
+      },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB, HIT_JOB] },
+    });
+    s.play(STOCKPILE);
+    return s;
+  }
+
+  it("R177 #27's cue does not tell the opponent whether p1's hidden hand was already all Radiant (§9.1, R60)", () => {
+    const plain = bloodRiddenGame(false);
+    const radiant = bloodRiddenGame(true);
+
+    // The cast happened in both games (a public play), and p1's hand ends up the same size.
+    for (const s of [plain, radiant]) {
+      expect(eventsOf(s.view("p2"), "cardPlayed").some((event) => event.defId === BLOOD_RIDDEN)).toBe(true);
+    }
+    expect(radiant.view("p2").opponent.hand).toEqual(plain.view("p2").opponent.hand);
+
+    // R177: "a cue for the changed cards only would count the Radiant ones". R60 narrows the random
+    // pick to non-Radiant cards, so a cue only for a card that changed tells p2 whether any of p1's
+    // hidden hand cards was still non-Radiant. p2 must not be able to tell the two games apart.
+    indistinguishable("p2", plain, radiant);
+  });
+});
+
+describe("R223: instance ids Transmogulate gives a library", () => {
+  it("R223 the ids Transmogulate mints for p1's library do not tell p1 where a revealed library card lies (§9.1, §10.8)", () => {
+    const s = scenario({
+      seed: "hunt-r7-transmog-ids",
+      p1: {
+        hand: [TRANSMOGULATE, TUTOR, RAPID],
+        library: Array.from({ length: 16 }, () => HIT_JOB),
+        graveyard: [HIT_JOB],
+      },
+      p2: { hand: [STOCKPILE], library: [HIT_JOB, HIT_JOB] },
+    });
+
+    s.play(TRANSMOGULATE);
+
+    // What p1 reads after the Replace: the graveyard card's replacement is public, and the library is
+    // a count. R35 walks the library top down and then the graveyard, so if the replacements were
+    // numbered in that walk the library's ids are the block just below the graveyard one's.
+    const afterReplace = s.view("p1");
+    const gyReplacement = must(
+      eventsOf(afterReplace, "transformed").find((event) => event.newInstanceId !== HIDDEN),
+      "the graveyard card's public replacement",
+    );
+    const libraryCount = afterReplace.you.libraryCount;
+    const firstLibraryId = idNumber(gyReplacement.newInstanceId) - libraryCount;
+
+    // #51 Private Tutor reveals library cards to p1 as prompt options (§10.8). Pick the type and
+    // bracket with the most matches so the reveal shows as many cards as it can.
+    s.play(TUTOR);
+    const library = s.pile("p1", "library");
+    const typeMatches = (defId: string, want: string): boolean => {
+      const type = defOf(s.state, defId).type;
+      return want === "Trap" ? type === "Trap" || type === "Field Trap" : type === want;
+    };
+    const bestType = mostMatching(must(s.state.pending, "the type prompt"), (want) =>
+      library.filter((card) => typeMatches(card.defId, want)).length,
+    );
+    s.answer(bestType);
+    const bestBracket = mostMatching(must(s.state.pending, "the bracket prompt"), (want) =>
+      library.filter((card) => typeMatches(card.defId, bestType) && inBracket(effectiveCost(s.state, card), want)).length,
+    );
+    s.answer(bestBracket);
+
+    const reveal = must(s.view("p1").pending, "p1's reveal prompt");
+    if (!reveal.forYou) throw new Error("the reveal should be p1's");
+    const revealed = reveal.options.flatMap((option) => (option.instanceId === undefined ? [] : [option.instanceId]));
+    expect(revealed.length).toBeGreaterThanOrEqual(2);
+
+    // §9.1 and §10.8: "the rest of the library stays hidden from both" — its order included, for its
+    // own player too (§3's "Nobody"). R223: an instance id says nothing of where its card came from.
+    // The option's id is the answer's handle and is p1's to read; what it must not do is give p1 the
+    // card's place. Reading each revealed card's place off its id must not give its real place — the
+    // two cards p1 does not take stay in the library, where p1 would know when each comes up.
+    const ids = s.pile("p1", "library").map((card) => card.id);
+    const readOffTheId = revealed.map((id) => idNumber(id) - firstLibraryId);
+    const actual = revealed.map((id) => ids.indexOf(id));
+    expect(readOffTheId).not.toEqual(actual);
+  });
+});
+
+/** The mode option with the most library matches. */
+function mostMatching(pending: PendingChoice, count: (option: string) => number): string {
+  const options = pending.options.flatMap((option) => (option.selection.pick === "mode" ? [option.selection.option] : []));
+  return must([...options].sort((a, b) => count(b) - count(a))[0], "a mode option");
+}
+
+function inBracket(cost: number, bracket: string): boolean {
+  if (bracket === "0-1") return cost <= 1;
+  if (bracket === "4+") return cost >= 4;
+  return cost === Number(bracket);
+}

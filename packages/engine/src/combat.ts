@@ -26,7 +26,7 @@ import { findInstance, type CardInstance, type DeclaredAttack, type GameState, t
 import { registerDeclarationCheck, runTrapWindow } from "./traps";
 import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
 import { moveSourcedModifiers } from "./modifiers";
-import { exitMark, leftFieldAfter } from "./stays";
+import { exitMark, leftFieldAfter, movesIn, type LaterMoves } from "./stays";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
@@ -394,11 +394,24 @@ function withholdFromFrontier(sink: SettleSink, at: number): void {
  * replaces with the window, so calling `dispatchEvent` itself would offer the event to the traps a
  * second time. Queueing only reads the board, so it cannot pause, and the entries pop in the
  * caller's own resolution loop — after the combat, exactly where they popped before step 4 existed.
+ *
+ * R212, as `dispatchEvent` reads it: the board is read after the window, which can have moved it, so
+ * the events the window emitted since the declaration say how. A card that moved zones since — a
+ * unit a trap in the window summoned, a Reborn body, anything My Pawn's AI turn put on the field — is
+ * on a stay that did not see the declaration and does not answer it (R174), and a card whose
+ * controller changed since — a unit a trap in the window stole — answers for the player who
+ * controlled it when the attack was declared (R171).
  */
-function queueDeclarationTriggers(sink: EngineSink, event: GameEvent): void {
+function queueDeclarationTriggers(sink: EngineSink, event: GameEvent, since: readonly GameEvent[]): void {
+  let later: LaterMoves | null = null;
   for (const holder of cardsInTriggerOrder(sink.state)) {
     if (holder.isTrap) continue;
-    for (const def of triggersOnEvent(holder, event.type)) queueTrigger(sink, holder, def, event);
+    const defs = triggersOnEvent(holder, event.type);
+    if (defs.length === 0) continue;
+    later ??= movesIn(since);
+    if (later.moved.has(holder.card.id)) continue;
+    const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
+    for (const def of defs) queueTrigger(sink, { ...holder, controller }, def, event);
   }
 }
 
@@ -555,7 +568,7 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
 
   // Step 4's second sentence: the traps answer the declaration, before any damage.
   runTrapWindow(sink, event);
-  queueDeclarationTriggers(sink, event);
+  queueDeclarationTriggers(sink, event, sink.events.slice(at + 1));
 
   if (state.result !== null) {
     // The window ended the game; there is no step 5 and nothing to resume into.

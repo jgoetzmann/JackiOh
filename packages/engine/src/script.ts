@@ -16,7 +16,7 @@ export type EffectContext = {
    * shape in #24, #31, #33, #38 — must read `events.slice(eventsFrom)` and never the earlier
    * entries, or a second copy of a card, or a trap firing mid-action, feeds its condition. Set once
    * where the context is built (`resolve.makeContext`), so a step re-entered after a prompt opens a
-   * new window rather than reviving the original one.
+   * new window on the action it resumes in; what the list did before the pause is `summoned`.
    *
    * Optional only because `packages/engine/test/pauses.test.ts` (line 227) hand-builds a context
    * literal instead of calling `makeContext`, and a test is not this task's to edit. Every engine
@@ -32,6 +32,13 @@ export type EffectContext = {
    * with (`work.PausedStep.exitsFrom`). Set by `makeContext`; absent reads as "now".
    */
   exitsFrom?: number;
+  /**
+   * R136: the units this script's run summoned in the actions before a prompt split it. The window
+   * `eventsFrom` opens is the action's own event list, and a list the answer continues resumes in a
+   * later action, so what its head summoned is carried here (`work.PausedStep.summoned`,
+   * `work.RunMarks`). Absent for a run that has not paused.
+   */
+  summoned?: readonly string[];
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */
@@ -121,8 +128,12 @@ export type StaticFlags = {
   echo?: number;
   /** R30, R209: the Echo this permanent's rider gives the next Spell, read off its face now (#79). */
   echoGrant?: number;
-  /** #38: while on the field, its controller's cards gain "Combo X: X damage to the enemy hero". */
-  quickstriker?: boolean;
+  /**
+   * #38: while on the field, its controller's cards gain "Combo X: X damage to the enemy hero". A
+   * number is how many times the card grants it: a card fused from two Quickstrikers carries both
+   * texts (R102), and `true` is once.
+   */
+  quickstriker?: boolean | number;
   /**
    * #64 Gifted Program: while on the field, the first card costing this much or less its controller
    * plays each turn becomes Radiant as it is played (§10.5 step 3, R56, R213).

@@ -173,12 +173,13 @@ export function exileMatching(
     apply(ctx): void {
       const { zones, player, ...filter } = args;
       const owner = playerOf(ctx, player ?? "self");
-      for (const zone of zones ?? EXILE_ZONE_ORDER) {
-        for (const card of zoneCards(ctx.state, owner, zone)) {
-          if (!matchesCost(ctx, card, filter)) continue;
-          exileCard(ctx, card);
-        }
-      }
+      // R66: "every odd-cost card" is one set, read as the clause resolves — each card's cost per
+      // R65 at that moment — and then exiled a card at a time (R135). Read again after each exile, a
+      // cost that counts the exiles (#100 Ceaseless Void, R55) flipped its parity halfway through.
+      const matching = (zones ?? EXILE_ZONE_ORDER).flatMap((zone) =>
+        zoneCards(ctx.state, owner, zone).filter((card) => matchesCost(ctx, card, filter)),
+      );
+      for (const card of matching) exileCard(ctx, card);
     },
   };
 }

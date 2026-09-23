@@ -87,7 +87,36 @@ export type PausedStep = {
   memo?: unknown[];
   /** R174: the field's departures when the list began (`EffectContext.exitsFrom`). */
   exitsFrom?: number;
+  /**
+   * R136: the units the list summoned before the pause (`EffectContext.summoned`), since the events
+   * that say so belong to the action that paused and the tail resumes in a later one.
+   */
+  summoned?: string[];
 };
+
+/**
+ * Where the continuation a prompt stores (`prompts.resumeSelf`) keeps what it carries of the run it
+ * continues, apart from the card's own data: the answered step is the same run as the list that
+ * asked (R113, §10.6), so it reads the stays that run began with (R174) and the units it summoned
+ * (R136), whichever action it resumes in.
+ */
+export const RUN_MARKS_KEY = "__run";
+
+/** What a continuation carries of the run it continues. All JSON. */
+export type RunMarks = { exitsFrom?: number; summoned?: string[] };
+
+/** The marks a continuation's data carries, or null when it carries none. */
+export function runMarksOf(data: Record<string, unknown>): RunMarks | null {
+  const block = data[RUN_MARKS_KEY];
+  if (block === null || typeof block !== "object") return null;
+  const marks = block as Partial<RunMarks>;
+  return {
+    ...(typeof marks.exitsFrom === "number" ? { exitsFrom: marks.exitsFrom } : {}),
+    ...(Array.isArray(marks.summoned)
+      ? { summoned: marks.summoned.filter((id): id is string => typeof id === "string") }
+      : {}),
+  };
+}
 
 const handlers = new Map<WorkKind, WorkHandler>();
 let fallback: WorkHandler | undefined;
@@ -139,12 +168,48 @@ export function pausedOf(data: Record<string, unknown>): PausedStep | null {
     ...(Array.isArray(step.part) ? { part: step.part.filter((at): at is number => typeof at === "number") } : {}),
     ...(Array.isArray(step.memo) ? { memo: step.memo } : {}),
     ...(typeof step.exitsFrom === "number" ? { exitsFrom: step.exitsFrom } : {}),
+    ...(Array.isArray(step.summoned)
+      ? { summoned: step.summoned.filter((id): id is string => typeof id === "string") }
+      : {}),
   };
 }
 
-/** The card's own captured data, with the control block taken back out. */
+/**
+ * R102: which ingredient's text of a fused card is running, as the path of ingredient indices from
+ * the outermost fusion in (a card fused from a fused card nests). `subsystems/fuse.ts` writes it into
+ * the context each part of a combined hook builds and applies with, so what that text leaves behind
+ * is that ingredient's own: the continuation a prompt of its stores (`prompts.resumeSelf` copies the
+ * card's data) comes back to its step alone, and what it remembers stays apart from what another
+ * ingredient remembers under the same name (`effects/memory`).
+ */
+export const PART_KEY = "__part";
+
+/**
+ * How much of `PART_KEY`'s path the combined hooks above the running one have used. A build-time
+ * mark only: a stored continuation drops it (`cardData`), so a re-entry reads the path from the top.
+ */
+export const PART_DEPTH_KEY = "__partDepth";
+
+/** The ingredient path a context's data names (`PART_KEY`), or null outside a fused card's part. */
+export function partPathOf(data: Record<string, unknown>): number[] | null {
+  const raw = data[PART_KEY];
+  if (!Array.isArray(raw)) return null;
+  const path = raw.filter((at): at is number => typeof at === "number");
+  return path.length === 0 ? null : path;
+}
+
+/**
+ * R102: the key a fused card's ingredient keeps a memory under — its own, so two Carnivorous Cubes'
+ * meals stay two. Outside a fused card's part it is the key itself.
+ */
+export function partMemoryKey(data: Record<string, unknown>, key: string): string {
+  const path = partPathOf(data);
+  return path === null ? key : `${key}@${path.join(".")}`;
+}
+
+/** The card's own captured data, with the control blocks taken back out. */
 export function cardData(data: Record<string, unknown>): Record<string, unknown> {
-  const { [PAUSE_KEY]: _paused, ...rest } = data;
+  const { [PAUSE_KEY]: _paused, [RUN_MARKS_KEY]: _run, [PART_DEPTH_KEY]: _depth, ...rest } = data;
   return rest;
 }
 
@@ -377,11 +442,31 @@ export function runWorkItem(sink: EngineSink, item: WorkItem): void {
  */
 export function runNextWork(sink: EngineSink): boolean {
   if (paused(sink)) return false;
+  const drain = sink as DrainSink;
+  const head = sink.state.work[0];
+  if (head === undefined || drain.owedBehind?.has(head.id) === true) return false;
   const next = takeWork(sink.state);
   if (next === undefined) return false;
-  runWorkItem(sink, next);
+  // R117: what is owed behind this item is the enclosing sequences', and a resolution loop running
+  // inside it — a play's step-4 loop, a turn stage's settle — can neither take nor re-run it. The
+  // items this one parks go ahead of them (R113), so they stay the queue's tail; only the drain that
+  // took this item comes back for them, once the item is done.
+  const outer = drain.owedBehind;
+  drain.owedBehind = new Set(sink.state.work.map((item) => item.id));
+  try {
+    runWorkItem(sink, next);
+  } finally {
+    drain.owedBehind = outer;
+  }
   return true;
 }
+
+/**
+ * A sink a drain is running on. `owedBehind` names the items owed behind the one that is running,
+ * which a drain nested inside it must leave to the drain that took it (R117). Transient, like the
+ * sink: at rest every owed item is in `state.work`.
+ */
+type DrainSink = EngineSink & { owedBehind?: ReadonlySet<string> };
 
 /**
  * Continue the sequences a prompt interrupted, in R113's order, until they are all done or one of

@@ -25,8 +25,8 @@ export function makeContext(sink: EngineSink, self: CardInstance | null, options
     events: sink.events,
     // R136: this script's own event window opens where the sink's list stands right now. Every
     // context is built here, so this is the one place the mark has to be taken; a resumed
-    // continuation calls back through here and therefore opens a fresh window, not the one its
-    // first pass had.
+    // continuation calls back through here and opens a fresh window on the action it resumes in,
+    // and what its first pass summoned in an earlier action comes with it (`EffectContext.summoned`).
     eventsFrom: sink.events.length,
     // R174: the stay every card on the field has as this script begins.
     exitsFrom: exitMark(sink.state),

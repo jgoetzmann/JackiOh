@@ -23,6 +23,7 @@ import { modifierIsLive } from "./mana";
 import { installLastingModifiers, removeModifier } from "./modifiers";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
+import { leftFieldAfter } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -220,6 +221,13 @@ export type ResolvedCard = {
    * what resolved (R34, R57).
    */
   radiant: boolean;
+  /**
+   * R174, R61: the field's departures once §10.5 step 4 had put a permanent on the field. "Still in
+   * play" is asked of that stay: a played unit that died in its own resolution (its Cry, or the check
+   * after step 6) and is back through Reborn by step 7 is a new arrival (R83), not the card that was
+   * played, so #60's tokens do not attack it and #85 does not fuse it away.
+   */
+  placedFrom?: number;
 };
 
 /**
@@ -241,6 +249,13 @@ export type ResolvedCard = {
  * than the board, so the caller hands over the number it charged (0 for a cast, R70) and #60 Bear
  * Honeypot's R56 threshold never re-derives a cost from an instance step 7 may have reset.
  */
+/** R61, R174: whether the card the play put on the field is still in play, on that same stay. */
+function stillInPlay(sink: EngineSink, resolved: ResolvedCard): boolean {
+  const card = findInstance(sink.state, resolved.instanceId);
+  if (card === undefined || card.zone.z !== "field") return false;
+  return resolved.placedFrom === undefined || !leftFieldAfter(sink.state, resolved.placedFrom, card.id);
+}
+
 export function landAfterResolution(sink: EngineSink, resolved: ResolvedCard): void {
   const state = sink.state;
   const card = findInstance(state, resolved.instanceId);
@@ -264,7 +279,7 @@ export function landAfterResolution(sink: EngineSink, resolved: ResolvedCard): v
     player: resolved.player,
     instanceId: resolved.instanceId,
     defId: resolved.defId,
-    permanent: findInstance(state, resolved.instanceId)?.zone.z === "field",
+    permanent: stillInPlay(sink, resolved),
     costPaid: resolved.costPaid,
     radiant: findInstance(state, resolved.instanceId)?.radiant ?? resolved.radiant,
   });

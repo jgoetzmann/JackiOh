@@ -15,6 +15,9 @@
 //    transient def and its script in the registry, as paused-sequences.test.ts builds them).
 //  - R176 (round 6): a defender's Lifesteal strike back heals its hero in the same combat, so a
 //    Trample swing it outheals is not lethal.
+//  - R212 (round 7): the ordinary triggers on a declaration are queued after the window, and meet
+//    the board as it stood when the attack was declared: a unit a trap in the window stole answers
+//    for the player who controlled it then, and one a trap summoned there answers nothing.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -25,7 +28,7 @@ import {
   type CardInstance,
   type Script,
 } from "@jackioh/engine";
-import { chooseMode, destroy, steal, swapBoard } from "@jackioh/engine/effects";
+import { chooseMode, destroy, draw, steal, summon, swapBoard } from "@jackioh/engine/effects";
 import type { CardDef, CardType, GameEvent, PlayerId, Row, Selection } from "@jackioh/shared";
 import { scenario, type Scenario } from "./_harness";
 
@@ -577,5 +580,113 @@ describe("R176: the hero My Pawn projects is the one the combat leaves", () => {
     expect(s.state.result).toBeNull();
     s.expectHealth("p2", 3);
     s.expectInZone(jilliax, "graveyard");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 7 (lens "combat windows"): the ordinary triggers on a declaration meet the board as it stood
+// when the attack was declared (R212), whatever a trap in the window did to it since.
+// ---------------------------------------------------------------------------
+
+/** A fixture unit with a face of its own: a transient def and its script in the registry. */
+function fixtureUnit(s: Scenario, id: string, script: Script, stats = { attack: 2, health: 2 }): void {
+  const face = { ...stats, keywords: [], text: id };
+  s.state.transientDefs[id] = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Unit",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+/** A fixture unit of `player`'s in Attack Position in a unit lane. */
+function placeUnit(s: Scenario, defId: string, player: PlayerId, lane: number): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  if (!placeOnField(s.state, card, { player, row: "units", lane })) throw new Error(`could not place ${defId}`);
+  card.position = "ATK";
+  return card;
+}
+
+/** "Whenever a unit is declared as an attacker (not forced): you draw a card." A unit, not a trap. */
+const WATCHER: Script = {
+  triggers: [
+    {
+      id: "edge-r7-watcher",
+      on: ["attackDeclared"],
+      when: (ctx) => ctx.event.type === "attackDeclared" && !ctx.event.forced,
+      run: () => [draw({ count: 1 })],
+    },
+  ],
+};
+
+/** A trap: "When a unit is declared as an attacker (not forced): summon a Watcher." */
+const CALLER: Script = {
+  triggers: [
+    {
+      id: "edge-r7-caller",
+      on: ["attackDeclared"],
+      when: (ctx) => ctx.event.type === "attackDeclared" && !ctx.event.forced,
+      run: () => [summon({ defId: "edge-r7-watcher" })],
+    },
+  ],
+};
+
+describe("R212: a declaration is answered as the board stood when it was declared", () => {
+  it("R212 a unit a trap in the window stole answers the declaration for the player who controlled it then (§10.3, R171)", () => {
+    // p1's Sorcerer attacks p2's Watcher. p1's own trap in the window steals the Watcher, so the
+    // attack is over (R220). The Watcher's "whenever a unit attacks, you draw" answers a declaration
+    // made while p2 controlled it: p2 draws, not p1 (R212's "a card whose controller has changed
+    // since answers for the one it had").
+    const s = scenario({
+      seed: "edge-r7-watcher-stolen",
+      p1: { field: [{ def: SORCERER, lane: 1 }], hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+      p2: { hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+    });
+    fixtureUnit(s, "edge-r7-watcher", WATCHER);
+    fixture(s, "edge-r6-defector", "Trap", DEFECTOR);
+    const watcher = placeUnit(s, "edge-r7-watcher", "p2", 2);
+    setTrap(s, "edge-r6-defector", "p1", 1);
+    const sorcerer = must(s.unit("p1", 1), "p1's Twisted Sorcerer");
+    const p1Hand = s.hand("p1").length;
+    const p2Hand = s.hand("p2").length;
+
+    s.attack(sorcerer, watcher);
+
+    expect(s.card(watcher).controller).toBe("p1");
+    const drawn = s.events.filter((event) => event.type === "drawn").map((event) => (event.type === "drawn" ? event.player : null));
+    expect(drawn).toEqual(["p2"]);
+    expect(s.hand("p2")).toHaveLength(p2Hand + 1);
+    expect(s.hand("p1")).toHaveLength(p1Hand);
+  });
+
+  it("R212 a unit a trap in the window summoned does not answer the declaration made before it arrived (§10.3, R174)", () => {
+    // p1's Sorcerer attacks p2's hero. p2's trap in the window summons a Watcher for p2. The
+    // Watcher was not on the field when the attack was declared, so it draws nothing for it.
+    const s = scenario({
+      seed: "edge-r7-watcher-arrives",
+      p1: { field: [{ def: SORCERER, lane: 1 }], hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+      p2: { hand: [STOCKPILE], library: [...WINDOW_LIBRARY] },
+    });
+    fixtureUnit(s, "edge-r7-watcher", WATCHER);
+    fixture(s, "edge-r7-caller", "Trap", CALLER);
+    setTrap(s, "edge-r7-caller", "p2", 1);
+    const sorcerer = must(s.unit("p1", 1), "p1's Twisted Sorcerer");
+    const p2Hand = s.hand("p2").length;
+
+    s.attack(sorcerer, "hero");
+
+    expect(s.unit("p2", 1)?.defId).toBe("edge-r7-watcher");
+    expect(s.events.filter((event) => event.type === "drawn")).toEqual([]);
+    expect(s.hand("p2")).toHaveLength(p2Hand);
+    // The attack itself went through.
+    s.expectHealth("p2", 25);
   });
 });

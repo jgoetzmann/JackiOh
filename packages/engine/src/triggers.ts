@@ -438,7 +438,9 @@ function runOwedTraps(sink: EngineSink, event: GameEvent, owed: readonly string[
     left = left.filter((id) => id !== match.trap.id);
     // A trap the previous one destroyed, bounced or fused away never fires (R61).
     if (match.trap.zone.z !== "field") continue;
-    fireTrap(sink, match, standingEvent(sink, event, mark));
+    const met = standingEvent(sink, event, mark);
+    if (met === null) continue;
+    fireTrap(sink, match, met);
   }
 }
 
@@ -541,7 +543,36 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   // parked tail names the trigger's id as its hook, and `work.scriptStepFor` re-enters a trigger by
   // its id, rebuilding its list from the event the entry captured (R113); the answer itself goes to
   // the card's `resume` table, where every §6.3 choose effect sends it.
-  applyResumable(sink, ctx, { ...entry.resume, owner: controller }, def.run(ctx));
+  //
+  // §5.2, R113: the list is the face the card wears NOW (the context and `holder.triggers` read it),
+  // and a paused list goes on in the list it began, so its tail is rebuilt from that same face and
+  // definition — not the ones the entry recorded when it was queued, which an earlier trigger in the
+  // same queue can have made Radiant since.
+  const plan = { ...entry.resume, defId: card.defId, radiant: card.radiant, owner: controller };
+  applyResumable(sink, ctx, plan, def.run(ctx));
+}
+
+/**
+ * §10.3 steps B to D without step G: the events emitted so far reach the traps, which fire at once
+ * and to completion, and every other trigger they wake is queued — but nothing queued is popped, and
+ * no owed work is drained. A trap's remainder a prompt left owed (`OWED_TO_TRAPS`) is a response, so
+ * it is finished here, in front of everything. This is what a stage made of several whole effects in
+ * a row needs between two of them: R62's delayed effects are each a whole effect (R59), and a trap
+ * answering the first responds before the second resolves, while the triggers they wake wait for the
+ * stage's own loop (R68). Stops at a prompt, leaving the rest owed in state.
+ */
+export function dispatchPending(sink: SettleSink): void {
+  for (let pass = 0; pass < SETTLE_PASS_CAP; pass += 1) {
+    dispatchNewEvents(sink);
+    if (sink.state.pending !== null || sink.state.result !== null) return;
+    // An unfinished trap dispatch is the only thing that holds the frontier back, and its entry is at
+    // the head of the queue (`owedToTraps`); anything else there waits for the stage's loop.
+    const head = sink.state.triggerQueue[0];
+    if (head === undefined || head.hook !== OWED_TO_TRAPS) return;
+    sink.state.triggerQueue.shift();
+    runQueuedTrigger(sink, head);
+  }
+  throw new Error(`the trap dispatch did not settle in ${SETTLE_PASS_CAP} passes (§10.3)`);
 }
 
 /**

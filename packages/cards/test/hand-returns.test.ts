@@ -13,11 +13,23 @@
 //  - R215 (round 5, lenses "card by card" and "engine invariants"): a card landing from the resolving
 //    zone is reset too, so a #95 an earlier Call to Chaos cast carries no link of that chain (R28)
 //    into a play of its own once Reminisce has brought it back.
+//  - R155 (round 7, lens L8): a return Spell cast on the other player's turn (a cast on draw, R70) is
+//    flagged and cleared at that turn's cleanup — §6.2's "End of turn" is its controller's own — so it
+//    does not come back at the end of a later turn it was not played on.
 
-import type { GameEvent } from "@jackioh/shared";
-import { CALL_TO_CHAOS_CHAIN_CAP, createRng, subsystems } from "@jackioh/engine";
+import type { CardDef, CardType, GameEvent } from "@jackioh/shared";
+import {
+  CALL_TO_CHAOS_CHAIN_CAP,
+  createRng,
+  newInstance,
+  registerScripts,
+  registeredScripts,
+  subsystems,
+  type Script,
+} from "@jackioh/engine";
+import { bounce } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
-import { scenario } from "./_harness";
+import { scenario, type Scenario } from "./_harness";
 
 const VANILLA = "core-008";
 const STOCKPILE = "core-005";
@@ -202,5 +214,78 @@ describe("R215: a card that lands from the resolving zone is the printed card ag
     s.state.rngCursor = chaosCursor(seed, "recast");
     s.play(lastLink);
     expect(s.lastEvents.filter((event) => event.type === "cardPlayed" && event.defId === CHAOS)).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 7 (lens L8): a return Spell cast on the other player's turn.
+// ---------------------------------------------------------------------------
+
+const PREM_PANTHER = "core-032"; // 5/4 Rush; whenever this destroys a unit, draw 2
+const RENO = "core-053";
+
+/** A fixture card: a transient def in the match state and its script in the registry. */
+function fixture(s: Scenario, id: string, type: CardType, script: Script, stats = { attack: 2, health: 2 }): void {
+  const face = type === "Unit" ? { ...stats, keywords: [], text: id } : { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+describe("R155, §5.1: an end-of-turn return belongs to the turn the Spell was played on", () => {
+  it("R155 a return Spell cast on the opponent's turn does not come back at the end of its caster's next turn (R70, §5.1, §6.2)", () => {
+    // p2's Tempo Timmy (3/3 First Strike) attacks p1's Prem Panther (5/4): the Panther survives the
+    // first strike and kills Timmy, so p1 draws 2 on p2's turn. The top card is a cast-on-draw Spell
+    // carrying #23 Reoccurring Dream's "End of turn: returns from the GY to your hand" (the flag
+    // R155 writes is what the return reads), so p1 casts it on p2's turn (§2.4, R70).
+    const s = scenario({
+      active: "p2",
+      p1: { field: [PREM_PANTHER], hand: [RENO], library: [RENO, RENO, RENO, RENO] },
+      p2: { field: [TIMMY], hand: [RENO], library: [RENO, RENO, RENO, RENO] },
+    });
+    fixture(s, "edge-r7-dream-cod", "Spell", {
+      staticFlags: { castOnDraw: true },
+      cry: () => [],
+      endOfTurn: (ctx) => (ctx.self?.returnToHandAtEndOfTurn === true ? [bounce({ target: { of: "self" } })] : []),
+    });
+    const cod = newInstance(s.state, "edge-r7-dream-cod", "p1", { z: "library", player: "p1" });
+    s.state.players.p1.library.unshift(cod);
+
+    s.attack(TIMMY, PREM_PANTHER);
+    // The cast happened on p2's turn, and the Spell landed in p1's graveyard (§10.5 step 7).
+    expect(s.events.some((event) => event.type === "cardPlayed" && event.instanceId === cod.id)).toBe(true);
+    s.expectInZone(cod, "graveyard");
+
+    // p2's turn ends. §5.1: the Spell returns "at the end of that turn", and R155's cleanup clears
+    // the flag "at the end of that turn" — whichever reading, nothing of that return is left once
+    // the turn it was played on is over.
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+    const afterItsTurn = s.card(cod);
+    if (afterItsTurn.zone.z === "graveyard") {
+      expect(
+        afterItsTurn.returnToHandAtEndOfTurn,
+        "the return flag outlived the cleanup of the turn the Spell was cast on",
+      ).not.toBe(true);
+    }
+
+    // p1's own next turn ends: a Spell p1 did not play on this turn does not come back now.
+    s.endTurn();
+    const returned = s.lastEvents.some(
+      (event) => (event.type === "bounced" || event.type === "addedToHand") && event.instanceId === cod.id,
+    );
+    expect(returned, "the Spell came back at the end of a turn it was not played on").toBe(false);
   });
 });

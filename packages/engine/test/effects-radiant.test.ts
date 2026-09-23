@@ -173,16 +173,24 @@ describe("Make Radiant at random (R60, M3-T1)", () => {
     const events = run(state, setRadiantRandom({ zones: "hand", count: 3 }), { controller: "p1" });
 
     // Only one card was eligible, so only it changes: a pick never lands on a Radiant card.
-    expect(radiantIds(events)).toEqual([(hand[1] as CardInstance).id]);
     expect(hand.map((card) => (card as CardInstance).radiant)).toEqual([true, true, true]);
+    // R177: the two picks R60 could not make are cued on the hand's Radiant cards, in hand order,
+    // so the other seat's stream holds three cues whatever the hidden hand held.
+    expect(radiantIds(events)).toEqual([hand[1], hand[0], hand[2]].map((card) => (card as CardInstance).id));
   });
 
   it("R60 does nothing when no non-Radiant card is left", () => {
     const state = game();
     const hand = inHand(state, plain.id, "p1", 2);
     for (const card of hand) (card as CardInstance).radiant = true;
+    const cursor = state.rngCursor;
 
-    expect(run(state, setRadiantRandom({ zones: "hand", count: 2 }), { controller: "p1" })).toEqual([]);
+    const events = run(state, setRadiantRandom({ zones: "hand", count: 2 }), { controller: "p1" });
+    // Nothing changes and no random number is drawn (R129)...
+    expect(state.rngCursor).toBe(cursor);
+    expect(hand.every((card) => (card as CardInstance).radiant)).toBe(true);
+    // ...and the hidden hand is cued as a pick of two would cue it (R177).
+    expect(radiantIds(events)).toEqual(hand.map((card) => (card as CardInstance).id));
   });
 
   it("R60 #28 picks N different cards from the union of hand, library and field", () => {

@@ -7,8 +7,10 @@ import { OPENING_DRAW } from "./config";
 import { draw } from "./draw";
 import { runHook, type EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
-import { newInstance, type CardInstance, type PendingChoice } from "./state";
+import { closePrompt } from "./prompts";
+import { newInstance, type CardInstance, type PendingChoice, type WorkItem } from "./state";
 import { startTurn } from "./turn";
+import { owe, paused, registerWorkHandler } from "./work";
 import { moveToZone } from "./zones";
 
 function seatOf(player: PlayerId): number {
@@ -38,7 +40,12 @@ function mulliganPrompt(sink: EngineSink, player: PlayerId): PendingChoice {
   };
 }
 
+/**
+ * §2.1 step 3's prompt. §10.1 allows one prompt at a time, and every caller opens it only once
+ * nothing is waiting (a cast's question during setup owes the mulligan instead, `SETUP_WORK`).
+ */
 function openMulligan(sink: EngineSink, player: PlayerId): void {
+  if (sink.state.pending !== null) return;
   const prompt = mulliganPrompt(sink, player);
   sink.state.nextId += 1;
   sink.state.pending = prompt;
@@ -47,13 +54,33 @@ function openMulligan(sink: EngineSink, player: PlayerId): void {
 }
 
 /**
+ * R113: the `resume.hook` of what setup still owes when a cast asks during it. §2.1's opening draw
+ * and R9's replacement draws are draws, and a cast-on-draw card drawn there is cast (§2.4, R70) — a
+ * whole play, which can ask its caster something (R81). The question is state until it is answered
+ * (§9.3), and §10.1 allows one prompt at a time, so setup cannot open the next mulligan over it: it
+ * owes the rest of itself — the other seats' opening draws, or the shuffle-back and the next
+ * mulligan — and the answer's drain brings it back (R122). Registered at module scope below.
+ */
+export const SETUP_WORK = "@setup";
+
+/** Which part of setup is owed: the opening deal from a seat on, or the end of one mulligan. */
+const DEAL_STEP = "deal";
+const MULLIGAN_STEP = "mulligan";
+
+/**
  * Shuffle both libraries with the match rng, move Quickdraw cards into the opening hand and draw
  * the rest of the opening hand, then open the first mulligan prompt (§2.1).
  */
 export function beginSetup(sink: EngineSink): void {
+  dealFrom(sink, 0);
+}
+
+/** §2.1 steps 1 and 2 for each seat from `seat` on, then the first mulligan. */
+function dealFrom(sink: EngineSink, seat: number): void {
   const state = sink.state;
 
-  for (const player of PLAYER_IDS) {
+  for (let at = seat; at < PLAYER_IDS.length; at += 1) {
+    const player = PLAYER_IDS[at] as PlayerId;
     const side = state.players[player];
     side.library = sink.rng.shuffle(side.library);
 
@@ -71,6 +98,12 @@ export function beginSetup(sink: EngineSink): void {
 
     const remaining = Math.max(0, openingDrawFor(player) - quickdraw.length);
     draw(sink, player, remaining);
+    // A cast the opening draw made is asking (R158: the draw has owed its own remainder), so the
+    // seats after this one and the mulligan wait behind it.
+    if (paused(sink)) {
+      if (state.result === null) oweSetup(sink, { step: DEAL_STEP, seat: at + 1 });
+      return;
+    }
   }
 
   openMulligan(sink, PLAYER_IDS[0] as PlayerId);
@@ -91,14 +124,30 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
     if (at >= 0) side.hand.splice(at, 1);
   }
 
-  // The prompt is answered the moment its selection is read, and is cleared here rather than after
+  // The prompt is answered the moment its selection is read, and is closed here rather than after
   // the draw: §2.4's draw can fire a Cast on draw, which is a whole play and can ask something of
   // its own, and a sequence deciding whether to pause must not see the question it is answering
   // still standing. R9's order is untouched — the replacements are still drawn before the returned
-  // cards are shuffled back; only the flag moves, so no event moves with it.
-  state.pending = null;
+  // cards are shuffled back. §10.6: the answer names the prompt it answers, as every other does.
+  closePrompt(sink);
 
   draw(sink, player, returned.length);
+  // A replacement's cast is asking: the shuffle-back and the next mulligan wait for the answer, and
+  // the returned cards wait with them, in the owed item — they are in no pile until they go back.
+  if (paused(sink)) {
+    if (state.result === null) {
+      oweSetup(sink, { step: MULLIGAN_STEP, player, returned: JSON.parse(JSON.stringify(returned)) as CardInstance[] });
+    }
+    return;
+  }
+
+  finishMulligan(sink, player, returned);
+}
+
+/** R9's second half — the returned cards shuffled back — then the next mulligan, or the game. */
+function finishMulligan(sink: EngineSink, player: PlayerId, returned: readonly CardInstance[]): void {
+  const state = sink.state;
+  const side = state.players[player];
 
   for (const card of returned) {
     const position = sink.rng.int(side.library.length + 1);
@@ -112,8 +161,6 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
     });
   }
 
-  sink.events.push({ type: "promptAnswered", player, choiceId: "mulligan" });
-
   if (!state.mulliganed.includes(player)) state.mulliganed.push(player);
 
   const next = PLAYER_IDS.find((p) => p !== player && !state.mulliganed.includes(p));
@@ -124,6 +171,30 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
 
   finishSetup(sink);
 }
+
+type OwedSetup =
+  | { step: typeof DEAL_STEP; seat: number }
+  | { step: typeof MULLIGAN_STEP; player: PlayerId; returned: CardInstance[] };
+
+function oweSetup(sink: EngineSink, owed: OwedSetup): void {
+  owe(sink, { defId: "", hook: SETUP_WORK, step: owed.step, radiant: false, data: { owed } });
+}
+
+/** `work.ts`'s handler: setup, continued where a cast's question stopped it (R113, R122). */
+function runOwedSetup(sink: EngineSink, item: WorkItem): void {
+  const raw: unknown = item.resume.data.owed;
+  if (raw === null || typeof raw !== "object") return;
+  const owed = raw as Partial<{ step: string; seat: number; player: PlayerId; returned: CardInstance[] }>;
+  if (owed.step === DEAL_STEP && typeof owed.seat === "number") {
+    dealFrom(sink, owed.seat);
+    return;
+  }
+  if (owed.step === MULLIGAN_STEP && (owed.player === "p1" || owed.player === "p2")) {
+    finishMulligan(sink, owed.player, Array.isArray(owed.returned) ? owed.returned : []);
+  }
+}
+
+registerWorkHandler(SETUP_WORK, runOwedSetup);
 
 /** Start-of-game effects, then player 1 takes the first turn and draws (§2.1, R10). */
 export function finishSetup(sink: EngineSink): void {

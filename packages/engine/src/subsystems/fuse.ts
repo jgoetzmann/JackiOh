@@ -28,10 +28,11 @@ import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
-import { lazyPart } from "../resolve";
-import type { Effect, Hook, Script } from "../script";
+import { lazyPart, runHook } from "../resolve";
+import type { Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
 import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
+import { PART_DEPTH_KEY, PART_KEY, partPathOf } from "../work";
 import { removeFromAnyZone } from "../zones";
 
 /** R77: Craft a Card fuses "two or three cards", and #85 fuses two. Fewer is not a fusion. */
@@ -75,11 +76,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** R77's unions: one keyword per distinct keyword, so Armor 1 and Armor 2 both survive (§10.4). */
+/**
+ * R77's unions: one keyword per distinct keyword — except Armor, which every ingredient keeps. Armor
+ * is the keyword whose number stacks from every source (§6.1, §10.4 sums it), so it adds up on the
+ * fused face the way the stats beside it do: Armor 7 and Armor 3 print 10, and so do Armor 7 and
+ * Armor 7 print 14 rather than collapsing into one because the numbers happen to match (R102).
+ */
 function unionKeywords(keywords: readonly Keyword[]): Keyword[] {
   const seen = new Set<string>();
   const out: Keyword[] = [];
   for (const keyword of keywords) {
+    if (keyword.kind === "Armor") {
+      out.push(keyword);
+      continue;
+    }
     const key = keywordKey(keyword);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -240,44 +250,122 @@ type ListFn = (...args: unknown[]) => unknown[];
 const EAGER_KEYS: readonly string[] = ["aura"];
 
 /**
- * Combine one key of several scripts. The rule is the same for every kind of value a script holds,
- * which is what keeps this working as `Script` grows new hooks:
- *   - a hook (Cry, Death, a start/end-of-turn hook, a resume step) becomes one hook that runs each
- *     of them in turn, so "both Cry and Death lists run" (R77) — each ingredient's list built only
- *     when the one before it has resolved (`lazyPart`, R102), so a later ingredient reads the board
- *     the earlier ones left: #68's "8 if your hero is below 10" after Reno has set the hero to 30,
- *     #22's meal after #100 has exiled it. An aura, which returns no effects, runs each at once;
+ * The static flags that are an amount of what the text does, not a quality the card has: #79's
+ * "the next Spell you play gains Echo +1" and #38's granted Combo. R102: a card fused from two such
+ * texts carries both, so its amount is theirs added — a Twinspell fused onto a Twinspell grants
+ * Echo +2, as two Twinspells standing apart do — where a quality (`castOnDraw`, `immutable`) is had
+ * once and a requirement (`tribute`) takes the stricter. A `true` is one.
+ */
+const SUMMED_FLAGS: readonly string[] = ["echoGrant", "quickstriker"];
+
+/**
+ * The context ingredient `index`'s text builds and applies with (R102): its place in the fusion
+ * appended to the path the combined hooks above it have used (`work.PART_KEY`).
+ */
+function partData(data: Record<string, unknown>, index: number): Record<string, unknown> {
+  const depth = typeof data[PART_DEPTH_KEY] === "number" ? (data[PART_DEPTH_KEY] as number) : 0;
+  const path = (partPathOf(data) ?? []).slice(0, depth);
+  return { [PART_KEY]: [...path, index], [PART_DEPTH_KEY]: depth + 1 };
+}
+
+/** An effect that applies, and builds any part of its own, with its ingredient's place (R102). */
+function inIngredient(effect: Effect, patch: Record<string, unknown>): Effect {
+  const expand = effect.expand;
+  return {
+    ...effect,
+    apply: (ctx) => effect.apply({ ...ctx, data: { ...ctx.data, ...patch } }),
+    ...(expand === undefined
+      ? {}
+      : {
+          expand: (ctx, memo) => {
+            const built = expand({ ...ctx, data: { ...ctx.data, ...patch } }, memo);
+            return { ...built, effects: built.effects.map((inner) => inIngredient(inner, patch)) };
+          },
+        }),
+  };
+}
+
+/**
+ * One ingredient's list as a part of the combined list (`resolve.lazyPart`, R102): built when the
+ * list reaches it, with the ingredient's place in its context, and every effect of it applied there.
+ */
+function ingredientPart(index: number, build: (ctx: EffectContext) => readonly Effect[]): Effect {
+  return lazyPart(`fused:part${index}`, (at) => {
+    const patch = partData(at.data, index);
+    const effects = build({ ...at, data: { ...at.data, ...patch } });
+    return { effects: effects.map((effect) => inIngredient(effect, patch)) };
+  });
+}
+
+/**
+ * A combined hook: each ingredient's list in turn, as parts (R102, R113). A continuation one
+ * ingredient's text left — the step its prompt re-enters, the delayed effect it scheduled — names
+ * that ingredient (`work.PART_KEY`, which `prompts.resumeSelf` carries in the card's data), and comes
+ * back to its list alone: the answer to one Masochism Mask's "choose one" is that Mask's pick, not a
+ * pick for every ingredient that names its step the same.
+ */
+function combinedHook(fns: readonly (ListFn | undefined)[]): (ctx: EffectContext) => Effect[] {
+  return (ctx) => {
+    const depth = typeof ctx.data[PART_DEPTH_KEY] === "number" ? (ctx.data[PART_DEPTH_KEY] as number) : 0;
+    const routed = partPathOf(ctx.data)?.[depth];
+    const indices = fns.flatMap((fn, index) =>
+      fn === undefined || (routed !== undefined && routed !== index) ? [] : [index],
+    );
+    return indices.map((index) =>
+      ingredientPart(index, (built) => (fns[index] as ListFn)(built) as Effect[]),
+    );
+  };
+}
+
+/**
+ * Combine one key of several scripts, `values` aligned with the ingredients (undefined where one has
+ * none). The rule is the same for every kind of value a script holds, which is what keeps this
+ * working as `Script` grows new hooks:
+ *   - a hook (Cry, Death, a start/end-of-turn hook, a resume step, a delayed hook) becomes one hook
+ *     that runs each of them in turn, so "both Cry and Death lists run" (R77) — each ingredient's
+ *     list built only when the one before it has resolved (`lazyPart`, R102), so a later ingredient
+ *     reads the board the earlier ones left: #68's "8 if your hero is below 10" after Reno has set
+ *     the hero to 30, #22's meal after #100 has exiled it — and a continuation one of them left comes
+ *     back to that one alone (`combinedHook`). An aura, which returns no effects, runs each at once;
  *   - a list (triggers, declared targets and modes) becomes the lists in ingredient order, so a
  *     fused trap carries every ingredient's trigger condition;
- *   - a nested object (static flags, the resume table) is combined key by key by the same rules,
- *     so two ingredients that resume the same step name run both steps;
+ *   - a nested object (static flags, the resume table) is combined key by key by the same rules;
  *   - a flag is true when any ingredient set it, and a number takes the larger, which is the one
- *     stricter requirement rather than a doubled one (`staticFlags.tribute`).
+ *     stricter requirement rather than a doubled one (`staticFlags.tribute`) — except an amount of
+ *     what the text does, which adds up (`SUMMED_FLAGS`).
  */
-function combineValues(values: readonly unknown[], eager = false): unknown {
+function combineValues(values: readonly unknown[], key = ""): unknown {
   const defined = values.filter((value) => value !== undefined);
-  if (defined.length <= 1) return defined[0];
-  if (defined.every((value) => Array.isArray(value))) return (defined as unknown[][]).flat();
+  if (defined.length === 0) return undefined;
   if (defined.every((value) => typeof value === "function")) {
-    const fns = defined as ListFn[];
-    if (eager) return (...args: unknown[]): unknown[] => fns.flatMap((fn) => fn(...args));
-    return (): Effect[] =>
-      fns.map((fn, part) => lazyPart(`fused:part${part}`, (at) => ({ effects: fn(at) as Effect[] })));
+    const fns = values.map((value) => (typeof value === "function" ? (value as ListFn) : undefined));
+    if (EAGER_KEYS.includes(key)) {
+      if (defined.length === 1) return defined[0];
+      return (...args: unknown[]): unknown[] => fns.flatMap((fn) => (fn === undefined ? [] : fn(...args)));
+    }
+    return combinedHook(fns);
   }
+  if (SUMMED_FLAGS.includes(key) && defined.every((value) => typeof value === "number" || typeof value === "boolean")) {
+    return defined.reduce<number>((sum, value) => sum + (value === true ? 1 : typeof value === "number" ? value : 0), 0);
+  }
+  if (defined.length === 1) return defined[0];
+  if (defined.every((value) => Array.isArray(value))) return (defined as unknown[][]).flat();
   if (defined.every((value) => typeof value === "boolean")) return defined.some((value) => value === true);
   if (defined.every((value) => typeof value === "number")) return Math.max(...(defined as number[]));
-  if (defined.every((value) => isPlainObject(value))) return combineObjects(defined as Record<string, unknown>[]);
+  if (defined.every((value) => isPlainObject(value))) {
+    return combineObjects(values.map((value) => (isPlainObject(value) ? value : undefined)));
+  }
   // Nothing in `Script` mixes kinds under one key; the last ingredient wins if one ever does.
   return defined[defined.length - 1];
 }
 
-function combineObjects(objects: readonly Record<string, unknown>[]): Record<string, unknown> {
-  const keys = [...new Set(objects.flatMap((object) => Object.keys(object)))];
+function combineObjects(objects: readonly (Record<string, unknown> | undefined)[]): Record<string, unknown> {
+  const keys = [...new Set(objects.flatMap((object) => (object === undefined ? [] : Object.keys(object))))];
   const out: Record<string, unknown> = {};
   for (const key of keys) {
     const value = combineValues(
-      objects.map((object) => object[key]),
-      EAGER_KEYS.includes(key),
+      objects.map((object) => object?.[key]),
+      key,
     );
     if (value !== undefined) out[key] = value;
   }
@@ -288,9 +376,10 @@ function combineObjects(objects: readonly Record<string, unknown>[]): Record<str
  * One ingredient's script, ready to be combined: without its `cost` hook, because R77 fixes the
  * fused cost at min(sum, 4) and a surviving Ceaseless Void hook would overrule it (R65); and with
  * its trigger ids namespaced, so two ingredients that both call a trigger "turn-end" stay two
- * distinct conditions on the fused card.
+ * distinct conditions on the fused card — each running in its ingredient's place (R102), so a
+ * question it asks comes back to its own step.
  */
-function scriptRecord(script: Script, defId: string): Record<string, unknown> {
+function scriptRecord(script: Script, defId: string, index: number): Record<string, unknown> {
   const out: Record<string, unknown> = { ...script };
   delete out[COST_KEY];
   delete out[SET_STAT_KEY];
@@ -299,11 +388,19 @@ function scriptRecord(script: Script, defId: string): Record<string, unknown> {
     if (!Array.isArray(list)) continue;
     out[key] = list.map((trigger) =>
       isPlainObject(trigger) && typeof trigger.id === "string"
-        ? { ...trigger, id: `${defId}:${trigger.id}` }
+        ? { ...trigger, id: `${defId}:${trigger.id}`, run: inTriggerIngredient(trigger as unknown as TriggerDef, index) }
         : trigger,
     );
   }
   return out;
+}
+
+/** A trigger's list, built and applied in its ingredient's place (R102). */
+function inTriggerIngredient(trigger: TriggerDef, index: number): TriggerDef["run"] {
+  return (ctx) => {
+    const patch = partData(ctx.data, index);
+    return trigger.run({ ...ctx, data: { ...ctx.data, ...patch } }).map((effect) => inIngredient(effect, patch));
+  };
 }
 
 /**
@@ -386,12 +483,9 @@ function fusedCry(faces: readonly Face[]): Hook | undefined {
       declAt += count;
       const cry = face.script.cry;
       const modes = modesOf[index] ?? [];
-      return lazyPart(`fused:cry${index}`, (at) => ({
-        effects:
-          cry === undefined
-            ? []
-            : cry({ ...at, targets, modes }).map((effect) => withChoices(effect, targets, modes)),
-      }));
+      return ingredientPart(index, (at) =>
+        cry === undefined ? [] : cry({ ...at, targets, modes }).map((effect) => withChoices(effect, targets, modes)),
+      );
     });
   };
 }
@@ -412,7 +506,7 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
     return { defId: def.id, script: radiant ? pair.radiant : pair.base };
   });
   const combined = combineObjects(
-    faces.map((face) => scriptRecord(face.script, face.defId)),
+    faces.map((face, index) => scriptRecord(face.script, face.defId, index)),
   ) as Script;
   const setStat = fusedSetStat(faces.map((face) => face.script));
   const cry = fusedCry(faces);
@@ -549,6 +643,12 @@ export function fuse(sink: EngineSink, args: FuseArgs): CardInstance | null {
   let result: CardInstance;
   if (target !== null) {
     result = keepInstance(state, def, ingredients, target);
+    // R43, R151: the kept card now carries every ingredient's text, a #98 Heroic Power's included —
+    // and "one created later rolls when it is created". The ingredient's rolled power ceased to exist
+    // with it, and the kept instance's memory is the target's (R77), so without the roll the card
+    // would carry "Once per turn, spend X" and no power for as long as it stood. A card that already
+    // has its power keeps it (`heroPower.ensurePower`). A crafted card rolls as it reaches the hand.
+    runHook(sink, result, "startOfGame", { controller: result.controller });
   } else if (toHand !== undefined) {
     result = craftInHand(sink, def, toHand, ingredients);
   } else {

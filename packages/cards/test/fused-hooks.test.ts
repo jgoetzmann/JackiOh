@@ -21,6 +21,10 @@
 //    Cube crafted behind a Ceaseless Void eats nothing the Void exiled, and a Sorcerer crafted
 //    behind a Reno reads the hero Reno healed. §5.2: a Fuse that adds a printed Divine Shield or
 //    Reborn gives back a shield or a Reborn the kept card had spent.
+//  - Round 7, lenses "card by card", "keywords and layers" and L2. R102: what each ingredient leaves
+//    behind is its own — an answer comes back to the Mask that asked, each Cube remembers its own
+//    meal, two Twinspells' grants and two Armors add up — and R43, R151: a Heroic Power's text #85
+//    fuses onto a kept Mana Well rolls a power, as a card created later does.
 
 import { describe, expect, it } from "vitest";
 import type { Selection } from "@jackioh/shared";
@@ -116,11 +120,11 @@ describe("R90, R102: a fused card's choices are split as the play declared them"
 describe("R113, R122: a pause inside an answered step is owed ahead of what was already owed", () => {
   it("R113 a fused radiant Mask + Mask finishes the answered first pick's second question before the other Mask's first (R122, R102)", () => {
     // #85 Unlicensed Experimentation fuses the Mask p2 plays onto p1's own (R77): built directly here.
-    // The fused start-of-turn hook is [ask A's first, ask B's first]; R102 merges the two
-    // `firstPick` steps, so an answered first pick is [A's pick, ask A's second, B's pick, ask B's
-    // second]. Answering the first question pauses that answered step on A's second question with
-    // B's second still owed — a pause during a resumption, which R113 owes "ahead of everything still
-    // owed", B's first question and the rest of the start of turn included.
+    // The fused start-of-turn hook is [ask A's first, ask B's first], and R102 brings each answer back
+    // to the Mask that asked, so an answered first pick is [A's pick, ask A's second] — never B's
+    // pick as well. Answering the first question pauses that answered step on A's second question — a
+    // pause during a resumption, which R113 owes "ahead of everything still owed", B's first question
+    // and the rest of the start of turn included. Two Masks, two picks each: four questions.
     const s = scenario({
       p1: {
         backrow: [{ def: MASOCHISM_MASK, radiant: true }],
@@ -142,7 +146,7 @@ describe("R113, R122: a pause inside an answered step is owed ahead of what was 
       s.answer("nothing");
     }
 
-    expect(asked).toEqual(["first", "second", "second", "first", "second", "second"]);
+    expect(asked).toEqual(["first", "second", "first", "second"]);
   });
 });
 
@@ -278,5 +282,182 @@ describe("§5.2, R77: a keyword a Fuse newly prints applies at once", () => {
     expect(defOf(g.state, fused.defId).base.keywords.map((keyword) => keyword.kind)).toContain("Reborn");
     // The Saintess's printed Reborn is the fused card's text, which the Kpop never printed.
     expect(kinds(g, kpop)).toContain("Reborn");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 7 (lenses "card by card", "keywords and layers" and L2): what each ingredient's text leaves
+// behind is its own (R102), and a text fused onto a kept card is had in full (R43, R151).
+// ---------------------------------------------------------------------------
+
+const MANA_WELL = "core-006";
+const POINTMASTER = "core-020";
+const SEVEN_SEVEN = "core-025"; // Unit, 4 — 7/7, Armor 7
+const LAVA_GOLEM = "core-055"; // Unit, 3 — 10/5, Armor 3, Taunt (on the field; its Tribute is paid)
+const TWINSPELL = "core-079";
+const HEROIC_POWER = "core-098";
+const RAPID = "core-010";
+
+/** p2 plays its own 4-mana 7/7 into p1's armed #85, which fuses it onto p1's only Unit. */
+function fuseSevenSevenOnto(target: string): { g: Scenario; kept: CardInstance } {
+  const g = scenario({
+    active: "p2",
+    p1: {
+      backrow: [{ def: EXPERIMENTATION, lane: 3 }],
+      field: [{ def: target, lane: 1 }],
+      hand: [MR_VANILLA],
+      library: [...KEYWORD_LIBRARY],
+    },
+    p2: { hand: [SEVEN_SEVEN, MR_VANILLA], library: [...KEYWORD_LIBRARY] },
+  });
+  const kept = unitAt(g, "p1", 1);
+  g.play(SEVEN_SEVEN, { zone: 1 });
+  // The fusion happened: the target instance stands, carrying the summed stats (R77).
+  expect(g.events.some((event) => event.type === "fused")).toBe(true);
+  expect(g.unit("p2", 1)).toBeNull();
+  return { g, kept };
+}
+
+describe("R102: what a fused card's ingredients leave behind is each their own", () => {
+  it("R102 a Fuse of two Armor 7 units prints Armor 14, as Armor 7 and Armor 3 print Armor 10 (§6.1 Armor stacks, R77)", () => {
+    // Two different Armors already add up on the fused face.
+    const golem = fuseSevenSevenOnto(LAVA_GOLEM);
+    expect(golem.g.stats(golem.kept).attack).toBe(17);
+    expect(golem.g.stats(golem.kept).armor).toBe(10);
+
+    // Two equal ones add up the same way: each ingredient prints "Armor 7", and Armor stacks from
+    // every source (§6.1, §10.4), while the stats beside it sum to 14/14 (R77).
+    const twin = fuseSevenSevenOnto(SEVEN_SEVEN);
+    expect(twin.g.stats(twin.kept).attack).toBe(14);
+    expect(twin.g.stats(twin.kept).maxHealth).toBe(14);
+    expect(twin.g.stats(twin.kept).armor).toBe(14);
+  });
+
+  it("R102 a Masochism Mask fused onto a Masochism Mask applies each start-of-turn pick once, not once per ingredient (§8 #65, R77)", () => {
+    // p2 plays a Masochism Mask; p1's Unlicensed Experimentation fuses it onto p1's own Mask, the
+    // only Field Spell p1 controls (R61, R77). The fused card carries both Masks' text: "Start of
+    // turn: choose one …" twice, so p1 is asked twice and each answer is one pick.
+    const s = scenario({
+      seed: "r7-card-mask-mask",
+      active: "p2",
+      p1: {
+        backrow: [MASOCHISM_MASK, EXPERIMENTATION],
+        field: [MIDRANGE_MENACE],
+        hand: [STOCKPILE],
+        library: [...KEYWORD_LIBRARY],
+      },
+      p2: { hand: [MASOCHISM_MASK, STOCKPILE], field: [MIDRANGE_MENACE], library: [...KEYWORD_LIBRARY] },
+    });
+    s.play(MASOCHISM_MASK, { zone: 1 });
+    expect(s.backrow("p1", 1)?.defId).toMatch(/^t-\d+:core-065\+core-065$/);
+
+    s.endTurn();
+    expect(s.state.pending?.playerId).toBe("p1");
+    s.answer(["lose 3"]);
+    // One Mask's pick: 3 health, not 3 for each ingredient that shares the step name.
+    s.expectHealth("p1", 27);
+    expect(s.state.pending?.playerId).toBe("p1");
+    s.answer(["lose 3"]);
+    s.expectHealth("p1", 24);
+  });
+
+  it("R102 a crafted Carnivorous Cube + Carnivorous Cube remembers both meals, so its Death copies each (§8 #22, R41, R77)", () => {
+    const s = scenario({
+      seed: "r7-cube-cube",
+      p1: {
+        mana: 10,
+        hand: [CARNIVOROUS_CUBE, CARNIVOROUS_CUBE, HIT_JOB, RENO],
+        field: [MIDRANGE_MENACE, POINTMASTER],
+        backrow: [MANA_WELL],
+        library: [...KEYWORD_LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...KEYWORD_LIBRARY] },
+    });
+    // Craft a Card's result, built directly from the two Cubes in hand (R77).
+    const cubes = s.hand("p1").filter((card) => card.defId === CARNIVOROUS_CUBE);
+    expect(cubes).toHaveLength(2);
+    const crafted = must(subsystems.fuse(sinkFor(s), { ingredients: cubes, toHand: "p1" }), "the crafted card");
+    expect(crafted.defId).toMatch(/core-022\+core-022$/);
+
+    // Each Cube's Cry tributes one of p1's other permanents and remembers it: Pointmaster (a unit)
+    // for the first, Mana Well (a Field Spell) for the second (R81, R90: one pick per declaration).
+    const pointmaster = unitAt(s, "p1", 2);
+    const manaWell = must(s.backrow("p1", 1), "p1's Mana Well");
+    s.play(crafted, {
+      zone: 3,
+      targets: [
+        { pick: "instance", instanceId: pointmaster.id },
+        { pick: "instance", instanceId: manaWell.id },
+      ],
+    });
+    s.expectInZone(pointmaster, "graveyard").expectInZone(manaWell, "graveyard");
+
+    // Hit Job destroys the crafted card: each Cube's Death summons 2 copies of ITS remembered card.
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: crafted.id }] });
+    const units = [1, 2, 3, 4, 5].map((lane) => s.unit("p1", lane)?.defId);
+    const backrow = [1, 2, 3, 4, 5].map((lane) => s.backrow("p1", lane)?.defId);
+    expect(units.filter((id) => id === POINTMASTER)).toHaveLength(2);
+    expect(backrow.filter((id) => id === MANA_WELL)).toHaveLength(2);
+  });
+
+  it("R102 a Twinspell fused onto a Twinspell gives the next Spell both Echo +1s (§8 #79, R77, R209)", () => {
+    const library = Array.from({ length: 10 }, () => MR_VANILLA);
+    // p2 plays a Twinspell; p1's Unlicensed Experimentation fuses it onto p1's own Twinspell (R61,
+    // R77). The fused Field Spell prints "the next Spell you play gains Echo +1" twice.
+    const s = scenario({
+      seed: "r7-card-twin-twin",
+      active: "p2",
+      p1: { backrow: [TWINSPELL, EXPERIMENTATION], field: [MIDRANGE_MENACE], hand: [STOCKPILE, RAPID], library },
+      p2: { hand: [TWINSPELL, STOCKPILE], field: [MIDRANGE_MENACE], library },
+    });
+    s.play(TWINSPELL, { zone: 1 });
+    expect(s.backrow("p1", 1)?.defId).toMatch(/^t-\d+:core-079\+core-079$/);
+    s.endTurn();
+
+    // Two Twinspells standing apart make the next Spell resolve three times; the one card that
+    // carries both texts does the same. Stockpile draws 2 per resolution.
+    const from = s.events.length;
+    s.play(STOCKPILE);
+    const draws = s.events.slice(from).filter((event) => event.type === "drawn").length;
+    expect(draws).toBe(6);
+  });
+});
+
+describe("R43, R151, R77: a Heroic Power's text fused onto another permanent has a power", () => {
+  it("R151 Unlicensed Experimentation fusing a played Heroic Power onto a Mana Well leaves a card whose power can be activated (R43, R77)", () => {
+    const g = scenario({
+      p1: { hand: [HEROIC_POWER, STOCKPILE] },
+      p2: {
+        hand: [STOCKPILE],
+        backrow: [
+          { def: EXPERIMENTATION, lane: 1 },
+          { def: MANA_WELL, lane: 2 },
+        ],
+      },
+    });
+    // The power the Heroic Power rolled in hand (R43): "deal 2 damage to each opposing hero", which
+    // asks nothing.
+    const power = must(
+      g.state.players.p1.hand.find((card) => card.defId === HEROIC_POWER),
+      "the live Heroic Power",
+    );
+    power.memory[subsystems.POWER_KEY] = "burn";
+    const well = must(g.backrow("p2", 2), "p2's Mana Well");
+
+    // p1 plays it (it activates once, R43), and after it resolves p2's #85 fuses it onto the Mana Well
+    // (R61, R77): the Mana Well's instance is kept and now carries the Heroic Power's text.
+    g.play(power, { zone: 1 });
+    const fused: CardInstance = g.card(well);
+    expect(fused.defId.startsWith("t-")).toBe(true);
+    g.expectInZone(power, "gone");
+
+    // R43: "Once per turn, spend X" is the card's text, and "one created later rolls when it is
+    // created"; R151 has a Heroic Power roll as it arrives anywhere a card can be looked at, so no
+    // copy of the text is left "carrying no power … for ever". The fused card has a power, and p2
+    // may use it on their own turn.
+    expect(subsystems.powerOf(fused)).not.toBeNull();
+    g.endTurn();
+    expect(g.state.active).toBe("p2");
+    expect(subsystems.whyCannotActivate(g.state, "p2", fused.id)).toBeNull();
   });
 });

@@ -32,7 +32,10 @@ export function playerOf(ctx: EffectContext, spec: PlayerSpec): PlayerId {
 }
 
 export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarget | null {
-  if (spec.of === "self") return ctx.self === null ? null : { kind: "unit", instance: ctx.self };
+  if (spec.of === "self") {
+    const self = selfOnItsStay(ctx);
+    return self === null ? null : { kind: "unit", instance: self };
+  }
   if (spec.of === "selfHero") return { kind: "hero", player: ctx.controller };
   if (spec.of === "enemyHero") return { kind: "hero", player: opponentOf(ctx.controller) };
   if (spec.of === "instance") {
@@ -47,13 +50,29 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
     const instance = findInstance(ctx.state, selection.instanceId);
     if (instance === undefined) return null;
     // R174: a card chosen on the field is chosen as that stay. One an earlier effect of this same
-    // list took off the field and that is back already — a fused card's #22 half sacrificed it and
-    // Reborn returned it — is a new arrival (R83), and what this effect was aimed at is gone, even
-    // when a prompt between the two split the list across actions (R113).
-    if (instance.zone.z === "field" && leftFieldSince(ctx, instance.id)) return null;
+    // list took off the field is gone for this one, wherever it is now: back already — a fused
+    // card's #22 half sacrificed it and Reborn returned it, a new arrival (R83) — or in a graveyard
+    // or a hand, reset (R78), where a buff or an exile aimed at the unit on the field has nothing to
+    // land on (§8 Conventions). The same holds when a prompt split the list across actions (R113),
+    // and for a play's declared target a trap answering the play took off the field at §10.5 step 4
+    // (the play's Cry runs with the mark step 1 checked the choices at).
+    if (leftFieldSince(ctx, instance.id)) return null;
     return { kind: "unit", instance };
   }
   return null;
+}
+
+/**
+ * R174: the card running the script, while it is on the stay it had when the run began — a card an
+ * earlier effect of the same list took off the field (#22's sacrifice, radiant #52's bounce) is gone
+ * for "this", even once it is back, and a card R78 has reset in a hand is not what the effect was
+ * aimed at. A card that never stood on the field in the run (a Spell resolving, a hand card) has no
+ * stay to lose, and a Death hook's snapshot (R89) died before its hook began.
+ */
+export function selfOnItsStay(ctx: EffectContext): CardInstance | null {
+  const self = ctx.self;
+  if (self === null) return null;
+  return leftFieldSince(ctx, self.id) ? null : self;
 }
 
 /**

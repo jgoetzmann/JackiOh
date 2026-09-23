@@ -164,6 +164,8 @@ const CARDS_CORPSE_EATER_TEST = "../../cards/test/089-corpse-eater.test.ts";
 /** R220 to R223's proofs: the hunt's sixth round. */
 const CARDS_TURN_CLOCK_TEST = "../../cards/test/turn-clock-and-legality.test.ts";
 const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
+/** R224's proofs: the hunt's seventh round. */
+const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1659,6 +1661,13 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // only in a card that never shows.
   it("R223 numbers a deck's cards in an order that says nothing about the deck", () => {
     provenIn(223, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by setup-and-mulligan.test.ts "R224 …": a cast-on-draw card the opening draw or a
+  // mulligan's replacement draws reach asks its caster, and setup opens no mulligan over the
+  // question; the mulligan's answer names its prompt.
+  it("R224 has setup wait for a cast's question before it goes on", () => {
+    provenIn(224, CARDS_SETUP_TEST);
   });
 });
 

@@ -18,6 +18,7 @@
 
 import { scheduleDelayed } from "../modifiers";
 import { SELF_KEY, resumeSelf } from "../prompts";
+import { RUN_MARKS_KEY } from "../work";
 import type { Effect } from "../script";
 import type { DelayedEffect } from "../state";
 import { playerOf, standsSinceScriptBegan, type PlayerSpec } from "./targets";
@@ -72,7 +73,9 @@ export function delay(args: {
       const built = resumeSelf(ctx, args.step, args.data ?? {});
       // R127: a delayed effect re-enters as whatever is left of its card then, so a Death hook's
       // snapshot (R89) is not carried past the hook that read it.
-      const { [SELF_KEY]: _snapshot, ...data } = built.data;
+      // Nor does it carry the run it was made in (`work.RUN_MARKS_KEY`): it resolves at its own R62
+      // point as a run of its own, and a card it watches is watched through `watch` (R174).
+      const { [SELF_KEY]: _snapshot, [RUN_MARKS_KEY]: _run, ...data } = built.data;
       const resume = { ...built, data, hook: args.hook ?? DELAYED_HOOK };
       scheduleDelayed(
         ctx,

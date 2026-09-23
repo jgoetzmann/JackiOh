@@ -8,6 +8,10 @@
 //  - R44, R152: the AI turn #96 My Pawn hands over goes on after the other player answers a question
 //    one of its actions put to them.
 //
+// Round 7 (lens L8) added two: the traps answer each start-of-turn delayed effect before the next one
+// resolves (R68, §10.3), and cleanup settles its own events — My Pawn reaching the graveyard at the
+// end of the turn it took (R152) — before the turn-cap check and the next turn (R62).
+//
 // No Core card answers a summon or a change of control, and no Core trap asks its controller
 // anything, so the card that makes each case observable is a fixture (a transient def, the way a
 // fusion's is held, as paused-sequences.test.ts does); every other card is a real one.
@@ -24,7 +28,7 @@ import {
   type CardInstance,
   type Script,
 } from "@jackioh/engine";
-import { chooseMode, damage } from "@jackioh/engine/effects";
+import { bounceAll, chooseMode, damage } from "@jackioh/engine/effects";
 import { scenario, type Scenario } from "./_harness";
 
 const VANILLA = "core-008"; // Unit, cost 1, no Cry
@@ -230,5 +234,88 @@ describe("R44, R152: a locked-out player is never handed back the turn My Pawn g
     expect(offered, `p1 is locked out on turn ${s.state.turn}, yet offered its own turn`).toEqual([]);
     const own = reduce(s.state, { type: "endTurn", playerId: "p1", nonce: "edge-r6-locked-out" });
     expect(own.error, "reduce accepted an action from the locked-out player").toBeDefined();
+  });
+});
+
+describe("§10.3, R68: a trap answers a delayed effect before the next delayed effect runs", () => {
+  it("R68 a trap answering the first of two start-of-turn delayed steals fires before the second steal (§10.3, R59, R76)", () => {
+    // p1 plays two Kpop Fanatics: one on p2's Mr. Vanilla, one on p2's Tempo Timmy. Both steals are
+    // due at the start of p1's next turn, in that order (R68). p2's fixture trap answers the
+    // opponent taking one of p2's permanents by returning all of p2's units to p2's hand.
+    const s = scenario({
+      p1: { hand: [KPOP_FANATIC, KPOP_FANATIC, RENO], library: [RENO, RENO, RENO] },
+      p2: { field: [VANILLA, TEMPO_TIMMY], hand: [RENO], library: [RENO, RENO, RENO] },
+    });
+    fixture(s, "edge-r7-reclaimer", "Trap", {
+      triggers: [
+        {
+          id: "edge-r7-reclaim",
+          on: ["controlChanged"],
+          when: (ctx) => ctx.event.type === "controlChanged" && ctx.event.controller !== ctx.controller,
+          run: () => [bounceAll({ side: "self" })],
+        },
+      ],
+    });
+    placeFixture(s, "edge-r7-reclaimer", "p2", "backrow", 1);
+    const vanilla = must(s.unit("p2", 1), "p2's Mr. Vanilla");
+    const timmy = must(s.unit("p2", 2), "p2's Tempo Timmy");
+    s.play(KPOP_FANATIC, { targets: [{ pick: "instance", instanceId: vanilla.id }] });
+    s.play(KPOP_FANATIC, { targets: [{ pick: "instance", instanceId: timmy.id }] });
+
+    // p1's turn ends, p2 passes, and p1's next turn starts with the two steals.
+    s.endTurn();
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+
+    // The first steal takes Mr. Vanilla. §10.3: its event goes to the traps, which fire at once —
+    // a delayed effect is a whole effect like any other (R59), and a trap is a response — so p2's
+    // trap returns Tempo Timmy to p2's hand before the second delayed effect runs, and that steal
+    // fizzles on a target that has left the field (R76, R174).
+    expect(s.events.some((event) => event.type === "trapFired")).toBe(true);
+    s.expectInZone(timmy, "hand");
+    expect(s.card(timmy).owner).toBe("p2");
+    expect(
+      s.events.some((event) => event.type === "controlChanged" && event.instanceId === timmy.id),
+      "the second delayed steal ran before the trap answered the first",
+    ).toBe(false);
+  });
+});
+
+describe("R62, §10.3: cleanup's events are answered before the turn-cap check and the next turn", () => {
+  it("R62 a trigger answering My Pawn reaching the graveyard at cleanup resolves before the next turn starts (R152, §10.3)", () => {
+    // p1's Tempo Timmy (3/3) swings at p2's hero at 3: lethal, so p2's My Pawn cancels it and the AI
+    // plays the rest of p1's turn (R44). p1 has nothing left to do, so the AI ends the turn, and
+    // R152 sends My Pawn to p2's graveyard at that turn's cleanup. p2's fixture unit answers a card
+    // entering p2's graveyard with 1 damage to the enemy hero, and p1 is at 1.
+    const s = scenario({
+      p1: { field: [TEMPO_TIMMY], health: 1, library: [RENO, RENO] },
+      p2: { health: 3, backrow: [{ def: MY_PAWN, faceUp: false }], hand: [RENO], library: [RENO, RENO] },
+    });
+    fixture(s, "edge-r7-grave-watcher", "Unit", {
+      triggers: [
+        {
+          id: "edge-r7-grave-watch",
+          on: ["enteredGraveyard"],
+          run: (ctx) =>
+            ctx.event.type === "enteredGraveyard" && ctx.event.owner === ctx.controller
+              ? [damage({ to: { of: "enemyHero" }, amount: 1 })]
+              : [],
+        },
+      ],
+    });
+    placeFixture(s, "edge-r7-grave-watcher", "p2", "units", 3);
+    const pawn = must(s.backrow("p2", 1), "p2's My Pawn");
+
+    s.attack(TEMPO_TIMMY, "hero");
+
+    // My Pawn reached p2's graveyard at p1's cleanup (R152), and the trigger answering it killed p1.
+    expect(s.events.some((event) => event.type === "enteredGraveyard" && event.instanceId === pawn.id)).toBe(true);
+    expect(s.state.result?.winner).toBe("p2");
+    // §10.3, R62: cleanup is a stage of p1's turn like the window and the delayed effects, so what
+    // its events wake resolves there — p1 loses at the end of p1's turn, and p2's turn never starts.
+    expect(
+      s.events.some((event) => event.type === "turnStarted" && event.player === "p2"),
+      "p2's turn started before the trigger answering p1's cleanup resolved",
+    ).toBe(false);
   });
 });

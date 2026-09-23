@@ -442,7 +442,15 @@ function liveMatch(state: GameState, match: TrapMatch, event: GameEvent): TrapMa
  * when the dispatch began (`stays.exitMark`), which a dispatch a prompt split carries to the traps it
  * still owes (`triggers.runOwedTraps`), so the answer that killed the card counts too.
  */
-export function standingEvent(sink: EngineSink, event: GameEvent, mark: number): GameEvent {
+export function standingEvent(sink: EngineSink, event: GameEvent, mark: number): GameEvent | null {
+  if (event.type === "cardPlayed" || event.type === "summoned") {
+    // The same for step 4's pair (#41 Sheepish's moment, R17): a trap answering the arrival of a card
+    // an earlier trap answering it has already taken off the field meets no card in play, and is not
+    // offered the event at all, as #85 is not offered a play that is no longer a permanent in play
+    // (R61). Sheepish does not reach into a hand to rewrite the unit the first trap bounced there, or
+    // turn the Reborn body of the one it killed into a Sheep: that body is nobody's play (R83).
+    return leftFieldAfter(sink.state, mark, event.instanceId) ? null : event;
+  }
   if (event.type !== "cardResolved" || !event.permanent) return event;
   const card = findInstance(sink.state, event.instanceId);
   const stays = card !== undefined && isOnField(card) && !leftFieldAfter(sink.state, mark, event.instanceId);
@@ -469,7 +477,9 @@ function dispatch(
     if (!declarationStands(sink.state, event)) continue;
     const live = liveMatch(sink.state, match, event);
     if (live === null) continue;
-    if (fireTrap(sink, live, standingEvent(sink, event, mark))) fired.push(live.trap.id);
+    const met = standingEvent(sink, event, mark);
+    if (met === null) continue;
+    if (fireTrap(sink, live, met)) fired.push(live.trap.id);
   }
   return { fired, paused: isPaused(sink), owed: [] };
 }

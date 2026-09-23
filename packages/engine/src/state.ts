@@ -441,6 +441,19 @@ export function createGame(options: CreateGameOptions): GameState {
 export const INSTANCE_ID_STREAM = ":instance-ids";
 
 /**
+ * R223 mid-game: the order a batch of new cards takes its numbers in, when the batch fills a zone
+ * nobody may read — #83 Transmogulate replaces a whole library, top down, and numbered in that walk
+ * the new ids were one run in library order, so the first id of the next public card told its owner
+ * where every library card they are later shown lies (§9.1, §10.8). The order is drawn from the
+ * seed's own stream, keyed by the next id to be handed out so each batch draws its own, and the
+ * match's rng is untouched.
+ */
+export function numberingOrder<T>(state: Pick<GameState, "seed" | "nextId">, items: readonly T[]): T[] {
+  if (items.length < 2) return [...items];
+  return createRng(`${state.seed}${INSTANCE_ID_STREAM}:${state.nextId}`).shuffle([...items]);
+}
+
+/**
  * A deep copy of a state. §10.1 keeps the state JSON-only, so a JSON round-trip is a faithful
  * clone and quietly enforces that invariant: anything unserializable would not survive it.
  */

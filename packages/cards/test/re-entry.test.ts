@@ -21,9 +21,11 @@
 //  - Round 6, lens L2. R174, R113: that holds across a prompt too — a crafted Cube + Scarab +
 //    Sorcerer's Discover splits the list across actions, and the Sorcerer's part still fizzles on the
 //    Reborn body of the unit the Cube's part ate.
+//  - Round 7, lens L2. R174: it holds for "this" card as well — a crafted Silas + Gary that its own
+//    Silas part bounced to hand is not buffed there by its Gary part.
 
 import type { Selection } from "@jackioh/shared";
-import { effectiveCost, type CardInstance } from "@jackioh/engine";
+import { createRng, effectiveCost, newInstance, subsystems, type CardInstance } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -548,5 +550,49 @@ describe("R174: a later part of one effect list meets the stay the play chose, a
     g.answer([option.selection]);
     const hits = g.events.slice(before).filter((event) => event.type === "damage" && event.targetId === saintess.id);
     expect({ hits: hits.length, zone: g.card(saintess).zone.z }).toEqual({ hits: 0, zone: "field" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 7 (lens L2): "this" card is aimed at its stay too.
+// ---------------------------------------------------------------------------
+
+const GARY = "core-004";
+const GLOWY_JELLY_BEAN = "core-026";
+
+/**
+ * §8 #99 Craft a Card's result, made the way the card makes it (R77): the definitions go into
+ * `subsystems.fuse` as ingredients that were never cards, and the result is a fresh, non-Radiant
+ * hand card costing 0.
+ */
+function craft(g: Scenario, player: "p1" | "p2", defIds: readonly string[]): CardInstance {
+  const sink = { state: g.state, events: [], rng: createRng(g.state.seed, g.state.rngCursor) };
+  const ingredients = defIds.map((defId) => newInstance(g.state, defId, player, { z: "gone", player }));
+  const made = subsystems.fuse(sink, { ingredients, toHand: player });
+  g.state.rngCursor = sink.rng.cursor;
+  return must(made, "the crafted card");
+}
+
+describe("R174, R78: a later part of a Cry acting on the card itself, once an earlier part took it off the field", () => {
+  it("R174 a Radiant crafted Silly Silas + Gary that its own Silas part bounces is not buffed in hand by its Gary part (R78, §8 #52 radiant)", () => {
+    const g = scenario({
+      p1: { hand: [GLOWY_JELLY_BEAN, STOCKPILE], mana: 4 },
+      p2: { hand: [STOCKPILE] },
+    });
+    const card = craft(g, "p1", [SILAS, GARY]);
+    // #26 Glowy Jelly Bean makes the crafted card Radiant, so its Silas part is radiant #52's text.
+    g.play(GLOWY_JELLY_BEAN, { targets: at(card) });
+    expect(g.card(card).radiant).toBe(true);
+
+    // Played into lane 5 and rotated right: the card itself would cross to p2's side, so radiant
+    // Silas bounces it to p1's hand costing 0 (R14). It has left the field, and R78 has reset it.
+    g.play(card, { zone: 5, modes: ["right"] });
+    g.expectInZone(card, "hand");
+
+    // The Gary part comes next in the same Cry. It is aimed at the card on the field, whose stay has
+    // ended (R174: "a fused card's part aimed at a card an earlier part has taken off the field
+    // fizzles"), so the coins buff nothing — least of all a card in a hand, which R78 has just made
+    // the printed card again.
+    expect(g.card(card).buffs).toEqual({ attack: 0, health: 0 });
   });
 });

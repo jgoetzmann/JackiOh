@@ -31,6 +31,7 @@ import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
 import { NON_ACTIVE_ACTION_TYPES, PROMPT_OPEN_ACTION_TYPES, opponentOf } from "@jackioh/shared";
 import { attackTargets, declareAttack, hasExertion, switchPosition, type AttackTarget } from "./combat";
 import { NONCE_HISTORY, TIMEOUT_ANSWER_CAP, TURN_CAP_PLAYER_TURNS } from "./config";
+import { endGame } from "./gameOver";
 import { answerPlayPrompt, isPlayResume, runPlaySteps } from "./playSteps";
 import { playActionsFor } from "./playChoices";
 import { answerPrompt, promptAnswers } from "./prompts";
@@ -39,6 +40,7 @@ import type { EngineSink } from "./resolve";
 import { answerMulligan, beginSetup } from "./setup";
 import { flagsOf } from "./scripts";
 import { cloneState, findInstance, type CardInstance, type GameState } from "./state";
+import { playOutTurn } from "./subsystems/aiPolicy";
 import { activatePower, whyCannotActivate } from "./subsystems/heroPower";
 import { settle } from "./triggers";
 import { answerDraw, canOfferDraw, concede, endTurn, hasStandingDrawOffer, offerDraw } from "./turn";
@@ -147,17 +149,12 @@ function applyAction(sink: EngineSink, action: Action): string | null {
     case "timeout":
       return timeout(sink, action);
     case "disconnectExpired": {
-      const winner = opponentOf(action.player);
-      state.result = { winner, reason: "disconnect" };
-      state.phase = "over";
-      sink.events.push({ type: "gameOver", winner, reason: "disconnect" });
+      endGame(sink, opponentOf(action.player), "disconnect");
       return null;
     }
     case "ceilingReached": {
       // R79: past the hard wall-clock ceiling the match is a draw.
-      state.result = { winner: "draw", reason: "match-ceiling" };
-      state.phase = "over";
-      sink.events.push({ type: "gameOver", winner: "draw", reason: "match-ceiling" });
+      endGame(sink, "draw", "match-ceiling");
       return null;
     }
     default:
@@ -208,6 +205,25 @@ function timeout(sink: EngineSink, action: Extract<Action, { type: "timeout" }>)
     settle(sink);
   }
   return null;
+}
+
+/**
+ * R44, §8 #96: "an AI plays the rest of their turn with random legal actions", and while it does,
+ * that player is locked out — their client does not act while `aiTurn` is set (R152). A question of
+ * theirs can still open outside the AI's own playout: a Death hook of their unit that the other
+ * player's trap destroys inside the other player's answer, or the Cry of a card the AI played once
+ * the other player has answered the trap that asked about it. That question is the AI's to answer,
+ * as every prompt of that turn is (§10.7), and the answer goes on to finish the turn the AI owes
+ * (`aiPolicy.AI_TURN_WORK`). Left open, the turn stalled until the turn clock, which R79 then ended.
+ */
+function answerForLockedOut(sink: EngineSink): void {
+  for (let guard = 0; guard <= TURN_CAP_PLAYER_TURNS; guard += 1) {
+    const state = sink.state;
+    const pending = state.pending;
+    if (state.result !== null || pending === null) return;
+    if (!state.players[pending.playerId].aiTurn || pending.kind === "mulligan") return;
+    if (playOutTurn(sink, pending.playerId).actions.length === 0) return;
+  }
 }
 
 /** §2.5: when nothing but ending the turn is left, the turn ends by itself. */
@@ -271,6 +287,7 @@ export function reduce(state: GameState, action: Action, rng?: Rng): ReduceResul
   // §10.3: the resolution loop finishes the action — the events it emitted, the work a prompt left
   // owed, the state check and the trigger queue — and stops where a prompt is waiting.
   settle(sink);
+  answerForLockedOut(sink);
   maybeAutoEndTurn(sink);
 
   next.rngCursor = sink.rng.cursor;

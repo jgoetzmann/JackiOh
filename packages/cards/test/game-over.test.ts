@@ -4,12 +4,15 @@
 // fix, and the fuzz monitor's I5 now checks the same thing in every random game.
 //
 // Round 5 (lens L1) found /fullsend's Combo draws drawing on, one per rider, after a cast inside the
-// first had ended the game.
+// first had ended the game. Round 7 (lens "engine invariants") found a game conceded under an open
+// Discover still holding the prompt, which nothing could answer.
 //
 // The check that finds a hero at 0 or less ends the game at once. Whatever was still to resolve then
 // does not: the rest of the effect list the check ran inside, owed work, queued triggers, or a trap's
 // consumption after the AI turn it handed over has ended the game.
 
+import type { Action } from "@jackioh/shared";
+import { legalActions, reduce, viewFor } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -22,6 +25,8 @@ const MY_PAWN = "core-096";
 const VANILLA = "core-008";
 const HINDER = "core-021";
 const FULLSEND = "core-078";
+const SCARAB = "core-007";
+const POINTMASTER = "core-020";
 
 describe("R216: nothing happens after the game is over", () => {
   it("R216 #5 Stockpile's heal does not follow the CN-Virus cast that killed its hero (§2.5, §4.5, §2.4)", () => {
@@ -79,5 +84,30 @@ describe("R216: nothing happens after the game is over", () => {
     expect(over, types.join(", ")).toBeGreaterThanOrEqual(0);
     expect(types.slice(over + 1), types.join(", ")).toEqual([]);
     expect(g.state.players.p1.fatigueCount).toBe(2);
+  });
+});
+
+describe("R216: a question still open when the game ends is closed with it", () => {
+  it("R216 a game that ends while a prompt is open leaves no prompt open (§2.5, R211)", () => {
+    const s = scenario({
+      seed: "r7-concede-at-prompt",
+      p1: { hand: [SCARAB], mana: 4 },
+      p2: { field: [POINTMASTER] },
+    });
+    s.play(SCARAB);
+    expect(s.view("p1").pending?.forYou).toBe(true);
+
+    // R211: the other seat may concede while p1's Discover is open.
+    const over = reduce(s.state, { type: "concede", playerId: "p2", nonce: "r7-concede" } as Action);
+    expect(over.error).toBeUndefined();
+    expect(over.state.result).toEqual({ winner: "p1", reason: "concede" });
+    // Nothing can answer the Discover any more: legalActions offers nothing once the game is over...
+    expect(legalActions(over.state, "p1")).toEqual([]);
+    // ...so the finished game does not still hold it open, nor show it to either seat, and
+    // `gameOver` is the action's last event.
+    expect(over.state.pending).toBeNull();
+    expect(viewFor(over.state, "p1").pending).toBeNull();
+    expect(viewFor(over.state, "p2").pending).toBeNull();
+    expect(over.events[over.events.length - 1]?.type).toBe("gameOver");
   });
 });

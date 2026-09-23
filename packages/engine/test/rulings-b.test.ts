@@ -840,18 +840,28 @@ describe("SPEC §11 rulings R43–R84 (M3 gate)", () => {
 
     const sink = sinkFor(state);
     const ctx = makeContext(sink, null, { controller: "p1" });
+    const cursor = sink.rng.cursor;
     applyEffects([setRadiantRandom({ zones: "hand", count: 2 })], ctx);
-    expect(eventsOfType(sink.events, "radiantSet")).toHaveLength(0);
+    // None left: nothing changes and nothing is drawn (R129); the hidden hand is still cued as a
+    // pick of two would cue it, on its Radiant cards (R177).
+    expect(sink.rng.cursor).toBe(cursor);
+    expect(eventsOfType(sink.events, "radiantSet").map((event) => event.instanceId)).toEqual(
+      cards.slice(0, 2).map((card) => card.id),
+    );
 
     const [first, second] = cards;
     if (first === undefined || second === undefined) throw new Error("fixture");
     first.radiant = false;
     second.radiant = false;
 
+    const from = sink.events.length;
     applyEffects([setRadiantRandom({ zones: "hand", count: 5 })], ctx);
-    const set = eventsOfType(sink.events, "radiantSet");
-    expect(set).toHaveLength(2);
-    expect(new Set(set.map((event) => event.instanceId)).size).toBe(2);
+    // Fewer non-Radiant cards than the pick: both change, and they are different cards.
+    expect(first.radiant && second.radiant).toBe(true);
+    const set = eventsOfType(sink.events.slice(from), "radiantSet");
+    expect(new Set(set.slice(0, 2).map((event) => event.instanceId))).toEqual(new Set([first.id, second.id]));
+    // The picks it could not make are cued on the rest of the hand (R177): three cards, three cues.
+    expect(set).toHaveLength(3);
 
     // Discover options are always different.
     applyEffects([discoverFromCatalog({ step: "pick", query: { type: "Unit" } })], ctx);

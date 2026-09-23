@@ -112,6 +112,7 @@ from `@jackioh/engine`, and these are all of them:
 | `faceOf` / `statsWithBuffs` / `unitView` | a unit through the §10.4 layers — never off the instance |
 | `defOf` / `printedCost` / `effectiveCost` / `queryCost` | a definition and R65's two costs |
 | `findInstance` | an instance id, wherever the card has since landed (R98) |
+| `recalled(ctx, key)` | what the running card remembers under a key (`remember`'s write) — on a fused card, its own ingredient's (R102, #22) |
 
 `zone` is `"hand" | "library" | "graveyard" | "exile"`; the field is not a pile, so read it by lane.
 Every one of these returns a number, a boolean or a fresh `readonly` array, so a card cannot write

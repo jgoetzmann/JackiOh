@@ -27,7 +27,9 @@
 // names below say which is which, and neither exports a bare `query`.
 
 import type { PlayerId } from "@jackioh/shared";
+import type { EffectContext } from "./script";
 import type { CardInstance, GameState } from "./state";
+import { partMemoryKey } from "./work";
 import type { OffFieldZone } from "./zones";
 
 /**
@@ -115,4 +117,18 @@ export function wasPlayedThisTurn(
 ): boolean {
   const id = typeof card === "string" ? card : card.id;
   return state.players[player].turnLog.playedIds.includes(id);
+}
+
+/**
+ * What the card running a script remembers under `key` (§10.1: #22 Carnivorous Cube's meal), read
+ * the way `effects/memory.remember` wrote it. On a fused card each ingredient remembers apart (R102),
+ * so an ingredient reads its own first — two Cubes crafted into one card copy two meals — and then
+ * what the card remembered before the Fuse kept it (R77 keeps the target's memory). The value is
+ * handed back as stored, JSON, for the card to read defensively.
+ */
+export function recalled(ctx: Pick<EffectContext, "self" | "data">, key: string): unknown {
+  const memory = ctx.self?.memory;
+  if (memory === undefined) return undefined;
+  const own = memory[partMemoryKey(ctx.data, key)];
+  return own !== undefined ? own : memory[key];
 }

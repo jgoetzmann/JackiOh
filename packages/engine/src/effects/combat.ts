@@ -18,6 +18,7 @@
 
 import { opponentOf } from "@jackioh/shared";
 import { forceAttacksOn, type AttackTarget } from "../combat";
+import { summonedSoFar } from "../prompts";
 import type { Effect, EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import { playOutTurn } from "../subsystems/aiPolicy";
@@ -84,11 +85,9 @@ export type ForcedAttackerFilter = {
  * a test — falls back to 0, the whole action, which is what this read did before R136.
  */
 function freshlySummoned(ctx: EffectContext): Set<string> {
-  return new Set(
-    ctx.events
-      .slice(ctx.eventsFrom)
-      .flatMap((event) => (event.type === "summoned" ? [event.instanceId] : [])),
-  );
+  // A list a prompt split resumes in a later action, whose event list begins after the pause, so
+  // what its head summoned comes with the continuation (`prompts.summonedSoFar`, R113).
+  return new Set(summonedSoFar(ctx));
 }
 
 /** #60 names its target by the instance id its trigger read off the event (R42-style ids). */
@@ -187,6 +186,10 @@ export function aiPlaysOutTurn(args: { player?: PlayerSpec } = {}): Effect {
     kind: "aiPlaysOutTurn",
     apply(ctx): void {
       const player = playerOf(ctx, args.player ?? "self");
+      // "The rest of their turn": with no turn of theirs running there is nothing to hand over. A
+      // #96 fused onto a #96 runs its second half after its first has played that turn out (R102),
+      // and a lockout set then would fall on the other player's turn, which no My Pawn took (R152).
+      if (ctx.state.active !== player || ctx.state.result !== null) return;
       ctx.state.players[player].aiTurn = true;
       playOutTurn(ctx, player);
     },
