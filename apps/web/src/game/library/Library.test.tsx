@@ -18,7 +18,7 @@ import {
   fixtureCollection,
 } from "../deckbuilder/fixtures.ts";
 import { setReducedMotion } from "../../test/setup.ts";
-import Library, { type LibraryDeck, type LibraryProps } from "./Library.tsx";
+import Library, { type LibraryDeck, type LibraryProps, type LibrarySaveOutcome } from "./Library.tsx";
 import { FALLBACK_PAGE_SIZE } from "./library.ts";
 import {
   DECKLIST,
@@ -106,6 +106,23 @@ function rightClick(testId: string): boolean {
 function issuesFor(cards: readonly string[], name: string, rules = {}): readonly LoadoutError[] {
   const result = validateDeck({ deck: { name, cards }, catalog, collection, rules, allowIncomplete: true });
   return result.ok ? [] : result.errors;
+}
+
+/** A save that lands only when the test says so. */
+function inFlight() {
+  let land: (outcome: LibrarySaveOutcome) => void = () => undefined;
+  const promise = new Promise<LibrarySaveOutcome>((resolve) => {
+    land = resolve;
+  });
+  return {
+    promise,
+    async land(outcome: LibrarySaveOutcome): Promise<void> {
+      await act(async () => {
+        land(outcome);
+        await promise;
+      });
+    },
+  };
 }
 
 /** A controllable ResizeObserver, since jsdom has none. */
@@ -246,6 +263,17 @@ describe("building a deck", () => {
     fireEvent.dragOver(screen.getByTestId(LIBRARY_PAGES));
     fireEvent.drop(screen.getByTestId(LIBRARY_PAGES));
     expect(screen.queryByTestId(deckBarId(first))).toBeNull();
+  });
+
+  it("adds only a card the pages offer, whatever text is dropped from elsewhere", () => {
+    mount();
+    newDeck();
+    for (const text of ["hello world", "constructor", TOKEN_ID, first]) {
+      const carried: Record<string, string> = { "text/plain": text };
+      fireEvent.drop(screen.getByTestId(DECKLIST), { dataTransfer: { getData: (mime: string) => carried[mime] ?? "" } });
+    }
+    expect(count()).toBe("1");
+    expect(screen.getByTestId(deckBarId(first))).toBeInTheDocument();
   });
 
   it("dims a card at maxCopies, marks it In deck, and refuses another copy", () => {
@@ -531,6 +559,43 @@ describe("saving", () => {
     await waitFor(() => {
       expect(screen.getByTestId(DECK_SAVE_ERROR)).toHaveTextContent(message);
     });
+  });
+
+  it("keeps edits made while a save is in flight, and the deck stays unsaved", async () => {
+    const save = inFlight();
+    const props = mount({ create: vi.fn().mockReturnValue(save.promise) });
+    newDeck();
+    rightClick(pageCardId(first));
+    fireEvent.click(screen.getByTestId(DECK_SAVE));
+    rightClick(pageCardId(second));
+    fireEvent.change(screen.getByTestId(DECK_NAME_INPUT), { target: { value: "Aggro" } });
+    await save.land({ ok: true, deck: { id: "d1", name: "New deck", cards: [first] } });
+
+    expect(count()).toBe("2");
+    expect(screen.getByTestId(deckBarId(second))).toBeInTheDocument();
+    expect(screen.getByTestId(DECK_NAME_INPUT)).toHaveValue("Aggro");
+    expect(screen.queryByTestId(DECK_SAVED), "the edits are not saved").toBeNull();
+    fireEvent.click(screen.getByTestId(DECK_BACK));
+    expect(screen.getByTestId(DECK_DISCARD_CONFIRM), "Back asks before dropping them").toBeInTheDocument();
+
+    // The stored deck's id was adopted: the next save updates it.
+    fireEvent.click(screen.getByTestId(DECK_SAVE));
+    expect(props.save).toHaveBeenCalledWith("d1", { name: "Aggro", cards: [first, second] });
+  });
+
+  it("holds Discard while a save is in flight", async () => {
+    const save = inFlight();
+    mount({ decks: [deck("a", 1)], save: vi.fn().mockReturnValue(save.promise) });
+    fireEvent.click(screen.getByTestId(libraryDeckId("a")));
+    rightClick(pageCardId(fixtureCardId(2)));
+    fireEvent.click(screen.getByTestId(DECK_BACK));
+    fireEvent.click(screen.getByTestId(DECK_SAVE));
+    expect(screen.getByTestId(DECK_DISCARD_CONFIRM)).toBeDisabled();
+
+    await save.land({ ok: true, deck: deck("a", 2) });
+    expect(screen.getByTestId(DECK_SAVED)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(DECK_BACK));
+    expect(screen.getByTestId(LIBRARY_DECKS), "nothing is left to discard").toBeInTheDocument();
   });
 
   it("asks before Back drops unsaved edits, and not when there are none", () => {
