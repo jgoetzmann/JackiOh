@@ -169,6 +169,11 @@ const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
 const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
 /** R225 and R226's proofs: the hunt's eighth round, where it was halted. */
 const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
+/** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
+const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
+const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
+const AI_DECIDE_TEST = "../../ai/test/decide.test.ts";
+const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1575,9 +1580,91 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(178, CARDS_ECHO_AND_EXILE_TEST);
   });
 
-  // Proved by fuse-registry.test.ts's "R179 …" test: two matches, one process, one fusion slot.
+  // Proved by the cards package's fuse-registry.test.ts "R179 …" (two matches, one process, one
+  // fusion slot, with #85) and by this package's fuse-registry.test.ts "R179 …" (the scripts rebuilt
+  // from the id alone after a JSON round trip or a wholesale re-registration, and a fusion of a
+  // fusion's parenthesised id read back one way).
   it("R179 names a fused definition's ingredients in its id, so matches in one process never share one", () => {
-    provenIn(179, CARDS_FUSE_REGISTRY_TEST);
+    provenIn(179, CARDS_FUSE_REGISTRY_TEST, "fuse-registry.test.ts");
+  });
+
+  // R180 to R184 are the practice handicap (§9.9), proved by handicap.test.ts against createGame,
+  // beginGame, reduce and fold directly. R180's numbers are §9.9's table, so they are asserted here
+  // against `config.ts` as the "decide" rows' are.
+  it("R180 gives each seat an optional handicap, stores none equal to a human's, and folds it", () => {
+    expect(config.HUMAN_HANDICAP).toEqual({
+      deckSize: config.DECK_SIZE,
+      manaBonus: 0,
+      manaCap: config.MAX_MANA,
+      extraOpeningCards: 0,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.DIFFICULTIES).toEqual(["easy", "medium", "hard"]);
+    expect(config.AI_DIFFICULTY.easy).toEqual(config.HUMAN_HANDICAP);
+    expect(config.AI_DIFFICULTY.medium).toEqual({
+      deckSize: 25,
+      manaBonus: 1,
+      manaCap: 5,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.AI_DIFFICULTY.hard).toEqual({
+      deckSize: 30,
+      manaBonus: 1,
+      manaCap: 7,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 1,
+    });
+    provenIn(180, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R181 …": Medium refreshes to 2 on its first turn and 5 from its
+  // fourth, Hard to 7 from its sixth, Hinder and next-turn gains still apply on top.
+  it("R181 caps a handicapped seat's max mana at min(turns + bonus, cap), modifiers on top", () => {
+    provenIn(181, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R182 …": the mulligan sees 5 cards for a Medium or Hard p2 and 4
+  // for p1, and a Quickdraw card replaces one of those draws.
+  it("R182 adds a handicap's extra opening cards to §2.1's table entry", () => {
+    provenIn(182, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R183 …": two `drawn` events, fatigue N then N + 1, and a
+  // cast-on-draw prompt in the first draw owing the second to `state.work`.
+  it("R183 makes a handicap's extra draws separate §2.4 draws, each with its own chain and fatigue", () => {
+    expect(config.DRAWS_PER_TURN).toBe(1);
+    provenIn(183, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R184 …": a 30-card Hard p2 deck is accepted, and a wrong size,
+  // a duplicate or a Token is refused naming the seat.
+  it("R184 holds a handicapped seat's deck to its handicap's deck size and §2.6's other rules", () => {
+    provenIn(184, "handicap.test.ts");
+  });
+
+  // Proved by packages/ai observe.test.ts "R185 …": redact hashes identically across hidden-card
+  // differences, determinize loses nothing the seat can see, and decide does not move.
+  it("R185 lets the AI decide only from what its seat may know, simulating on determinizations", () => {
+    provenIn(185, AI_OBSERVE_TEST);
+  });
+
+  // Proved by packages/ai shadowBan.test.ts "R186 …": every entry is a real card with a sweep flag,
+  // and no AI deck is dealt one.
+  it("R186 keeps the AI's shadow ban to its own deck-building, each entry with a sweep reason", () => {
+    provenIn(186, AI_SHADOW_BAN_TEST);
+  });
+
+  // Proved by apps/web practice/core.test.ts "R187 …": a practice game folds from
+  // `(seed, decks, handicaps, log)` to the worker's hash at every difficulty.
+  it("R187 runs practice in the browser's worker, recording nothing and replaying exactly", () => {
+    provenIn(187, WEB_PRACTICE_CORE_TEST);
+  });
+
+  // Proved by packages/ai decide.test.ts "R188 …": an unanswered offer is declined at once, and no
+  // match log holds a concede, an offer or an accepting answer from the AI.
+  it("R188 has the AI decline every draw offer at once and never concede or offer one", () => {
+    provenIn(188, AI_DECIDE_TEST);
   });
 
   // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,

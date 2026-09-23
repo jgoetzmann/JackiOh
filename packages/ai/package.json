@@ -1,0 +1,18 @@
+{
+  "name": "@jackioh/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts"
+  },
+  "scripts": {
+    "sweep": "pnpm exec tsx scripts/sweep.ts"
+  },
+  "dependencies": {
+    "@jackioh/cards": "workspace:*",
+    "@jackioh/engine": "workspace:*",
+    "@jackioh/shared": "workspace:*"
+  }
+}

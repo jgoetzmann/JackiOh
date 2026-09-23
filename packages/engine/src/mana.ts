@@ -1,18 +1,21 @@
 // Mana refresh, temporary mana and the cost calculation (SPEC §2.3, §6.3 Cost, R65).
 
 import type { GameEvent } from "@jackioh/shared";
-import { MAX_MANA } from "./config";
 import { defOf } from "./catalog";
 import { scriptOf } from "./scripts";
-import type { CardInstance, GameState, PlayerModifier, PlayerState } from "./state";
+import { handicapOf, type CardInstance, type GameState, type PlayerModifier, type PlayerState } from "./state";
 
 /**
- * §2.3: "Max mana = min(number of turns you have started, 4), plus persistent modifiers", floored
- * at 0. `nextTurnMod` is not one of those: it is a one-shot rider on a single refresh, which the
- * refresh spends and clears, so it never reaches max mana.
+ * §2.3, R181: max mana is min(turns started + the seat's mana bonus, its mana cap), plus persistent
+ * modifiers, floored at 0. With no handicap the bonus is 0 and the cap is MAX_MANA, which is §2.3's
+ * "min(number of turns you have started, 4), plus persistent modifiers". `nextTurnMod` is not one of
+ * those: it is a one-shot rider on a single refresh, which the refresh spends and clears, so it never
+ * reaches max mana. Hinder and every other modifier apply on top of the capped value exactly as for
+ * a human.
  */
 export function maxManaFor(side: PlayerState): number {
-  const base = Math.min(side.turnsStarted, MAX_MANA);
+  const handicap = handicapOf(side);
+  const base = Math.min(side.turnsStarted + handicap.manaBonus, handicap.manaCap);
   return Math.max(0, base + side.mana.permMod);
 }
 
