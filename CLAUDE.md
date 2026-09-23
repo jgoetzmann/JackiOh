@@ -60,7 +60,7 @@ E2E (Cypress). The root `pnpm install` covers `e2e/`, as CI relies on. `e2e/` al
 
 ```
 E2E=1 pnpm --dir apps/web dev       # http://localhost:5173, serves /dev/hotseat
-E2E=1 pnpm --dir apps/server dev    # :8787 + /ws/match; needed for networked specs 05, 06, 07, 09, 10
+E2E=1 pnpm --dir apps/server dev    # :8787 + /ws/match; needed for networked specs 05, 06, 07, 09, 10, 13
 cd e2e && pnpm exec cypress run --spec cypress/e2e/01-hotseat-full-game.cy.ts
 pnpm --dir e2e test:component       # component/pixel specs, no server needed
 ```

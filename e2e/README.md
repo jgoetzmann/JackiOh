@@ -57,7 +57,7 @@ pnpm check:fixtures     # every deck fixture obeys L2/L3/L6 before a browser is 
 # 1. the client, in E2E mode
 E2E=1 pnpm --dir apps/web dev                  # must serve http://localhost:5173
 
-# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10
+# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10, 13
 E2E=1 pnpm --dir apps/server dev               # http://localhost:8787 and ws://…/ws/match (WS_PATH)
 
 # 3. the suite

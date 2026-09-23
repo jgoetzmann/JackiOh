@@ -251,6 +251,8 @@ describe("a single library deck (R171)", () => {
 
   it("R171 keeps L3, L5 and L6 on an incomplete deck", () => {
     const short = first.cards.slice(0, 3);
+    const unowned = { ...deckInput([...short, ARCHIVIST], true), collection: { ...input.collection, [ARCHIVIST]: 0 } };
+    expect(rulesOf(validateDeck(unowned))).toEqual(["L5"]);
     expect(rulesOf(validateDeck(deckInput([...short, short[0] ?? ""], true)))).toContain("L3");
     expect(rulesOf(validateDeck(deckInput([...short, NOT_IN_CATALOG], true)))).toEqual(["L6"]);
     expect(rulesOf(validateDeck(deckInput([...short, "core-051.1"], true)))).toEqual(["L3"]);
@@ -260,6 +262,15 @@ describe("a single library deck (R171)", () => {
     // The same cards in two library decks are two separate checks; neither knows of the other.
     expect(validateDeck(deckInput(first.cards))).toEqual({ ok: true });
     expect(validateDeck(deckInput(first.cards))).toEqual({ ok: true });
+  });
+});
+
+describe("card ids are data, not property names", () => {
+  it("reports an id named after an Object.prototype member as L6, never throwing", () => {
+    for (const cardId of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      const result = validateDeck({ deck: { cards: [cardId] }, catalog: catalog(), collection: collection(), allowIncomplete: true });
+      expect(rulesOf(result)).toEqual(["L5", "L6"]);
+    }
   });
 });
 

@@ -145,8 +145,8 @@ describe("the deck picker (R172)", () => {
     await waitFor(() => {
       expect(picker()).toHaveValue("library:first");
     });
-    // An incomplete deck is listed, disabled, with its count.
-    expect(option("library:short")).toBeDisabled();
+    // An incomplete deck is listed with its count, and still selectable: the server decides.
+    expect(option("library:short")).toBeEnabled();
     expect(option("library:short")?.textContent).toContain(
       `${String(DECK_SIZE - 1)}/${String(DECK_SIZE)}`,
     );

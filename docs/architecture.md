@@ -19,9 +19,9 @@ flowchart TD
   CDN["Static host / CDN"]
   AUTH["Supabase Auth<br/>email + password, verification"]
   PGR["Supabase Data API (PostgREST)<br/>role: authenticated"]
-  API["apps/server HTTP routes<br/>codes, collection, loadouts, queue, rooms"]
+  API["apps/server HTTP routes<br/>codes, collection, loadouts, decks, queue, rooms"]
   ACT["apps/server match actor<br/>one per live match"]
-  PG[("Supabase Postgres<br/>13 tables + private app schema")]
+  PG[("Supabase Postgres<br/>14 tables + private app schema")]
   ENG["packages/engine<br/>reduce / viewFor / fold"]
   CAT["packages/cards<br/>catalog.json + scripts"]
 
@@ -47,9 +47,9 @@ deployment decision that can be made later without touching the code.
 | --- | --- | --- | --- |
 | `apps/web` | Static bundle on any CDN | No | Rendering `viewFor`, composing intent, the bundled catalog |
 | Supabase Auth | Supabase | Managed | Signup, password hashing, email verification, sessions, JWTs |
-| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6, RLS, the private `app` schema |
+| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 and M9's `decks`, RLS, the private `app` schema |
 | Supabase Data API | Supabase | No | Read-only projections to the browser, RLS-enforced |
-| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, `saveLoadout`, enqueue, room create/join |
+| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, `saveLoadout`, the deck library (R171), enqueue, room create/join |
 | `apps/server` match actor | The same Node process | **Yes (in memory)** | `GameState`, two WebSockets, the turn clock, the action log |
 | `packages/engine` + `packages/cards` | Imported by both of the above | No (pure) | Every rule, `reduce`, `viewFor`, `fold` |
 

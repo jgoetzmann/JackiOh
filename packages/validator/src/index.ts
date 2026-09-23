@@ -86,9 +86,17 @@ function deckLabel(deck: LoadoutDeck, index: number): string {
   return deck.name ?? `Deck ${index + 1}`;
 }
 
+/**
+ * An own-property lookup. A card id is caller input, and a plain index would read `constructor` or
+ * `__proto__` off `Object.prototype`, which is neither a card nor a quantity.
+ */
+function own<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 /** §9.4: a failure names the card. `"Name" (id)` when catalogued, else the bare id. */
 function cardLabel(cardId: CardId, cards: CardDefs): string {
-  const def = cards[cardId];
+  const def = own(cards, cardId);
   return def === undefined ? `"${cardId}"` : `"${def.name}" (${cardId})`;
 }
 
@@ -183,7 +191,7 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
 
     for (const cardId of deckOrder) {
       const count = deckCounts.get(cardId) ?? 0;
-      const def = catalog.cards[cardId];
+      const def = own(catalog.cards, cardId);
 
       // L3 (tokens) — skipped for an unknown id: there is no def to read. L6 reports that id.
       if (def !== undefined && isToken(def)) {
@@ -241,7 +249,7 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
   // L5 — copies across the loadout never exceed the quantity owned; an absent id is 0 owned.
   for (const cardId of order) {
     const used = totals.get(cardId) ?? 0;
-    const owned = collection[cardId] ?? 0;
+    const owned = own(collection, cardId) ?? 0;
     if (used <= owned) continue;
     errors.push({
       rule: "L5",

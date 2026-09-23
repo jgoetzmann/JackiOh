@@ -7,10 +7,12 @@
 // this screen only relays what it said.
 //
 // THE DECK PICKER (R172). A match freezes either a loadout deck (`{ deckIndex }`) or one of the
-// account's library decks (`{ deckId }`). The picker offers the library's complete decks, lists the
-// incomplete ones disabled with their count (a count, not a verdict: the server still validates
-// the deck it freezes), and the loadout's decks when one is saved. Before its two reads land, and
-// if both fail, the choice is loadout deck 1, which is what this screen always sent.
+// account's library decks (`{ deckId }`). The picker offers every library deck, labelling a short
+// one with its count, and the loadout's decks when one is saved. Nothing is disabled: whether a
+// deck may be played is the server's verdict (CLAUDE.md rule 7), and picking a short deck gets the
+// validator's own L2 sentence back from the queue. The count only decides the default, which is
+// the first full library deck. Before the two reads land, and if both fail, the choice is loadout
+// deck 1, which is what this screen always sent.
 //
 // BOTH GAPS ARE CLOSED, and by the endpoint they asked for rather than by a workaround here.
 //
@@ -89,6 +91,7 @@ function choiceOf(key: string): DeckChoice {
   return key.startsWith("library:") ? { deckId: rest } : { deckIndex: Number(rest) };
 }
 
+/** A label and a default, never a gate: the server decides whether the deck is playable. */
 function isComplete(deck: LibraryDeck): boolean {
   return deck.cards.length === DECK_SIZE;
 }
@@ -191,7 +194,7 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
   const firstComplete = offer.library.find(isComplete);
   const choice: DeckChoice =
     picked ?? (firstComplete === undefined ? FALLBACK : { deckId: firstComplete.id });
-  const playable = firstComplete !== undefined || offer.loadout;
+  const playable = offer.library.length > 0 || offer.loadout;
 
   function run(work: () => Promise<void>): void {
     if (busy) return;
@@ -268,13 +271,13 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
           {playable ? null : (
             // Nothing to pick: the fallback is still what is sent, and the server says why not.
             <option value={keyOf(FALLBACK)} disabled>
-              No complete deck
+              No deck yet
             </option>
           )}
           {offer.library.length === 0 ? null : (
             <optgroup label="My decks">
               {offer.library.map((deck) => (
-                <option key={deck.id} value={keyOf({ deckId: deck.id })} disabled={!isComplete(deck)}>
+                <option key={deck.id} value={keyOf({ deckId: deck.id })}>
                   {isComplete(deck)
                     ? deck.name
                     : `${deck.name} (${String(deck.cards.length)}/${String(DECK_SIZE)})`}
