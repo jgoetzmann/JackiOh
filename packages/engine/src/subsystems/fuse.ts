@@ -11,8 +11,13 @@
 //
 // Second, the scripts are code, which no JSON state can hold. The concatenated pair therefore joins
 // the script registry under the new def id, exactly as `packages/cards` and the test fixtures
-// register theirs (`scripts.ts`): static data keyed by a deterministic id, so a replay of the same
-// action list rebuilds the same id and registers the same scripts (§9.3).
+// register theirs (`scripts.ts`), and the def records the ingredient ids it was built from
+// (`fusedFrom`), so the pair can always be rebuilt from the state alone. A `t-<n>` id is only unique
+// within one match, and the registry is the process's: every match on a server, and every world
+// the practice AI simulates beside the real game in its worker, would otherwise overwrite one
+// another's `t-1`. `syncFusedScripts` therefore re-registers a state's own pairs whenever the
+// registry holds someone else's, and the engine calls it wherever it is entered (`reduce`,
+// `legalActions`, `viewFor`), so a replay of the same action list runs the same scripts (§9.3).
 //
 // Third, R77 keeps an ingredient's *instance* when one of them is a target already on the field:
 // the fused card is that card, with its zone, damage, exertion, counters and memory intact, and the
@@ -21,13 +26,13 @@
 
 import type { CardDef, CardFace, CardType, Keyword, PlayerId, Rarity, Tag } from "@jackioh/shared";
 import { keywordKey } from "@jackioh/shared";
-import { defOf } from "../catalog";
+import { defOf, findDef } from "../catalog";
 import { FUSE_COST_CAP } from "../config";
 import { addToHand } from "../draw";
 import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
-import type { Script } from "../script";
+import type { CardScripts, Script } from "../script";
 import { registerScripts, registeredScripts, scriptsFor } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
 import { removeFromAnyZone } from "../zones";
@@ -165,12 +170,15 @@ function nextTransientId(state: GameState): string {
   return `t-${n}`;
 }
 
+/** A transient def plus the ingredient ids its scripts are rebuilt from (JSON, so it replays). */
+type FusedDef = CardDef & { fusedFrom: readonly string[] };
+
 function buildDef(
   state: GameState,
   ingredients: readonly CardInstance[],
   defs: readonly CardDef[],
   targetDef: CardDef | null,
-): CardDef {
+): FusedDef {
   const id = nextTransientId(state);
   return {
     id,
@@ -188,6 +196,7 @@ function buildDef(
     cost: fusedCost(state, ingredients),
     base: fusedFace(defs, false),
     radiant: fusedFace(defs, true),
+    fusedFrom: defs.map((def) => def.id),
   };
 }
 
@@ -294,6 +303,70 @@ function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
 }
 
 // ---------------------------------------------------------------------------
+// Keeping the process's registry in step with the state being run.
+// ---------------------------------------------------------------------------
+
+/** The ingredient ids a transient def was fused from, or null for a def this file did not build. */
+function fusedFromOf(def: CardDef | undefined): readonly string[] | null {
+  const from = (def as Partial<FusedDef> | undefined)?.fusedFrom;
+  return Array.isArray(from) ? from : null;
+}
+
+/**
+ * What a transient id means in this state, all the way down: `(core-011+core-020)`, or
+ * `((core-011+core-020)+core-008)` for a fusion of a fusion. Two states whose `t-1` is built from
+ * different cards give different identities, which is what tells a stale registry entry apart.
+ */
+function fusedIdentity(state: GameState, defId: string): string {
+  const from = fusedFromOf(state.transientDefs[defId]);
+  if (from === null) return defId;
+  return `(${from.map((id) => fusedIdentity(state, id)).join("+")})`;
+}
+
+/** What the registry holds for each transient id, as last written here, and which fusion it was. */
+const registeredFusions = new Map<string, { identity: string; scripts: CardScripts }>();
+
+function registerFused(state: GameState, defId: string, defs: readonly CardDef[]): void {
+  const scripts: CardScripts = { base: fusedScript(defs, false), radiant: fusedScript(defs, true) };
+  registerScripts({ ...registeredScripts(), [defId]: scripts });
+  registeredFusions.set(defId, { identity: fusedIdentity(state, defId), scripts });
+}
+
+/** `t-<n>`'s n, so ingredients (always older, so lower) are brought up to date first. */
+function transientOrder(defId: string): number {
+  const n = Number(defId.slice(defId.lastIndexOf("-") + 1));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Re-register this state's fused scripts wherever the registry holds another state's (§9.3, R77).
+ * Cheap when nothing changed: a state with no transient defs does nothing, and an entry that is
+ * still this state's own is left alone.
+ */
+export function syncFusedScripts(state: GameState): void {
+  const ids = Object.keys(state.transientDefs);
+  if (ids.length === 0) return;
+  ids.sort((a, b) => transientOrder(a) - transientOrder(b));
+  for (const defId of ids) {
+    const from = fusedFromOf(state.transientDefs[defId]);
+    if (from === null) continue;
+    const known = registeredFusions.get(defId);
+    if (
+      known !== undefined &&
+      known.identity === fusedIdentity(state, defId) &&
+      registeredScripts()[defId] === known.scripts
+    ) {
+      continue;
+    }
+    // A state that lost an ingredient's def has nothing to rebuild from; leave the registry be,
+    // so syncing never makes a state fail that the rest of the engine would still run.
+    const defs = from.map((id) => findDef(state, id));
+    if (defs.some((def) => def === undefined)) continue;
+    registerFused(state, defId, defs as CardDef[]);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The result.
 // ---------------------------------------------------------------------------
 
@@ -384,12 +457,9 @@ export function fuse(sink: EngineSink, args: FuseArgs): CardInstance | null {
   const targetDef = target === null ? null : defOf(state, target.defId);
   const def = buildDef(state, ingredients, defs, targetDef);
 
-  // The def is match state; the scripts are static data the registry holds, like the catalog.
+  // The def is match state; the scripts are rebuilt from it into the process's registry.
   state.transientDefs[def.id] = def;
-  registerScripts({
-    ...registeredScripts(),
-    [def.id]: { base: fusedScript(defs, false), radiant: fusedScript(defs, true) },
-  });
+  registerFused(state, def.id, defs);
 
   let result: CardInstance;
   if (target !== null) {

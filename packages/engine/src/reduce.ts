@@ -39,6 +39,7 @@ import type { EngineSink } from "./resolve";
 import { answerMulligan, beginSetup } from "./setup";
 import { flagsOf } from "./scripts";
 import { cloneState, findInstance, type CardInstance, type GameState } from "./state";
+import { syncFusedScripts } from "./subsystems/fuse";
 import { activatePower, whyCannotActivate } from "./subsystems/heroPower";
 import { settle } from "./triggers";
 import { answerDraw, canOfferDraw, concede, endTurn, offerDraw } from "./turn";
@@ -206,6 +207,7 @@ function rememberNonce(state: GameState, nonce: string, events: GameEvent[]): vo
 }
 
 export function reduce(state: GameState, action: Action, rng?: Rng): ReduceResult {
+  syncFusedScripts(state);
   const previous = state.applied.find((entry) => entry.nonce === action.nonce);
   if (previous !== undefined) return { state, events: previous.events };
 
@@ -278,6 +280,7 @@ function mulliganSubsets(ids: string[]): string[][] {
  * open, that prompt's own answers from `prompts.promptAnswers`.
  */
 export function legalActions(state: GameState, player: PlayerId): ActionBody[] {
+  syncFusedScripts(state);
   if (state.result !== null) return [];
 
   const pending = state.pending;

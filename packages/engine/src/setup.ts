@@ -7,7 +7,7 @@ import { OPENING_DRAW } from "./config";
 import { draw } from "./draw";
 import { runHook, type EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
-import { newInstance, type CardInstance, type PendingChoice } from "./state";
+import { handicapOf, newInstance, type CardInstance, type GameState, type PendingChoice } from "./state";
 import { startTurn } from "./turn";
 import { moveToZone } from "./zones";
 
@@ -18,6 +18,15 @@ function seatOf(player: PlayerId): number {
 /** §2.1: the Nth seat draws N+2, so the table is the source of truth, not two constants. */
 export function openingDrawFor(player: PlayerId): number {
   return OPENING_DRAW[seatOf(player)] ?? seatOf(player) + 3;
+}
+
+/**
+ * §2.1, R182: the seat's opening-draw table entry plus its handicap's extra cards. Quickdraw cards
+ * replace draws out of this total, so it is the size of the hand the mulligan sees. Hard carries
+ * Medium's one extra card rather than a second one of its own.
+ */
+export function openingHandSize(state: GameState, player: PlayerId): number {
+  return openingDrawFor(player) + handicapOf(state.players[player]).extraOpeningCards;
 }
 
 function mulliganPrompt(sink: EngineSink, player: PlayerId): PendingChoice {
@@ -69,7 +78,8 @@ export function beginSetup(sink: EngineSink): void {
       });
     }
 
-    const remaining = Math.max(0, openingDrawFor(player) - quickdraw.length);
+    // R182: a handicapped seat's extra opening cards are part of the same total Quickdraw replaces.
+    const remaining = Math.max(0, openingHandSize(state, player) - quickdraw.length);
     draw(sink, player, remaining);
   }
 

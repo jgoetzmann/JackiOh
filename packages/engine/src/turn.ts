@@ -19,7 +19,7 @@
 
 import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
-import { DRAW_OFFER_BLOCK_TURNS, TURN_CAP_PLAYER_TURNS } from "./config";
+import { DRAWS_PER_TURN, DRAW_OFFER_BLOCK_TURNS, TURN_CAP_PLAYER_TURNS } from "./config";
 import { draw } from "./draw";
 import { manaEvent, refreshMana } from "./mana";
 import { dropDelayed, dueDelayed, expireModifiers } from "./modifiers";
@@ -27,7 +27,14 @@ import { runResume } from "./prompts";
 import type { EngineSink, HookName } from "./resolve";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { findInstance, type CardInstance, type GameState, type Resume, type WorkItem } from "./state";
+import {
+  findInstance,
+  handicapOf,
+  type CardInstance,
+  type GameState,
+  type Resume,
+  type WorkItem,
+} from "./state";
 import { runTrapWindow } from "./traps";
 import { queueHooksInTriggerOrder, settle } from "./triggers";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
@@ -201,11 +208,17 @@ function startOfTurnTriggers(sink: EngineSink, player: PlayerId): void {
  * `addedToHand` (R58) — and without this they were emitted and never dispatched, so a trap that
  * answers one of them (#60 Bear Honeypot's `cardResolved`) never saw it. It only ever showed on a
  * direct `startTurn` call, because `reduce` settles at the end of every action.
+ *
+ * R183: the draw is DRAWS_PER_TURN plus the seat's handicap `extraDrawsPerTurn`, made as one
+ * "draw N". `draw` already makes N separate draws, each with its own cast-on-draw chain (R58), its
+ * own fatigue step (R3) and R158's pause handling: a prompt opened inside the first parks the rest
+ * on `state.work` ahead of the `main` step parked below, so the answer makes the owed draw and only
+ * then opens the main phase (R113).
  */
 function startOfTurnDraw(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
 
-  draw(sink, player, 1);
+  draw(sink, player, DRAWS_PER_TURN + handicapOf(state.players[player]).extraDrawsPerTurn);
   stateCheck(sink);
   settle(sink);
   if (state.result !== null) return;

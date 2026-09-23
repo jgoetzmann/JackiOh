@@ -1,14 +1,19 @@
 // Mana refresh, temporary mana and the cost calculation (SPEC §2.3, §6.3 Cost, R65).
 
 import type { GameEvent } from "@jackioh/shared";
-import { MAX_MANA } from "./config";
 import { defOf } from "./catalog";
 import { scriptOf } from "./scripts";
-import type { CardInstance, GameState, PlayerModifier, PlayerState } from "./state";
+import { handicapOf, type CardInstance, type GameState, type PlayerModifier, type PlayerState } from "./state";
 
-/** §2.3: max mana is min(turns started, 4) plus modifiers, floored at 0. */
+/**
+ * §2.3, R181: max mana is min(turns started + the seat's mana bonus, its mana cap), plus the
+ * persistent and next-turn modifiers, floored at 0. With no handicap the bonus is 0 and the cap is
+ * MAX_MANA, which is §2.3's min(turns, 4). Hinder and every other modifier apply on top of the
+ * capped value exactly as for a human.
+ */
 export function maxManaFor(side: PlayerState): number {
-  const base = Math.min(side.turnsStarted, MAX_MANA);
+  const handicap = handicapOf(side);
+  const base = Math.min(side.turnsStarted + handicap.manaBonus, handicap.manaCap);
   return Math.max(0, base + side.mana.permMod + side.mana.nextTurnMod);
 }
 

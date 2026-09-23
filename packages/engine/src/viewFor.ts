@@ -55,6 +55,7 @@ import {
   type PlayerState,
   type PromptOption,
 } from "./state";
+import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
 import { isReserved, slotsOf } from "./zones";
 
@@ -529,6 +530,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
  * caller passes the number in and it is `null` whenever nobody is counting.
  */
 export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | null = null): PlayerView {
+  syncFusedScripts(state);
   return {
     viewer: playerId,
     turn: state.turn,
