@@ -141,7 +141,7 @@ describe("#10 Rapid Replenish lights up at Combo 3 (R195, B5)", () => {
     expect(s.hand("p1")).toHaveLength(6);
   });
 
-  it("R195 B5: on the opponent's turn it never glows, though its controller's three plays still stand", () => {
+  it("R195 B5: on the opponent's turn it never glows, its controller's three plays over with their turn", () => {
     const s = scenario({
       seed: "r195-010-their-turn",
       p1: { hand: ["core-011", "core-011", "core-011", "core-010"], mana: 10, library: [...LIBRARY] },
@@ -156,8 +156,10 @@ describe("#10 Rapid Replenish lights up at Combo 3 (R195, B5)", () => {
     s.endTurn();
 
     expect(s.state.active).toBe("p2");
-    // Not vacuous: p1's three plays still stand until p1's own next turn starts.
-    expect(s.state.players.p1.turnLog.cardsPlayed).toBeGreaterThanOrEqual(3);
+    // "This turn" starts afresh for both players (§6.2, turn.ts's startTurn), so p1's three plays no
+    // longer count on p2's turn. That the hand is not even asked outside its own main phase, where a
+    // hook would answer true, is R195's rule 3, proved with a test-only hook in conditionActive.test.ts.
+    expect(s.state.players.p1.turnLog.cardsPlayed).toBe(0);
     expect(handGlows(s, spell)).toBe(false);
   });
 
@@ -516,7 +518,7 @@ describe("#93 Combo-Index lights up when its grade will rise (R195, B9)", () => 
     expect(grade(s)).toBe(6);
   });
 
-  it("R195 B9: on the opponent's turn it never glows, though its controller's plays still reach its grade", () => {
+  it("R195 B9: on the opponent's turn it never glows, its controller's plays over with their turn", () => {
     const s = board("r195-093-their-turn", COMBO_INDEX);
 
     s.play(FODDER[0]);
@@ -527,8 +529,9 @@ describe("#93 Combo-Index lights up when its grade will rise (R195, B9)", () => 
 
     expect(s.state.active).toBe("p2");
     expect(grade(s)).toBe(2);
-    // Not vacuous: p1's two plays still stand until p1's own next turn starts, and 2 reaches D.
-    expect(s.state.players.p1.turnLog.cardsPlayed).toBeGreaterThanOrEqual(2);
+    // "This turn" starts afresh for both players (§6.2, turn.ts's startTurn), so p1's two plays no
+    // longer count on p2's turn, and the hook's `yourTurn` would keep it dark even if they did.
+    expect(s.state.players.p1.turnLog.cardsPlayed).toBe(0);
     expect(indexGlows(s)).toBe(false);
   });
 
@@ -582,12 +585,14 @@ describe("R196 a crafted #53 Reno + #68 Twisted Sorcerer glows when either print
     s.play(fused, { targets: [{ pick: "instance", instanceId: sponge.id }] });
   }
 
-  it("R196 with the hero at 5 both conditions hold: it glows, and its Cry heals to 30 and deals 8", () => {
+  it("R196 with the hero at 5 both conditions hold: it glows, heals to 30, and the Sorcerer half then reads 30 and deals 4", () => {
     const { s, fused } = crafted("r196-both", 5);
 
     expect(handGlows(s, fused)).toBe(true);
     playAtSponge(s, fused);
-    s.expectHealth("p1", 30).expectStats(SPONGE, { health: 1, maxHealth: 9 });
+    // R102: each ingredient's list is built as the fused Cry reaches it, so the Sorcerer's
+    // "8 if your hero is below 10" reads the hero Reno has just set to 30.
+    s.expectHealth("p1", 30).expectStats(SPONGE, { health: 5, maxHealth: 9 });
   });
 
   it("R196 with the hero at 20 only Reno's holds: it still glows, heals to 30, and the Sorcerer half deals 4", () => {

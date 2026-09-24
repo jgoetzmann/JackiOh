@@ -12,7 +12,9 @@
  * SPEC §9.4 and §9.5 lean on and a laxer fixture would let a real bug pass the suite:
  *
  *  - `tx` snapshots every table and restores it if the callback throws, so §9.4's "writes
- *    `collection` and `collection_grants` in one transaction" is really all-or-nothing;
+ *    `collection` and `collection_grants` in one transaction" is really all-or-nothing, and runs
+ *    one transaction at a time (`createTransactionQueue`), so a transaction that rolls back never
+ *    takes another request's committed writes with it;
  *  - `redeem` runs §9.4's six steps in SPEC's order inside one `tx` and answers the same seven
  *    result codes `app.redeem_invite_code` does, so the redemption the server calls here is the
  *    redemption it calls in Postgres;
@@ -37,6 +39,8 @@
  * not import it (`src` must not depend on `test`) and that one carries no launch grant, so the
  * existing tests keep seeing the store their assertions were written against.
  */
+
+import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
   CODE_ATTEMPTS_PER_IP_PER_HOUR,
@@ -153,6 +157,17 @@ export function defaultRedemptionSettings(
  * Both in-memory stores share this one function — `src/api/e2e-store.ts` and
  * `test/fakes/store.ts` — so the two fakes cannot drift from each other while the contract suite
  * only runs against the first.
+ *
+ * CALLS RUN ONE AT A TIME. The in-memory steps await between reads and writes, so without
+ * serialisation two redemptions by one pending profile both passed step 1 across an `await` and one
+ * account used up two codes. Each call therefore waits for the one before it to settle, through a
+ * promise chain; a call that throws does not block the next.
+ *
+ * That is STRICTER than Postgres, not the same. `app.redeem_invite_code` serialises two redemptions
+ * only where they share something it locks: the profile row (step 1), the caller's IP hash (an
+ * advisory lock before step 3's count, migration 0006) and the code row (step 5). Two redemptions by
+ * different profiles from different addresses for different codes run side by side there. So a
+ * race this fixture cannot lose still needs `redeem-race.postgres.spec.ts` (`pnpm test:db`).
  */
 export function createInMemoryRedeem(deps: {
   store: Store;
@@ -162,8 +177,16 @@ export function createInMemoryRedeem(deps: {
 }): (input: RedeemInviteCodeInput) => Promise<RedeemResult> {
   const settings = defaultRedemptionSettings(deps.settings);
 
-  return async ({ profileId, codeHash, ipHash }) => {
+  // The tail of the queue: the promise the next call waits for. Never rejects.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const redeemOne = async ({
+    profileId,
+    codeHash,
+    ipHash,
+  }: RedeemInviteCodeInput): Promise<RedeemResult> => {
     const store = deps.store;
+    // Read once the call holds the queue, as the database reads its clock inside the transaction.
     const now = deps.now();
 
     // §9.4: "Redemption is one server-side transaction." In Postgres the whole of this is one
@@ -232,6 +255,40 @@ export function createInMemoryRedeem(deps: {
       return "ok";
     });
   };
+
+  return (input) => {
+    const run = queue.then(() => redeemOne(input));
+    queue = run.catch(() => undefined);
+    return run;
+  };
+}
+
+/**
+ * Transactions for an in-memory store, one at a time. A whole-table snapshot is the only rollback
+ * these stores have, so two transactions in flight at once would share it: the second joined the
+ * first through a depth counter, and when the first rolled back it took the second's writes with
+ * it, after the second's caller had been told they committed. Now a transaction waits for the one
+ * before it, and a `tx` called from inside a running transaction's body (anything it awaits
+ * included, which `AsyncLocalStorage` follows) joins it, as `Store.tx` promises (ports.ts).
+ */
+export type TransactionQueue = {
+  /** True inside a running transaction's body. */
+  active: () => boolean;
+  /** Runs `body` as a transaction once every one queued before it has settled. */
+  run: <T>(body: () => Promise<T>) => Promise<T>;
+};
+
+export function createTransactionQueue(): TransactionQueue {
+  const inside = new AsyncLocalStorage<true>();
+  let tail: Promise<unknown> = Promise.resolve();
+  return {
+    active: () => inside.getStore() === true,
+    run: <T>(body: () => Promise<T>): Promise<T> => {
+      const run = tail.then(() => inside.run(true, body));
+      tail = run.catch(() => undefined);
+      return run;
+    },
+  };
 }
 
 export type E2EStoreOptions = {
@@ -258,7 +315,7 @@ export type E2EStore = Store & {
 
 export function createE2EStore(options: E2EStoreOptions): E2EStore {
   let tables = emptyTables();
-  let depth = 0;
+  const transactions = createTransactionQueue();
   let nextProfile = 1;
 
   const store = {} as E2EStore;
@@ -312,17 +369,16 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
 
   store.tx = async <T>(fn: (t: Store) => Promise<T>): Promise<T> => {
     // Nested `tx` joins the enclosing transaction (ports.ts), so only the outermost one snapshots.
-    if (depth > 0) return fn(store);
-    const snapshot = clone(tables);
-    depth += 1;
-    try {
-      return await fn(store);
-    } catch (error) {
-      tables = snapshot;
-      throw error;
-    } finally {
-      depth -= 1;
-    }
+    if (transactions.active()) return fn(store);
+    return transactions.run(async () => {
+      const snapshot = clone(tables);
+      try {
+        return await fn(store);
+      } catch (error) {
+        tables = snapshot;
+        throw error;
+      }
+    });
   };
 
   // §9.4's redemption as one transaction. Built from this store's own methods, so R111's trigger
@@ -418,6 +474,10 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
     },
     countAttemptsByProfile: async (profileId, since) =>
       tables.attempts.filter((a) => a.profileId === profileId && a.at >= since).length,
+    oldestAttemptAtByProfile: async (profileId, since) => {
+      const times = tables.attempts.filter((a) => a.profileId === profileId && a.at >= since).map((a) => a.at);
+      return times.length === 0 ? null : Math.min(...times);
+    },
     countAttemptsByIp: async (ipHash, since) =>
       tables.attempts.filter((a) => a.ipHash === ipHash && a.at >= since).length,
     countFailures: async (since) =>

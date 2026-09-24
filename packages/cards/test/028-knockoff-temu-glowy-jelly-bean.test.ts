@@ -112,7 +112,13 @@ describe("#28 Knockoff Temu Glowy Jelly Bean — base", () => {
     s.play("core-028");
 
     expect(radiantInPool(s.state).sort()).toEqual(stays);
-    expect(s.lastEvents.filter((event) => event.type === "radiantSet")).toHaveLength(0);
+    // Nothing changed. R177: the picks R60 could not make are cued on the hidden cards of the union
+    // (the hand's, then the library's), never on the public 7/7, so the other seat's stream does not
+    // count how many hidden cards were Radiant already.
+    const cued = s.lastEvents.flatMap((event) => (event.type === "radiantSet" ? [event.instanceId] : []));
+    const hidden = [...s.state.players.p1.hand, ...s.state.players.p1.library].map((card) => card.id);
+    expect(cued.length).toBeGreaterThan(0);
+    for (const id of cued) expect(hidden).toContain(id);
   });
 });
 

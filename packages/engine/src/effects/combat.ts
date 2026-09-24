@@ -18,8 +18,10 @@
 
 import { opponentOf } from "@jackioh/shared";
 import { forceAttacksOn, type AttackTarget } from "../combat";
+import { summonedSoFar } from "../prompts";
 import type { Effect, EffectContext } from "../script";
-import { findInstance, type CardInstance } from "../state";
+import type { CardInstance } from "../state";
+import { exitMark } from "../stays";
 import { playOutTurn } from "../subsystems/aiPolicy";
 import { activeUnitsOf } from "../zones";
 import { playerOf, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
@@ -84,21 +86,18 @@ export type ForcedAttackerFilter = {
  * a test — falls back to 0, the whole action, which is what this read did before R136.
  */
 function freshlySummoned(ctx: EffectContext): Set<string> {
-  return new Set(
-    ctx.events
-      .slice(ctx.eventsFrom)
-      .flatMap((event) => (event.type === "summoned" ? [event.instanceId] : [])),
-  );
+  // A list a prompt split resumes in a later action, whose event list begins after the pause, so
+  // what its head summoned comes with the continuation (`prompts.summonedSoFar`, R113).
+  return new Set(summonedSoFar(ctx));
 }
 
 /** #60 names its target by the instance id its trigger read off the event (R42-style ids). */
 export type ForcedTarget = { instanceId: string } | { spec: TargetSpec };
 
 function targetOf(ctx: EffectContext, target: ForcedTarget): AttackTarget | null {
-  if ("instanceId" in target) {
-    const found = findInstance(ctx.state, target.instanceId);
-    return found === undefined ? null : { kind: "unit", instance: found };
-  }
+  // R174: the played unit #60 names by the id its trigger read is aimed at its stay as the run
+  // began, so a unit the list took off the field before this effect is gone, Reborn body or not.
+  if ("instanceId" in target) return resolveTarget(ctx, { of: "instance", instanceId: target.instanceId });
   return resolveTarget(ctx, target.spec);
 }
 
@@ -121,7 +120,9 @@ export function forcedAttacks(args: { attackers: ForcedAttackerFilter; target: F
         return fresh === null || fresh.has(unit.id);
       });
 
-      forceAttacksOn(ctx, attackers, target);
+      // R174, R53: the run is the list's, so its stays are the ones the list began with — the tokens
+      // it summoned are on them, and a target it took off the field is gone (`forceAttacksOn`).
+      forceAttacksOn(ctx, attackers, target, ctx.exitsFrom ?? exitMark(ctx.state));
     },
   };
 }
@@ -187,6 +188,10 @@ export function aiPlaysOutTurn(args: { player?: PlayerSpec } = {}): Effect {
     kind: "aiPlaysOutTurn",
     apply(ctx): void {
       const player = playerOf(ctx, args.player ?? "self");
+      // "The rest of their turn": with no turn of theirs running there is nothing to hand over. A
+      // #96 fused onto a #96 runs its second half after its first has played that turn out (R102),
+      // and a lockout set then would fall on the other player's turn, which no My Pawn took (R152).
+      if (ctx.state.active !== player || ctx.state.result !== null) return;
       ctx.state.players[player].aiTurn = true;
       playOutTurn(ctx, player);
     },

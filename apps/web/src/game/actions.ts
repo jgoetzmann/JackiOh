@@ -453,10 +453,13 @@ export function highlightFor(
   legal: readonly ActionBody[],
   interaction: Interaction,
 ): Highlight {
-  // Nothing is legal, so nothing lights up — including a selection that was in flight when the
-  // engine's answer changed under it. This reads the engine's answer rather than checking
-  // `view.result` or whose turn it is: `legalActions` already returns [] for both.
-  if (legal.length === 0 && interaction.stage !== "idle") return NO_HIGHLIGHT;
+  // Nothing but concede is legal, so a selection that was in flight when the engine's answer
+  // changed under it is dropped, and the board reads as idle. This reads the engine's answer rather
+  // than checking `view.result` or whose turn it is: `legalActions` returns [] once the game is
+  // over, and only concede while the other seat holds a prompt (R211).
+  if (interaction.stage !== "idle" && legal.every((body) => body.type === "concede")) {
+    return legal.length === 0 ? NO_HIGHLIGHT : highlightFor(view, legal, IDLE);
+  }
 
   const legalIds = new Set<string>();
   const selected = new Set<string>();

@@ -12,6 +12,8 @@
 
 import type { CardDefs } from "@jackioh/shared";
 
+import { API_REQUEST_TIMEOUT_SECONDS } from "../../../server/src/config.ts";
+
 const DEFAULT_HTTP_URL = "http://localhost:8787";
 
 /**
@@ -51,11 +53,29 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** The transport failed: no response at all. Distinct from a refusal, which has a code. */
+/**
+ * The transport failed: no response at all, or none within `API_REQUEST_TIMEOUT_SECONDS`. Distinct
+ * from a refusal, which has a code. Its message is a sentence for the player; the browser's own
+ * wording ("Failed to fetch", Safari's "Load failed") says nothing to them and is kept aside.
+ */
+export const API_UNREACHABLE_MESSAGE = "Couldn’t reach JackiOh. Check your connection, then try again.";
+
 export class ApiUnreachableError extends Error {
-  constructor(cause: unknown) {
-    super(`the server could not be reached: ${cause instanceof Error ? cause.message : String(cause)}`);
+  /** What the transport said, for a debugger; never shown. */
+  readonly transportError: unknown;
+
+  constructor(transportError: unknown) {
+    super(API_UNREACHABLE_MESSAGE);
     this.name = "ApiUnreachableError";
+    this.transportError = transportError;
+  }
+}
+
+/** Why a request was abandoned: it had not answered within `API_REQUEST_TIMEOUT_SECONDS`. */
+class ApiTimeoutError extends Error {
+  constructor() {
+    super(`no answer within ${String(API_REQUEST_TIMEOUT_SECONDS)} s`);
+    this.name = "ApiTimeoutError";
   }
 }
 
@@ -92,19 +112,48 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
   if (options.body !== undefined) headers["content-type"] = "application/json";
 
+  // A request that never answers (a stalled mobile network, a dead socket) must not leave a screen
+  // on "Checking your account…" or a button on "Redeeming…" for ever. The race is against our own
+  // timer as well as the abort, so a `fetch` that ignores its signal still gives up.
+  const controller = new AbortController();
+  const outer = options.signal;
+  if (outer !== undefined) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new ApiTimeoutError());
+    }, API_REQUEST_TIMEOUT_SECONDS * 1000);
+  });
+
   let response: Response;
+  let text: string;
   try {
-    response = await fetch(`${apiBaseUrl()}${path}`, {
-      method: options.method ?? "GET",
-      headers,
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
-  } catch (cause) {
-    throw new ApiUnreachableError(cause);
+    try {
+      response = await Promise.race([
+        fetch(`${apiBaseUrl()}${path}`, {
+          method: options.method ?? "GET",
+          headers,
+          ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+          signal: controller.signal,
+        }),
+        timedOut,
+      ]);
+    } catch (cause) {
+      throw new ApiUnreachableError(cause);
+    }
+    try {
+      text = await Promise.race([response.text(), timedOut]);
+    } catch (cause) {
+      throw new ApiUnreachableError(cause);
+    }
+  } finally {
+    clearTimeout(timer);
   }
 
-  const text = await response.text();
   let parsed: unknown = null;
   if (text.length > 0) {
     try {
@@ -158,8 +207,36 @@ export function getMe(token: string): Promise<MeResponse> {
 // passwords", which is the normal deployment. A second client helper pointing at it would be a
 // sign-in path that silently fails, so there is one and it is `net/auth.ts`.
 
-/** `GET /api/codes/status`: so the code screen can say "paused" instead of guessing. */
-export type CodeStatusResponse = { redemptionEnabled: boolean; retryAfterMs: number };
+/**
+ * `GET /api/codes/status`: so the code screen can say "paused" instead of guessing, and how many
+ * redemptions this account has left in §9.4's window. `attemptsRemaining` is optional because a
+ * server from before R192 does not send it; the screen then says nothing about tries rather than
+ * inventing a number. It is advisory: the per-IP limit can still refuse first (the 429 covers it).
+ */
+export type CodeStatusResponse = {
+  redemptionEnabled: boolean;
+  retryAfterMs: number;
+  attemptsRemaining?: number;
+  /**
+   * With no tries left, how long until this account's oldest counted attempt leaves the window and
+   * a try comes back; 0 otherwise (R192). Optional for the same reason as `attemptsRemaining`.
+   */
+  attemptsRetryAfterMs?: number;
+};
+
+/**
+ * R192: how long a `rate_limited` refusal says to wait, from its `details.retryAfterMs`. Null for
+ * any other error, and for a rate limit that did not say (a finite, non-negative number or
+ * nothing). Never read from any other code: R145's `invalid_code` carries no details on purpose.
+ */
+export function retryAfterMsOf(error: unknown): number | null {
+  if (!(error instanceof ApiRequestError) || error.code !== "rate_limited") return null;
+  const details = error.details;
+  if (typeof details !== "object" || details === null) return null;
+  const retryAfterMs = (details as { retryAfterMs?: unknown }).retryAfterMs;
+  if (typeof retryAfterMs !== "number" || !Number.isFinite(retryAfterMs) || retryAfterMs < 0) return null;
+  return retryAfterMs;
+}
 
 export function getCodeStatus(token: string): Promise<CodeStatusResponse> {
   return apiRequest<CodeStatusResponse>("/api/codes/status", { token });

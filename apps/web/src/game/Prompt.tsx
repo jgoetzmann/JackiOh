@@ -42,6 +42,7 @@ import {
   type PlayBuild,
   type PlayNeed,
 } from "./actions.ts";
+import { CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
 import { useCardInfo } from "./catalog.ts";
 import { sideOf } from "./contract.ts";
 import "./prompt.css";
@@ -308,6 +309,9 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
 // The modal.
 // ---------------------------------------------------------------------------------------------
 
+// Polish 6 (a minimal edit to task 7's file, flagged in the PR): a card option draws the card's face,
+// the one the hand and the deck builder draw, with the same hover preview and long-press sheet, in
+// whatever box prompt.css gives it. An option that names no card keeps its name and text.
 function CardOption(props: {
   item: PickerItem;
   pressed: boolean;
@@ -315,17 +319,37 @@ function CardOption(props: {
 }) {
   const info = useCardInfo(props.item.defId ?? "", props.item.radiant === true);
   const name = props.item.defId === undefined ? props.item.label : info.name;
+  const radiant = props.item.radiant === true;
+  const face =
+    props.item.defId === undefined
+      ? null
+      : faceModel({ defId: props.item.defId, def: info.def, name: info.name, radiant });
+  const testId = `prompt-option-${props.item.key}`;
+  const inspect = useInspectTrigger(face === null ? null : { key: testId, face }, { prefer: "above" });
   return (
-    <button
-      type="button"
-      className="prompt-card"
-      data-testid={`prompt-option-${props.item.key}`}
-      aria-pressed={props.pressed}
-      onClick={props.onPick}
-    >
-      <span className="prompt-card-name">{name}</span>
-      {info.text === "" ? null : <span className="prompt-card-text">{info.text}</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        className="prompt-card"
+        data-testid={testId}
+        aria-pressed={props.pressed}
+        aria-label={face === null ? undefined : name}
+        onClick={props.onPick}
+        {...inspect.handlers}
+      >
+        {face === null ? (
+          <>
+            <span className="prompt-card-name">{name}</span>
+            {info.text === "" ? null : <span className="prompt-card-text">{info.text}</span>}
+          </>
+        ) : (
+          <span className="cf-option">
+            <CardFace face={face} layout="full" />
+          </span>
+        )}
+      </button>
+      {inspect.overlay}
+    </>
   );
 }
 

@@ -67,10 +67,12 @@ describe("#27 Blood Ridden Glowy Jelly Bean — base", () => {
 
     s.startTurn();
 
-    // The pool was empty at resolution, so nothing was flagged and no event fired; the card R58's
-    // repeated draw brings up arrives afterwards and is untouched.
+    // The pool was empty at resolution, so nothing was flagged; the card R58's repeated draw brings
+    // up arrives afterwards and is untouched. R177: the hidden hand is still cued once, on a card that
+    // was Radiant already, so p2 cannot tell this hand from one the pick changed.
     for (const id of already) expect(s.card(id).radiant).toBe(true);
-    expect(s.lastEvents.filter((event) => event.type === "radiantSet")).toHaveLength(0);
+    const cues = s.lastEvents.flatMap((event) => (event.type === "radiantSet" ? [event.instanceId] : []));
+    expect(cues).toEqual([already[0]]);
     expect(radiantHand(s.state).sort()).toEqual([...already].sort());
   });
 

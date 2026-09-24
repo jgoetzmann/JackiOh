@@ -59,8 +59,22 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * `pnpm test:e2e` (spec 01 re-records `e2e/artifacts/01-hotseat-full-game.json` and checks the
  * browser against a fold of it), copy that file over the fixture here, and paste the hash this test
  * reports. Editing the number on its own turns the check into a rubber stamp.
+ *
+ * The one exception is a change to what the state RECORDS about the same game, which leaves the log
+ * as it is. The polish-4 hunt made three: the other player's turn log is emptied at each turn start
+ * (§6.2's "this turn"), and `lastDamagedBy` names only the hit that took a unit to 0 (R42). A fold of
+ * this log before and after the second differs in that field on three instances and nowhere else.
+ * The third: the turn log records what each play paid (`costsPaid`, R213), and a hand card's queued
+ * trigger no longer takes a number from `nextSeq` (R177). A fold before and after it differs in p1's
+ * `costsPaid` and in `nextSeq` and the two frontier ids it numbers, 4 lower, and nowhere else.
+ *
+ * Round 6 of the hunt moved it twice more, and moved the log's ids with it. `createGame` now numbers
+ * each deck's cards in an order of the seed's own (R223), so the log's 40 deck-card ids were relabeled
+ * through that mapping and nothing else in the log changed; and the state counts the field's
+ * departures (`fieldExits`, R174). A fold of the old log under the old numbering and a fold of the
+ * relabeled log, relabeled back, differ in `fieldExits` alone — the same game, action for action.
  */
-const EXPECTED_HASH = "addd656e";
+const EXPECTED_HASH = "aca6b485";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

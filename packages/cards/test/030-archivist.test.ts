@@ -83,20 +83,20 @@ describe("#30 Archivist — base", () => {
     expect(s.state.players.p1.hero.health).toBe(30); // no fatigue: nothing was drawn
   });
 
-  // PINNED GAP (engine, not this card — the `it.fails` convention of test/query.test.ts). "Draw"
-  // takes the card OUT of the library and fires a `drawn` event, and no verb in
-  // `engine/src/effects` moves an existing library card to a hand: `draw` takes the top, `addToHand`
-  // creates a fresh card, and `bounce` — which does move an existing card — takes only a
-  // `TargetSpec` and so cannot name an instance the hook computed. See the BLOCKED note in
-  // src/scripts/030-archivist.ts. This case turns green (and this `it.fails` then fails as an
-  // unexpected pass, which is the reminder to delete the `.fails`) when `drawFromLibrary` lands.
-  it.fails("R24 draws the card OUT of the library, so the library no longer holds it", () => {
+  // §6.3 Draw: "take the top card of your library" is the one Draw, and Archivist's names the card,
+  // so the card leaves the library as a draw (`drawFromLibrary`) rather than a copy landing in hand.
+  it("R24 draws the card OUT of the library, so the library no longer holds it and it arrives as a draw (§6.3 Draw, §2.4, R55)", () => {
     const s = archivist(["core-005", "core-025", "core-010"]);
+    const dearest = s.pile("p1", "library")[1];
+    const drawnBefore = s.state.counters.drawn;
 
     s.play("core-030", { modes: ["highest"] });
 
     expect(s.state.players.p1.library.map((card) => card.defId)).toEqual(["core-005", "core-010"]);
+    // The library card itself, not a fresh copy of its definition, and counted as a draw.
+    expect(s.hand("p1").map((card) => card.id)).toContain(dearest?.id);
     expect(s.lastEvents.filter((event) => event.type === "drawn")).toHaveLength(1);
+    expect(s.state.counters.drawn).toBe(drawnBefore + 1);
   });
 });
 

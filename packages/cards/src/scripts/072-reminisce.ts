@@ -60,6 +60,9 @@ function reminisce(price: () => Effect): Script {
   };
 }
 
-export const base: Script = reminisce(() => setCostMod({ target: { of: "chosen" }, amount: -1 }));
+// R4: the price is the card's in the hand it reached, so a pick a full hand burns keeps its cost.
+export const base: Script = reminisce(() => setCostMod({ target: { of: "chosen" }, amount: -1, inHandOnly: true }));
 
-export const radiant: Script = reminisce(() => setCostOverride({ target: { of: "chosen" }, cost: 0 }));
+export const radiant: Script = reminisce(() =>
+  setCostOverride({ target: { of: "chosen" }, cost: 0, inHandOnly: true }),
+);

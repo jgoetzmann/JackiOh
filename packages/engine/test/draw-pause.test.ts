@@ -44,7 +44,7 @@ import {
 } from "../src/draw";
 import { openPrompt, resumeSelf } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
-import { CAST_CRY_WORK } from "../src/resolve";
+import { PLAY_WORK_KIND } from "../src/playSteps";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
 import { newInstance, type CardInstance, type GameState } from "../src/state";
@@ -247,13 +247,14 @@ describe("a prompt inside §2.4's cast-on-draw chain (R58, R113, R117, R122)", (
     // R113 and R117: the remainder is owed — one more draw, continuing the chain at the count it
     // had. §9.3: plain data, so no closure and no captured library is held across the prompt.
     const parked = only(owedWork(state, DRAW_CHAIN_WORK));
-    expect(owedDrawChainOf(parked.resume)).toEqual({ player: "p1", chain: 2 });
+    // R217: the chain is the draw's own, so the item that finishes it closes it (`owns`).
+    expect(owedDrawChainOf(parked.resume)).toEqual({ player: "p1", chain: 2, owns: true });
     expect(JSON.parse(JSON.stringify(parked))).toEqual(parked);
     // R113's order, innermost first: the effects of the Cry after the one that asked, then the
     // cast's own tail (§10.5 steps 6 and 7), and only last the draw the chain still owes.
     expect(state.work.map((item) => item.resume.hook)).toEqual([
       "cry",
-      CAST_CRY_WORK,
+      PLAY_WORK_KIND,
       DRAW_CHAIN_WORK,
     ]);
 
@@ -262,6 +263,8 @@ describe("a prompt inside §2.4's cast-on-draw chain (R58, R113, R117, R122)", (
     expect(owedDrawChainOf(only(owedWork(round, DRAW_CHAIN_WORK)).resume)).toEqual({
       player: "p1",
       chain: 2,
+      // R217: the draw that began this chain finishes it, so the item closes it.
+      owns: true,
     });
 
     const done = answer(round);
@@ -382,7 +385,7 @@ describe("a prompt inside §2.4's 'draw N' loop (R58, R113, R117, R122)", () => 
     // cast's own tail ahead of both. §9.3: all plain data.
     expect(state.work.map((item) => item.resume.hook)).toEqual([
       "cry",
-      CAST_CRY_WORK,
+      PLAY_WORK_KIND,
       DRAW_CHAIN_WORK,
       DRAW_COUNT_WORK,
     ]);

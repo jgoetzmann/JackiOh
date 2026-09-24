@@ -18,8 +18,17 @@
 import type { CatalogQuery, Tag } from "@jackioh/shared";
 import { defByIndex, query } from "../catalog";
 import { CALL_TO_CHAOS_CHAIN_CAP } from "../config";
-import { addToHand, draw, gainMana, heal, setCostMod, setRadiant, summon } from "../effects";
-import { applyEffects, castCard, type EngineSink } from "../resolve";
+import {
+  addRandomFromCatalog,
+  draw,
+  gainMana,
+  heal,
+  setCostMod,
+  setRadiant,
+  summon,
+  summonRandom,
+} from "../effects";
+import { castCard, lazyPart, type EngineSink } from "../resolve";
 import type { Rng } from "../rng";
 import type { Effect, EffectContext } from "../script";
 import { newInstance, type CardInstance } from "../state";
@@ -78,21 +87,6 @@ function sinkOf(ctx: EffectContext): EngineSink {
   return { state: ctx.state, events: ctx.events, rng: ctx.rng };
 }
 
-/**
- * R60: cards generated from the catalog may repeat, so each of the `count` picks is its own uniform
- * draw from the whole pool. §10.7 makes `catalog.query` the only random pool, and its index order
- * makes the draw depend on (seed, cursor) alone.
- */
-function randomDefIds(ctx: EffectContext, q: CatalogQuery, count: number): string[] {
-  const pool = query(q);
-  const out: string[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const def = ctx.rng.pick(pool);
-    if (def !== undefined) out.push(def.id);
-  }
-  return out;
-}
-
 /** §7: a token summon needs the token's def id, which the catalog holds under its index. */
 function tokenDefId(index: string): string | null {
   return defByIndex(index)?.id ?? null;
@@ -100,15 +94,13 @@ function tokenDefId(index: string): string | null {
 
 /**
  * One of the ten effects, built when it resolves rather than when the hook returns it, so every
- * state read happens after the effects before it have landed.
+ * state read happens after the effects before it have landed. It is a part of the list that holds it
+ * (`resolve.lazyPart`), so an effect inside it that asks — a draw whose cast asks, in "draw your
+ * whole library and gain 4 mana" — pauses the rest of it until the answer (R113): the mana waits
+ * for the draw, as the partner waits for the recursion (R87).
  */
 function chaosEffect(name: ChaosEffectName, build: (ctx: EffectContext) => Effect[]): Effect {
-  return {
-    kind: `callToChaos:${name}`,
-    apply(ctx): void {
-      applyEffects(build(ctx), ctx);
-    },
-  };
+  return lazyPart(`callToChaos:${name}`, (ctx) => ({ effects: build(ctx) }));
 }
 
 /**
@@ -129,11 +121,15 @@ function onInstance(effect: Effect, instanceId: string): Effect {
 // The ten effects, in the order §8 #95 lists them.
 // ---------------------------------------------------------------------------
 
-/** 1. "Summon 3 random 3-cost Units": three independent picks (R60), placed per R64. */
+/**
+ * 1. "Summon 3 random 3-cost Units": three independent picks (R60), placed per R64. Each pick is its
+ * own `summonRandom`, which draws only when its unit has a zone to go to (R129), so a full row takes
+ * no draw for a summon that cannot land.
+ */
 export function summonRandomThreeCostUnits(): Effect {
-  return chaosEffect("units", (ctx) =>
-    randomDefIds(ctx, { type: "Unit", cost: CHAOS_UNIT_COST }, CHAOS_UNIT_COUNT).map((defId) =>
-      summon({ defId }),
+  return chaosEffect("units", () =>
+    Array.from({ length: CHAOS_UNIT_COUNT }, () =>
+      summonRandom({ query: { type: "Unit", cost: CHAOS_UNIT_COST } }),
     ),
   );
 }
@@ -156,14 +152,16 @@ export function drawLibraryAndGainMana(): Effect {
 }
 
 /**
- * 4. "Add 3 random cards to hand costing 0": three independent picks from the whole catalog, which
- * §5.1 already keeps free of tokens; the 0 is a `costOverride` on the new instance (R65). A full
- * hand burns what it cannot take (§2.4, R4).
+ * 4. "Add 3 random cards to hand costing 0": three independent picks (R60) from the whole catalog,
+ * which §5.1 keeps free of tokens and of the generating card — "never include the generating card's
+ * own definition, unless the card names the pool itself", and only the recursion names its pool —
+ * so no Call to Chaos is added. The 0 is a `costOverride` the card takes on reaching the hand (R65);
+ * a full hand burns what it cannot take (§2.4, R4), without the price.
  */
 export function addRandomZeroCostCards(): Effect {
-  return chaosEffect("add", (ctx) =>
-    randomDefIds(ctx, {}, CHAOS_ADDED_CARDS).map((defId) => addToHand({ defId, costOverride: 0 })),
-  );
+  return chaosEffect("add", () => [
+    addRandomFromCatalog({ count: CHAOS_ADDED_CARDS, costOverride: 0 }),
+  ]);
 }
 
 /**
@@ -211,12 +209,13 @@ export function summonChaosGolem(): Effect {
 
 /**
  * 9. "Summon 5 random Field Spells or Traps (Field Traps included, traps face-down) into your
- * backrow": five independent picks (R60). `summon` sends every one of those types to the backrow
- * and leaves a Trap or Field Trap face-down while a Field Spell is public (§3.2, R33).
+ * backrow": five independent picks (R60). `summonRandom` sends every one of those types to the
+ * backrow, leaves a Trap or Field Trap face-down while a Field Spell is public (§3.2, R33), and draws
+ * only for a summon that has a zone to go to (R129).
  */
 export function summonRandomBackrow(): Effect {
-  return chaosEffect("backrow", (ctx) =>
-    randomDefIds(ctx, CHAOS_BACKROW_QUERY, CHAOS_BACKROW_CARDS).map((defId) => summon({ defId })),
+  return chaosEffect("backrow", () =>
+    Array.from({ length: CHAOS_BACKROW_CARDS }, () => summonRandom({ query: CHAOS_BACKROW_QUERY })),
   );
 }
 
@@ -322,14 +321,24 @@ export function rollChaosEffects(rng: Rng, radiant: boolean): ChaosEffectDef[] {
  * instance's own flag, which is what `makeContext` put in the context (§5.2).
  */
 export function callToChaos(args: { radiant?: boolean } = {}): Effect {
-  return {
-    kind: "callToChaos",
-    apply(ctx): void {
-      const radiant = args.radiant ?? ctx.radiant;
-      applyEffects(
-        rollChaosEffects(ctx.rng, radiant).map((chosen) => chosen.build()),
-        ctx,
-      );
-    },
-  };
+  return lazyPart("callToChaos", (ctx, memo) => {
+    // R87: the pair resolves in order, the recursion's whole chain first, and a cast in that chain
+    // can ask — so the pair is a part of the Cry's list, and a pause inside it waits with the rest of
+    // it owed. What was rolled is the part's memo: resuming builds the same pair again, and rolls
+    // nothing a second time (§10.7).
+    const names = rolledNames(memo) ?? rollChaosEffects(ctx.rng, args.radiant ?? ctx.radiant).map((chosen) => chosen.name);
+    return {
+      effects: names.flatMap((name) => {
+        const chosen = chaosEffectByName(name);
+        return chosen === null ? [] : [chosen.build()];
+      }),
+      memo: names,
+    };
+  });
+}
+
+/** A roll kept across a pause (`EffectPart.memo`), read back defensively: it came through JSON. */
+function rolledNames(memo: unknown): string[] | null {
+  if (!Array.isArray(memo)) return null;
+  return memo.filter((name): name is string => typeof name === "string");
 }

@@ -1,6 +1,7 @@
 // #89 Corpse Eater (SPEC §8.5, BUILD M4-T4 row 89): "In hand it gains the dying unit's current
 // attack and max health from either side, tokens excluded (R11); stats per R38; stops once on the
-// field; radiant double".
+// field; radiant double". R219 (polish-4 edge-case hunt, round 5): a gain is never a loss, so a unit
+// #46 starved below 0 max health feeds it nothing.
 
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
@@ -15,6 +16,7 @@ const FELINORS = "core-012"; // 3/4
 const RENO = "core-053"; // 4/6
 const STRAAZA = "core-054"; // 8/8
 const FELINOR_TOKEN = "core-t-felinor"; // 1/1 unit token (§7)
+const SUPPRESSIVE_AURA = "core-046"; // −2/−2 to enemy units
 
 // §2.5: one always-playable card per hand keeps a scenario on the turn it started on.
 const FILLER = "core-005";
@@ -221,5 +223,26 @@ describe("#89 Corpse Eater — radiant", () => {
     s.attack(STRAAZA, GARY);
 
     s.expectStats(EATER, { attack: 6, maxHealth: 6 });
+  });
+});
+
+describe("#89 Corpse Eater — R219", () => {
+  it("R219 Corpse Eater gains nothing from a unit Suppressive Aura starved below 0 max health (R38, §10.4)", () => {
+    const g = scenario({
+      p1: { hand: [EATER, SUPPRESSIVE_AURA, FILLER] },
+      p2: { hand: [FILLER], field: [{ def: GARY, lane: 1 }] }, // 1/1
+    });
+    const eater = g.hand("p1").find((card) => card.defId === EATER);
+    if (eater === undefined) throw new Error("Corpse Eater in hand");
+
+    g.play(SUPPRESSIVE_AURA); // −2/−2: Gary is −1/−1 and dies at the state check (§4.5)
+    g.expectInZone(GARY, "graveyard");
+    const died = g.events.find((event) => event.type === "destroyed");
+    expect(died).toMatchObject({ attack: 0, maxHealth: -1 });
+
+    // "Whenever a unit dies, this GAINS its attack and max health": the unit had no attack and no
+    // max health to give, so the Eater in hand is still its printed 2/2 — it does not shrink by the
+    // −1 the aura dragged the dead unit's max health to.
+    expect(g.card(eater).buffs).toEqual({ attack: 0, health: 0 });
   });
 });

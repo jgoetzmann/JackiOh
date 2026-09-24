@@ -43,6 +43,8 @@ export const playTestid = {
   joinSubmit: "play-join-submit",
   status: "play-status",
   error: "play-error",
+  /** The way to `/practice` from here, until the landing page carries its own (polish task 5). */
+  practice: "play-practice",
 } as const;
 
 /** `POST /api/queue` (`apps/server/src/api/queue.ts`); `api.ts` types the call as `unknown`. */
@@ -234,6 +236,14 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
             Join
           </button>
         </form>
+      </section>
+
+      <section className="form-card">
+        <h2>Practice</h2>
+        <p>A game against the AI, right here in your browser: no queue, no rating, three difficulties.</p>
+        <a href={paths.practice} data-testid={playTestid.practice}>
+          Practice against the AI →
+        </a>
       </section>
 
       {status !== null ? (

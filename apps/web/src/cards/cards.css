@@ -1,0 +1,1334 @@
+/* Card faces (docs/polish/6-cards.md, Surface B). Frames, rarity, foil, the minion, the back.
+
+   Sizing. `.cf` sits in normal flow: `height: 100%` of whatever box it is given, a 5:7 aspect
+   ratio, `max-width: 100%`. Only `.cf-scale` inside it carries `container-type: size`, and
+   everything inside `.cf-scale` is positioned and sized in `cqh` / `cqw`, so the card scales as one
+   piece from a 60px board card to a 380px preview. Font sizes are
+   `calc(<base cqh> * <tier scale> * var(--cf-fit, 1))`: the tier scale comes inline from
+   TIER_SCALE (constants.ts) and `--cf-fit` from useFitText (fit.ts).
+
+   The root. `.card`'s box, highlight and motion belong to board.css and animations.css. This file
+   touches the root only through selectors that include `.cf-host`, and only padding, the resting
+   background and border-color (never while legal, selected or radiant, so those rules still win),
+   and user-select / touch-callout. It never sets width, height, overflow, transform, transition,
+   animation, box-shadow, outline, opacity, filter, cursor, touch-action or z-index on the root.
+
+   Global `.stat` (index.css, the account tiles) and board.css's old face rules (`.card-name`,
+   `.cost-gem`, `.stats`, `.keyword`, `.shield-icon`) share class names with the face, so every rule
+   here is scoped under `.cf` and resets what those set. */
+
+:root {
+  --rarity-common: #d9dde6;
+  --rarity-rare: #3d8bfd;
+  --rarity-epic: #a45cf0;
+  --rarity-legendary: #ff9f1c;
+  --rarity-mythic: #ff5fd2;
+  --rarity-token: #8a90a6;
+
+  --frame-unit: #7a6446;
+  --frame-spell: #3e5f9a;
+  --frame-field-spell: #3f7d5c;
+  --frame-trap: #8e3a4c;
+  --frame-field-trap: #6e3a8e;
+
+  --foil-gold: #ffd24a;
+}
+
+/* ------------------------------------------------------------------------------ the root --- */
+
+.card.cf-host {
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.card.cf-host:not([data-legal="true"]):not([data-selected="true"]):not(.radiant) {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* The root's badges stay siblings of `.cf` so they remain clickable while `.cf` ignores the
+   pointer. board.css pins them to the corners, which on a minion are the cost, attack and health
+   gems, so on a face they move.
+
+   The switch button is a real <button> on every field unit (disabled unless switching is legal),
+   so it must stay clear of the card's centre: a click there, from a player or from Cypress, has to
+   reach the card. It takes the top-right corner: the cost gem has the top left and the keyword
+   chips run down the left edge under it. Top right at 2px is also where polish task 7's board.css
+   puts it (`.board .switch-button`), so the two agree whichever wins after the merge. It is drawn
+   here as a small round badge because index.css's `.app-shell button` padding (9px 16px) would
+   otherwise blow it up into a dark slab across the portrait; `.card.cf-host--minion >
+   .switch-button` outranks that rule without touching board.css.
+
+   The counters (plague, grade) and a Stack pile's buried count sit on the portrait's right side,
+   above the name plate and below the switch button, so none of them covers the name, the cost or
+   the keyword chips. On a compact backrow face the counters sit on the art's lower left, above
+   the name.
+
+   The position tag names the position. ATK is every unit's resting state and DEF already turns the
+   card sideways, so ATK is kept for assistive tech but not drawn, and DEF gets a small steel tab
+   at the top edge (the bottom edge belongs to the stat gems and Armor). */
+.card.cf-host--minion > .position-tag {
+  top: 1px;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #c9d2e3, #6b7891);
+  color: #0d1220;
+  font-size: 0.55em;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.card.cf-host--minion[data-position="ATK"] > .position-tag {
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.card.cf-host--minion > .switch-button {
+  top: 2px;
+  right: 2px;
+  bottom: auto;
+  left: auto;
+  /* Above the counters and the buried count (3): on a phone board.css widens the switch's hit
+     area 16 px left and down with an invisible ::before (polish task 7, B29), and a badge drawn
+     under that reach must not take the tap. */
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: clamp(14px, 28%, 18px);
+  height: auto;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.4);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #3a4460, #121622);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  color: #e8ecf8;
+  font-size: clamp(9px, 1.1em, 13px);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.card.cf-host--minion > .switch-button:hover:not(:disabled) {
+  border-color: #fff;
+  background: radial-gradient(circle at 40% 35%, #56618a, #1c2233);
+}
+
+.card.cf-host--minion > .switch-button:disabled {
+  opacity: 0.35;
+}
+
+.card.cf-host--minion > .switch-button[data-legal="true"] {
+  border-color: var(--legal, #4ec98a);
+  box-shadow:
+    0 0 0 1px var(--legal, #4ec98a),
+    0 1px 3px rgb(0 0 0 / 0.7);
+}
+
+/* 39% from the bottom clears the stat gems and the name plate on every zone shape (their top is
+   35 to 37% up, see `--mf-stat` and `--mf-plate` below).
+
+   Polish task 7's board.css also places the counters and a Stack's buried count, for the face
+   before this one: on the line above the stats (`.zone .card-unit .counter`, `bottom: 22px`),
+   which on a minion is its name plate. The integration branch keeps the placement here (B21 in
+   card-faces.cy.tsx), so each rule also has a `.zone` form that outranks board.css's on the board,
+   whichever stylesheet loads last. */
+.card.cf-host--minion > .counter,
+.zone .card.cf-host--minion > .counter {
+  top: auto;
+  bottom: 39%;
+  z-index: 3;
+}
+
+.card.cf-host--minion > .counter-plague {
+  right: 2px;
+  left: auto;
+}
+
+.card.cf-host--minion > .counter-grade {
+  right: 18px;
+  left: auto;
+}
+
+.card.cf-host--compact > .counter {
+  top: auto;
+  bottom: 43%;
+  z-index: 3;
+}
+
+.card.cf-host > .buried-badge,
+.zone .card.cf-host > .buried-badge {
+  top: 26%;
+  right: 1px;
+  bottom: auto;
+  left: auto;
+  z-index: 3;
+}
+
+/* A card option in a prompt picker (a mulligan, a Discover, a card from hand): the whole face, as
+   wide as the option box prompt.css gives it (polish task 7's layout), at 5:7. The button keeps
+   prompt.css's box and highlight; the face is drawn inside its padding. */
+.cf-option {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  pointer-events: none;
+}
+
+.cf-option > .cf {
+  height: 100%;
+}
+
+/* index.css's `.app-shell button` pads every button 9px 16px, which squeezed the face to about
+   60% of the option box (48 px of an 82 px box at 1280x720). A card option lets its face fill the
+   box prompt.css draws, whatever size that is; an option without a face keeps its padding.
+   prompt.css (polish task 7) pads a big screen's card picker 8px for the text option it drew
+   before faces; the `.prompt` form outranks that rule too, whichever stylesheet loads last. */
+.app-shell .prompt-card:has(> .cf-option),
+.app-shell .prompt .prompt-card:has(> .cf-option) {
+  padding: 4px;
+}
+
+/* ------------------------------------------------------------------------------ the face --- */
+
+.cf {
+  /* The type's panel colour, and the panel actually drawn: the same, except on a Radiant face,
+     which gilds it without losing the type (below). */
+  --cf-type: var(--frame-unit);
+  --cf-frame: var(--cf-type);
+  --cf-rarity: var(--rarity-common);
+  --cf-edge: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--cf-rarity) 55%, #fff),
+    var(--cf-rarity) 40%,
+    color-mix(in srgb, var(--cf-rarity) 45%, #000)
+  );
+  --cf-ink: #fbf6ea;
+  /* The metal rim around the art window: bronze, warmed toward the rarity colour. */
+  --cf-bezel: color-mix(in srgb, var(--cf-rarity) 28%, #b8965a);
+  --cf-outline: 0 0 0.35cqh #000, 0 0.2cqh 0.25cqh #000, 0 0 0.12cqh #000;
+
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: 100%;
+  aspect-ratio: 5 / 7;
+  max-width: 100%;
+  margin-inline: auto;
+  border-radius: 7% / 5%;
+  background: var(--cf-edge);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+  color: var(--cf-ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  isolation: isolate;
+}
+
+.cf * {
+  box-sizing: border-box;
+}
+
+/* Type frames: the panel colour behind everything. */
+.cf[data-card-type="Spell"] {
+  --cf-type: var(--frame-spell);
+}
+
+.cf[data-card-type="Field Spell"] {
+  --cf-type: var(--frame-field-spell);
+}
+
+.cf[data-card-type="Trap"] {
+  --cf-type: var(--frame-trap);
+}
+
+.cf[data-card-type="Field Trap"] {
+  --cf-type: var(--frame-field-trap);
+}
+
+/* Rarity: the outer edge and the gem. */
+/* Common's edge is pewter rather than a mix of its near-white gem colour, which read as a bright
+   silver ring: brighter than a Rare or an Epic beside it, and easy to take for a selection. The
+   gem keeps --rarity-common's white, as Hearthstone's does. */
+.cf[data-rarity="Common"] {
+  --cf-edge: linear-gradient(150deg, #c3c8d2, #858b97 40%, #43474f);
+}
+
+.cf[data-rarity="Rare"] {
+  --cf-rarity: var(--rarity-rare);
+}
+
+.cf[data-rarity="Epic"] {
+  --cf-rarity: var(--rarity-epic);
+}
+
+.cf[data-rarity="Legendary"] {
+  --cf-rarity: var(--rarity-legendary);
+}
+
+.cf[data-rarity="Mythic"] {
+  --cf-rarity: var(--rarity-mythic);
+  --cf-edge: conic-gradient(
+    from 210deg,
+    #ff6ad5,
+    #c774e8,
+    #ad8cff,
+    #8795e8,
+    #94d0ff,
+    #7dffc6,
+    #ffe66d,
+    #ffb86b,
+    #ff6ad5
+  );
+}
+
+.cf[data-rarity="Token"] {
+  --cf-rarity: var(--rarity-token);
+}
+
+/* The Radiant face: a gold-foil frame whatever the rarity, as Hearthstone's golden cards keep
+   their frame's shape and their rarity gem. The panel is the type's colour gilded rather than
+   replaced, so a radiant Trap still reads red and a radiant Field Trap violet, and the gold edge
+   carries a tint of the rarity colour. */
+.cf[data-radiant-face="true"] {
+  --cf-frame: color-mix(in srgb, var(--foil-gold) 38%, var(--cf-type));
+  --cf-bezel: #f6d77a;
+  --cf-edge: linear-gradient(
+    135deg,
+    #fff5c2,
+    color-mix(in srgb, var(--cf-rarity) 30%, #d4a017) 28%,
+    #fff0a0 48%,
+    color-mix(in srgb, var(--cf-rarity) 38%, #b8860b) 68%,
+    #ffe680 88%,
+    color-mix(in srgb, var(--cf-rarity) 25%, #a8780a)
+  );
+  box-shadow:
+    0 0 0.5em color-mix(in srgb, var(--foil-gold) 60%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.55);
+}
+
+.cf-scale {
+  position: absolute;
+  inset: 1.2% 1.7%;
+  display: block;
+  overflow: hidden;
+  container-type: size;
+  container-name: cardface;
+  border-radius: 6% / 4.3%;
+  /* The panel's bevel: a dark inner rim, a lit upper edge and a shaded foot, so the frame reads as
+     a raised plate rather than a flat fill. */
+  box-shadow:
+    inset 0 0 0 0.5cqw rgb(0 0 0 / 0.42),
+    inset 0 0.45cqh 0 0.5cqw rgb(255 255 255 / 0.12),
+    inset 0 -2cqh 3cqh rgb(0 0 0 / 0.3);
+  background:
+    radial-gradient(120% 55% at 50% 28%, color-mix(in srgb, var(--cf-frame) 70%, #fff 30%), transparent 72%),
+    linear-gradient(
+      172deg,
+      color-mix(in srgb, var(--cf-frame) 85%, #fff),
+      var(--cf-frame) 38%,
+      color-mix(in srgb, var(--cf-frame) 50%, #000)
+    );
+}
+
+/* -------------------------------------------------------------------------- cost gem ------ */
+
+.cf .cost-gem {
+  position: absolute;
+  z-index: 3;
+  top: 1cqh;
+  right: auto;
+  bottom: auto;
+  left: 1.5cqw;
+  display: grid;
+  place-items: center;
+  width: 21cqw;
+  height: 21cqw;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #fff;
+  font-size: 11.5cqw;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 0 0.6cqw #000, 0 0.4cqw 0.5cqw #000;
+  isolation: isolate;
+}
+
+.cf .cost-gem::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%);
+  background:
+    radial-gradient(circle at 36% 28%, #d8ecff 0 10%, transparent 34%),
+    radial-gradient(circle at 45% 40%, #6aa7ff, var(--mana, #3d7bd4) 50%, #173a80 85%);
+  filter: drop-shadow(0 0.4cqw 0.6cqw rgb(0 0 0 / 0.7));
+}
+
+/* A three-digit price (Ceaseless Void's 100) steps down so it stays inside the crystal. */
+.cf .cost-gem[data-digits="3"] {
+  font-size: 7.6cqw;
+  letter-spacing: -0.04em;
+}
+
+.cf[data-layout="minion"] .cost-gem[data-digits="3"] {
+  font-size: 9cqmin;
+}
+
+.cf .cost-gem[data-tone="down"] {
+  color: #7dff9a;
+}
+
+.cf .cost-gem[data-tone="up"] {
+  color: #ff7a7a;
+}
+
+.cf .cf-cost-alt {
+  position: absolute;
+  right: -3.5cqw;
+  bottom: -1.5cqw;
+  display: grid;
+  place-items: center;
+  width: 9.5cqw;
+  height: 9.5cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #d7a8ff, #7a2fb3 60%, #3d1060);
+  box-shadow: 0 0 0 0.5cqw #1a1030;
+  color: #fff;
+  font-size: 5.6cqw;
+  font-weight: 800;
+}
+
+/* ------------------------------------------------------------------------------- crest ----- */
+
+.cf .cf-crest {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  display: block;
+  width: 52cqw;
+  height: 13cqh;
+  translate: -50% 0;
+  filter: drop-shadow(0 0.3cqh 0.4cqh rgb(0 0 0 / 0.6));
+}
+
+.cf[data-rarity="Mythic"] .cf-crest {
+  filter: hue-rotate(-60deg) saturate(1.5) drop-shadow(0 0 0.8cqh rgb(255 95 210 / 0.8));
+}
+
+.cf .cf-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------------- art --- */
+
+.cf .cf-art-frame {
+  position: absolute;
+  z-index: 1;
+  top: 5cqh;
+  left: 9cqw;
+  right: 9cqw;
+  display: block;
+  height: 37cqh;
+  filter: drop-shadow(0 0.4cqh 0.5cqh rgb(0 0 0 / 0.65));
+}
+
+/* The bezel: a metal ring hugging the art's own shape (its border-radius), then a dark keyline. */
+.cf .cf-art-frame > .cf-art {
+  box-shadow:
+    0 0 0 0.9cqw var(--cf-bezel),
+    0 0 0 1.4cqw rgb(0 0 0 / 0.5),
+    inset 0 0 0 1px rgb(0 0 0 / 0.35),
+    inset 0 -0.6em 1.2em rgb(0 0 0 / 0.22);
+}
+
+/* A notched trap window clips its own shadow away, so its ring is a larger notched plate behind. */
+.cf[data-card-type="Trap"] .cf-art-frame::before,
+.cf[data-card-type="Field Trap"] .cf-art-frame::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -1.2cqw;
+  clip-path: polygon(10% 0, 90% 0, 100% 13%, 100% 87%, 90% 100%, 10% 100%, 0 87%, 0 13%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cf-bezel) 80%, #fff), var(--cf-bezel) 45%, color-mix(in srgb, var(--cf-bezel) 55%, #000));
+}
+
+/* A Field Trap's window is a tall hexagon rather than the Trap's chamfered box, so the two trap
+   types differ at a glance, radiant faces included. */
+.cf[data-card-type="Field Trap"] .cf-art-frame > .cf-art--notched,
+.cf[data-card-type="Field Trap"] .cf-art-frame::before {
+  clip-path: polygon(50% 0, 100% 14%, 100% 86%, 50% 100%, 0 86%, 0 14%);
+}
+
+.cf[data-card-type="Unit"] .cf-art-frame {
+  top: 3.5cqh;
+  left: 13cqw;
+  right: 13cqw;
+  height: 40cqh;
+}
+
+/* --------------------------------------------------------------------------- name ribbon --- */
+
+/* board.css (polish task 7) floats a spacer at the start of the old face's `.card-name`, to step
+   round a cost gem in its top-left corner (and, on a field tile, round the switch button). A face's
+   name sits in its own ribbon with no gem beside it, and the spacer would push a one-line name
+   onto a second line, so a face has none. It also caps the old name at two or three lines in `em`
+   (`max-height`), which under a shrunk font (useFitText's --cf-fit) is less than one of the
+   ribbon's lines: a face's name box is its ribbon, so it has no cap. `.card.cf-host` outranks
+   board.css's hand and field variants of the cap, whichever stylesheet loads last. */
+.cf .card-name::before {
+  content: none;
+}
+
+.cf .card-name,
+.card.cf-host .cf .card-name {
+  max-height: none;
+}
+
+.cf .card-name {
+  position: absolute;
+  z-index: 2;
+  top: 42cqh;
+  left: 3cqw;
+  right: 3cqw;
+  display: block;
+  height: 7.6cqh;
+  margin: 0;
+  padding: 0 6cqw;
+  overflow: hidden;
+  white-space: nowrap;
+  /* Clip, not ellipsis: useFitText allows a pixel of slack, and a name that fits to within a
+     fraction of a pixel still has the ribbon's padding to run into. An ellipsis there cut
+     "Knockoff Temu Glowy Jelly Bean" to "…Jelly Be…" on a 270px card. It returns with
+     data-clamped, when even FIT_MIN will not fit. */
+  text-overflow: clip;
+  word-break: normal;
+  -webkit-line-clamp: none;
+  line-height: 7.6cqh;
+  font-size: calc(5.2cqh * var(--cf-name-scale, 1) * var(--cf-fit, 1));
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow: var(--cf-outline);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cf-frame) 60%, #fff),
+    color-mix(in srgb, var(--cf-frame) 80%, #000) 55%,
+    color-mix(in srgb, var(--cf-frame) 45%, #000)
+  );
+  clip-path: polygon(0 0, 100% 0, 96% 50%, 100% 100%, 0 100%, 4% 50%);
+}
+
+/* ---------------------------------------------------------------------------- rarity gem --- */
+
+.cf .cf-gem {
+  position: absolute;
+  z-index: 3;
+  top: 50.2cqh;
+  left: 50%;
+  display: block;
+  width: 4.6cqh;
+  height: 4.6cqh;
+  translate: -50% 0;
+  rotate: 45deg;
+  border-radius: 0.6cqh;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #fff 0 10%,
+    var(--cf-rarity) 48%,
+    color-mix(in srgb, var(--cf-rarity) 50%, #000)
+  );
+  box-shadow:
+    0 0 0 0.35cqh #2a2116,
+    0 0 1cqh color-mix(in srgb, var(--cf-rarity) 70%, transparent);
+}
+
+.cf .cf-gem[data-rarity="Mythic"] {
+  background: conic-gradient(from 0deg, #ff6ad5, #ad8cff, #94d0ff, #7dffc6, #ffe66d, #ff6ad5);
+}
+
+.cf .cf-gem .cf-icon {
+  opacity: 0.6;
+  mix-blend-mode: screen;
+}
+
+/* ----------------------------------------------------------------------------- rules box --- */
+
+.cf .card-text {
+  position: absolute;
+  z-index: 1;
+  top: 55.5cqh;
+  left: 7cqw;
+  right: 7cqw;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  height: 31.5cqh;
+  margin: 0;
+  padding: 1.6cqh 3cqw;
+  overflow: hidden;
+  border-radius: 2.5cqw;
+  background:
+    radial-gradient(120% 90% at 50% 40%, #f6ecd4, #e3d2ac 70%, #c9b48a),
+    #eadcb8;
+  box-shadow:
+    inset 0 0 0 0.35cqw rgb(60 40 10 / 0.45),
+    inset 0 0.5cqh 1cqh rgb(0 0 0 / 0.18);
+  color: #2b2116;
+  font-size: calc(4.4cqh * var(--cf-text-scale, 1) * var(--cf-fit, 1));
+  font-weight: 500;
+  line-height: 1.18;
+  text-align: center;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.cf .cf-text-base,
+.cf .cf-text-radiant {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.cf .cf-text-radiant {
+  margin-top: 0.35em;
+  padding-top: 0.3em;
+  border-top: 0.3cqh solid color-mix(in srgb, var(--foil-gold) 80%, #7a5200);
+  color: #5e3f00;
+}
+
+/* A radiant clause that replaced the only base clause (Bigot's Cry) has nothing above its rule. */
+.cf .cf-text-base:empty {
+  display: none;
+}
+
+.cf .cf-text-base:empty + .cf-text-radiant {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.cf .cf-term {
+  font-weight: 800;
+  color: inherit;
+}
+
+/* useFitText could not fit it even at FIT_MIN: clamp with an ellipsis rather than spill. */
+.cf .card-text[data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 14;
+}
+
+.cf .card-name[data-clamped="true"] {
+  text-overflow: ellipsis;
+}
+
+.cf[data-radiant-face="true"] .card-text {
+  background:
+    radial-gradient(120% 90% at 50% 40%, #fff6d6, #f1d98c 70%, #d9b458),
+    #f3dfa0;
+}
+
+/* --------------------------------------------------------------------- tags and type line --- */
+
+.cf .cf-tags {
+  position: absolute;
+  z-index: 2;
+  bottom: 6.6cqh;
+  left: 21cqw;
+  right: 21cqw;
+  display: flex;
+  justify-content: center;
+  gap: 1cqw;
+  height: 4.6cqh;
+  overflow: hidden;
+}
+
+.cf .cf-tag {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 4.6cqh;
+  padding: 0 2.2cqw;
+  overflow: hidden;
+  border-radius: 2.3cqh;
+  background: linear-gradient(180deg, #3a3326, #1d1911);
+  box-shadow: inset 0 0 0 0.25cqh color-mix(in srgb, var(--cf-rarity) 60%, #8a7650);
+  color: #f3e7c3;
+  font-size: 2.9cqh;
+  font-weight: 700;
+  line-height: 4.6cqh;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cf .card-type {
+  position: absolute;
+  z-index: 2;
+  bottom: 1.6cqh;
+  left: 22cqw;
+  right: 22cqw;
+  display: block;
+  height: 4.4cqh;
+  margin: 0;
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.85);
+  font-size: 3cqh;
+  font-weight: 700;
+  line-height: 4.4cqh;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: var(--cf-outline);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------------------- sword, drop --- */
+
+.cf .cf-stats {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 16cqh;
+  pointer-events: none;
+}
+
+.cf .cf-atk,
+.cf .cf-hp {
+  position: absolute;
+  bottom: 1.2cqh;
+  display: grid;
+  place-items: center;
+  width: 19cqw;
+  height: 19cqw;
+}
+
+.cf .cf-atk {
+  left: 1.5cqw;
+}
+
+.cf .cf-hp {
+  right: 1.5cqw;
+}
+
+.cf .cf-atk .cf-icon,
+.cf .cf-hp .cf-icon {
+  position: absolute;
+  inset: 0;
+}
+
+.cf .cf-num {
+  position: relative;
+  color: #fff;
+  font-size: 10cqw;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 0 0.6cqw #000, 0 0.4cqw 0.5cqw #000, 0 0 0.2cqw #000;
+}
+
+/* Tones, as Hearthstone colours them: green above the printed number, red below it or wounded.
+   A red number cannot read on the red drop, so a wounded drop darkens behind it. */
+.cf [data-tone="buffed"] > .cf-num {
+  color: #7dff9a;
+}
+
+.cf [data-tone="reduced"] > .cf-num {
+  color: #d40000;
+  text-shadow: 0 0 0.5cqw #fff4d0, 0 0 0.8cqw #000, 0 0.4cqw 0.5cqw #000;
+}
+
+.cf [data-tone="damaged"] > .cf-num,
+.cf .cf-hp[data-tone="reduced"] > .cf-num {
+  color: #ff5a5a;
+  text-shadow: 0 0 0.6cqw #000, 0 0.4cqw 0.5cqw #000, 0 0 0.2cqw #000;
+}
+
+.cf .cf-hp[data-tone="damaged"] > .cf-icon,
+.cf .cf-hp[data-tone="reduced"] > .cf-icon {
+  filter: brightness(0.42) saturate(0.85);
+}
+
+/* ------------------------------------------------------------ compact: a face-up backrow card --- */
+
+.cf[data-layout="compact"] .cf-art-frame,
+.cf[data-layout="compact"][data-card-type="Unit"] .cf-art-frame {
+  top: 7cqh;
+  left: 8cqw;
+  right: 8cqw;
+  height: 52cqh;
+}
+
+.cf[data-layout="compact"] .card-name {
+  top: 60cqh;
+  height: 9cqh;
+  line-height: 9cqh;
+  font-size: calc(6.2cqh * var(--cf-name-scale, 1) * var(--cf-fit, 1));
+}
+
+.cf[data-layout="compact"] .cf-gem {
+  top: 71cqh;
+}
+
+.cf[data-layout="compact"] .card-type {
+  bottom: 8cqh;
+  font-size: 4cqh;
+}
+
+/* ------------------------------------------------ small faces: art, name and numbers only --- */
+
+/* 149 mirrors FACE_TEXT_MIN_HEIGHT_PX (constants.ts): below 150px of face the rules box, the tags
+   and the type line hide (they stay in the DOM), and the art, name and numbers grow into the room.
+
+   A small face is a hand card or a face-up backrow card, 60 to 150px tall, and its name is what a
+   player reads it by. So the name gets two lines at about a tenth of the face's height (7px on a
+   68px card, where one line of the ribbon had shrunk it to 5px), in the band a full face gives its
+   rules box. A Unit keeps its numbers in the bottom corners below the name; everything else lets
+   the art and the name take that room. The rarity gem moves to the top-right corner, opposite the
+   cost, because the name now fills the band it sat in.
+
+   Scoped `:not([data-layout="minion"])`: the board minion has a layout of its own below and is
+   usually this small too. The selectors carry the extra attribute on purpose, so they outrank the
+   compact rules above whatever the source order. */
+@container cardface (max-height: 149px) {
+  .cf:not([data-layout="minion"]) .card-text,
+  .cf:not([data-layout="minion"]) .card-text[data-clamped="true"],
+  .cf:not([data-layout="minion"]) .cf-tags,
+  .cf:not([data-layout="minion"]) .card-type {
+    display: none;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-art-frame,
+  .cf:not([data-layout="minion"])[data-card-type] .cf-art-frame {
+    top: 7cqh;
+    left: 7cqw;
+    right: 7cqw;
+    height: 43cqh;
+  }
+
+  .cf:not([data-layout="minion"]):not([data-card-type="Unit"]) .cf-art-frame {
+    height: 50cqh;
+  }
+
+  .cf:not([data-layout="minion"]) .card-name,
+  .cf:not([data-layout="minion"])[data-layout] .card-name {
+    top: 52cqh;
+    left: 2cqw;
+    right: 2cqw;
+    display: flex;
+    align-items: safe center;
+    justify-content: center;
+    height: 25cqh;
+    padding: 0 3.5cqw;
+    border-radius: 2.2cqh;
+    white-space: normal;
+    line-height: 1.04;
+    font-size: calc(10.4cqh * var(--cf-fit, 1));
+    letter-spacing: 0;
+    clip-path: none;
+  }
+
+  .cf:not([data-layout="minion"]):not([data-card-type="Unit"]) .card-name {
+    top: 59cqh;
+    height: 31cqh;
+  }
+
+  /* Two lines, then an ellipsis, if even FIT_MIN will not fit. */
+  .cf:not([data-layout="minion"]) .card-name[data-clamped="true"] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-gem,
+  .cf:not([data-layout="minion"])[data-layout] .cf-gem {
+    top: 2.2cqh;
+    left: auto;
+    right: 4.5cqw;
+    width: 7.5cqh;
+    height: 7.5cqh;
+    translate: none;
+  }
+
+  .cf:not([data-layout="minion"]) .cost-gem {
+    width: 30cqw;
+    height: 30cqw;
+    font-size: 17cqw;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-cost-alt {
+    display: none;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-crest {
+    width: 56cqw;
+    height: 11cqh;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-stats {
+    height: 26cqh;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-atk,
+  .cf:not([data-layout="minion"]) .cf-hp {
+    bottom: 0.5cqh;
+    width: 30cqw;
+    height: 30cqw;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-atk {
+    left: 0;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-hp {
+    right: 0;
+  }
+
+  .cf:not([data-layout="minion"]) .cf-num {
+    font-size: 16cqw;
+  }
+}
+
+/* ------------------------------------------------------------------------------- minion ----- */
+
+/* The board minion, bottom up: the attack and health gems on the bottom corners, the name plate
+   directly above them, and the oval portrait over the rest, its lower rim tucked under the plate.
+   Every vertical offset derives from one gem size, `--mf-stat`, so the plate can never slide under
+   the gems whatever the zone's aspect ratio (a 48x66 phone zone or a 120x150 preview). */
+.cf[data-layout="minion"] {
+  --mf-stat: min(30cqmin, 26cqh);
+  /* Never shorter than the name's 7.5px floor needs (below): on a 58x80 zone 11cqh is 9px. */
+  --mf-plate: max(11cqh, 10px);
+
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  border-radius: 12% / 9%;
+}
+
+.cf[data-layout="minion"] .cf-scale {
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(90% 70% at 50% 38%, color-mix(in srgb, var(--cf-frame) 55%, #1d1a14), transparent 75%),
+    linear-gradient(180deg, #2a2620, #14120e);
+  box-shadow:
+    inset 0 0 0 0.6cqmin rgb(255 255 255 / 0.08),
+    inset 0 -3cqh 5cqh rgb(0 0 0 / 0.45);
+}
+
+.cf .cf-portrait {
+  position: absolute;
+  z-index: 1;
+  top: 3cqh;
+  left: 9cqw;
+  right: 9cqw;
+  bottom: calc(var(--mf-stat) + var(--mf-plate) * 0.5);
+  display: block;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1.4cqmin var(--cf-rarity),
+    0 0 0 2.2cqmin rgb(0 0 0 / 0.55),
+    0 0.6cqmin 1.6cqmin rgb(0 0 0 / 0.75);
+  isolation: isolate;
+}
+
+.cf[data-radiant-face="true"] .cf-portrait {
+  box-shadow:
+    0 0 0 1.6cqmin var(--foil-gold),
+    0 0 3.5cqmin color-mix(in srgb, var(--foil-gold) 75%, transparent);
+}
+
+.cf[data-rarity="Mythic"] .cf-portrait {
+  box-shadow:
+    0 0 0 1.4cqmin #ff6ad5,
+    0 0 0 2.6cqmin #94d0ff,
+    0 0 3cqmin rgb(255 106 213 / 0.6);
+}
+
+/* Taunt: Hearthstone's big shield-shaped border. A steel shield stands behind the portrait and
+   shows past it on every side, and the portrait's ring turns steel too, so a Taunt reads at a
+   glance even on a 48px phone zone. */
+.cf[data-taunt="true"] .cf-portrait {
+  box-shadow:
+    0 0 0 1.6cqmin #c3cad8,
+    0 0 0 2.6cqmin #2b303b,
+    0 0.6cqmin 1.6cqmin rgb(0 0 0 / 0.75);
+}
+
+.cf[data-taunt="true"] .cf-portrait::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -3cqh -8.5cqw -9cqh;
+  clip-path: polygon(50% 0, 97% 9%, 95% 56%, 50% 100%, 5% 56%, 3% 9%);
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 0.18), transparent 30% 70%, rgb(0 0 0 / 0.25)),
+    linear-gradient(180deg, #e3e7ef, #9aa3b8 40%, #5a6275 75%, #3a404e);
+}
+
+.cf[data-layout="minion"] .cf-crest {
+  top: 0;
+  width: 62cqw;
+  height: 12cqh;
+}
+
+.cf[data-layout="minion"] .cost-gem {
+  top: 0.5cqh;
+  left: 0.5cqw;
+  width: 24cqmin;
+  height: 24cqmin;
+  font-size: 13cqmin;
+}
+
+/* The name plate: a small banner across the portrait's lower rim, clear of the gems below. */
+.cf[data-layout="minion"] .card-name {
+  top: auto;
+  bottom: calc(var(--mf-stat) - 0.5cqh);
+  left: 3cqw;
+  right: 3cqw;
+  height: var(--mf-plate);
+  padding: 0 4cqw;
+  line-height: var(--mf-plate);
+  /* The floor: a board minion is 40 to 60px wide until task 7's zones grow, where 7.4cqh
+     is a 4-6px name nobody can read. Below 7.5px the name stays readable and ends in an ellipsis
+     instead (useFitText marks it data-clamped), and the hover preview shows it whole. */
+  font-size: max(7.5px, calc(7.4cqh * var(--cf-fit, 1)));
+  border-radius: 1.2cqh;
+  box-shadow:
+    0 0.4cqh 0.8cqh rgb(0 0 0 / 0.55),
+    inset 0 0.3cqh 0 rgb(255 255 255 / 0.18);
+  clip-path: none;
+}
+
+/* One row along the bottom: attack on the left, health on the right, and Armor tucked against
+   health's left side. A row rather than three absolute corners, so a wide "10/10" health pill
+   pushes Armor aside instead of sliding over it. The DOM order (attack, health, armor) is kept
+   for the tests and screen readers; `order` draws Armor before health. */
+.cf .stats {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  height: var(--mf-stat, 30cqmin);
+  margin: 0;
+  padding: 0 0.5cqw 0.5cqh;
+  gap: 0;
+}
+
+/* Reset index.css's account tiles and board.css's old pills before drawing the gems. */
+.cf .stat {
+  position: relative;
+  bottom: auto;
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0;
+  min-width: var(--mf-stat, 28cqmin);
+  height: var(--mf-stat, 28cqmin);
+  padding: 0 calc(var(--mf-stat, 28cqmin) * 0.12);
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font-size: calc(var(--mf-stat, 28cqmin) * 0.6);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--mf-stat, 28cqmin);
+  text-shadow: 0 0 0.8cqmin #000, 0 0.5cqmin 0.6cqmin #000, 0 0 0.3cqmin #000;
+  box-shadow:
+    0 0 0 0.8cqmin #1a1408,
+    inset 0 0.6cqmin 0.4cqmin rgb(255 255 255 / 0.35),
+    0 0.6cqmin 1cqmin rgb(0 0 0 / 0.6);
+}
+
+.cf .stat-attack {
+  order: 0;
+  margin-right: auto;
+  background: radial-gradient(circle at 36% 30%, #fff1b0, #f2b32a 45%, #a86400 80%, #6b3c00);
+}
+
+.cf .stat-health {
+  z-index: 1;
+  order: 2;
+  background: radial-gradient(circle at 36% 30%, #ffb0a4, #d42a2a 45%, #8a0f0f 80%, #4e0404);
+}
+
+/* Armor: a steel plate smaller than the gems, half tucked behind health's left edge. */
+.cf .stat-armor {
+  order: 1;
+  min-width: calc(var(--mf-stat, 28cqmin) * 0.7);
+  height: calc(var(--mf-stat, 28cqmin) * 0.7);
+  margin-right: calc(var(--mf-stat, 28cqmin) * -0.14);
+  border-radius: 20% 20% 45% 45%;
+  background: linear-gradient(180deg, #dfe7f3, #8190aa 55%, #465169);
+  font-size: calc(var(--mf-stat, 28cqmin) * 0.42);
+  line-height: calc(var(--mf-stat, 28cqmin) * 0.7);
+}
+
+/* Tones. Green above the printed number. Below it, red, as Hearthstone draws a reduced or wounded
+   stat: a deep red on the gold attack gem, with a light halo inside the black outline so it still
+   reads at board size, and a bright red on a health gem that darkens to wounded maroon, since a
+   red number cannot read on the plain red gem. The pale tints this replaces read as white. */
+.cf .stat[data-tone="buffed"] {
+  color: #7dff9a;
+}
+
+.cf .stat[data-tone="reduced"] {
+  color: #c80000;
+  text-shadow: 0 0 0.6cqmin #fff4d0, 0 0 1cqmin #000, 0 0.5cqmin 0.6cqmin #000;
+}
+
+.cf .stat-health[data-tone="reduced"] {
+  color: #ff5a5a;
+  text-shadow: 0 0 1cqmin #000, 0 0 0.6cqmin #000, 0 0.5cqmin 0.6cqmin #000;
+  background: radial-gradient(circle at 36% 30%, #7a2a2a, #4a0a0a 50%, #240303 85%);
+}
+
+.cf .stat[data-tone="damaged"] {
+  color: #ff5a5a;
+  text-shadow: 0 0 1cqmin #000, 0 0 0.6cqmin #000, 0 0.5cqmin 0.6cqmin #000;
+}
+
+.cf .stat-health[data-tone="damaged"] {
+  background: radial-gradient(circle at 36% 30%, #7a2a2a, #4a0a0a 50%, #240303 85%);
+  box-shadow:
+    0 0 0 0.8cqmin #1a1408,
+    0 0 0 1.4cqmin rgb(255 60 60 / 0.55),
+    inset 0 0.6cqmin 0.4cqmin rgb(255 255 255 / 0.2),
+    0 0.6cqmin 1cqmin rgb(0 0 0 / 0.6);
+}
+
+/* "current over max": the max rides small after the current number, so a full-health gem stays
+   round instead of stretching into a pill. */
+.cf .cf-max {
+  margin-left: 0.04em;
+  font-size: 0.46em;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  opacity: 0.9;
+}
+
+/* Keyword chips: a column down the left edge, under the cost gem. They scale with the minion but
+   never below a legible floor (8px bold on an 11px chip; on main's board a keyword was about 7px,
+   and a chip scaled to a 59px minion alone came to under 5px). Keywords the minion draws as a
+   state (the Taunt frame, the Divine Shield bubble, the Armor plate) keep their badge in the DOM
+   but no chip, and past KEYWORD_CHIPS_MAX (MinionFace.tsx) the rest fold into a "+n" chip. */
+.cf .keywords {
+  position: absolute;
+  z-index: 4;
+  top: calc(0.5cqh + 24cqmin + 1px);
+  left: 0.5cqw;
+  right: auto;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: max(1px, 0.6cqmin);
+  max-height: none;
+  overflow: visible;
+  font-size: max(8px, 9cqmin);
+  line-height: 1;
+}
+
+/* One chip per keyword, each in its own colour, so "RU" and "LS" read apart at a glance. */
+.cf .keyword,
+.cf .cf-kw-more {
+  --kw: #3a3f52;
+
+  display: block;
+  min-width: 2.1em;
+  padding: max(1.5px, 0.8cqmin) max(2.5px, 1.4cqmin);
+  border: 0;
+  border-radius: max(3px, 2cqmin);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--kw) 88%, #fff), color-mix(in srgb, var(--kw) 80%, #000));
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.75),
+    0 1px 2px rgb(0 0 0 / 0.5);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
+  white-space: nowrap;
+}
+
+.cf .keyword[data-chip="hidden"] {
+  display: none;
+}
+
+.cf .cf-kw-more {
+  --kw: #20242f;
+}
+
+.cf .keyword[data-keyword="Taunt"] { --kw: #6b7488; }
+.cf .keyword[data-keyword="Rush"] { --kw: #c2610c; }
+.cf .keyword[data-keyword="Charge"] { --kw: #c0262d; }
+.cf .keyword[data-keyword="First Strike"] { --kw: #b58a0c; }
+.cf .keyword[data-keyword="Poisonous"] { --kw: #2f8f3a; }
+.cf .keyword[data-keyword="Lifesteal"] { --kw: #a3173f; }
+.cf .keyword[data-keyword="Reborn"] { --kw: #1f8fb8; }
+.cf .keyword[data-keyword="Divine Shield"] { --kw: #c79a1c; }
+.cf .keyword[data-keyword="Trample"] { --kw: #8a4b1c; }
+.cf .keyword[data-keyword="Cleave"] { --kw: #7240c9; }
+.cf .keyword[data-keyword="Indestructible"] { --kw: #3c4a63; }
+.cf .keyword[data-keyword="Immutable"] { --kw: #52607a; }
+.cf .keyword[data-keyword="Stack"] { --kw: #2f55c2; }
+.cf .keyword[data-keyword="Can't attack"] { --kw: #4a4a55; }
+.cf .keyword[data-keyword="Armor"] { --kw: #5d6d8a; }
+.cf .keyword[data-keyword="Lucky"] { --kw: #108a5e; }
+
+/* Divine Shield: a golden bubble over the portrait. */
+.cf .shield-icon {
+  position: absolute;
+  z-index: 2;
+  top: 1cqh;
+  left: 5cqw;
+  right: 5cqw;
+  bottom: calc(var(--mf-stat, 28cqmin) + var(--mf-plate, 11cqh) * 0.3);
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    transparent 66%,
+    rgb(255 236 150 / 0.3) 82%,
+    rgb(255 245 200 / 0.9)
+  );
+  box-shadow: 0 0 2.5cqmin rgb(255 220 120 / 0.75);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------------------ foil ------- */
+
+.cf[data-foil="static"]::after,
+.cf[data-foil="animated"]::after {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgb(255 244 200 / 0.5) 33%,
+    transparent 44%,
+    rgb(255 214 110 / 0.35) 58%,
+    transparent 72%
+  );
+  background-position: 30% 0;
+  background-size: 260% 100%;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.cf[data-rarity="Mythic"][data-foil="static"]::after,
+.cf[data-rarity="Mythic"][data-foil="animated"]::after {
+  background: linear-gradient(
+    115deg,
+    transparent 15%,
+    rgb(255 106 213 / 0.4) 28%,
+    rgb(148 208 255 / 0.4) 38%,
+    rgb(125 255 198 / 0.35) 48%,
+    rgb(255 230 109 / 0.35) 58%,
+    transparent 72%
+  );
+  background-position: 30% 0;
+  background-size: 260% 100%;
+}
+
+.cf[data-foil="animated"]::after {
+  animation: cf-foil-sweep 5.5s linear infinite;
+}
+
+@keyframes cf-foil-sweep {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf[data-foil]::after,
+  .cf[data-foil="animated"]::after {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------------------ the back --- */
+
+.cf-back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(127 107 208 / 0.4), transparent 62%),
+    repeating-linear-gradient(45deg, #232a45 0 4px, #1b2036 4px 8px),
+    #1b2036;
+  box-shadow:
+    inset 0 0 0 2px rgb(212 175 55 / 0.55),
+    inset 0 0 0 4px #141726;
+  pointer-events: none;
+}
+
+.cf-back .cf-back-emblem {
+  position: absolute;
+  width: auto;
+  height: 72%;
+  max-width: 86%;
+  aspect-ratio: 1;
+  opacity: 0.9;
+}
+
+.cf-back .card-back-mark {
+  position: relative;
+  width: auto;
+  height: 22%;
+  aspect-ratio: 1;
+  margin: 0;
+  border: 1px solid rgb(255 214 120 / 0.75);
+  border-radius: 50%;
+}

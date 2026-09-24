@@ -122,6 +122,18 @@ function matchesQuery(def: CardDef, args: CatalogQueryArgs, tokensAllowed: boole
   return true;
 }
 
+/**
+ * §5.1: "a random pool never includes the generating card's own definition". The running card's
+ * index is ADDED to whatever the caller already excludes, never put in its place: a card whose text
+ * names its own exclusion (§8 #54 Straaza's "pool excluding #54") keeps it when the card running
+ * that text is a fused one (R77, R102), whose own definition is a transient id no pool can reach.
+ */
+export function excludingIndex(args: CatalogQueryArgs, index: string | undefined): CatalogQueryArgs {
+  if (index === undefined) return args;
+  const already = asList(args.excludeIndex);
+  return already.includes(index) ? args : { ...args, excludeIndex: [...already, index] };
+}
+
 /** §5's index as a number, so "2" sorts before "10" and a token index ("T-rush") sorts last. */
 function indexRank(index: string): number {
   const parsed = Number.parseFloat(index);

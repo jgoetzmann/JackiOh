@@ -175,8 +175,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -190,8 +241,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -205,8 +307,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -220,8 +373,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -235,8 +439,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -250,8 +505,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
     </div>
@@ -281,8 +587,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -297,44 +654,92 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p2"
           data-def-id="core-008"
+          data-face="minion"
           data-legal="false"
           data-owner="p2"
           data-position="ATK"
           data-testid="card-u6"
-          title="core-008"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-008
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="4"
+              class="cf-scale"
             >
-              4
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="4"
-              data-max-health="4"
-            >
-              4
-              /
-              4
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2251.98%22%20y1%3D%220.04%22%20x2%3D%2248.02%22%20y2%3D%2299.96%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235c3a59%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316160c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23faffa0%22%20stop-opacity%3D%220.86%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23faffa0%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23faffa0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2230.6%22%20cy%3D%2254.83%22%20r%3D%2228.57%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M6.9%2016.54L15.55%2016.54L15.55%2019.14L6.9%2019.14ZM8.3%2019.14L14.15%2019.14L14.15%20100L8.3%20100ZM34.01%2015.25L43.17%2015.25L43.17%2017.85L34.01%2017.85ZM35.41%2017.85L41.77%2017.85L41.77%20100L35.41%20100ZM59.42%2018.27L68.64%2018.27L68.64%2020.87L59.42%2020.87ZM60.82%2020.87L67.24%2020.87L67.24%20100L60.82%20100ZM81.63%2029.87L90.85%2029.87L90.85%2032.47L81.63%2032.47ZM83.03%2032.47L89.45%2032.47L89.45%20100L83.03%20100Z%22%20fill%3D%22%2361613d%22%20opacity%3D%220.42%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2061.87Q20%2064.62%2030%2061.17Q40%2057.71%2050%2056.43Q60%2055.15%2070%2060.26Q80%2065.37%2090%2062.04L100%2058.72L100%20100Z%22%20fill%3D%22%2361613d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2079.92Q25%2078.21%2037.5%2081.02Q50%2083.83%2062.5%2083.09Q75%2082.36%2087.5%2080.28L100%2078.21L100%20100Z%22%20fill%3D%22%233b3a23%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M3.96%20100C3.96%2076.34%2011.42%2070.34%2022.78%2068.84L26.28%2064.59A10.67%2010.67%200%201%201%2034.92%2064.59L38.42%2068.84C49.79%2070.34%2057.25%2076.34%2057.25%20100Z%22%20fill%3D%22%23121209%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M24.78%2070.34L19.78%2055.59L15.28%2068.34ZM36.42%2070.34L41.42%2055.59L45.92%2068.34Z%22%20fill%3D%22%23121209%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M24.6%2042.95L24.1%2037.45L27.4%2040.15L30.6%2035.95L33.8%2040.15L37.1%2037.45L36.6%2042.95Z%22%20fill%3D%22%23121209%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M24.79%2055.68A1.6%201.07%200%201%200%2027.99%2055.68A1.6%201.07%200%201%200%2024.79%2055.68ZM32.48%2055.68A1.6%201.07%200%201%200%2035.68%2055.68A1.6%201.07%200%201%200%2032.48%2055.68Z%22%20fill%3D%22%23faffa0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2875.8%2028.14%29%20rotate%282.38%29%20scale%280.68%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23cdccde%22%20stroke%3D%22%23232313%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%28-14.05%29%20scale%280.4%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M15.4%202.4A9.8%209.8%200%201%200%2021.6%2016.6A7.8%207.8%200%201%201%2015.4%202.4Z%22%20fill%3D%22%23faffa0%22%20stroke%3D%22%23232313%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2271.62%22%20cy%3D%2237.13%22%20r%3D%220.59%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2218.6%22%20cy%3D%2236.51%22%20r%3D%220.77%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%2256.3%22%20cy%3D%226.31%22%20r%3D%221.09%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%2271.68%22%20cy%3D%2222.12%22%20r%3D%220.6%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%2278.86%22%20cy%3D%2231.07%22%20r%3D%221.18%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.62%22%2F%3E%3Ccircle%20cx%3D%2275.64%22%20cy%3D%2224.49%22%20r%3D%220.4%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.77%22%2F%3E%3Ccircle%20cx%3D%2229.38%22%20cy%3D%2212.44%22%20r%3D%220.4%22%20fill%3D%22%23fcffc8%22%20opacity%3D%220.59%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-008
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="4"
+                  data-tone="base"
+                >
+                  4
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="4"
+                  data-max-health="4"
+                  data-tone="base"
+                >
+                  4
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    4
+                  </span>
+                </span>
+              </span>
+              <span
+                class="keywords"
+              >
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Divine Shield"
+                  title="Divine Shield"
+                >
+                  DS
+                </span>
+              </span>
+              <span
+                aria-label="Divine Shield"
+                class="shield-icon"
+                data-icon="shield"
+              />
             </span>
           </span>
           <span
@@ -342,22 +747,6 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
           >
             ATK
           </span>
-          <span
-            class="keywords"
-          >
-            <span
-              class="keyword"
-              data-keyword="Divine Shield"
-              title="Divine Shield"
-            >
-              DS
-            </span>
-          </span>
-          <span
-            aria-label="Divine Shield"
-            class="shield-icon"
-            data-icon="shield"
-          />
           <button
             aria-disabled="true"
             class="switch-button"
@@ -383,61 +772,94 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p1"
           data-def-id="core-004"
+          data-face="minion"
           data-legal="false"
           data-owner="p1"
           data-position="ATK"
           data-testid="card-u1"
-          title="core-004"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-004
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
+            data-taunt="true"
           >
             <span
-              class="stat stat-attack"
-              data-attack="2"
+              class="cf-scale"
             >
-              2
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="1"
-              data-max-health="3"
-            >
-              1
-              /
-              3
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2234.99%22%20y1%3D%222.31%22%20x2%3D%2265.01%22%20y2%3D%2297.69%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316150c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a7246%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fffda0%22%20stop-opacity%3D%220.78%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23fffda0%22%20stop-opacity%3D%220.35%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fffda0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2249.63%22%20cy%3D%2255.75%22%20r%3D%2225.15%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M14.24%2032.22L22.2%2032.22L22.2%2034.82L14.24%2034.82ZM15.64%2034.82L20.8%2034.82L20.8%20100L15.64%20100ZM46.45%2033.47L53.77%2033.47L53.77%2036.07L46.45%2036.07ZM47.85%2036.07L52.37%2036.07L52.37%20100L47.85%20100ZM77.8%2017.75L85.52%2017.75L85.52%2020.35L77.8%2020.35ZM79.2%2020.35L84.12%2020.35L84.12%20100L79.2%20100Z%22%20fill%3D%22%23615e3d%22%20opacity%3D%220.42%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.2Q20%2060.64%2030%2060.35Q40%2060.07%2050%2062.89Q60%2065.71%2070%2063.5Q80%2061.29%2090%2059.38L100%2057.48L100%20100Z%22%20fill%3D%22%23615e3d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2078.9Q25%2085.39%2037.5%2081.82Q50%2078.24%2062.5%2079.85Q75%2081.45%2087.5%2080.69L100%2079.93L100%20100Z%22%20fill%3D%22%233b3923%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M3.68%20100C3.68%2083.09%2016.55%2077.09%2040.44%2075.59L43.94%2069.9A15.25%2015.25%200%201%201%2055.33%2069.9L58.83%2075.59C82.72%2077.09%2095.59%2083.09%2095.59%20100Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M2.76%2083.09Q3.68%2072.59%2019.3%2072.09Q34.93%2072.59%2035.85%2083.09Q19.3%2080.09%202.76%2083.09ZM63.42%2083.09Q64.34%2072.59%2079.96%2072.09Q95.59%2072.59%2096.51%2083.09Q79.96%2080.09%2063.42%2083.09Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M41.97%2056.97A2.29%201.53%200%201%200%2046.55%2056.97A2.29%201.53%200%201%200%2041.97%2056.97ZM52.95%2056.97A2.29%201.53%200%201%200%2057.53%2056.97A2.29%201.53%200%201%200%2052.95%2056.97Z%22%20fill%3D%22%23fffda0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2849.63%2086.68%29%20rotate%28-2.86%29%20scale%280.59%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23ccccde%22%20stroke%3D%22%23232213%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2234.42%22%20cy%3D%2222.94%22%20r%3D%220.61%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.61%22%2F%3E%3Ccircle%20cx%3D%2268.88%22%20cy%3D%2238.59%22%20r%3D%221.03%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2292.42%22%20cy%3D%2223.56%22%20r%3D%220.62%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.41%22%2F%3E%3Ccircle%20cx%3D%2268.28%22%20cy%3D%2223.35%22%20r%3D%221.01%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%228.15%22%20cy%3D%2252.77%22%20r%3D%221.22%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.48%22%2F%3E%3Ccircle%20cx%3D%2225.93%22%20cy%3D%2240.51%22%20r%3D%220.83%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.43%22%2F%3E%3Ccircle%20cx%3D%2275.11%22%20cy%3D%2238.65%22%20r%3D%221.08%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.64%22%2F%3E%3Ccircle%20cx%3D%2249.43%22%20cy%3D%2245.35%22%20r%3D%221.29%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%2278.3%22%20cy%3D%2233.3%22%20r%3D%220.85%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.84%22%2F%3E%3Ccircle%20cx%3D%2280.84%22%20cy%3D%2232.17%22%20r%3D%220.59%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.69%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-004
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="2"
+                  data-tone="base"
+                >
+                  2
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="1"
+                  data-max-health="3"
+                  data-tone="base"
+                >
+                  1
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    3
+                  </span>
+                </span>
+              </span>
+              <span
+                class="keywords"
+              >
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Taunt"
+                  title="Taunt"
+                >
+                  TA
+                </span>
+              </span>
             </span>
           </span>
           <span
             class="position-tag"
           >
             ATK
-          </span>
-          <span
-            class="keywords"
-          >
-            <span
-              class="keyword"
-              data-keyword="Taunt"
-              title="Taunt"
-            >
-              TA
-            </span>
           </span>
           <button
             aria-disabled="true"
@@ -464,29 +886,57 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-backrow"
+          class="card card-spell cf-host cf-host--compact card-backrow"
+          data-card-type="Field Spell"
           data-controller="p1"
           data-def-id="core-020"
+          data-face="compact"
           data-legal="false"
           data-owner="p1"
           data-testid="card-b18"
-          title="core-020"
         >
           <span
-            class="cost-gem"
-            data-cost="1"
+            class="cf cf--compact"
+            data-card-type="Field Spell"
+            data-foil="none"
+            data-layout="compact"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            1
-          </span>
-          <span
-            class="card-name"
-          >
-            core-020
-          </span>
-          <span
-            class="card-type"
-          >
-            Field Spell
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--arch"
+                  data-art="procedural"
+                  data-art-theme="field-spell"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2273.69%22%20y1%3D%225.97%22%20x2%3D%2226.31%22%20y2%3D%2294.03%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23d0a14c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237b606e%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff2a6%22%20stop-opacity%3D%220.86%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23fff2a6%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff2a6%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2263.29%22%20cy%3D%2228.12%22%20r%3D%2223.29%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L144.29%2073.45L139.02%2082.71ZM-6%20-6L120.41%20107.67L111.05%20117.29ZM-6%20-6L88.09%20135.59L75.94%20142.95ZM-6%20-6L48.22%20155.12L37.12%20158.44ZM-6%20-6L4.73%20163.66L-4.39%20163.99Z%22%20fill%3D%22%23fff2a6%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2055.55L11.84%2046.68L27.81%2052.93L40.37%2042.78L47.5%2056.73L60.51%2043.04L76.02%2055.69L87.44%2044.09L100%2052.05L100%20100Z%22%20fill%3D%22%2356597e%22%20opacity%3D%220.75%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2067.78Q25%2066.61%2037.5%2069.78Q50%2072.94%2062.5%2074.1Q75%2075.25%2087.5%2075.02L100%2074.78L100%20100Z%22%20fill%3D%22%232f2f50%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2089.72Q33.33%2083.76%2050%2086.32Q66.67%2088.88%2083.33%2086.87L100%2084.86L100%20100Z%22%20fill%3D%22%230f0e20%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2863.29%2028.12%29%20rotate%28-2.64%29%20scale%280.74%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M7%2022V9.4H5.4V3.6H8.2V5.8H10.6V3.6H13.4V5.8H15.8V3.6H18.6V9.4H17V22ZM10.2%2022V17.6A1.8%201.8%200%200%201%2013.8%2017.6V22ZM11.2%2010.6H12.8V13.8H11.2Z%22%20fill%3D%22%23fffadc%22%20stroke%3D%22%232f2440%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%28-18.19%29%20scale%280.38%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M1.4%2012C5%205.8%2019%205.8%2022.6%2012C19%2018.2%205%2018.2%201.4%2012ZM7.2%2012A4.8%204.8%200%201%200%2016.8%2012A4.8%204.8%200%201%200%207.2%2012ZM9.9%2012A2.1%202.1%200%201%200%2014.1%2012A2.1%202.1%200%201%200%209.9%2012Z%22%20fill%3D%22%23fff2a6%22%20stroke%3D%22%232f2440%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2268.27%22%20cy%3D%2239.27%22%20r%3D%220.41%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%2284.48%22%20cy%3D%2230.8%22%20r%3D%220.55%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.69%22%2F%3E%3Ccircle%20cx%3D%2269.69%22%20cy%3D%2210.47%22%20r%3D%220.52%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.51%22%2F%3E%3Ccircle%20cx%3D%2249.66%22%20cy%3D%2245.16%22%20r%3D%220.98%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%2280.8%22%20cy%3D%2245.99%22%20r%3D%220.6%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.72%22%2F%3E%3Ccircle%20cx%3D%2272.22%22%20cy%3D%2243.94%22%20r%3D%220.96%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%2253.62%22%20cy%3D%2220.07%22%20r%3D%221.12%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.46%22%2F%3E%3Ccircle%20cx%3D%2233.2%22%20cy%3D%2213.69%22%20r%3D%220.89%22%20fill%3D%22%23fff8d0%22%20opacity%3D%220.43%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-020
+              </span>
+              <span
+                class="card-type"
+              >
+                Field Spell
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -512,8 +962,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -534,45 +1035,76 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         />
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p2"
           data-def-id="core-013"
+          data-face="minion"
           data-legal="false"
           data-owner="p2"
           data-position="DEF"
           data-testid="card-u7"
           style="transform: rotate(90deg) scale(0.72);"
-          title="core-013"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-013
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="3"
+              class="cf-scale"
             >
-              3
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="2"
-              data-max-health="5"
-            >
-              2
-              /
-              5
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2225.26%22%20y1%3D%226.55%22%20x2%3D%2274.74%22%20y2%3D%2293.45%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235c573a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316150c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff8a0%22%20stop-opacity%3D%220.71%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23fff8a0%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff8a0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2268.02%22%20cy%3D%2254.51%22%20r%3D%2231.43%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M2.1%2033.98A4.72%204.72%200%200%201%2010.39%2033.98A4.89%204.89%200%200%201%2018.67%2033.98A4.18%204.18%200%200%201%2026.96%2033.98A5.03%205.03%200%200%201%2035.24%2033.98L35.24%2036.98L2.1%2036.98ZM61.17%2019.19A6.67%206.67%200%200%201%2074.14%2019.19A6.89%206.89%200%200%201%2087.1%2019.19A6.62%206.62%200%200%201%20100.06%2019.19L100.06%2022.19L61.17%2022.19Z%22%20fill%3D%22%23615c3d%22%20opacity%3D%220.5%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2057.38Q20%2053.55%2030%2057.44Q40%2061.33%2050%2057.62Q60%2053.9%2070%2058.07Q80%2062.25%2090%2057.41L100%2052.57L100%20100Z%22%20fill%3D%22%23615c3d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2081.78Q25%2078.48%2037.5%2079.96Q50%2081.44%2062.5%2079.86Q75%2078.29%2087.5%2078.54L100%2078.79L100%20100Z%22%20fill%3D%22%233b3723%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M36.7%20100C36.7%2075.41%2045.47%2069.41%2060.51%2067.91L64.01%2065.47A11.67%2011.67%200%201%201%2072.02%2065.47L75.52%2067.91C90.57%2069.41%2099.34%2075.41%2099.34%20100Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M36.07%2075.41Q36.7%2064.91%2047.35%2064.41Q58%2064.91%2058.62%2075.41Q47.35%2072.41%2036.07%2075.41ZM77.42%2075.41Q78.04%2064.91%2088.69%2064.41Q99.34%2064.91%2099.97%2075.41Q88.69%2072.41%2077.42%2075.41Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M61.5%2055.44A1.75%201.17%200%201%200%2065%2055.44A1.75%201.17%200%201%200%2061.5%2055.44ZM69.9%2055.44A1.75%201.17%200%201%200%2073.4%2055.44A1.75%201.17%200%201%200%2069.9%2055.44Z%22%20fill%3D%22%23fff8a0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2825.08%2027.26%29%20rotate%28-5.78%29%20scale%280.74%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23cccdde%22%20stroke%3D%22%23232113%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2265%22%20cy%3D%2225.74%22%20r%3D%220.67%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%2265.34%22%20cy%3D%2243.19%22%20r%3D%220.55%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.39%22%2F%3E%3Ccircle%20cx%3D%2213.38%22%20cy%3D%2255.74%22%20r%3D%220.83%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2249.63%22%20cy%3D%2223.67%22%20r%3D%220.67%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.78%22%2F%3E%3Ccircle%20cx%3D%2242.14%22%20cy%3D%2252.61%22%20r%3D%220.56%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2292.65%22%20cy%3D%2257.52%22%20r%3D%220.42%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.67%22%2F%3E%3Ccircle%20cx%3D%2259.8%22%20cy%3D%2244.02%22%20r%3D%220.88%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.37%22%2F%3E%3Ccircle%20cx%3D%2264.12%22%20cy%3D%2254.75%22%20r%3D%220.66%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.8%22%2F%3E%3Ccircle%20cx%3D%224.57%22%20cy%3D%2245.58%22%20r%3D%220.92%22%20fill%3D%22%23fffcc8%22%20opacity%3D%220.56%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-013
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="3"
+                  data-tone="base"
+                >
+                  3
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="2"
+                  data-max-health="5"
+                  data-tone="base"
+                >
+                  2
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    5
+                  </span>
+                </span>
+              </span>
             </span>
           </span>
           <span
@@ -605,51 +1137,230 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit radiant"
+          class="card card-unit radiant cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p1"
           data-def-id="core-011"
+          data-face="minion"
           data-legal="false"
           data-owner="p1"
           data-position="ATK"
           data-radiant="true"
           data-testid="card-u2"
-          title="core-011"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-011
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="animated"
+            data-layout="minion"
+            data-radiant-face="true"
+            data-taunt="true"
           >
             <span
-              class="stat stat-attack"
-              data-attack="7"
+              class="cf-scale"
             >
-              7
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="7"
-              data-max-health="7"
-            >
-              7
-              /
-              7
-            </span>
-            <span
-              class="stat stat-armor"
-              data-armor="2"
-            >
-              2
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="radiant"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2266.33%22%20y1%3D%222.74%22%20x2%3D%2233.67%22%20y2%3D%2297.26%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238b641e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23241605%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.87%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2250.63%22%20cy%3D%2252.02%22%20r%3D%2229.32%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M50.63%2052.02L72.4%20-96.39L82.32%20-94.6Z%22%20opacity%3D%220.37%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L193.16%205.28L197.01%2019.29Z%22%20opacity%3D%220.19%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L184.57%20119.55L180.84%20126.49Z%22%20opacity%3D%220.27%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L62.59%20201.54L50.7%20202.02Z%22%20opacity%3D%220.28%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L-54.28%20159.23L-60.56%20152.7Z%22%20opacity%3D%220.24%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L-99.02%2062.21L-99.2%2044.97Z%22%20opacity%3D%220.24%22%2F%3E%3Cpath%20d%3D%22M50.63%2052.02L-36.95%20-69.75L-23.31%20-78.49Z%22%20opacity%3D%220.29%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M106%20-6L-33.98%2090.46L-41.76%2078.07ZM106%20-6L-11.11%20117.23L-16.54%20111.84ZM106%20-6L19.82%20140.54L13.24%20136.46ZM106%20-6L55.15%20156.22L47.87%20153.75ZM106%20-6L96.22%20163.72L82.43%20162.36Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2061.32Q20%2055.82%2030%2054.92Q40%2054.02%2050%2058.69Q60%2063.35%2070%2063.35Q80%2063.35%2090%2058.63L100%2053.92L100%20100Z%22%20fill%3D%22%23a47b30%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2085.07Q25%2080.92%2037.5%2081.99Q50%2083.05%2062.5%2083.5Q75%2083.94%2087.5%2083.9L100%2083.87L100%20100Z%22%20fill%3D%22%23674816%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M7.83%20100C7.83%2082.1%2019.81%2076.1%2041.11%2074.6L44.61%2067.98A17.06%2017.06%200%201%201%2056.66%2067.98L60.16%2074.6C81.45%2076.1%2093.43%2082.1%2093.43%20100Z%22%20fill%3D%22%23231505%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M6.97%2082.1Q7.83%2071.6%2022.38%2071.1Q36.94%2071.6%2037.79%2082.1Q22.38%2079.1%206.97%2082.1ZM63.47%2082.1Q64.33%2071.6%2078.88%2071.1Q93.43%2071.6%2094.29%2082.1Q78.88%2079.1%2063.47%2082.1Z%22%20fill%3D%22%23231505%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M42.79%2053.39A2.56%201.71%200%201%200%2047.91%2053.39A2.56%201.71%200%201%200%2042.79%2053.39ZM55.08%2053.39A2.56%201.71%200%201%200%2060.19%2053.39A2.56%201.71%200%201%200%2055.08%2053.39Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2850.63%2088.04%29%20rotate%284.05%29%20scale%280.6%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%281.76%29%20scale%280.32%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M15.4%202.4A9.8%209.8%200%201%200%2021.6%2016.6A7.8%207.8%200%201%201%2015.4%202.4Z%22%20fill%3D%22%23ffe389%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2227.95%22%20cy%3D%2225.47%22%20r%3D%221.22%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.81%22%2F%3E%3Ccircle%20cx%3D%2293.2%22%20cy%3D%2212.42%22%20r%3D%220.7%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.63%22%2F%3E%3Ccircle%20cx%3D%2281.81%22%20cy%3D%226.36%22%20r%3D%220.6%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.56%22%2F%3E%3Ccircle%20cx%3D%2251.7%22%20cy%3D%2242.4%22%20r%3D%220.82%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.46%22%2F%3E%3Ccircle%20cx%3D%229.81%22%20cy%3D%2215.23%22%20r%3D%220.87%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.62%22%2F%3E%3Ccircle%20cx%3D%2251.78%22%20cy%3D%2212.66%22%20r%3D%221.12%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%229.37%22%20cy%3D%2232.39%22%20r%3D%220.67%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.46%22%2F%3E%3Ccircle%20cx%3D%2242.96%22%20cy%3D%2233.48%22%20r%3D%221.28%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.41%22%2F%3E%3Ccircle%20cx%3D%2243.24%22%20cy%3D%2243.68%22%20r%3D%220.99%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.62%22%2F%3E%3Ccircle%20cx%3D%2283.01%22%20cy%3D%2233.89%22%20r%3D%220.48%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.43%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-011
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="7"
+                  data-tone="base"
+                >
+                  7
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="7"
+                  data-max-health="7"
+                  data-tone="base"
+                >
+                  7
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    7
+                  </span>
+                </span>
+                <span
+                  class="stat stat-armor"
+                  data-armor="2"
+                >
+                  2
+                </span>
+              </span>
+              <span
+                class="keywords"
+              >
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Taunt"
+                  title="Taunt"
+                >
+                  TA
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-keyword="Rush"
+                  title="Rush"
+                >
+                  RU
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-keyword="Charge"
+                  title="Charge"
+                >
+                  CH
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="First Strike"
+                  title="First Strike"
+                >
+                  FS
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Poisonous"
+                  title="Poisonous"
+                >
+                  PO
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Lifesteal"
+                  title="Lifesteal"
+                >
+                  LS
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Reborn"
+                  title="Reborn"
+                >
+                  RB
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Divine Shield"
+                  title="Divine Shield"
+                >
+                  DS
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Trample"
+                  title="Trample"
+                >
+                  TR
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Cleave"
+                  title="Cleave"
+                >
+                  CL
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Indestructible"
+                  title="Indestructible"
+                >
+                  ND
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Immutable"
+                  title="Immutable"
+                >
+                  IM
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Stack"
+                  title="Stack"
+                >
+                  ST
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Can't attack"
+                  title="Can't attack"
+                >
+                  NA
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Armor"
+                  data-n="2"
+                  title="Armor 2"
+                >
+                  AR
+                   2
+                </span>
+                <span
+                  class="keyword keyword-icon"
+                  data-chip="hidden"
+                  data-keyword="Lucky"
+                  data-n="3"
+                  title="Lucky 3"
+                >
+                  LK
+                   3
+                </span>
+                <span
+                  class="cf-kw-more"
+                  title="First Strike, Poisonous, Lifesteal, Reborn, Trample, Cleave, Indestructible, Immutable, Stack, Can't attack, Lucky 3"
+                >
+                  +
+                  11
+                </span>
+              </span>
+              <span
+                aria-label="Divine Shield"
+                class="shield-icon"
+                data-icon="shield"
+              />
             </span>
           </span>
           <span
@@ -657,131 +1368,6 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
           >
             ATK
           </span>
-          <span
-            class="keywords"
-          >
-            <span
-              class="keyword"
-              data-keyword="Taunt"
-              title="Taunt"
-            >
-              TA
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Rush"
-              title="Rush"
-            >
-              RU
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Charge"
-              title="Charge"
-            >
-              CH
-            </span>
-            <span
-              class="keyword"
-              data-keyword="First Strike"
-              title="First Strike"
-            >
-              FS
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Poisonous"
-              title="Poisonous"
-            >
-              PO
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Lifesteal"
-              title="Lifesteal"
-            >
-              LS
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Reborn"
-              title="Reborn"
-            >
-              RB
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Divine Shield"
-              title="Divine Shield"
-            >
-              DS
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Trample"
-              title="Trample"
-            >
-              TR
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Cleave"
-              title="Cleave"
-            >
-              CL
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Indestructible"
-              title="Indestructible"
-            >
-              ND
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Immutable"
-              title="Immutable"
-            >
-              IM
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Stack"
-              title="Stack"
-            >
-              ST
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Can't attack"
-              title="Can't attack"
-            >
-              NA
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Armor"
-              data-n="2"
-              title="Armor 2"
-            >
-              AR
-               2
-            </span>
-            <span
-              class="keyword"
-              data-keyword="Lucky"
-              data-n="3"
-              title="Lucky 3"
-            >
-              LK
-               3
-            </span>
-          </span>
-          <span
-            aria-label="Divine Shield"
-            class="shield-icon"
-            data-icon="shield"
-          />
           <span
             class="counter counter-plague"
             data-counter="plague"
@@ -821,29 +1407,58 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-backrow"
+          class="card card-spell cf-host cf-host--compact card-backrow"
+          data-card-type="Field Trap"
           data-controller="p1"
           data-def-id="core-061"
+          data-face="compact"
+          data-field-trap="true"
           data-legal="false"
           data-owner="p1"
           data-testid="card-b19"
-          title="core-061"
         >
           <span
-            class="cost-gem"
-            data-cost="1"
+            class="cf cf--compact"
+            data-card-type="Field Trap"
+            data-foil="none"
+            data-layout="compact"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            1
-          </span>
-          <span
-            class="card-name"
-          >
-            core-061
-          </span>
-          <span
-            class="card-type"
-          >
-            Field Trap
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--notched"
+                  data-art="procedural"
+                  data-art-theme="field-trap"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2260.25%22%20y1%3D%221.06%22%20x2%3D%2239.75%22%20y2%3D%2298.94%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23191329%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23040309%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238cffbc%22%20stop-opacity%3D%220.7%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%238cffbc%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238cffbc%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2251.16%22%20cy%3D%2251.56%22%20r%3D%2226.57%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L139.51%2081.91L133.94%2090.52ZM-6%20-6L113.08%20115.32L106.69%20121.28ZM-6%20-6L81.73%20139.62L70.23%20145.95ZM-6%20-6L43.56%20156.62L30.74%20159.98Z%22%20fill%3D%22%238cffbc%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M6.32%2051.56Q51.16%204.27%2096%2051.56Q51.16%2098.86%206.32%2051.56ZM10.32%2051.56Q51.16%2010.67%2092%2051.56Q51.16%2092.46%2010.32%2051.56Z%22%20fill%3D%22%233b2d5a%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M36.04%2051.56A15.12%2015.12%200%201%200%2066.28%2051.56A15.12%2015.12%200%201%200%2036.04%2051.56ZM38.04%2051.56A13.12%2013.12%200%201%200%2064.28%2051.56A13.12%2013.12%200%201%200%2038.04%2051.56Z%22%20fill%3D%22%238cffbc%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M18.87%2055.47L13.03%2050.83L19.97%2053.57ZM28.73%2043.84L26.34%2038.69L30.51%2042.55ZM42.46%2037.22L42%2029.75L44.62%2036.77ZM57.7%2036.77L60.06%2030.96L59.86%2037.22ZM71.81%2042.55L75.83%2038.89L73.59%2043.84ZM82.35%2053.57L89.43%2050.75L83.45%2055.47Z%22%20fill%3D%22%23b8ffd3%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2851.16%2051.56%29%20rotate%28-4.68%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M15.4%202.4A9.8%209.8%200%201%200%2021.6%2016.6A7.8%207.8%200%201%201%2015.4%202.4Z%22%20fill%3D%22%23b8ffd3%22%20stroke%3D%22%2312301c%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%28-5.73%29%20scale%280.31%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%238cffbc%22%20stroke%3D%22%2312301c%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2226.67%22%20cy%3D%2257.21%22%20r%3D%220.93%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.66%22%2F%3E%3Ccircle%20cx%3D%2255.07%22%20cy%3D%2234.54%22%20r%3D%220.75%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2239.73%22%20cy%3D%2274.3%22%20r%3D%220.61%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.37%22%2F%3E%3Ccircle%20cx%3D%2283.76%22%20cy%3D%2240.86%22%20r%3D%220.52%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2261.25%22%20cy%3D%2252.41%22%20r%3D%220.47%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.66%22%2F%3E%3Ccircle%20cx%3D%2278.45%22%20cy%3D%2262.35%22%20r%3D%221.26%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%2242.38%22%20cy%3D%2258.51%22%20r%3D%220.48%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.37%22%2F%3E%3Ccircle%20cx%3D%2223.13%22%20cy%3D%2212.9%22%20r%3D%220.56%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%2263.44%22%20cy%3D%2221.11%22%20r%3D%220.49%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2240.69%22%20cy%3D%2290.9%22%20r%3D%220.9%22%20fill%3D%22%23c9ffdd%22%20opacity%3D%220.77%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-061
+              </span>
+              <span
+                class="card-type"
+              >
+                Field Trap
+              </span>
+            </span>
           </span>
           <span
             class="counter counter-grade"
@@ -871,29 +1486,57 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-backrow"
+          class="card card-spell cf-host cf-host--compact card-backrow"
+          data-card-type="Field Spell"
           data-controller="p2"
           data-def-id="core-031"
+          data-face="compact"
           data-legal="false"
           data-owner="p2"
           data-testid="card-b22"
-          title="core-031"
         >
           <span
-            class="cost-gem"
-            data-cost="1"
+            class="cf cf--compact"
+            data-card-type="Field Spell"
+            data-foil="none"
+            data-layout="compact"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            1
-          </span>
-          <span
-            class="card-name"
-          >
-            core-031
-          </span>
-          <span
-            class="card-type"
-          >
-            Field Spell
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--arch"
+                  data-art="procedural"
+                  data-art-theme="field-spell"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2233.05%22%20y1%3D%222.96%22%20x2%3D%2266.95%22%20y2%3D%2297.04%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23193248%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2373422c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffd5a6%22%20stop-opacity%3D%220.92%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffd5a6%22%20stop-opacity%3D%220.41%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffd5a6%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2267.61%22%20cy%3D%2224.01%22%20r%3D%2220.7%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2062L0%2041.26L4.21%2041.26L5.41%2033.83L6.61%2041.26L10.81%2041.26L10.81%2038.47L15.08%2038.47L16.28%2032.55L17.48%2038.47L21.74%2038.47L21.74%2042.64L33.69%2042.64L33.69%2051.58L44.86%2051.58L44.86%2051.36L56.08%2051.36L56.08%2055.64L67.52%2055.64L67.52%2046.63L71.31%2046.63L72.51%2039.07L73.71%2046.63L77.5%2046.63L77.5%2045.25L81.25%2045.25L82.45%2039L83.65%2045.25L87.4%2045.25L87.4%2055.84L91.77%2055.84L92.97%2047.11L94.17%2055.84L98.54%2055.84L98.54%2053.96L98.07%2053.96L99.27%2046.25L100.47%2053.96L100%2053.96L100%20100Z%22%20fill%3D%22%2356667e%22%20opacity%3D%220.8%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2080L0%2075.14L7.79%2075.14L7.79%2076.07L21.43%2076.07L21.43%2075.65L33.29%2075.65L33.29%2067.27L44.91%2067.27L44.91%2076.01L58.51%2076.01L58.51%2071.66L67.41%2071.66L67.41%2072.95L76.02%2072.95L76.02%2070.27L85.63%2070.27L85.63%2072.02L96.66%2072.02L96.66%2077.31L100%2077.31L100%20100Z%22%20fill%3D%22%230e1320%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M56.26%2091.15L57.86%2091.15L57.86%2093.15L56.26%2093.15ZM66.79%2094.52L68.39%2094.52L68.39%2096.52L66.79%2096.52ZM63.21%2088.24L64.81%2088.24L64.81%2090.24L63.21%2090.24ZM49.05%2093L50.65%2093L50.65%2095L49.05%2095ZM42.05%2086.51L43.65%2086.51L43.65%2088.51L42.05%2088.51ZM25.86%2088.86L27.46%2088.86L27.46%2090.86L25.86%2090.86ZM85.57%2084.81L87.17%2084.81L87.17%2086.81L85.57%2086.81ZM29.69%2094.53L31.29%2094.53L31.29%2096.53L29.69%2096.53ZM13.75%2084.5L15.35%2084.5L15.35%2086.5L13.75%2086.5ZM91.68%2089.34L93.28%2089.34L93.28%2091.34L91.68%2091.34ZM61.31%2092.83L62.91%2092.83L62.91%2094.83L61.31%2094.83ZM3.02%2094.07L4.62%2094.07L4.62%2096.07L3.02%2096.07ZM54.48%2083.69L56.08%2083.69L56.08%2085.69L54.48%2085.69ZM49.28%2087.99L50.88%2087.99L50.88%2089.99L49.28%2089.99Z%22%20fill%3D%22%23ffd5a6%22%20opacity%3D%220.75%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2867.61%2024.01%29%20rotate%280.35%29%20scale%280.69%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23ffefdc%22%20stroke%3D%22%23262440%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%2810.94%29%20scale%280.37%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M1.4%2012C5%205.8%2019%205.8%2022.6%2012C19%2018.2%205%2018.2%201.4%2012ZM7.2%2012A4.8%204.8%200%201%200%2016.8%2012A4.8%204.8%200%201%200%207.2%2012ZM9.9%2012A2.1%202.1%200%201%200%2014.1%2012A2.1%202.1%200%201%200%209.9%2012Z%22%20fill%3D%22%23ffd5a6%22%20stroke%3D%22%23262440%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2269.8%22%20cy%3D%2217.31%22%20r%3D%221.25%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.88%22%2F%3E%3Ccircle%20cx%3D%2266.89%22%20cy%3D%228.78%22%20r%3D%220.47%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%2277.48%22%20cy%3D%2216.4%22%20r%3D%220.7%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.57%22%2F%3E%3Ccircle%20cx%3D%226.23%22%20cy%3D%2228.62%22%20r%3D%220.66%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.64%22%2F%3E%3Ccircle%20cx%3D%2294.87%22%20cy%3D%2221.56%22%20r%3D%220.52%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.39%22%2F%3E%3Ccircle%20cx%3D%2239.83%22%20cy%3D%2231.64%22%20r%3D%220.96%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.83%22%2F%3E%3Ccircle%20cx%3D%2224.97%22%20cy%3D%2211.99%22%20r%3D%220.92%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2229.49%22%20cy%3D%2235.74%22%20r%3D%220.59%22%20fill%3D%22%23ffe9d0%22%20opacity%3D%220.42%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-031
+              </span>
+              <span
+                class="card-type"
+              >
+                Field Spell
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -909,45 +1552,77 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit radiant"
+          class="card card-unit radiant cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p2"
           data-def-id="core-022"
+          data-face="minion"
           data-legal="false"
           data-owner="p2"
           data-position="ATK"
           data-radiant="true"
           data-testid="card-u8"
-          title="core-022"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-022
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="animated"
+            data-layout="minion"
+            data-radiant-face="true"
           >
             <span
-              class="stat stat-attack"
-              data-attack="6"
+              class="cf-scale"
             >
-              6
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="2"
-              data-max-health="2"
-            >
-              2
-              /
-              2
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="radiant"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2228.52%22%20y1%3D%224.85%22%20x2%3D%2271.48%22%20y2%3D%2295.15%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238d7125%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23271606%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.89%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.4%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2247.85%22%20cy%3D%2255%22%20r%3D%2225.08%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M47.85%2055L-85.98%20122.74L-92.86%20106.98Z%22%20opacity%3D%220.38%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L-102.12%2058.13L-102.07%2049.99Z%22%20opacity%3D%220.39%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L-66.71%20-41.83L-58.48%20-50.8Z%22%20opacity%3D%220.32%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L9.32%20-89.97L18.83%20-92.17Z%22%20opacity%3D%220.21%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L77.14%20-92.11L93.31%20-87.95Z%22%20opacity%3D%220.2%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L138.02%20-64.87L146.32%20-58.15Z%22%20opacity%3D%220.19%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L191.72%2012.57L195.48%2028.46Z%22%20opacity%3D%220.35%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L191.22%2099.12L185.58%20114.42Z%22%20opacity%3D%220.19%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L144.8%20169.46L136.73%20175.83Z%22%20opacity%3D%220.32%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L84.06%20200.56L70.93%20203.21Z%22%20opacity%3D%220.21%22%2F%3E%3Cpath%20d%3D%22M47.85%2055L-11.99%20192.55L-25.76%20185.69Z%22%20opacity%3D%220.21%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M0%2026.05Q5%2023.52%2010%2026.05Q15%2028.58%2020%2026.05Q25%2023.52%2030%2026.05Q35%2028.58%2040%2026.05Q45%2023.52%2050%2026.05Q55%2028.58%2060%2026.05Q65%2023.52%2070%2026.05Q75%2028.58%2080%2026.05Q85%2023.52%2090%2026.05Q95%2028.58%20100%2026.05L100%2028.09Q95%2030.62%2090%2028.09Q85%2025.56%2080%2028.09Q75%2030.62%2070%2028.09Q65%2025.56%2060%2028.09Q55%2030.62%2050%2028.09Q45%2025.56%2040%2028.09Q35%2030.62%2030%2028.09Q25%2025.56%2020%2028.09Q15%2030.62%2010%2028.09Q5%2025.56%200%2028.09ZM0%2037.89Q5%2035.21%2010%2037.89Q15%2040.57%2020%2037.89Q25%2035.21%2030%2037.89Q35%2040.57%2040%2037.89Q45%2035.21%2050%2037.89Q55%2040.57%2060%2037.89Q65%2035.21%2070%2037.89Q75%2040.57%2080%2037.89Q85%2035.21%2090%2037.89Q95%2040.57%20100%2037.89L100%2040.09Q95%2042.77%2090%2040.09Q85%2037.41%2080%2040.09Q75%2042.77%2070%2040.09Q65%2037.41%2060%2040.09Q55%2042.77%2050%2040.09Q45%2037.41%2040%2040.09Q35%2042.77%2030%2040.09Q25%2037.41%2020%2040.09Q15%2042.77%2010%2040.09Q5%2037.41%200%2040.09ZM0%2053.61Q5%2050.44%2010%2053.61Q15%2056.78%2020%2053.61Q25%2050.44%2030%2053.61Q35%2056.78%2040%2053.61Q45%2050.44%2050%2053.61Q55%2056.78%2060%2053.61Q65%2050.44%2070%2053.61Q75%2056.78%2080%2053.61Q85%2050.44%2090%2053.61Q95%2056.78%20100%2053.61L100%2055.66Q95%2058.83%2090%2055.66Q85%2052.49%2080%2055.66Q75%2058.83%2070%2055.66Q65%2052.49%2060%2055.66Q55%2058.83%2050%2055.66Q45%2052.49%2040%2055.66Q35%2058.83%2030%2055.66Q25%2052.49%2020%2055.66Q15%2058.83%2010%2055.66Q5%2052.49%200%2055.66Z%22%20fill%3D%22%23674316%22%20opacity%3D%220.38%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.72Q20%2067.39%2030%2067.98Q40%2068.57%2050%2067.62Q60%2066.66%2070%2065.27Q80%2063.88%2090%2065.35L100%2066.82L100%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2083.88Q25%2080.8%2037.5%2082.07Q50%2083.35%2062.5%2083.85Q75%2084.36%2087.5%2081.77L100%2079.17L100%20100Z%22%20fill%3D%22%23674316%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M5.35%20100C5.35%2080.12%2017.25%2074.12%2038.7%2072.62L42.2%2068.26A14.42%2014.42%200%201%201%2053.5%2068.26L57%2072.62C78.45%2074.12%2090.35%2080.12%2090.35%20100Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M4.5%2080.12Q5.35%2069.62%2019.8%2069.12Q34.25%2069.62%2035.1%2080.12Q19.8%2077.12%204.5%2080.12ZM60.6%2080.12Q61.45%2069.62%2075.9%2069.12Q90.35%2069.62%2091.2%2080.12Q75.9%2077.12%2060.6%2080.12Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M31.42%2063.93L31.42%2054.28A16.43%2017.01%200%200%201%2064.28%2054.28L64.28%2063.93Q47.85%2069.7%2031.42%2063.93ZM46.65%2037.99Q45.18%2028.99%2037.16%2032.99Q43.4%2034.99%2049.05%2037.99Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M37.47%2054.1L58.23%2054.1L56.5%2056L39.2%2056Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2847.85%2085.79%29%20rotate%280.4%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%288.78%29%20scale%280.34%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23ffe389%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2251.47%22%20cy%3D%225.09%22%20r%3D%220.63%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.35%22%2F%3E%3Ccircle%20cx%3D%2220.68%22%20cy%3D%2235.26%22%20r%3D%220.54%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.63%22%2F%3E%3Ccircle%20cx%3D%2271.32%22%20cy%3D%2213.77%22%20r%3D%221.27%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.47%22%2F%3E%3Ccircle%20cx%3D%2276.84%22%20cy%3D%2239.25%22%20r%3D%220.83%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2278.82%22%20cy%3D%2215.31%22%20r%3D%220.8%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.72%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-022
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="6"
+                  data-tone="base"
+                >
+                  6
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="2"
+                  data-max-health="2"
+                  data-tone="base"
+                >
+                  2
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    2
+                  </span>
+                </span>
+              </span>
             </span>
           </span>
           <span
@@ -987,45 +1662,76 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p1"
           data-def-id="core-017"
+          data-face="minion"
           data-legal="false"
           data-owner="p1"
           data-position="DEF"
           data-testid="card-u3"
           style="transform: rotate(90deg) scale(0.72);"
-          title="core-017"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-017
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="1"
+              class="cf-scale"
             >
-              1
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="6"
-              data-max-health="6"
-            >
-              6
-              /
-              6
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2259.64%22%20y1%3D%220.94%22%20x2%3D%2240.36%22%20y2%3D%2299.06%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316120c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6c46%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe1a0%22%20stop-opacity%3D%220.79%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe1a0%22%20stop-opacity%3D%220.36%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe1a0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2244.24%22%20cy%3D%2250.08%22%20r%3D%2226.16%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M24.39%2012.69A6.45%206.45%200%201%200%2037.28%2012.69A6.45%206.45%200%201%200%2024.39%2012.69Z%22%20fill%3D%22%23ffe1a0%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2061.78Q20%2061.61%2030%2062.15Q40%2062.69%2050%2059.82Q60%2056.95%2070%2061.61Q80%2066.27%2090%2063.79L100%2061.32L100%20100Z%22%20fill%3D%22%2361533d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2079.04Q25%2078.8%2037.5%2078.1Q50%2077.4%2062.5%2081.24Q75%2085.07%2087.5%2082.6L100%2080.13L100%20100Z%22%20fill%3D%22%233b3223%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M14.7%20100C14.7%2073.51%2022.97%2067.51%2035.67%2066.01L39.17%2061.26A12.28%2012.28%200%201%201%2049.3%2061.26L52.8%2066.01C65.5%2067.51%2073.77%2073.51%2073.77%20100Z%22%20fill%3D%22%23120e09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M37.67%2067.51L32.67%2052.26L28.17%2065.51ZM50.8%2067.51L55.8%2052.26L60.3%2065.51Z%22%20fill%3D%22%23120e09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.24%2036.6L37.74%2031.1L41.04%2033.8L44.24%2029.6L47.44%2033.8L50.74%2031.1L50.24%2036.6Z%22%20fill%3D%22%23120e09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.7%2051.06A1.84%201.23%200%201%200%2042.39%2051.06A1.84%201.23%200%201%200%2038.7%2051.06ZM47.54%2051.06A1.84%201.23%200%201%200%2051.23%2051.06A1.84%201.23%200%201%200%2047.54%2051.06Z%22%20fill%3D%22%23ffe1a0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2844.24%2078%29%20rotate%28-2.11%29%20scale%280.6%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%202L20.5%205V11.2C20.5%2016.4%2017%2020.1%2012%2022C7%2020.1%203.5%2016.4%203.5%2011.2V5ZM12%205.4L17.4%207.3V11.3C17.4%2014.7%2015.3%2017.2%2012%2018.6Z%22%20fill%3D%22%23ccd1de%22%20stroke%3D%22%23231d13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%28-16.5%29%20scale%280.3%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23ffe1a0%22%20stroke%3D%22%23231d13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2278.12%22%20cy%3D%2245.12%22%20r%3D%221.29%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2221.35%22%20cy%3D%227.68%22%20r%3D%220.49%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.65%22%2F%3E%3Ccircle%20cx%3D%2294.77%22%20cy%3D%2211.7%22%20r%3D%221.12%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2247.49%22%20cy%3D%2256.77%22%20r%3D%220.64%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.56%22%2F%3E%3Ccircle%20cx%3D%2287.21%22%20cy%3D%2212.29%22%20r%3D%220.77%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%2272.53%22%20cy%3D%2254.29%22%20r%3D%220.66%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.63%22%2F%3E%3Ccircle%20cx%3D%2255.53%22%20cy%3D%229.4%22%20r%3D%221.14%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2256.89%22%20cy%3D%2212.15%22%20r%3D%220.93%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.89%22%2F%3E%3Ccircle%20cx%3D%2287.66%22%20cy%3D%2220.49%22%20r%3D%221.02%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.4%22%2F%3E%3Ccircle%20cx%3D%2250.89%22%20cy%3D%2233.51%22%20r%3D%220.57%22%20fill%3D%22%23ffeec8%22%20opacity%3D%220.47%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-017
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="1"
+                  data-tone="base"
+                >
+                  1
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="6"
+                  data-max-health="6"
+                  data-tone="base"
+                >
+                  6
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    6
+                  </span>
+                </span>
+              </span>
             </span>
           </span>
           <span
@@ -1069,8 +1775,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
     </div>
@@ -1095,8 +1852,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -1111,50 +1919,81 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p2"
           data-def-id="core-040"
+          data-face="minion"
           data-legal="false"
           data-owner="p2"
           data-position="ATK"
           data-testid="card-u9"
-          title="core-040"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-040
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="1"
+              class="cf-scale"
             >
-              1
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="1"
-              data-max-health="1"
-            >
-              1
-              /
-              1
-            </span>
-            <span
-              class="stat stat-armor"
-              data-armor="1"
-            >
-              1
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2235.79%22%20y1%3D%222.06%22%20x2%3D%2264.21%22%20y2%3D%2297.94%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23160d0c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6046%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffaea0%22%20stop-opacity%3D%220.71%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffaea0%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffaea0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2268.81%22%20cy%3D%2255.42%22%20r%3D%2230.9%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-1.61%2023.56A6.89%206.89%200%200%201%2010.47%2023.56A7.11%207.11%200%200%201%2022.55%2023.56A7.29%207.29%200%200%201%2034.63%2023.56L34.63%2026.56L-1.61%2026.56ZM61.77%2024.55A5.56%205.56%200%200%201%2070.98%2024.55A5.72%205.72%200%200%201%2080.19%2024.55A5.41%205.41%200%200%201%2089.4%2024.55A5.1%205.1%200%200%201%2098.61%2024.55L98.61%2027.55L61.77%2027.55Z%22%20fill%3D%22%2361403d%22%20opacity%3D%220.5%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2051Q20%2054.99%2030%2054.8Q40%2054.61%2050%2057.83Q60%2061.05%2070%2062.57Q80%2064.09%2090%2060.99L100%2057.89L100%20100Z%22%20fill%3D%22%2361403d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2080.7Q25%2081.02%2037.5%2083.19Q50%2085.36%2062.5%2084.49Q75%2083.61%2087.5%2081.33L100%2079.06L100%20100Z%22%20fill%3D%22%233b2523%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M41.43%20100C41.43%2076.07%2049.09%2070.07%2060.92%2068.57L64.42%2065.77C55.06%2055.65%2063.71%2043.16%2073.26%2039.16C79.47%2043.16%2082.56%2055.65%2073.21%2065.77L76.71%2068.57C88.53%2070.07%2096.2%2076.07%2096.2%20100ZM64.01%2056.92A6.19%207.88%200%201%200%2076.39%2056.92A6.19%207.88%200%201%200%2064.01%2056.92Z%22%20fill%3D%22%23120a09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2828.21%2031.61%29%20rotate%285.22%29%20scale%280.7%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ccdbde%22%20stroke%3D%22%23231513%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2269.17%22%20cy%3D%2233.05%22%20r%3D%221.03%22%20fill%3D%22%23ffd1c8%22%20opacity%3D%220.46%22%2F%3E%3Ccircle%20cx%3D%2244.06%22%20cy%3D%2241.52%22%20r%3D%221.05%22%20fill%3D%22%23ffd1c8%22%20opacity%3D%220.46%22%2F%3E%3Ccircle%20cx%3D%226.67%22%20cy%3D%2220.6%22%20r%3D%220.94%22%20fill%3D%22%23ffd1c8%22%20opacity%3D%220.77%22%2F%3E%3Ccircle%20cx%3D%2266.53%22%20cy%3D%2213.04%22%20r%3D%220.78%22%20fill%3D%22%23ffd1c8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2265.86%22%20cy%3D%2233.26%22%20r%3D%221.28%22%20fill%3D%22%23ffd1c8%22%20opacity%3D%220.57%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-040
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="1"
+                  data-tone="base"
+                >
+                  1
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="1"
+                  data-max-health="1"
+                  data-tone="base"
+                >
+                  1
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    1
+                  </span>
+                </span>
+                <span
+                  class="stat stat-armor"
+                  data-armor="1"
+                >
+                  1
+                </span>
+              </span>
             </span>
           </span>
           <span
@@ -1187,61 +2026,92 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p1"
           data-def-id="core-034"
+          data-face="minion"
           data-legal="false"
           data-owner="p1"
           data-position="ATK"
           data-testid="card-u4"
-          title="core-034"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
-          >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-034
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="5"
+              class="cf-scale"
             >
-              5
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="4"
-              data-max-health="5"
-            >
-              4
-              /
-              5
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2254.87%22%20y1%3D%220.24%22%20x2%3D%2245.13%22%20y2%3D%2299.76%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316110c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6846%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffcfa0%22%20stop-opacity%3D%220.76%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffcfa0%22%20stop-opacity%3D%220.34%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffcfa0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2255.51%22%20cy%3D%2253.97%22%20r%3D%2226.77%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M4.16%2021.07A4.86%204.86%200%200%201%2013.23%2021.07A4.55%204.55%200%200%201%2022.31%2021.07A4.63%204.63%200%200%201%2031.39%2021.07L31.39%2024.07L4.16%2024.07ZM56.45%2029.19A5.68%205.68%200%200%201%2067.03%2029.19A5.97%205.97%200%200%201%2077.6%2029.19A5.83%205.83%200%200%201%2088.18%2029.19A5.62%205.62%200%200%201%2098.75%2029.19L98.75%2032.19L56.45%2032.19Z%22%20fill%3D%22%23614d3d%22%20opacity%3D%220.5%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2064.13Q20%2058.78%2030%2060.7Q40%2062.63%2050%2060.49Q60%2058.35%2070%2059.24Q80%2060.13%2090%2060.96L100%2061.8L100%20100Z%22%20fill%3D%22%23614d3d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2081.14Q25%2081.04%2037.5%2082.65Q50%2084.26%2062.5%2081.7Q75%2079.15%2087.5%2081.88L100%2084.6L100%20100Z%22%20fill%3D%22%233b2d23%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M24.58%20100C24.58%2073.82%2033.24%2067.82%2046.44%2066.32L49.94%2063.33A10.89%2010.89%200%201%201%2061.08%2063.33L64.58%2066.32C77.78%2067.82%2086.44%2073.82%2086.44%20100Z%22%20fill%3D%22%23120d09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M23.96%2073.82Q24.58%2063.32%2035.09%2062.82Q45.61%2063.32%2046.23%2073.82Q35.09%2070.82%2023.96%2073.82ZM64.79%2073.82Q65.4%2063.32%2075.92%2062.82Q86.44%2063.32%2087.06%2073.82Q75.92%2070.82%2064.79%2073.82Z%22%20fill%3D%22%23120d09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M49.51%2041.88L49.01%2036.38L52.31%2039.08L55.51%2034.88L58.71%2039.08L62.01%2036.38L61.51%2041.88Z%22%20fill%3D%22%23120d09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M49.98%2054.84A1.63%201.09%200%201%200%2053.25%2054.84A1.63%201.09%200%201%200%2049.98%2054.84ZM57.82%2054.84A1.63%201.09%200%201%200%2061.09%2054.84A1.63%201.09%200%201%200%2057.82%2054.84Z%22%20fill%3D%22%23ffcfa0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2855.51%2077.22%29%20rotate%28-0.23%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M7%2022V9.4H5.4V3.6H8.2V5.8H10.6V3.6H13.4V5.8H15.8V3.6H18.6V9.4H17V22ZM10.2%2022V17.6A1.8%201.8%200%200%201%2013.8%2017.6V22ZM11.2%2010.6H12.8V13.8H11.2Z%22%20fill%3D%22%23ccd5de%22%20stroke%3D%22%23231a13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%28-11.3%29%20scale%280.4%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M11%202H13V22H11ZM13%204.6L19%209.1L17.8%2010.7L13%207.1ZM11%2012.2L5%2016.7L6.2%2018.3L11%2014.7ZM13%2013.4L18.6%2017.6L17.4%2019.2L13%2015.9Z%22%20fill%3D%22%23ffcfa0%22%20stroke%3D%22%23231a13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2229.94%22%20cy%3D%2237.68%22%20r%3D%221.02%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.77%22%2F%3E%3Ccircle%20cx%3D%2288.85%22%20cy%3D%2222.1%22%20r%3D%220.9%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.87%22%2F%3E%3Ccircle%20cx%3D%2273.47%22%20cy%3D%2243.42%22%20r%3D%220.77%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2255.43%22%20cy%3D%2213.06%22%20r%3D%221.06%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.61%22%2F%3E%3Ccircle%20cx%3D%2263.65%22%20cy%3D%2222.88%22%20r%3D%220.49%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.86%22%2F%3E%3Ccircle%20cx%3D%2225.96%22%20cy%3D%2215.23%22%20r%3D%220.46%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.4%22%2F%3E%3Ccircle%20cx%3D%2270.01%22%20cy%3D%2249.43%22%20r%3D%220.88%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.37%22%2F%3E%3Ccircle%20cx%3D%229.65%22%20cy%3D%2217.04%22%20r%3D%221.19%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.39%22%2F%3E%3Ccircle%20cx%3D%2232.56%22%20cy%3D%2244.52%22%20r%3D%220.82%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.69%22%2F%3E%3Ccircle%20cx%3D%2254%22%20cy%3D%2213.71%22%20r%3D%220.84%22%20fill%3D%22%23ffe4c8%22%20opacity%3D%220.52%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="card-name"
+              >
+                core-034
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="5"
+                  data-tone="base"
+                >
+                  5
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="4"
+                  data-max-health="5"
+                  data-tone="base"
+                >
+                  4
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    5
+                  </span>
+                </span>
+              </span>
+              <span
+                class="keywords"
+              >
+                <span
+                  class="keyword keyword-icon"
+                  data-keyword="Stack"
+                  title="Stack"
+                >
+                  ST
+                </span>
+              </span>
             </span>
           </span>
           <span
             class="position-tag"
           >
             ATK
-          </span>
-          <span
-            class="keywords"
-          >
-            <span
-              class="keyword"
-              data-keyword="Stack"
-              title="Stack"
-            >
-              ST
-            </span>
           </span>
           <span
             class="buried-badge"
@@ -1280,8 +2150,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
     </div>
@@ -1306,8 +2227,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         >
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
         </div>
       </div>
       <div
@@ -1322,61 +2294,92 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="true"
+          data-card-type="Unit"
           data-controller="p2"
           data-def-id="core-100"
+          data-face="minion"
           data-legal="false"
           data-owner="p2"
           data-position="ATK"
           data-testid="card-u10"
-          title="core-100"
         >
           <span
-            class="cost-gem"
-            data-cost="0"
-          >
-            0
-          </span>
-          <span
-            class="card-name"
-          >
-            core-100
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="10"
+              class="cf-scale"
             >
-              10
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="10"
-              data-max-health="10"
-            >
-              10
-              /
-              10
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2264.79%22%20y1%3D%222.24%22%20x2%3D%2235.21%22%20y2%3D%2297.76%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235c593a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316150c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fffca0%22%20stop-opacity%3D%220.84%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23fffca0%22%20stop-opacity%3D%220.38%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fffca0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2265.12%22%20cy%3D%2253.82%22%20r%3D%2225.63%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L146.34%2069.46L141.33%2078.82ZM-6%20-6L129.39%2096.8L121.8%20106.1ZM-6%20-6L107.61%20120.46L97.28%20129.03Z%22%20fill%3D%22%23fffca0%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2056.82Q20%2060.59%2030%2060.62Q40%2060.66%2050%2061.53Q60%2062.41%2070%2060.63Q80%2058.85%2090%2055.01L100%2051.16L100%20100Z%22%20fill%3D%22%23615d3d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2081.84Q25%2081.74%2037.5%2080.22Q50%2078.7%2062.5%2080.55Q75%2082.39%2087.5%2083.27L100%2084.15L100%20100Z%22%20fill%3D%22%233b3823%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M32.59%20100C32.59%2076.83%2041.7%2070.83%2057.42%2069.33L60.92%2065.12C50.56%2054.27%2057.08%2040.76%2065.76%2036.76C73.96%2040.76%2079.67%2054.27%2069.31%2065.12L72.81%2069.33C88.54%2070.83%2097.64%2076.83%2097.64%20100ZM58.69%2055.32A6.63%208.44%200%201%200%2071.95%2055.32A6.63%208.44%200%201%200%2058.69%2055.32Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M31.94%2076.83Q32.59%2066.33%2043.65%2065.83Q54.71%2066.33%2055.36%2076.83Q43.65%2073.83%2031.94%2076.83ZM74.87%2076.83Q75.53%2066.33%2086.58%2065.83Q97.64%2066.33%2098.29%2076.83Q86.58%2073.83%2074.87%2076.83Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2824.09%2029.45%29%20rotate%28-0.99%29%20scale%280.73%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ccccde%22%20stroke%3D%22%23232213%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%225.78%22%20cy%3D%2221.61%22%20r%3D%221.17%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%225.28%22%20cy%3D%2254.11%22%20r%3D%220.53%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2284.03%22%20cy%3D%2227.04%22%20r%3D%220.42%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.81%22%2F%3E%3Ccircle%20cx%3D%227.71%22%20cy%3D%2243.89%22%20r%3D%221.26%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.42%22%2F%3E%3Ccircle%20cx%3D%2266.49%22%20cy%3D%2230.07%22%20r%3D%221.28%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.53%22%2F%3E%3Ccircle%20cx%3D%2251.05%22%20cy%3D%2221.92%22%20r%3D%220.67%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.61%22%2F%3E%3Ccircle%20cx%3D%2228.8%22%20cy%3D%225.65%22%20r%3D%220.57%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.65%22%2F%3E%3Ccircle%20cx%3D%2245.59%22%20cy%3D%228.68%22%20r%3D%220.44%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.69%22%2F%3E%3Ccircle%20cx%3D%2213.78%22%20cy%3D%2250.26%22%20r%3D%220.73%22%20fill%3D%22%23fffec8%22%20opacity%3D%220.71%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="0"
+                data-tone="base"
+              >
+                0
+              </span>
+              <span
+                class="card-name"
+              >
+                core-100
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="10"
+                  data-tone="base"
+                >
+                  10
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="10"
+                  data-max-health="10"
+                  data-tone="base"
+                >
+                  10
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    10
+                  </span>
+                </span>
+              </span>
+              <span
+                class="keywords"
+              >
+                <span
+                  class="keyword keyword-icon"
+                  data-keyword="Trample"
+                  title="Trample"
+                >
+                  TR
+                </span>
+              </span>
             </span>
           </span>
           <span
             class="position-tag"
           >
             ATK
-          </span>
-          <span
-            class="keywords"
-          >
-            <span
-              class="keyword"
-              data-keyword="Trample"
-              title="Trample"
-            >
-              TR
-            </span>
           </span>
           <button
             aria-disabled="true"
@@ -1403,44 +2406,75 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-unit"
+          class="card card-unit cf-host cf-host--minion"
           data-can-act="false"
+          data-card-type="Unit"
           data-controller="p1"
           data-def-id="core-051"
+          data-face="minion"
           data-legal="false"
           data-owner="p1"
           data-position="ATK"
           data-testid="card-u5"
-          title="core-051"
         >
           <span
-            class="cost-gem"
-            data-cost="0"
-          >
-            0
-          </span>
-          <span
-            class="card-name"
-          >
-            core-051
-          </span>
-          <span
-            class="stats"
+            class="cf cf--minion"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="minion"
           >
             <span
-              class="stat stat-attack"
-              data-attack="0"
+              class="cf-scale"
             >
-              0
-            </span>
-            <span
-              class="stat stat-health"
-              data-health="1"
-              data-max-health="1"
-            >
-              1
-              /
-              1
+              <span
+                class="cf-portrait"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--oval"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2255.07%22%20y1%3D%220.26%22%20x2%3D%2244.93%22%20y2%3D%2299.74%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23353324%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%230d0c08%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fffba0%22%20stop-opacity%3D%220.82%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23fffba0%22%20stop-opacity%3D%220.37%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fffba0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2249.96%22%20cy%3D%2257%22%20r%3D%2229.16%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M56.17%2019.83A7.05%207.05%200%201%200%2070.27%2019.83A7.05%207.05%200%201%200%2056.17%2019.83Z%22%20fill%3D%22%23fffba0%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2057.65Q20%2062.32%2030%2061.29Q40%2060.26%2050%2060.84Q60%2061.42%2070%2064.42Q80%2067.42%2090%2066.36L100%2065.3L100%20100Z%22%20fill%3D%22%23615d3d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2082.92Q25%2084.48%2037.5%2084.59Q50%2084.7%2062.5%2086.25Q75%2087.8%2087.5%2085.21L100%2082.62L100%20100Z%22%20fill%3D%22%233b3823%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M5.15%20100C5.15%2083.66%2017.7%2077.66%2039.85%2076.16L43.35%2069.47A14.11%2014.11%200%201%201%2056.57%2069.47L60.07%2076.16C82.23%2077.66%2094.78%2083.66%2094.78%20100Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.25%2050.77Q25.27%2044.3%2029.07%2027.4Q35.15%2042.19%2042.55%2046.01ZM61.67%2050.77Q74.65%2044.3%2070.86%2027.4Q64.78%2042.19%2057.38%2046.01Z%22%20fill%3D%22%23121109%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M43.03%2058.13A2.12%201.41%200%201%200%2047.26%2058.13A2.12%201.41%200%201%200%2043.03%2058.13ZM53.19%2058.13A2.12%201.41%200%201%200%2057.42%2058.13A2.12%201.41%200%201%200%2053.19%2058.13Z%22%20fill%3D%22%23fffba0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2849.96%2086.73%29%20rotate%287.64%29%20scale%280.55%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M7%2022V9.4H5.4V3.6H8.2V5.8H10.6V3.6H13.4V5.8H15.8V3.6H18.6V9.4H17V22ZM10.2%2022V17.6A1.8%201.8%200%200%201%2013.8%2017.6V22ZM11.2%2010.6H12.8V13.8H11.2Z%22%20fill%3D%22%23ccccde%22%20stroke%3D%22%23232213%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%28-7.07%29%20scale%280.38%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23fffba0%22%20stroke%3D%22%23232213%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2264.59%22%20cy%3D%2229.46%22%20r%3D%221.11%22%20fill%3D%22%23fffdc8%22%20opacity%3D%220.52%22%2F%3E%3Ccircle%20cx%3D%2258.8%22%20cy%3D%2251.65%22%20r%3D%221.3%22%20fill%3D%22%23fffdc8%22%20opacity%3D%220.84%22%2F%3E%3Ccircle%20cx%3D%2276.16%22%20cy%3D%2240.06%22%20r%3D%220.63%22%20fill%3D%22%23fffdc8%22%20opacity%3D%220.58%22%2F%3E%3Ccircle%20cx%3D%2236.4%22%20cy%3D%2240.04%22%20r%3D%220.82%22%20fill%3D%22%23fffdc8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2238.84%22%20cy%3D%2212.34%22%20r%3D%220.65%22%20fill%3D%22%23fffdc8%22%20opacity%3D%220.84%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="cost-gem"
+                data-cost="0"
+                data-tone="base"
+              >
+                0
+              </span>
+              <span
+                class="card-name"
+              >
+                core-051
+              </span>
+              <span
+                class="stats"
+              >
+                <span
+                  class="stat stat-attack"
+                  data-attack="0"
+                  data-tone="base"
+                >
+                  0
+                </span>
+                <span
+                  class="stat stat-health"
+                  data-health="1"
+                  data-max-health="1"
+                  data-tone="base"
+                >
+                  1
+                  <span
+                    class="cf-max"
+                  >
+                    /
+                    1
+                  </span>
+                </span>
+              </span>
             </span>
           </span>
           <span
@@ -1473,30 +2507,59 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell radiant card-backrow"
+          class="card card-spell radiant cf-host cf-host--compact card-backrow"
+          data-card-type="Trap"
           data-controller="p1"
           data-def-id="core-084"
+          data-face="compact"
           data-legal="false"
           data-owner="p1"
           data-radiant="true"
           data-testid="card-b20"
-          title="core-084"
         >
           <span
-            class="cost-gem"
-            data-cost="1"
+            class="cf cf--compact"
+            data-card-type="Trap"
+            data-foil="animated"
+            data-layout="compact"
+            data-name-tier="s"
+            data-radiant-face="true"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            1
-          </span>
-          <span
-            class="card-name"
-          >
-            core-084
-          </span>
-          <span
-            class="card-type"
-          >
-            Trap
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--notched"
+                  data-art="procedural"
+                  data-art-theme="trap"
+                  data-art-variant="radiant"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2227.57%22%20y1%3D%225.31%22%20x2%3D%2272.43%22%20y2%3D%2294.69%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23a05e1b%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23281404%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.88%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.4%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2251.64%22%20cy%3D%2249.9%22%20r%3D%2225.08%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M51.64%2049.9L163.83%20149.47L154.15%20159.41Z%22%20opacity%3D%220.27%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L115.1%20185.81L100.35%20191.77Z%22%20opacity%3D%220.24%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L-5.45%20188.61L-16.62%20183.47Z%22%20opacity%3D%220.36%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L-67.77%20140.68L-72.49%20134.12Z%22%20opacity%3D%220.29%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L-92.79%2090.4L-95.74%2077.79Z%22%20opacity%3D%220.24%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L-76.46%20-28.14L-69.17%20-39.01Z%22%20opacity%3D%220.19%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L-44.4%20-65.33L-32.52%20-74.27Z%22%20opacity%3D%220.24%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L48.71%20-100.07L56.87%20-100.01Z%22%20opacity%3D%220.33%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L129.82%20-78.11L139.9%20-71.38Z%22%20opacity%3D%220.3%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L182.42%20-23.56L186.81%20-15.14Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M51.64%2049.9L201.64%2049.85L201.03%2063.44Z%22%20opacity%3D%220.26%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M51.44%2054.04L-34.5%20100L-33.1%20100L51.74%2054.04ZM51.44%2054.04L-20.69%20100L-19.29%20100L51.74%2054.04ZM51.44%2054.04L-5.92%20100L-4.52%20100L51.74%2054.04ZM51.44%2054.04L11.21%20100L12.61%20100L51.74%2054.04ZM51.44%2054.04L33.51%20100L34.91%20100L51.74%2054.04ZM51.44%2054.04L50.89%20100L52.29%20100L51.74%2054.04ZM51.44%2054.04L68.83%20100L70.23%20100L51.74%2054.04ZM51.44%2054.04L89.74%20100L91.14%20100L51.74%2054.04ZM51.44%2054.04L110.41%20100L111.81%20100L51.74%2054.04ZM51.44%2054.04L118.95%20100L120.35%20100L51.74%2054.04ZM51.44%2054.04L141.29%20100L142.69%20100L51.74%2054.04Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.2%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%2057.04L100%2057.04L100%2057.72L0%2057.72ZM0%2059.24L100%2059.24L100%2060.01L0%2060.01ZM0%2062.65L100%2062.65L100%2063.57L0%2063.57ZM0%2067.94L100%2067.94L100%2069.09L0%2069.09ZM0%2076.13L100%2076.13L100%2077.64L0%2077.64ZM0%2088.83L100%2088.83L100%2090.9L0%2090.9Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.14%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M14.62%2049.9A37.03%2037.03%200%201%200%2088.67%2049.9A37.03%2037.03%200%201%200%2014.62%2049.9ZM17.62%2049.9A34.03%2034.03%200%201%200%2085.67%2049.9A34.03%2034.03%200%201%200%2017.62%2049.9Z%22%20fill%3D%22%23ab6e28%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M46.58%2037.76L39.55%2018.7L42.28%2017.78L48.28%2037.18ZM57.98%2038.37L68.5%2020.99L70.92%2022.55L59.5%2039.34ZM64.61%2047.67L84.75%2045.05L85.05%2047.92L64.8%2049.46ZM61.48%2058.65L76.08%2072.76L74.02%2074.78L60.19%2059.91ZM50.94%2063.04L49%2083.26L46.15%2082.91L49.15%2062.83ZM40.93%2057.54L23.92%2068.63L22.41%2066.18L39.99%2056.01ZM38.99%2046.29L19.71%2039.91L20.69%2037.2L39.6%2044.6Z%22%20fill%3D%22%23ffe07a%22%20opacity%3D%220.55%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M39.11%2049.9A12.53%2012.53%200%201%200%2064.17%2049.9A12.53%2012.53%200%201%200%2039.11%2049.9ZM40.91%2049.9A10.73%2010.73%200%201%200%2062.37%2049.9A10.73%2010.73%200%201%200%2040.91%2049.9Z%22%20fill%3D%22%23ffe389%22%20opacity%3D%220.65%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2851.64%2049.9%29%20rotate%286.2%29%20scale%280.76%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2252.06%22%20cy%3D%2216.68%22%20r%3D%221.1%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.36%22%2F%3E%3Ccircle%20cx%3D%2271.44%22%20cy%3D%2256.96%22%20r%3D%220.9%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.83%22%2F%3E%3Ccircle%20cx%3D%2245%22%20cy%3D%2263.24%22%20r%3D%221.15%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.48%22%2F%3E%3Ccircle%20cx%3D%2282.23%22%20cy%3D%2233.19%22%20r%3D%221.27%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.69%22%2F%3E%3Ccircle%20cx%3D%2231.01%22%20cy%3D%2243.23%22%20r%3D%220.42%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%2222.08%22%20cy%3D%2226.55%22%20r%3D%221.16%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%2264.03%22%20cy%3D%2242.12%22%20r%3D%221.22%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.74%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-084
+              </span>
+              <span
+                class="card-type"
+              >
+                Trap
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -1700,22 +2763,62 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-hand"
+          class="card card-spell cf-host cf-host--full card-hand"
+          data-card-type="Unit"
           data-def-id="core-002"
+          data-face="full"
           data-legal="false"
           data-testid="hand-card-c11"
-          title="core-002"
         >
           <span
-            class="cost-gem"
-            data-cost="1"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            1
-          </span>
-          <span
-            class="card-name"
-          >
-            core-002
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2238.33%22%20y1%3D%221.38%22%20x2%3D%2261.67%22%20y2%3D%2298.62%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316140c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6e46%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.8%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.36%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2229.01%22%20cy%3D%2250.53%22%20r%3D%2225.09%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-5.87%2025.34A44.86%2044.86%200%201%200%2083.85%2025.34A44.86%2044.86%200%201%200%20-5.87%2025.34ZM-4.09%2025.34A43.09%2043.09%200%201%200%2082.08%2025.34A43.09%2043.09%200%201%200%20-4.09%2025.34ZM6%2025.34A33%2033%200%201%200%2071.99%2025.34A33%2033%200%201%200%206%2025.34ZM7.74%2025.34A31.26%2031.26%200%201%200%2070.25%2025.34A31.26%2031.26%200%201%200%207.74%2025.34ZM17.86%2025.34A21.14%2021.14%200%201%200%2060.13%2025.34A21.14%2021.14%200%201%200%2017.86%2025.34ZM18.98%2025.34A20.01%2020.01%200%201%200%2059.01%2025.34A20.01%2020.01%200%201%200%2018.98%2025.34Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2052.3Q20%2057.32%2030%2056.81Q40%2056.29%2050%2060.34Q60%2064.4%2070%2064.69Q80%2064.97%2090%2063.15L100%2061.33L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.08Q25%2083.12%2037.5%2083.9Q50%2084.67%2062.5%2086.55Q75%2088.43%2087.5%2086.11L100%2083.78L100%20100Z%22%20fill%3D%22%233b3523%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M-0.74%20100C-0.74%2072.56%207.59%2066.56%2021.26%2065.06L24.76%2061.96C14.31%2050.98%2019.17%2037.33%2026.92%2033.33C36.24%2037.33%2043.71%2050.98%2033.26%2061.96L36.76%2065.06C50.43%2066.56%2058.76%2072.56%2058.76%20100ZM21.65%2052.03A6.71%208.54%200%201%200%2035.07%2052.03A6.71%208.54%200%201%200%2021.65%2052.03Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2876.63%2025.79%29%20rotate%285.31%29%20scale%280.77%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%2817.13%29%20scale%280.33%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%202L20.5%205V11.2C20.5%2016.4%2017%2020.1%2012%2022C7%2020.1%203.5%2016.4%203.5%2011.2V5ZM12%205.4L17.4%207.3V11.3C17.4%2014.7%2015.3%2017.2%2012%2018.6Z%22%20fill%3D%22%23ffeda0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.38%22%20cy%3D%2231.92%22%20r%3D%220.96%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2265.42%22%20cy%3D%2242.07%22%20r%3D%220.75%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2286.78%22%20cy%3D%2227.39%22%20r%3D%220.54%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2232.03%22%20cy%3D%2215.55%22%20r%3D%220.87%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%2229.35%22%20cy%3D%2234.14%22%20r%3D%220.74%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%224.02%22%20cy%3D%2257.88%22%20r%3D%221.2%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-002
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -1725,23 +2828,64 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell radiant card-hand"
+          class="card card-spell radiant cf-host cf-host--full card-hand"
+          data-card-type="Unit"
           data-def-id="core-019"
+          data-face="full"
           data-legal="false"
           data-radiant="true"
           data-testid="hand-card-c12"
-          title="core-019"
         >
           <span
-            class="cost-gem"
-            data-cost="3"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="animated"
+            data-layout="full"
+            data-name-tier="s"
+            data-radiant-face="true"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            3
-          </span>
-          <span
-            class="card-name"
-          >
-            core-019
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="radiant"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2256.22%22%20y1%3D%220.39%22%20x2%3D%2243.78%22%20y2%3D%2299.61%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238f7125%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23271606%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.82%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.37%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2247.81%22%20cy%3D%2251.23%22%20r%3D%2229.35%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M47.81%2051.23L-53.83%20161.55L-63.95%20151.28Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-102.19%2050.29L-101.6%2037.95Z%22%20opacity%3D%220.33%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-64.72%20-47.95L-55.77%20-57.27Z%22%20opacity%3D%220.2%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L63.2%20-97.98L77.33%20-95.84Z%22%20opacity%3D%220.21%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L154.33%20-54.38L161.42%20-46.71Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L197.81%2051.64L197.4%2062.33Z%22%20opacity%3D%220.34%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L146.88%20163.86L140.66%20169.04Z%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L39.65%20201.01L23.21%20199.2Z%22%20opacity%3D%220.33%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M5.12%20100L5.12%2025.01A11.55%2011.55%200%200%201%2028.21%2025.01L28.21%20100ZM6.85%20100L6.85%2025.01A9.81%209.81%200%200%201%2026.48%2025.01L26.48%20100ZM40.5%20100L40.5%2023.25A9.5%209.5%200%200%201%2059.5%2023.25L59.5%20100ZM41.98%20100L41.98%2023.25A8.02%208.02%200%200%201%2058.02%2023.25L58.02%20100ZM72.93%20100L72.93%2028.69A10.4%2010.4%200%200%201%2093.74%2028.69L93.74%20100ZM74.52%20100L74.52%2028.69A8.82%208.82%200%200%201%2092.15%2028.69L92.15%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2056Q20%2060.66%2030%2064.06Q40%2067.45%2050%2066.06Q60%2064.67%2070%2061.02Q80%2057.37%2090%2060.17L100%2062.97L100%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.49Q25%2086%2037.5%2085.94Q50%2085.88%2062.5%2084.16Q75%2082.45%2087.5%2084.27L100%2086.1L100%20100Z%22%20fill%3D%22%23674316%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M19.21%20100C19.21%2074.33%2027.22%2068.33%2040.05%2066.83L43.55%2063.46C32.36%2051.8%2037.28%2037.27%2045.48%2033.27C55.42%2037.27%2063.27%2051.8%2052.07%2063.46L55.57%2066.83C68.41%2068.33%2076.42%2074.33%2076.42%20100ZM39.96%2052.73A7.13%209.07%200%201%200%2054.21%2052.73A7.13%209.07%200%201%200%2039.96%2052.73Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M42.05%2068.33L37.05%2054.46L32.55%2066.33ZM53.57%2068.33L58.57%2054.46L63.07%2066.33Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2847.81%2078.05%29%20rotate%28-6.08%29%20scale%280.59%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%289.83%29%20scale%280.38%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ffe389%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2251.77%22%20cy%3D%2223.82%22%20r%3D%221.1%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.51%22%2F%3E%3Ccircle%20cx%3D%227.27%22%20cy%3D%2223.77%22%20r%3D%220.78%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%2244.45%22%20r%3D%220.51%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%2251.52%22%20cy%3D%2210.07%22%20r%3D%220.82%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2217.26%22%20cy%3D%2234.31%22%20r%3D%220.81%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%2245.44%22%20r%3D%221.12%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.86%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-019
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -1751,22 +2895,62 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-hand"
+          class="card card-spell cf-host cf-host--full card-hand"
+          data-card-type="Unit"
           data-def-id="core-055"
+          data-face="full"
           data-legal="false"
           data-testid="hand-card-c13"
-          title="core-055"
         >
           <span
-            class="cost-gem"
-            data-cost="0"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            0
-          </span>
-          <span
-            class="card-name"
-          >
-            core-055
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="0"
+                data-tone="base"
+              >
+                0
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2229.97%22%20y1%3D%224.19%22%20x2%3D%2270.03%22%20y2%3D%2295.81%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a5c3d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316140c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.71%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2252.56%22%20cy%3D%2248.03%22%20r%3D%2230.02%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M4.17%2014.85L13.53%2014.85L13.53%2017.45L4.17%2017.45ZM5.57%2017.45L12.13%2017.45L12.13%20100L5.57%20100ZM24.96%2013.51L34.09%2013.51L34.09%2016.11L24.96%2016.11ZM26.36%2016.11L32.69%2016.11L32.69%20100L26.36%20100ZM47.12%2022.73L56.13%2022.73L56.13%2025.33L47.12%2025.33ZM48.52%2025.33L54.73%2025.33L54.73%20100L48.52%20100ZM65.19%2024.38L73.6%2024.38L73.6%2026.98L65.19%2026.98ZM66.59%2026.98L72.2%2026.98L72.2%20100L66.59%20100ZM84.36%2026.73L92.53%2026.73L92.53%2029.33L84.36%2029.33ZM85.76%2029.33L91.13%2029.33L91.13%20100L85.76%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.42%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.11Q20%2054.38%2030%2056.77Q40%2059.16%2050%2061.35Q60%2063.53%2070%2059.04Q80%2054.55%2090%2054.67L100%2054.8L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.25Q25%2080.28%2037.5%2081.78Q50%2083.27%2062.5%2084.74Q75%2086.2%2087.5%2086.55L100%2086.9L100%20100Z%22%20fill%3D%22%233b3423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M21.63%20100C21.63%2071.45%2030.29%2065.45%2043.59%2063.95L47.09%2059.2A12.43%2012.43%200%201%201%2058.02%2059.2L61.52%2063.95C74.82%2065.45%2083.48%2071.45%2083.48%20100Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M45.59%2065.45L40.59%2050.2L36.09%2063.45ZM59.52%2065.45L64.52%2050.2L69.02%2063.45Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.38%2055.74L38.38%2047.41A14.17%2014.67%200%200%201%2066.73%2047.41L66.73%2055.74Q52.56%2060.71%2038.38%2055.74ZM51.36%2033.36Q55.82%2024.36%2065.63%2028.36Q58%2030.36%2053.76%2033.36Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M43.61%2047.13L61.51%2047.13L60.02%2049.03L45.1%2049.03Z%22%20fill%3D%22%23ffeca0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2852.56%2077.26%29%20rotate%280.06%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%2813.93%29%20scale%280.4%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23ffeca0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.9%22%20cy%3D%2219.13%22%20r%3D%221.05%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%226.73%22%20cy%3D%2241.28%22%20r%3D%220.92%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2228.9%22%20cy%3D%2247.4%22%20r%3D%220.91%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.66%22%2F%3E%3Ccircle%20cx%3D%2289.72%22%20cy%3D%2218.62%22%20r%3D%220.42%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.48%22%2F%3E%3Ccircle%20cx%3D%2288.61%22%20cy%3D%2244.31%22%20r%3D%221.13%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%225.93%22%20cy%3D%2218.79%22%20r%3D%221.24%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2289.44%22%20cy%3D%2250.71%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2230.19%22%20cy%3D%2219.76%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2271.61%22%20cy%3D%2248.64%22%20r%3D%220.78%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.57%22%2F%3E%3Ccircle%20cx%3D%224.78%22%20cy%3D%2254.01%22%20r%3D%220.59%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.43%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-055
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -1776,22 +2960,62 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       >
         <div
           aria-disabled="true"
-          class="card card-spell card-hand"
+          class="card card-spell cf-host cf-host--full card-hand"
+          data-card-type="Unit"
           data-def-id="core-077"
+          data-face="full"
           data-legal="false"
           data-testid="hand-card-c14"
-          title="core-077"
         >
           <span
-            class="cost-gem"
-            data-cost="6"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
-            6
-          </span>
-          <span
-            class="card-name"
-          >
-            core-077
+            <span
+              class="cf-scale"
+            >
+              <span
+                class="cost-gem"
+                data-cost="6"
+                data-tone="base"
+              >
+                6
+              </span>
+              <span
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2239.08%22%20y1%3D%221.21%22%20x2%3D%2260.92%22%20y2%3D%2298.79%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23160d0c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6046%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.87%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2268.3%22%20cy%3D%2257.46%22%20r%3D%2231.18%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L147%2068.1L141.85%2077.91ZM-6%20-6L126.5%20100.51L118.06%20110.23ZM-6%20-6L97.47%20128.89L89.24%20134.82Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.59Q20%2055.47%2030%2058.3Q40%2061.14%2050%2061.64Q60%2062.14%2070%2058.84Q80%2055.54%2090%2057.28L100%2059.02L100%20100Z%22%20fill%3D%22%2361403d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2082.06Q25%2081.23%2037.5%2083.38Q50%2085.52%2062.5%2083.78Q75%2082.03%2087.5%2084L100%2085.97L100%20100Z%22%20fill%3D%22%233b2423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M37.93%20100C37.93%2076.93%2046.43%2070.93%2060.63%2069.43L64.13%2066.18A9.66%209.66%200%201%201%2072.47%2066.18L75.97%2069.43C90.17%2070.93%2098.67%2076.93%2098.67%20100Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M57.28%2063.46L57.28%2056.98A11.02%2011.4%200%200%201%2079.32%2056.98L79.32%2063.46Q68.3%2067.32%2057.28%2063.46ZM67.1%2046.06Q71.45%2037.06%2080.91%2041.06Q73.55%2043.06%2069.5%2046.06Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M61.34%2056.56L75.26%2056.56L74.1%2058.46L62.5%2058.46Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2828.79%2030.88%29%20rotate%280.6%29%20scale%280.67%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ccdbde%22%20stroke%3D%22%23231513%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2282.58%22%20cy%3D%2234.8%22%20r%3D%220.95%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.56%22%2F%3E%3Ccircle%20cx%3D%2245.05%22%20cy%3D%2215.16%22%20r%3D%220.4%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2259.33%22%20cy%3D%2247.95%22%20r%3D%220.78%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.71%22%2F%3E%3Ccircle%20cx%3D%2273.75%22%20cy%3D%2213.35%22%20r%3D%220.69%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%225.95%22%20cy%3D%2212.08%22%20r%3D%221.11%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.69%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-077
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
+            </span>
           </span>
         </div>
       </div>

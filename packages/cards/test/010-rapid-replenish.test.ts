@@ -11,11 +11,15 @@
 // that finds three earlier plays.
 //
 // Nothing in the libraries here is cast-on-draw (#21, #27, #90.1 are), so a draw is just a draw.
+// The last case is the exception, on purpose (hunt round 8): a cast-on-draw Hinder that /fullsend's
+// Combo draw casts at §10.5 step 5, before this script, is played after Rapid Replenish, not
+// earlier, since §6.2 checks the count at play time.
 //
 // R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
 // its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
+import type { CardInstance } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
 const LIBRARY = [
@@ -120,5 +124,30 @@ describe("#10 Rapid Replenish (§8.1 row 10)", () => {
     expect(s.pile("p1", "library")).toHaveLength(library);
     expect(s.hand("p1")).toHaveLength(1);
     s.expectInZone("core-010", "graveyard");
+  });
+});
+
+describe("§6.2 Combo X: #10 counts the cards played EARLIER, at play time", () => {
+  it("a card cast during Rapid Replenish's own resolution (/fullsend's Combo draw) is not one played earlier (R40, R70)", () => {
+    const vanilla = "core-008";
+    const hinder = "core-021";
+    const g = scenario({
+      seed: "edge-r8-cbc-rapid",
+      p1: {
+        hand: ["core-078", vanilla, "core-010"],
+        library: [vanilla, hinder, vanilla, vanilla, vanilla, vanilla, vanilla, vanilla, vanilla, vanilla],
+      },
+      p2: { hand: [vanilla], library: [vanilla, vanilla] },
+    });
+    g.play("core-078");
+    g.play(g.hand("p1").find((card) => card.defId === vanilla) as CardInstance, { zone: 1 });
+    const before = g.pile("p1", "library").length;
+    // Two cards were played before Rapid Replenish: /fullsend and Mr. Vanilla. Its Combo 3 needs three.
+    g.play("core-010");
+    const drawnBySelf = before - g.pile("p1", "library").length;
+    // /fullsend's Combo draw takes the Hinder (cast on draw, R70) and draws again: at most 3 cards
+    // leave the library, counting a Combo draw of the cast Hinder's own. Rapid Replenish's "draw 3"
+    // does not fire, because the Hinder was cast after it was played, not earlier.
+    expect(drawnBySelf).toBeLessThanOrEqual(3);
   });
 });

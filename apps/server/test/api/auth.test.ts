@@ -31,6 +31,7 @@ import {
 import { createAuthRoutes } from "../../src/api/auth";
 import { ApiError, createRouter, type Router } from "../../src/api/http";
 import type { AuthProvider } from "../../src/api/ports";
+import { AUTH_SESSION_LIVE_CACHE_SECONDS } from "../../src/config";
 import {
   createTestDeps,
   createVirtualTimers,
@@ -229,6 +230,187 @@ describe("R159 — how long a verified email stays verified (§9.2, §9.4)", () 
     expect(await h.auth.verifyAccessToken(alice)).toBeNull();
     expect(await h.auth.verifyAccessToken(alice)).toBeNull();
     expect(h.admin.total()).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R194: a session the provider has ended is not honoured here either
+// ---------------------------------------------------------------------------
+
+/** A tier-2 token that names its provider session, as every Supabase access token does. */
+async function sessionTokenFor(userId: string, sessionId: string): Promise<string> {
+  return new SignJWT({ email: `${userId}@example.test`, session_id: sessionId, app_metadata: { provider: "email" } })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setIssuer(ISSUER)
+    .setAudience("authenticated")
+    .sign(SECRET_BYTES);
+}
+
+/** What `GET /auth/v1/user` answers next: the session's user, ended, or nobody there. */
+type UserEndpoint = (token: string) => Response | "unreachable";
+
+/**
+ * The provider with its `/auth/v1/user` scripted (R194's session check) and the admin lookup
+ * counted, as `providerWith` does.
+ */
+function providerWithSessions(user: UserEndpoint): Harness & { userCalls: () => number; answerUser: (next: UserEndpoint) => void } {
+  const timers = createVirtualTimers();
+  const counts: Record<string, number> = {};
+  let userCalls = 0;
+  let reply = user;
+  const auth = createSupabaseAuth({
+    url: PROJECT_URL,
+    secretKey: "secret-key",
+    jwtSecret: JWT_SECRET,
+    now: timers.now,
+    keySet: () => {
+      throw new Error("this test publishes no JWKS");
+    },
+    fetchImpl: async (input, init) => {
+      if (String(input) !== `${ISSUER}/user`) throw new Error(`unexpected request to ${String(input)}`);
+      userCalls += 1;
+      const bearer = new Headers(init?.headers).get("authorization") ?? "";
+      const answer = reply(bearer.replace(/^Bearer /u, ""));
+      if (answer === "unreachable") throw new TypeError("fetch failed");
+      return answer;
+    },
+    clientFactory: () => ({
+      password: null,
+      admin: {
+        getUserById: async (userId) => {
+          counts[userId] = (counts[userId] ?? 0) + 1;
+          return { kind: "ok", user: confirmedUser(userId) };
+        },
+      },
+    }),
+  });
+  return {
+    auth,
+    timers,
+    admin: {
+      lookups: () => ({ ...counts }),
+      total: () => Object.values(counts).reduce((sum, n) => sum + n, 0),
+      answer: () => undefined,
+    },
+    userCalls: () => userCalls,
+    answerUser: (next) => {
+      reply = next;
+    },
+  };
+}
+
+function liveUser(userId: string, confirmedEmail = true): () => Response {
+  return () => Response.json(confirmedEmail ? confirmedUser(userId) : unconfirmedUser(userId));
+}
+
+/** GoTrue's answer once `/logout` has deleted the session the token names. */
+function sessionEnded(): Response {
+  return Response.json({ code: 403, error_code: "session_not_found", msg: "Session from session_id claim in JWT does not exist" }, { status: 403 });
+}
+
+/** `AUTH_SESSION_LIVE_CACHE_SECONDS`, read as an order of magnitude (like `CACHE_TTL_MS`). */
+const LIVE_TTL_MS = AUTH_SESSION_LIVE_CACHE_SECONDS * 1000;
+
+describe("R194 — an ended session's access token is refused here too (§9.2, §9.4)", () => {
+  it("R194 refuses a well-signed, unexpired token whose session the provider has ended", async () => {
+    const h = providerWithSessions(() => sessionEnded());
+    const token = await sessionTokenFor(ALICE, "session-revoked");
+
+    // The signature and the audience are good: only the provider knows the session is gone.
+    expect(await h.auth.verifyAccessToken(token)).toBeNull();
+    expect(h.userCalls()).toBe(1);
+
+    // Through the router: /api/auth/me answers 401, so a copied token cannot read the account.
+    const router = createRouter(createAuthRoutes(), createTestDeps({ auth: h.auth }));
+    const res = await router(new Request("http://api.test/api/auth/me", { headers: { authorization: `Bearer ${token}` } }));
+    expect(res.status).toBe(401);
+  });
+
+  it("R194 remembers a live session only briefly, so an ending takes effect within the window", async () => {
+    const h = providerWithSessions(liveUser(ALICE));
+    const token = await sessionTokenFor(ALICE, "session-a");
+
+    const first = await h.auth.verifyAccessToken(token);
+    expect(first?.userId).toBe(ALICE);
+    expect(first?.emailVerified).toBe(true);
+    expect(h.userCalls()).toBe(1);
+    // The provider's answer was the authoritative user: no admin lookup in front of it.
+    expect(h.admin.total()).toBe(0);
+
+    // Signed out elsewhere. Inside the window the live answer still stands…
+    h.answerUser(() => sessionEnded());
+    h.timers.charge(1);
+    expect((await h.auth.verifyAccessToken(token))?.userId).toBe(ALICE);
+    expect(h.userCalls()).toBe(1);
+
+    // …and once it lapses the provider is asked again, and the token is refused.
+    h.timers.charge(LIVE_TTL_MS);
+    expect(await h.auth.verifyAccessToken(token)).toBeNull();
+    expect(h.userCalls()).toBe(2);
+  });
+
+  it("R194 remembers each session on its own: one session's answer says nothing about another's", async () => {
+    const h = providerWithSessions(liveUser(ALICE));
+    const kept = await sessionTokenFor(ALICE, "session-kept");
+    const other = await sessionTokenFor(ALICE, "session-other");
+
+    expect((await h.auth.verifyAccessToken(kept))?.userId).toBe(ALICE);
+    h.answerUser((token) => (token === other ? sessionEnded() : liveUser(ALICE)()));
+    // The same user, another session: asked on its own, and refused.
+    expect(await h.auth.verifyAccessToken(other)).toBeNull();
+    expect((await h.auth.verifyAccessToken(kept))?.userId).toBe(ALICE);
+    expect(h.userCalls()).toBe(2);
+  });
+
+  it("R194 a provider that cannot be reached signs nobody out, and proves no email (R159)", async () => {
+    const h = providerWithSessions(() => "unreachable");
+    const token = await sessionTokenFor(ALICE, "session-a");
+
+    const outage = await h.auth.verifyAccessToken(token);
+    expect(outage?.userId).toBe(ALICE);
+    // The admin lookup still decides the email, as before the session check existed.
+    expect(h.admin.total()).toBe(1);
+    // Nothing was remembered: the next call asks the provider again.
+    h.answerUser(() => sessionEnded());
+    expect(await h.auth.verifyAccessToken(token)).toBeNull();
+  });
+
+  it("R194 the session check cannot hang a request: it goes out with a timeout", async () => {
+    let signal: AbortSignal | null | undefined;
+    const h = providerWithSessions(() => Response.json(confirmedUser(ALICE)));
+    const auth = createSupabaseAuth({
+      url: PROJECT_URL,
+      secretKey: "secret-key",
+      jwtSecret: JWT_SECRET,
+      now: h.timers.now,
+      keySet: () => {
+        throw new Error("this test publishes no JWKS");
+      },
+      fetchImpl: async (_input, init) => {
+        signal = init?.signal;
+        return Response.json(confirmedUser(ALICE));
+      },
+      clientFactory: () => ({ password: null, admin: null }),
+    });
+    expect((await auth.verifyAccessToken(await sessionTokenFor(ALICE, "session-a")))?.userId).toBe(ALICE);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("R194 never honours a token on another user's answer", async () => {
+    const h = providerWithSessions(liveUser(BOB));
+    const token = await sessionTokenFor(ALICE, "session-a");
+    expect(await h.auth.verifyAccessToken(token)).toBeNull();
+  });
+
+  it("R194 a token that names no session is verified as before (the admin lookup, no session check)", async () => {
+    const h = providerWithSessions(() => {
+      throw new Error("a token with no session_id must not reach /auth/v1/user");
+    });
+    const token = await tokenFor(ALICE);
+    expect((await h.auth.verifyAccessToken(token))?.emailVerified).toBe(true);
+    expect(h.userCalls()).toBe(0);
+    expect(h.admin.total()).toBe(1);
   });
 });
 

@@ -8,24 +8,24 @@
 // R40, R70).
 //
 // THE OFF-BY-ONE, which is the whole subtlety of this card: §6.2 defines "Combo X" as "X or more
-// cards were played EARLIER this turn", and §10.5 step 4 increments `turnLog.cardsPlayed` before
-// step 5 runs this script (engine/src/reduce.ts:78, and `resolve.countAsPlayed` for a cast, R70).
-// Rapid Replenish is therefore already inside the count when its own hook asks, so the cards played
-// earlier are `playsThisTurn - 1`. BUILD M4-T4's must-pass row says the same in numbers: two prior
-// plays draw nothing, three prior plays draw 3.
+// cards were played EARLIER this turn", and §10.5 step 4 counts the card before step 5 runs this
+// script, so Rapid Replenish is already inside `turnLog.cardsPlayed` when its own hook asks. And
+// step 5 runs /fullsend's granted Combo draw before this script, so a cast-on-draw card that draw
+// casts (R70) is in the count too, though it was played after Rapid Replenish. §6.2 checks the
+// count "at play time", so the script reads `playedEarlier`, this play's own place in the turn's
+// log. BUILD M4-T4's must-pass row says the same in numbers: two prior plays draw
+// nothing, three prior plays draw 3.
 //
-// The count is read through `subsystems.playsThisTurn` (subsystems/comboIndex.ts:70), the one
-// reader of `turnLog.cardsPlayed`, so no card file indexes `state.players` itself (BUILD M3-T1).
 // It is read per player: `ctx.controller`'s own turn log, which is the only per-turn record there
 // is, so a card the opponent cast during this turn counts on their log and not on this one.
 //
 // R195, the yellow glow: `conditionMet` answers the same question from the hand, before the card is
-// played and so before it is counted — there the cards played earlier are `playsThisTurn` itself,
-// with no −1. `comboMet` is the one predicate both read, so the glow and the draw cannot disagree.
+// played. `playedEarlier` answers it there too: a card still in hand has not been played, so every
+// play this turn is earlier than the one it would be. One reader for both, so the glow and the draw
+// cannot disagree.
 
-import { subsystems, type GameState, type Script } from "@jackioh/engine";
+import { playedEarlier, type Script } from "@jackioh/engine";
 import { draw } from "@jackioh/engine/effects";
-import type { PlayerId } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-010");
@@ -35,24 +35,17 @@ const COMBO = 3;
 const BASE_DRAW = 3;
 const RADIANT_DRAW = 6;
 
-/**
- * "Combo 3" is met: at least `COMBO` cards were played before this one this turn. `counted` says
- * whether this card is already inside `playsThisTurn` — true while its own Cry runs (§10.5 step 4),
- * false while it still sits in hand (R195) — so the plays before it are the count less itself.
- */
-function comboMet(state: GameState, controller: PlayerId, counted: boolean): boolean {
-  const played = subsystems.playsThisTurn(state, controller);
-  const playedEarlier = counted ? played - 1 : played;
-  return playedEarlier >= COMBO;
-}
-
 /** The only difference between the two faces is how many cards the met Combo draws. */
 function rapidReplenish(count: number): Script {
   return {
-    // −1 inside `comboMet`: this spell is already counted, and Combo counts the plays before it.
-    cry: (ctx) => (comboMet(ctx.state, ctx.controller, true) ? [draw({ count })] : []),
-    // R195: hand only. The condition is about a play; a Spell never sits on the field.
-    conditionMet: (ctx) => ctx.zone === "hand" && comboMet(ctx.state, ctx.controller, false),
+    cry: (ctx) => {
+      // The plays before this one, at play time: not this spell, and not a card its step 5 cast.
+      const earlier = playedEarlier(ctx.state, ctx.controller, ctx.self);
+      return earlier >= COMBO ? [draw({ count })] : [];
+    },
+    // R195: hand only. The condition is about a play; a Spell never sits on the field. In hand,
+    // `playedEarlier` is every play this turn.
+    conditionMet: (ctx) => ctx.zone === "hand" && playedEarlier(ctx.state, ctx.controller, ctx.self) >= COMBO,
   };
 }
 
