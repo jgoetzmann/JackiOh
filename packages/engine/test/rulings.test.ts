@@ -173,6 +173,9 @@ const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
 const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
 /** R243's proof beside hidden-information.test.ts's, and R46's: the hunt's tenth round. */
 const CARDS_VANILLA_AND_POSITIONS_TEST = "../../cards/test/vanilla-and-positions.test.ts";
+/** R247's proofs: the live-cards change — #82's options are numbers, and the client draws them so. */
+const CARDS_KYS_TRIAL_TEST = "../../cards/test/082-kys-trial.test.ts";
+const WEB_PROMPT_CARDS_TEST = "../../../apps/web/src/game/PromptCards.test.tsx";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
@@ -1989,6 +1992,14 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // in hand, a crafted card's definition) and vanilla-and-positions.test.ts "R243 …" (a Vanilla copy).
   it("R243 puts in the view what a card is made of beyond its printed face", () => {
     provenIn(243, CARDS_HIDDEN_INFORMATION_TEST, CARDS_VANILLA_AND_POSITIONS_TEST);
+  });
+
+  // Proved by effects-choose.test.ts "R247 …": `offer: "index"` draws the same three cards and
+  // offers their indices, and the view names none of them; by 082-kys-trial.test.ts "R247 …": #82's
+  // options are three indices keyed and labelled by the number, and `legalActions` answers by
+  // number; and by PromptCards.test.tsx "R247 …": the picker draws the numbers, and no card face.
+  it("R247 offers #82's Discover as the numbers themselves", () => {
+    provenIn(247, "effects-choose.test.ts", CARDS_KYS_TRIAL_TEST, WEB_PROMPT_CARDS_TEST);
   });
 });
 

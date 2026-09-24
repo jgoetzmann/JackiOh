@@ -27,12 +27,19 @@ enforces rules and never sees hidden information.** In practice:
 src/
   main.tsx              entry and the pathname switch
   index.css             reset and design tokens
-  cards/                card faces, procedural art, inspect and card settings (docs/polish/6-cards.md)
+  cards/                card faces, procedural art, inspect and card settings (docs/polish/6-cards.md). A face is
+                        the card in play or the card as printed (SPEC §10.10): `faceModel` with `inPlay` reads
+                        the view's own facts (a hand Unit's stats, a unit's keywords and Vanilla mark, a #98's
+                        rolled power, R243) and inPlay.ts's words (#98's power, ??? for Call to Chaos); with no
+                        `inPlay` it is the collection's printed card. The inspect overlays in play show the
+                        printed text beside a face wherever the two differ (inspect/Printed.tsx)
   game/
     engine.ts           the EnginePort: the only seam onto packages/engine
     engine.real.ts      the real binding (see "Blocked on the engine" below)
     contract.ts         data-testid vocabulary, ClickTarget, Highlight, BoardProps
-    catalog.ts          card names and rules text (see the §10.8 finding below)
+    catalog.ts          card names and rules text (see the §10.8 finding below), and `MatchCardsContext`: the
+                        match-made definitions the view carries (`PlayerView.defs`, a Fuse's, R243) and each field
+                        Heroic Power's rolled power, which Board, Prompt and DragLayer provide from their view
     Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1; a graveyard or exile pile that
                         holds cards (public on both seats, §10.8) opens its cards on hover and in a dialog on a
                         click (cards/inspect/CardList.tsx), and a log line that names a card opens that card
@@ -44,7 +51,8 @@ src/
                         effects speed): plan.ts picks the opponent's `cardPlayed` out of the redacted events,
                         per viewer, and a card the view hides (R97, R227) is a back with "Opponent set a card".
                         Click-through, never on `data-animating`; `data-showcase` holds practice's AI while it is up
-    faces.ts            the printed face of a card the view names (the showcase, a log line, a pile)
+    faces.ts            the face in play of a card the view lists or names (the board, a prompt, the showcase,
+                        a log line, a pile): as it stands where the view lists it, else its definition
     inspectable.css     the look of what can be looked into: a browsable pile and a log line that names a card
     board.css prompt.css  layout and look: the game screen budgeted to the viewport (the
                         route's bar and the board share its height, and the cards are sized

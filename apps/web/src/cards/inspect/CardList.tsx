@@ -27,6 +27,7 @@ import {
   LIST_PREVIEW_PADDING_PX,
 } from "./constants.ts";
 import { Glossary } from "./Glossary.tsx";
+import { Printed } from "./Printed.tsx";
 import { placePreview, type PreviewPrefer, type Rect } from "./placement.ts";
 import { OVERLAY_ROOT_PROPS, useModalOverlay } from "./store.ts";
 import {
@@ -193,6 +194,7 @@ export function CardListSheet({ title, entries, onClose }: CardListProps & { onC
             <div className="inspect-face inspect-face--list" data-testid={INSPECT_FACE}>
               <CardFace face={opened.face} layout="full" />
             </div>
+            <Printed face={opened.face} />
             <Glossary entries={glossaryFor(opened.face)} />
           </div>
         )}

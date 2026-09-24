@@ -40,7 +40,7 @@ import { CardBack, CardFace } from "../../cards/index.ts";
 import { getFxSettings } from "../../fx/settings.ts";
 import { reducedMotionNow } from "../animations.ts";
 import { CatalogContext } from "../catalog.ts";
-import { printedFace } from "../faces.ts";
+import { namedFace } from "../faces.ts";
 import { SHOWCASE_FADE_MS, SHOWCASE_QUEUE_MAX, showcaseHoldMs, showcaseTestid, type ShowcaseKind } from "./constants.ts";
 import { capQueue, eventsSince, opponentPlays, type ShowcasePlay } from "./plan.ts";
 import "./showcase.css";
@@ -135,7 +135,17 @@ export default function CardShowcase({ view }: CardShowcaseProps): ReactElement 
   }, [showing, dismiss]);
 
   const play = showing?.play ?? null;
-  const face = play === null || play.defId === null ? null : printedFace(lookup, view, play.defId, play.radiant);
+  // The card in play (SPEC §10.10): as it stands where the view lists it — a unit's numbers, a Heroic
+  // Power's rolled power, a fused card's own text — else its definition at the price that was paid.
+  const face =
+    play === null || play.defId === null
+      ? null
+      : namedFace(lookup, view, {
+          defId: play.defId,
+          radiant: play.radiant,
+          ...(play.instanceId === undefined ? {} : { instanceId: play.instanceId }),
+          ...(play.costPaid === undefined ? {} : { cost: play.costPaid }),
+        });
   const kind = play === null ? null : kindOf(play);
   const said = kind === null ? "" : kind === "played" ? `${CAPTION.played} ${face?.name ?? "a card"}` : CAPTION[kind];
 

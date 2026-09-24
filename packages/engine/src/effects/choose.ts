@@ -191,8 +191,18 @@ export function chooseFromHand(args: {
 }
 
 /**
+ * What a Discover's options are (R247). `card`, the default, offers the definitions themselves: each
+ * option is a catalog id, labelled with the card's name, and the view names the card behind it
+ * (§10.8). `index` offers the definitions' §5 indices instead — #82 KY's Trial's "Discover among 3
+ * distinct random numbers" — so each option is the number, labelled with it and naming no
+ * definition, and the resume step turns the number it gets back into its card (`defByIndex`).
+ */
+export type DiscoverOffer = "card" | "index";
+
+/**
  * §6.3 Discover: choose 1 of 3, drawn without replacement from the stated pool and shown only to
- * the chooser. The options are definitions, so the resume step decides what to do with the pick.
+ * the chooser. The options are definitions, so the resume step decides what to do with the pick —
+ * or, with `offer: "index"`, their numbers (R247).
  *
  * `query` may be a function of the context, read when the effect applies rather than when the hook
  * builds its list: a hook is rebuilt each time a paused list resumes (`prompts.runResume`), and a
@@ -205,6 +215,8 @@ export function discoverFromCatalog(args: {
   count?: number;
   prompt?: string;
   data?: Record<string, unknown>;
+  /** R247: what each option is, the card or its number. Default `card`. */
+  offer?: DiscoverOffer;
 }): Effect {
   return {
     kind: "discoverFromCatalog",
@@ -222,11 +234,15 @@ export function discoverFromCatalog(args: {
         player: ctx.controller,
         kind: "discover",
         prompt: args.prompt ?? "Discover a card",
-        options: offered.map((def) => ({
-          key: `mode:${def.id}`,
-          label: def.name,
-          selection: { pick: "mode", option: def.id },
-        })),
+        options: offered.map((def) => {
+          // R247: a number is offered as itself, so nothing in the option names the card it stands for.
+          const option = args.offer === "index" ? def.index : def.id;
+          return {
+            key: `mode:${option}`,
+            label: args.offer === "index" ? def.index : def.name,
+            selection: { pick: "mode", option },
+          };
+        }),
         resume: resumeSelf(ctx, args.step, args.data ?? {}),
       });
     },

@@ -15,7 +15,11 @@
 //     the library, which is hidden, is not browsable;
 //   * on `/practice` (normal pacing, not `?pace=fast`), the AI's played card is held up for about a
 //     second and the AI takes no step while it is up (routes/practice.tsx holds it on
-//     `data-showcase`, as it does on `data-speaking`).
+//     `data-showcase`, as it does on `data-speaking`);
+//   * cards in play show what they are now (SPEC §10.10): a #98 Heroic Power in hand prints only the
+//     power it rolled, its X on the gem, with the printed list of seven beside its hover preview; a
+//     #95 Call to Chaos reads ???; and #82 KY's Trial's Discover offers three numbers on card backs,
+//     no faces, the pick arriving as the Radiant card with that index (R247).
 //
 // House rules (BUILD M8): seeds come from `seedFor`, there is no fixed `cy.wait(ms)` (every wait is
 // `cy.settled()` or a retried assertion), and every selector comes from support/testids.ts.
@@ -38,6 +42,7 @@ import {
   END_TURN,
   INSPECT_CLOSE,
   INSPECT_HOVER,
+  INSPECT_PRINTED,
   INSPECT_LIST_BACK,
   INSPECT_LIST_CARD,
   INSPECT_LIST_COUNT,
@@ -77,6 +82,15 @@ const TRAP_SEED = seedFor("03-sheep-19");
 const TRAP_DECK_A = "03-plays-a";
 const TRAP_DECK_B = "03-sheepish-b";
 const TRAP_NAME = "Sheepish";
+
+/**
+ * The cards-in-play test's decks and seed (SPEC §10.10, R247): with 17-live-48, player 1 opens with
+ * #98 Heroic Power, #82 KY's Trial and #95 Call to Chaos in hand on turn 1, with the 1 mana #82
+ * costs (e2e/fixtures/decks/17-live-a.json). Player 2 only ends turns.
+ */
+const LIVE_SEED = seedFor("17-live-48");
+const LIVE_DECK_A = "17-live-a";
+const LIVE_DECK_B = "08-do-nothing-b";
 
 /**
  * The catalog's Units and Spells among 01-aggro-a and 01-aggro-b (packages/cards/catalog.json).
@@ -574,5 +588,69 @@ describe("17 — the opponent's play held up, and the log and the piles looked i
         expect(during, `no AI step while ${entry.def ?? "the card"} was held up`).to.have.length(0);
       }
     });
+  });
+});
+
+describe("17 — cards in play show what they are now (SPEC §10.10)", () => {
+  /** The shown hand card of `defId`, by the attribute the board puts on its root. */
+  const inHand = (defId: string): string => `[data-testid^="hand-card-"][data-def-id="${defId}"]`;
+
+  it("R247 Heroic Power prints its rolled power, Call to Chaos reads ???, and KY's Trial Discovers three numbers", () => {
+    cy.seedGame({ seed: LIVE_SEED, a: LIVE_DECK_A, b: LIVE_DECK_B });
+    cy.jackioh().then((handle) => {
+      if (handle.seat !== "p1") cy.handOver();
+    });
+
+    // #98: one power, the one it rolled, with its X on the gem and in the text; not the seven.
+    cy.get(`${inHand("core-098")} .cost-gem`)
+      .invoke("text")
+      .then((gem) => {
+        expect(gem, "the gem shows the rolled power's X, not X").to.match(/^\d+$/);
+        cy.get(`${inHand("core-098")} .card-text`)
+          .should("contain.text", `Once per turn, spend ${gem}:`)
+          .and("not.contain.text", "7 random powers");
+      });
+    // Its hover preview holds the printed card beside it, in a real layout: visible, on screen.
+    cy.get(inHand("core-098")).trigger("pointerover", { pointerType: "mouse" });
+    cy.get(`${ts(INSPECT_HOVER)} ${ts(INSPECT_PRINTED)}`, { timeout: timeouts.view })
+      .should("be.visible")
+      .and("contain.text", "gain one of 7 random powers");
+    cy.get(inHand("core-098")).trigger("pointerout", { pointerType: "mouse" });
+    cy.get(ts(INSPECT_HOVER)).should("not.exist");
+
+    // #95: its text is a mystery in play.
+    cy.get(`${inHand("core-095")} .card-text`).should("have.text", "???");
+
+    // #82: three numbers on card backs, no card faces, and the pick is the card with that index.
+    cy.playByName("KY's Trial");
+    cy.get(promptOf("discover"), { timeout: timeouts.view }).should("be.visible");
+    cy.get(`${promptOf("discover")} [data-number]`)
+      .should("have.length", 3)
+      .each(($option) => {
+        const n = $option.attr("data-number") ?? "";
+        expect(Number(n), "a number from 1 to 100").to.be.within(1, 100);
+        expect($option.find(".cf").length, `number ${n} draws no card face`).to.eq(0);
+        const value = $option.find(".prompt-number-value");
+        expect(value.text()).to.eq(n);
+        // The number sits inside its option, where a player can read it.
+        const inner = value[0]?.getBoundingClientRect();
+        const outer = $option[0]?.getBoundingClientRect();
+        expect(inner !== undefined && outer !== undefined && inner.width > 0, `number ${n} is laid out`).to.eq(true);
+        if (inner !== undefined && outer !== undefined) {
+          expect(inner.left, `number ${n} inside its option`).to.be.at.least(outer.left);
+          expect(inner.right, `number ${n} inside its option`).to.be.at.most(outer.right);
+        }
+      });
+    cy.get(`${promptOf("discover")} [data-number]`)
+      .first()
+      .invoke("attr", "data-number")
+      .then((picked) => {
+        const name = CARD_NAMES[Number(picked)];
+        expect(name, `SPEC §8 names #${String(picked)}`).to.not.eq(undefined);
+        // The picker names no card: only the number stands for it.
+        cy.get(promptOf("discover")).should("not.contain.text", name ?? "");
+        cy.answerPrompt("discover", { first: 1 });
+        cy.get(`[data-testid^="hand-card-"][data-radiant="true"]`).should("contain.text", name ?? "");
+      });
   });
 });

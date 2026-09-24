@@ -25,23 +25,25 @@
 // So: 3 options out of those 100, drawn without replacement by `rng.shuffle` (§6.3 Discover), which
 // is R60's "Discover options are always different" — the "3 distinct numbers" of the row.
 //
-// PRESENTATION NOTE (not a rule this card can enforce): §8 says you Discover among three *numbers*.
-// `openPrompt` labels a Discover option with the definition's name, so the prompt shows three card
-// names. The option keys are `mode:<catalog id>` either way and the mechanic is identical; showing
-// the index instead of the name is §10.8's/the client's choice of label, not a card-script one.
+// THE OPTIONS ARE THE NUMBERS (R247). §8 says you Discover among three *numbers*, so the prompt
+// offers exactly that: `offer: "index"` makes each option the card's §5 index, labelled with it,
+// and nothing in the option — key, label or the definition `viewFor` would attach — names the card.
+// The player sees three numbers, and which card a number is comes from the public catalog (§5.1),
+// where every card prints its index: knowing the Core set by number is the trial. The pool is still
+// the three definitions above, drawn exactly as before; only what the options are changed.
 //
 // THE PICK COMES BACK AS A MODE (§10.6, R81). A Discover answer arrives in `ctx.targets` as
-// `{ pick: "mode", option: "<catalog id>" }`; `chosenOptions` is the one reader for that, and the
-// named `resume` step below is where `prompts.ts` re-enters this script (`RESUME_HOOK` = "resume",
-// the step name is `Resume.step`). Nothing is captured in `data`: the answer is the whole state the
-// continuation needs.
+// `{ pick: "mode", option: "<index>" }`; `chosenOptions` is the one reader for that, `defByIndex`
+// turns the number back into its card, and the named `resume` step below is where `prompts.ts`
+// re-enters this script (`RESUME_HOOK` = "resume", the step name is `Resume.step`). Nothing is
+// captured in `data`: the answer is the whole state the continuation needs.
 //
 // R74/§5.2: "the Radiant Core card" is the radiant FLAG on a fresh instance, never a second card
 // id, and `addToHand` carries it. R65: `costOverride` is where the calculation starts, so a 0
 // override is a card that costs 0 in hand and keeps costing 0 in every zone (R78). R4: a full hand
 // burns the card that arrives, which is `draw.addToHand`'s job and not this card's.
 
-import type { Script } from "@jackioh/engine";
+import { defByIndex, type Script } from "@jackioh/engine";
 import { addToHand, chosenOptions, discoverFromCatalog } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -63,13 +65,16 @@ function trial(costsZero: boolean): Script {
         count: OPTIONS,
         // §5.1's one pool source. Tokens and #82 itself are excluded for us — see the header.
         query: { set: "Core" },
+        // R247: the options are the numbers, not the cards they index.
+        offer: "index",
         prompt: "KY's Trial: Discover a number from 1 to 100",
       }),
     ],
     resume: {
       [PICKED]: (ctx) => {
-        const [defId] = chosenOptions(ctx);
+        const [index] = chosenOptions(ctx);
         // §8 Conventions: an empty pick fizzles and the spell still counts as played.
+        const defId = index === undefined ? undefined : defByIndex(index)?.id;
         if (defId === undefined) return [];
         return [
           addToHand({ defId, radiant: true, ...(costsZero ? { costOverride: 0 } : {}) }),

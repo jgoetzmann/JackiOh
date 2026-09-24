@@ -16,16 +16,18 @@
 // log, and a click, a tap, a long-press or Enter opens it in a sheet (the cards module's inspect,
 // one overlay at a time). The card is the one the line names, found exactly as the name was, so a
 // line never opens a card it does not print: a sentinel, a hero, a draw or a line that says "a
-// unit" opens nothing.
+// unit" opens nothing. What opens is the card in play (faces.ts, SPEC §10.10): as it stands where
+// the view still lists it, else its definition as the game shows it; and a match-made card (a
+// Fuse's, R243) is named and drawn from the definition the view carries for it.
 
 import { useContext, useLayoutEffect, useRef, type MouseEvent, type ReactElement } from "react";
 
 import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
 import { useInspectTrigger, type FaceModel } from "../cards/index.ts";
-import { CatalogContext } from "./catalog.ts";
+import { CatalogContext, withMatchDefs } from "./catalog.ts";
 import { sideOf, testid } from "./contract.ts";
-import { cardInView, printedFace } from "./faces.ts";
+import { cardInView, namedFace } from "./faces.ts";
 import { outcomeFor, resultReason } from "./Result.tsx";
 
 export type LogProps = {
@@ -232,7 +234,7 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string | nu
 }
 
 /** The card a line is about: the one it names, by definition, and the face it wears where the view shows it. */
-type LineCard = { defId: string; radiant: boolean };
+type LineCard = { defId: string; radiant: boolean; instanceId?: string };
 
 /**
  * The card a line is about, or null when it names none: the one `describe` names (for a Transform,
@@ -244,7 +246,9 @@ function cardOf(event: GameEvent, view: PlayerView, remembered: ReadonlyMap<stri
   const face = (instanceId: string | undefined): boolean =>
     instanceId === undefined ? false : (cardInView(view, instanceId)?.radiant ?? false);
   const byDef = (defId: string, instanceId?: string): LineCard | null =>
-    defId === HIDDEN_CARD ? null : { defId, radiant: face(instanceId) };
+    defId === HIDDEN_CARD
+      ? null
+      : { defId, radiant: face(instanceId), ...(instanceId === undefined || instanceId === HIDDEN_CARD ? {} : { instanceId }) };
   const byInstance = (instanceId: string): LineCard | null => {
     if (instanceId === HIDDEN_CARD) return null;
     const defId = defIdOfInstance(view, instanceId) ?? remembered.get(instanceId);
@@ -324,7 +328,8 @@ function LogLine({ line }: { line: Line }): ReactElement {
 }
 
 export default function Log({ view, revealed = false }: LogProps): ReactElement {
-  const lookup = useContext(CatalogContext);
+  // R243: a match-made card is named from the definition the view carries for it.
+  const lookup = withMatchDefs(useContext(CatalogContext), view.defs);
   const remembered = publicNames(view.events);
 
   const name: Naming = {
@@ -352,7 +357,7 @@ export default function Log({ view, revealed = false }: LogProps): ReactElement 
     const text = describe(event, view, name);
     if (text === null) return [];
     const card = cardOf(event, view, remembered);
-    const face = card === null ? null : printedFace(lookup, view, card.defId, card.radiant);
+    const face = card === null ? null : namedFace(lookup, view, card);
     return [{ key: `${String(index)}-${event.type}`, type: event.type, text, face }];
   });
 

@@ -23,7 +23,7 @@ import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } fr
 
 import { animTestid } from "./animations.ts";
 import Card, { cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
-import { CatalogContext } from "./catalog.ts";
+import { CatalogContext, MatchCardsProvider } from "./catalog.ts";
 import {
   LANES,
   NO_HIGHLIGHT,
@@ -421,116 +421,119 @@ export default function Board({
     onControl?.("end-turn");
   }
 
+  // R243: the match-made definitions and field powers this view names, for every card drawn below.
   return (
-    <div
-      className="board"
-      data-testid={testid.board}
-      data-phase={view.phase}
-      data-turn={view.turn}
-      data-active={sideOf(view, view.active)}
-      data-viewer={view.viewer}
-      data-drag={dragToPlay ? "on" : "off"}
-      data-log={logOpen ? "open" : undefined}
-    >
-      <Seat
-        view={view}
-        side="opponent"
-        highlight={highlight}
-        animating={animating}
-        onClick={onClick}
-        onControl={onControl}
-        pops={pops}
-      />
-      <Hand side="opponent" hand={view.opponent.hand} highlight={highlight} animating={animating} onClick={onClick} />
+    <MatchCardsProvider view={view}>
+      <div
+        className="board"
+        data-testid={testid.board}
+        data-phase={view.phase}
+        data-turn={view.turn}
+        data-active={sideOf(view, view.active)}
+        data-viewer={view.viewer}
+        data-drag={dragToPlay ? "on" : "off"}
+        data-log={logOpen ? "open" : undefined}
+      >
+        <Seat
+          view={view}
+          side="opponent"
+          highlight={highlight}
+          animating={animating}
+          onClick={onClick}
+          onControl={onControl}
+          pops={pops}
+        />
+        <Hand side="opponent" hand={view.opponent.hand} highlight={highlight} animating={animating} onClick={onClick} />
 
-      <div className="field" aria-label="Field">
-        {LANES.map((lane) => (
-          <div className="lane" key={lane} data-lane={lane}>
-            {FIELD_ROWS.map((slot) => (
-              <Zone
-                key={`${slot.side}-${slot.row}`}
-                view={view}
-                side={slot.side}
-                row={slot.row}
-                lane={lane}
-                highlight={highlight}
-                animating={animating}
-                onClick={onClick}
-                pops={pops}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <Seat view={view} side="you" highlight={highlight} animating={animating} onClick={onClick} onControl={onControl} pops={pops} />
-      <Hand side="you" hand={yourHand} highlight={highlight} animating={animating} onClick={onClick} />
-
-      <div className="control-bar" aria-label="Controls">
-        {/* Whose turn, above End turn wherever the controls have a column of their own (board.css
-            hides it on a phone held upright, where the shell's banner says it). The banner is the
-            live region, so this copy stays out of the accessibility tree. */}
-        <div
-          className="turn-plate"
-          data-side={view.result !== null ? "over" : sideOf(view, view.active)}
-          aria-hidden="true"
-        >
-          <span className="turn-plate-number">Turn {view.turn}</span>
-          <span className="turn-plate-whose">
-            {view.result !== null
-              ? "Game over"
-              : view.phase === "mulligan"
-                ? "Mulligan"
-                : view.active === view.viewer
-                  ? "Your turn"
-                  : "Opponent's turn"}
-          </span>
+        <div className="field" aria-label="Field">
+          {LANES.map((lane) => (
+            <div className="lane" key={lane} data-lane={lane}>
+              {FIELD_ROWS.map((slot) => (
+                <Zone
+                  key={`${slot.side}-${slot.row}`}
+                  view={view}
+                  side={slot.side}
+                  row={slot.row}
+                  lane={lane}
+                  highlight={highlight}
+                  animating={animating}
+                  onClick={onClick}
+                  pops={pops}
+                />
+              ))}
+            </div>
+          ))}
         </div>
-        <ControlButton
-          control="end-turn"
-          testId={testid.endTurn}
-          label={armed ? "Confirm end turn" : "End turn"}
-          highlight={highlight}
-          animating={animating}
-          confirm={armed ? "armed" : undefined}
-          onPress={pressEndTurn}
-        />
-        <ControlButton
-          control="offer-draw"
-          testId={testid.offerDraw}
-          label="Offer draw"
-          highlight={highlight}
-          animating={animating}
-          onPress={() => onControl?.("offer-draw")}
-        />
-        <ControlButton
-          control="concede"
-          testId={testid.concede}
-          label="Concede"
-          highlight={highlight}
-          animating={animating}
-          onPress={() => onControl?.("concede")}
-        />
-        {view.clockMs !== null && <span className="clock">{Math.ceil(view.clockMs / 1000)}s</span>}
-        {/* Phones only (board.css): the log's own place on the board is hidden there. */}
-        <button
-          type="button"
-          className="log-toggle"
-          data-testid="log-toggle"
-          aria-expanded={logOpen}
-          aria-label={logOpen ? "Hide the game log" : "Show the game log"}
-          title="Game log"
-          onClick={() => setLogOpen((open) => !open)}
-        >
-          <span className="log-toggle-icon" aria-hidden="true" />
-        </button>
-        {/* Task 2's mute, beside the gear that holds the rest of its controls: a fixed corner button
-            sat on the practice HUD's Menu and the match bar's clock (integration). */}
-        <AudioToggle className="audio-toggle--bar" />
-        <SettingsButton placement="game" />
-      </div>
 
-      <Log view={view} revealed={logOpen} />
-    </div>
+        <Seat view={view} side="you" highlight={highlight} animating={animating} onClick={onClick} onControl={onControl} pops={pops} />
+        <Hand side="you" hand={yourHand} highlight={highlight} animating={animating} onClick={onClick} />
+
+        <div className="control-bar" aria-label="Controls">
+          {/* Whose turn, above End turn wherever the controls have a column of their own (board.css
+              hides it on a phone held upright, where the shell's banner says it). The banner is the
+              live region, so this copy stays out of the accessibility tree. */}
+          <div
+            className="turn-plate"
+            data-side={view.result !== null ? "over" : sideOf(view, view.active)}
+            aria-hidden="true"
+          >
+            <span className="turn-plate-number">Turn {view.turn}</span>
+            <span className="turn-plate-whose">
+              {view.result !== null
+                ? "Game over"
+                : view.phase === "mulligan"
+                  ? "Mulligan"
+                  : view.active === view.viewer
+                    ? "Your turn"
+                    : "Opponent's turn"}
+            </span>
+          </div>
+          <ControlButton
+            control="end-turn"
+            testId={testid.endTurn}
+            label={armed ? "Confirm end turn" : "End turn"}
+            highlight={highlight}
+            animating={animating}
+            confirm={armed ? "armed" : undefined}
+            onPress={pressEndTurn}
+          />
+          <ControlButton
+            control="offer-draw"
+            testId={testid.offerDraw}
+            label="Offer draw"
+            highlight={highlight}
+            animating={animating}
+            onPress={() => onControl?.("offer-draw")}
+          />
+          <ControlButton
+            control="concede"
+            testId={testid.concede}
+            label="Concede"
+            highlight={highlight}
+            animating={animating}
+            onPress={() => onControl?.("concede")}
+          />
+          {view.clockMs !== null && <span className="clock">{Math.ceil(view.clockMs / 1000)}s</span>}
+          {/* Phones only (board.css): the log's own place on the board is hidden there. */}
+          <button
+            type="button"
+            className="log-toggle"
+            data-testid="log-toggle"
+            aria-expanded={logOpen}
+            aria-label={logOpen ? "Hide the game log" : "Show the game log"}
+            title="Game log"
+            onClick={() => setLogOpen((open) => !open)}
+          >
+            <span className="log-toggle-icon" aria-hidden="true" />
+          </button>
+          {/* Task 2's mute, beside the gear that holds the rest of its controls: a fixed corner button
+              sat on the practice HUD's Menu and the match bar's clock (integration). */}
+          <AudioToggle className="audio-toggle--bar" />
+          <SettingsButton placement="game" />
+        </div>
+
+        <Log view={view} revealed={logOpen} />
+      </div>
+    </MatchCardsProvider>
   );
 }

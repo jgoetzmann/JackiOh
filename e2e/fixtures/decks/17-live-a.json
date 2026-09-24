@@ -1,0 +1,27 @@
+{
+  "id": "17-live-a",
+  "spec": "17-card-showcase-and-hovers.cy.ts",
+  "description": "Player 1's deck for spec 17's cards-in-play test (SPEC §10.10, R243, R247): #98 Heroic Power (Quickdraw, so it is always in the opening hand, and its text in play is the one power it rolled), #82 KY's Trial (its Discover offers three numbers and no card faces) and #95 Call to Chaos (its rules box reads ??? in play). The other seventeen are 08-do-nothing-a's cards without #55, #66 and #100: every one costs 3 or more and asks nothing, so nothing resolves that the spec does not play. With seed 17-live-48 player 1 opens with Heroic Power, KY's Trial and Call to Chaos in hand on turn 1, with the 1 mana KY's Trial costs.",
+  "cards": [
+    "core-006",
+    "core-013",
+    "core-014",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-026",
+    "core-029",
+    "core-034",
+    "core-038",
+    "core-043",
+    "core-047",
+    "core-049",
+    "core-052",
+    "core-053",
+    "core-054",
+    "core-082",
+    "core-095",
+    "core-098"
+  ]
+}

@@ -22,7 +22,8 @@ import type { ActionBody, CardView, PlayerView } from "@jackioh/shared";
 
 import { readSettings } from "../../settings/index.ts";
 import { IDLE, type Interaction } from "../actions.ts";
-import { useCardInfo } from "../catalog.ts";
+import { MatchCardsProvider, useCardInfo } from "../catalog.ts";
+import { liveFace } from "../faces.ts";
 import { setLanding } from "./landing.ts";
 import { DRAG_THRESHOLD_PX, planDrag, resolveDrop, type DragPlan, type DragSource, type DropSpot } from "./model.ts";
 import { pickDropSpot, targetFromElement } from "./targets.ts";
@@ -421,15 +422,17 @@ export default function DragLayer(props: DragLayerProps): ReactElement | null {
     if (landed === null) return null;
     return (
       <div className="drag-layer drag-landing" data-testid="drag-landing" aria-hidden="true" style={{ pointerEvents: "none" }}>
-        <DragGhost
-          testId="drag-landing-card"
-          card={landed.card}
-          instanceId={landed.instanceId}
-          at={landed.at}
-          touch={false}
-          valid
-          landing
-        />
+        <MatchCardsProvider view={props.view}>
+          <DragGhost
+            testId="drag-landing-card"
+            card={landed.card}
+            instanceId={landed.instanceId}
+            at={landed.at}
+            touch={false}
+            valid
+            landing
+          />
+        </MatchCardsProvider>
       </div>
     );
   }
@@ -461,13 +464,15 @@ export default function DragLayer(props: DragLayerProps): ReactElement | null {
           stop={locked === null ? null : arrowStop(locked, shape)}
         />
       ) : (
-        <DragGhost
-          card={handCard(props.view, plan.source.instanceId)}
-          instanceId={plan.source.instanceId}
-          at={drawn.pointer}
-          touch={drawn.touch}
-          valid={valid}
-        />
+        <MatchCardsProvider view={props.view}>
+          <DragGhost
+            card={handCard(props.view, plan.source.instanceId)}
+            instanceId={plan.source.instanceId}
+            at={drawn.pointer}
+            touch={drawn.touch}
+            valid={valid}
+          />
+        </MatchCardsProvider>
       )}
       {spot.at === "target" ? (
         <Reticle testid={spot.testid} box={drawn.reticle} shape={shape} />
@@ -494,8 +499,9 @@ function handCard(view: PlayerView, instanceId: string): CardView | null {
 
 /**
  * The card being placed, following the pointer: a small face (cost, name, rules text and, for a
- * unit, its printed attack and health), so it reads as that card and not as a face-down one.
- * Carries no card testid, so nothing mistakes it for the card.
+ * unit, its attack and health), so it reads as that card and not as a face-down one. It is the
+ * card in play (faces.ts): a hand Unit's grown stats, a Heroic Power's rolled power, a crafted
+ * card's own text. Carries no card testid, so nothing mistakes it for the card.
  */
 function DragGhost(props: {
   card: CardView | null;
@@ -508,6 +514,10 @@ function DragGhost(props: {
   testId?: string;
 }): ReactElement {
   const info = useCardInfo(props.card?.defId ?? "", props.card?.radiant ?? false);
+  const face = props.card === null ? null : liveFace(info, props.card);
+  const text =
+    face === null ? info.text : face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
+  const stats = face === null ? (info.attack === undefined || info.health === undefined ? null : { attack: info.attack, health: info.health }) : face.stats;
   const style: CSSProperties = { left: props.at.x, top: props.at.y };
   return (
     <div
@@ -521,12 +531,12 @@ function DragGhost(props: {
       style={style}
     >
       {props.card === null ? null : <span className="drag-ghost-cost">{props.card.cost}</span>}
-      <span className="drag-ghost-name">{info.name}</span>
-      {info.text === "" ? null : <span className="drag-ghost-text">{info.text}</span>}
-      {info.attack === undefined || info.health === undefined ? null : (
+      <span className="drag-ghost-name">{face?.name ?? info.name}</span>
+      {text === "" ? null : <span className="drag-ghost-text">{text}</span>}
+      {stats === null ? null : (
         <span className="drag-ghost-stats" aria-hidden="true">
-          <span className="drag-ghost-attack">{info.attack}</span>
-          <span className="drag-ghost-health">{info.health}</span>
+          <span className="drag-ghost-attack">{stats.attack}</span>
+          <span className="drag-ghost-health">{stats.health}</span>
         </span>
       )}
     </div>

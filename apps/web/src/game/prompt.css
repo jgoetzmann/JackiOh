@@ -170,6 +170,36 @@
   filter: grayscale(0.6);
 }
 
+/* R247: #82 KY's Trial Discovers among numbers, not cards, so each option is a card back with its
+   number across the middle and no face to read (Prompt.tsx CardOption). The number scales with the
+   option box, which prompt.css sizes per screen. */
+.prompt-number {
+  container-type: inline-size;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.prompt-number-value {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 1.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 999px;
+  background: rgb(11 13 19 / 0.85);
+  box-shadow:
+    0 0 0 2px rgb(212 175 55 / 0.85),
+    0 4px 10px rgb(0 0 0 / 0.55);
+  color: #ffd24a;
+  font-size: max(18px, 28cqw);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  text-align: center;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.6);
+}
+
 /* Confirm is the one primary action: filled in End turn's amber (index.css --primary-*), so the
    game has a single "go" colour rather than a blue one beside a gold one. */
 .prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]) {

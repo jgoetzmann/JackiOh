@@ -1,16 +1,21 @@
-// The printed face of a card the view names by its definition: the opponent's play the showcase
-// holds up, the card a log line is about, the cards in a graveyard or an exile pile.
+// The face of a card in play: the one the board draws for a card the view lists, and the one the
+// showcase, a log line, a pile and a prompt draw for a card the view names (SPEC §10.10).
 //
-// No rule lives here (CLAUDE.md rule 7). The definition comes from the public catalog (§5.1,
-// `CatalogContext`), else from the match-made definitions the view carries beside the cards it
-// names (R243), else from nothing: the card is drawn by its id, as `Card.tsx` draws one before the
-// catalog has loaded. The R97 sentinel names no card, so it has no face, and the callers draw a
-// back instead.
+// A face in play is the card as the view says it stands (R243): the cost the view gives it, a Unit
+// card's stats in its owner's hand, a unit's numbers, keywords and Vanilla mark on the field, the
+// power a Heroic Power rolled, and a match-made definition's own name and text. Everything is read
+// off the view — never worked out — so none of it is a rule (CLAUDE.md rule 7). The collection's
+// faces, the card as printed, are the deck builder's own (`faceModel` with no `inPlay`).
+//
+// The definition comes from the public catalog (§5.1, `CatalogContext`), else from the match-made
+// definitions the view carries beside the cards it names (R243), else from nothing: the card is
+// drawn by its id, as `Card.tsx` draws one before the catalog has loaded. The R97 sentinel names no
+// card, so it has no face, and the callers draw a back instead.
 
-import type { CardView, PlayerView } from "@jackioh/shared";
+import type { CardType, CardView, PlayerView, UnitView } from "@jackioh/shared";
 
-import { faceModel, type FaceModel } from "../cards/index.ts";
-import { lookupFromDefs, unknownCard, type CardInfo, type CardLookup } from "./catalog.ts";
+import { faceModel, type FaceModel, type InPlay, type RolledPower } from "../cards/index.ts";
+import { lookupFromDefs, matchCardsOf, unknownCard, type CardInfo, type CardLookup } from "./catalog.ts";
 
 /** R97: the id and definition an event or a prompt carries in place of a card the viewer may not read. */
 export const HIDDEN_CARD = "hidden";
@@ -23,25 +28,94 @@ function infoFor(lookup: CardLookup | null, view: PlayerView, defId: string, rad
   return fromView ?? unknownCard(defId);
 }
 
-/**
- * The face a definition prints, or null for the sentinel. `liveCost` is the view's own number for
- * a card it lists (`CardView.cost`); a card named only by an event has none and shows its price.
- */
-export function printedFace(
-  lookup: CardLookup | null,
-  view: PlayerView,
-  defId: string,
-  radiant: boolean,
-  liveCost?: number,
-): FaceModel | null {
-  if (defId === HIDDEN_CARD || defId === "") return null;
-  const info = infoFor(lookup, view, defId, radiant);
-  return faceModel({ defId, def: info.def, name: info.name, type: info.type, radiant, liveCost });
+/** A unit on the field, as against a card in a pile, a hand or the backrow. */
+export function isUnitView(card: CardView): card is UnitView {
+  return "maxHealth" in card && "keywords" in card;
 }
 
-/** A card the view lists (a pile, the resolving strip): its face as it stands, cost included. */
+/** What the view lists about a card beyond its printed face, and the face it makes (R243). */
+export type LiveFacts = {
+  /** A face-up backrow card's type, straight off `BackrowView`. */
+  type?: CardType;
+  /** The power a Heroic Power on the field rolled (`HeroView.powers`); a hand card carries its own. */
+  fieldPower?: RolledPower;
+};
+
+/**
+ * The face in play of a card the view lists: its live cost, and whatever else the view says about
+ * it — a unit's numbers and keywords, a hand Unit's stats, a Heroic Power's power, the Vanilla mark.
+ */
+export function liveFace(info: CardInfo, card: CardView, facts: LiveFacts = {}): FaceModel {
+  const unit = isUnitView(card) ? card : undefined;
+  const inPlay: InPlay = {};
+  if (unit === undefined && card.attack !== undefined && card.health !== undefined) {
+    inPlay.handStats = { attack: card.attack, health: card.health };
+  }
+  // R43, R243: in hand the power rides on the card and its X is the card's cost; on the field the
+  // hero's power list names it.
+  const power = card.power !== undefined ? { name: card.power, x: card.cost } : facts.fieldPower;
+  if (power !== undefined) inPlay.power = power;
+  if (unit?.vanilla === true) inPlay.vanilla = true;
+  return faceModel({
+    defId: card.defId,
+    def: info.def,
+    name: info.name,
+    ...(facts.type === undefined ? {} : { type: facts.type }),
+    radiant: card.radiant,
+    liveCost: card.cost,
+    ...(unit === undefined
+      ? {}
+      : { live: { attack: unit.attack, health: unit.health, maxHealth: unit.maxHealth, keywords: unit.keywords } }),
+    inPlay,
+  });
+}
+
+/** The face-up backrow card's type, when `card` is one. */
+function backrowType(card: CardView): CardType | undefined {
+  return "faceDown" in card && card.faceDown === false && "type" in card ? (card.type as CardType) : undefined;
+}
+
+/** A card the view lists (a pile, the resolving strip, the field, a hand): its face in play. */
 export function listedFace(lookup: CardLookup | null, view: PlayerView, card: CardView): FaceModel | null {
-  return printedFace(lookup, view, card.defId, card.radiant, card.cost);
+  if (card.defId === HIDDEN_CARD || card.defId === "") return null;
+  const info = infoFor(lookup, view, card.defId, card.radiant);
+  const type = backrowType(card);
+  const fieldPower = matchCardsOf(view).powers.get(card.instanceId);
+  return liveFace(info, card, {
+    ...(type === undefined ? {} : { type }),
+    ...(fieldPower === undefined ? {} : { fieldPower }),
+  });
+}
+
+/** A card named by an event or a log line: the definition, the face, and the instance when there is one. */
+export type NamedCard = {
+  defId: string;
+  radiant: boolean;
+  /** The instance, so a card the view still lists is drawn as it stands. */
+  instanceId?: string;
+  /** A cost to show when the view lists the card nowhere (a play's `costPaid`). */
+  cost?: number;
+};
+
+/**
+ * The face in play of a card an event names, or null for the sentinel. A card the view still lists
+ * is drawn as it stands there (`listedFace`); one it no longer lists — gone to a pile it cannot
+ * name, or ceased to exist — is its definition as the game shows it, at `cost` when one is given.
+ */
+export function namedFace(lookup: CardLookup | null, view: PlayerView, named: NamedCard): FaceModel | null {
+  if (named.defId === HIDDEN_CARD || named.defId === "") return null;
+  const listed = named.instanceId === undefined ? null : cardInView(view, named.instanceId);
+  if (listed !== null && listed.defId === named.defId) return listedFace(lookup, view, listed);
+  const info = infoFor(lookup, view, named.defId, named.radiant);
+  return faceModel({
+    defId: named.defId,
+    def: info.def,
+    name: info.name,
+    type: info.type,
+    radiant: named.radiant,
+    ...(named.cost === undefined ? {} : { liveCost: named.cost }),
+    inPlay: {},
+  });
 }
 
 /**

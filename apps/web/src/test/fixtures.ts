@@ -4,6 +4,8 @@
 
 import type {
   BackrowView,
+  CardDef,
+  CardFace,
   CardView,
   GameEvent,
   HeroPowerView,
@@ -259,4 +261,63 @@ export const waitingPending: PendingView = { forYou: false, pendingFor: "p2" };
 
 export function withEvents(view: PlayerView, events: GameEvent[]): PlayerView {
   return { ...view, events };
+}
+
+// ---------------------------------------------------------------------------------------------
+// A match-made definition, as `PlayerView.defs` carries one (R243)
+// ---------------------------------------------------------------------------------------------
+
+const RARITY_ORDER: readonly CardDef["rarity"][] = ["Token", "Common", "Rare", "Epic", "Legendary", "Mythic"];
+
+function fusedFaceOf(faces: readonly CardFace[]): CardFace {
+  const stat = (pick: (face: CardFace) => number | undefined): number | undefined => {
+    const values = faces.map(pick).filter((value): value is number => value !== undefined);
+    return values.length === 0 ? undefined : values.reduce((sum, value) => sum + value, 0);
+  };
+  const attack = stat((face) => face.attack);
+  const health = stat((face) => face.health);
+  const keywords: Keyword[] = [];
+  for (const keyword of faces.flatMap((face) => face.keywords)) {
+    if (!keywords.some((seen) => seen.kind === keyword.kind)) keywords.push(keyword);
+  }
+  return {
+    ...(attack === undefined ? {} : { attack }),
+    ...(health === undefined ? {} : { health }),
+    keywords,
+    text: faces.map((face) => face.text).join("\n"),
+  };
+}
+
+/**
+ * A fused definition shaped as the engine's Fuse builds one (R77, R102, R179): the ingredients'
+ * names joined by " + ", their tags united, the rarest rarity, their costs summed and capped at 4,
+ * and each face their stats summed, keywords united and texts joined a line per ingredient. The id
+ * is `t-<n>:` and the ingredients' ids, and it is its own index. Fixture only: the engine's builder
+ * is the one the game runs, and hidden-information.test.ts pins what the view carries of it.
+ */
+export function fusedDef(ingredients: readonly CardDef[], n = 1): CardDef {
+  const first = ingredients[0];
+  if (first === undefined) throw new Error("a fusion needs ingredients");
+  const id = `t-${n}:${ingredients.map((def) => def.id).join("+")}`;
+  const cost = Math.min(
+    ingredients.reduce((sum, def) => sum + (typeof def.cost === "number" ? def.cost : def.cost === "X" ? 0 : def.cost.base), 0),
+    4,
+  );
+  const rarity = ingredients.reduce(
+    (rarest, def) => (RARITY_ORDER.indexOf(def.rarity) > RARITY_ORDER.indexOf(rarest) ? def.rarity : rarest),
+    first.rarity,
+  );
+  return {
+    id,
+    index: id,
+    name: ingredients.map((def) => def.name).join(" + "),
+    set: first.set,
+    type: first.type,
+    tags: [...new Set(ingredients.flatMap((def) => def.tags))],
+    rarity,
+    token: ingredients.every((def) => def.token),
+    cost,
+    base: fusedFaceOf(ingredients.map((def) => def.base)),
+    radiant: fusedFaceOf(ingredients.map((def) => def.radiant)),
+  };
 }

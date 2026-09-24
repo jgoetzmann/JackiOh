@@ -4,7 +4,11 @@
 // by path and never through this barrel, so it cannot create an import cycle.
 
 export { faceModel } from "./model.ts";
-export type { FaceCost, FaceLayout, FaceModel, FaceSource, FaceStats, StatTone } from "./model.ts";
+export type { FaceCost, FaceLayout, FaceModel, FaceSource, FaceStats, InPlay, StatTone } from "./model.ts";
+
+// What a face in play prints where play and print part ways (SPEC §10.10).
+export { CONCEALED_TAG, CONCEALED_TEXT, HEROIC_POWER_ID, POWER_WORDS, VANILLA_TEXT, concealedInPlay, powerText } from "./inPlay.ts";
+export type { RolledPower } from "./inPlay.ts";
 
 export { GLOSSARY, KEYWORD_MARK } from "./glossary.ts";
 export type { GlossaryEntry, GlossaryTermId, TriggerTermId, VerbTermId } from "./glossary.ts";
@@ -48,6 +52,7 @@ export {
   INSPECT_FACE_RADIANT,
   INSPECT_GLOSSARY,
   INSPECT_HOVER,
+  INSPECT_PRINTED,
   INSPECT_LIST_BACK,
   INSPECT_LIST_CARD,
   INSPECT_LIST_COUNT,
