@@ -17,6 +17,7 @@ import {
   INVITE_CODE_SEPARATOR,
   REDEMPTION_IDENTICAL_ERROR,
 } from "../../../server/src/config.ts";
+import { codeFieldTestid, inviteTestid } from "../auth/testids.ts";
 import { ApiRequestError, getCodeStatus, getMe, redeemCode } from "../net/api.ts";
 import { E2E_SESSION_STORAGE_KEY } from "../net/session.ts";
 import InviteRoute, {
@@ -27,7 +28,6 @@ import InviteRoute, {
   INVITE_PAUSED,
   INVITE_SUBMIT,
   formatInviteCode,
-  inviteCodeCharacters,
 } from "./invite.tsx";
 
 vi.mock("../net/api.ts", async (importOriginal) => {
@@ -85,19 +85,43 @@ async function mount(): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 
 describe("the code format is §9.4's, read from apps/server/src/config.ts", () => {
-  it("normalises to upper case and keeps only the alphabet (R104)", () => {
+  it("R104 normalises to upper case, and refuses an excluded character rather than dropping it", async () => {
     // R104: "the alphabet is uppercase-only, so SPEC's exclusion of lowercase `l` is satisfied by
     // normalising any user-entered code to upper case before comparison, rather than by omitting a
-    // lowercase `l` that could never appear here in the first place." So `0`, `O`, `1` and `I` are
-    // dropped (none is in `CODE_ALPHABET`) while a typed `l` becomes the alphabet's own `L` — the
-    // ruling's words, not an accident of this function.
-    expect(inviteCodeCharacters("abcd")).toBe("ABCD");
-    expect(inviteCodeCharacters("A0O1I B")).toBe("AB");
-    expect(inviteCodeCharacters("l")).toBe("L");
-    for (const excluded of ["0", "O", "1", "I"]) {
-      expect(CODE_ALPHABET.includes(excluded), `${excluded} is outside R104's alphabet`).toBe(false);
+    // lowercase `l` that could never appear here in the first place." So a typed `l` becomes the
+    // alphabet's own `L`. R191 settles the other half: `0`, `O`, `1` and `I` are outside the
+    // alphabet, and both halves of each look-alike pair are, so none can be mapped to anything.
+    // The reading stops at the first one. It is never dropped: the old field turned `AB0CD` into
+    // `ABCD`, shifting every later character and sending a different code.
+    expect(formatInviteCode("abcd")).toBe("ABCD");
+    expect(formatInviteCode("l")).toBe("L");
+    for (const excluded of ["0", "O", "1", "I", "o", "i"]) {
+      expect(
+        CODE_ALPHABET.includes(excluded.toUpperCase()),
+        `${excluded} is outside R104's alphabet`,
+      ).toBe(false);
+      expect(formatInviteCode(`AB${excluded}CD`), `${excluded} stops the reading`).toBe("AB");
     }
     expect(CODE_ALPHABET.includes("L"), "R104 keeps L; SPEC excludes only lowercase l").toBe(true);
+
+    // And on the screen: the keystroke is refused, the value stays what it was, and the field
+    // names the character instead of quietly sending a different code.
+    await mount();
+    const input = screen.getByTestId(INVITE_CODE_INPUT);
+    fireEvent.change(input, { target: { value: "ab" } });
+    expect(input).toHaveValue("AB");
+    expect(screen.queryByTestId(codeFieldTestid.hint)).toBeNull();
+
+    fireEvent.change(input, { target: { value: "ab0" } });
+    expect(input, "the excluded 0 is refused, not dropped and not kept").toHaveValue("AB");
+    const hint = screen.getByTestId(codeFieldTestid.hint);
+    expect(hint).toHaveAttribute("data-kind", "excluded");
+    expect(hint.textContent).toContain("0");
+
+    // The next accepted keystroke clears the hint.
+    fireEvent.change(input, { target: { value: "abc" } });
+    expect(input).toHaveValue("ABC");
+    expect(screen.queryByTestId(codeFieldTestid.hint)).toBeNull();
   });
 
   it("groups the characters the way §9.4 formats them", () => {
@@ -110,7 +134,9 @@ describe("the code format is §9.4's, read from apps/server/src/config.ts", () =
 
   it("never accepts more than INVITE_CODE_LENGTH characters", () => {
     const tooLong = Array.from({ length: INVITE_CODE_LENGTH * 2 }, () => "A").join("");
-    expect(inviteCodeCharacters(tooLong)).toHaveLength(INVITE_CODE_LENGTH);
+    expect(formatInviteCode(tooLong).replaceAll(INVITE_CODE_SEPARATOR, "")).toHaveLength(
+      INVITE_CODE_LENGTH,
+    );
   });
 
   it("builds its placeholder from the constants rather than spelling the format", () => {
@@ -151,14 +177,27 @@ describe("a pending account", () => {
     });
   });
 
-  it("goes to the deckbuilder once the code is redeemed", async () => {
+  it("says the code worked once it is redeemed, and offers the way on to the deckbuilder", async () => {
     vi.mocked(redeemCode).mockResolvedValue({ status: "active", needsInviteCode: false });
     await mount();
     fireEvent.change(screen.getByTestId(INVITE_CODE_INPUT), { target: { value: GOOD_CODE } });
     fireEvent.click(screen.getByTestId(INVITE_SUBMIT));
+
+    // Not dropped silently onto an empty deckbuilder: the payoff is said, and takes focus.
+    const done = await screen.findByTestId(inviteTestid.redeemed);
+    expect(done.textContent).toMatch(/online play is open/);
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/decks");
+      expect(document.activeElement).toBe(done);
     });
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("You\u2019re in");
+    expect(window.location.pathname).toBe("/invite");
+    expect(screen.queryByTestId(INVITE_SUBMIT)).toBeNull();
+    expect(screen.queryByTestId(inviteTestid.whereFrom)).toBeNull();
+
+    const onward = screen.getByTestId(inviteTestid.goToDecks);
+    expect(onward).toHaveClass("button-primary");
+    fireEvent.click(onward);
+    expect(window.location.pathname).toBe("/decks");
   });
 
   it("does not submit an empty box", async () => {

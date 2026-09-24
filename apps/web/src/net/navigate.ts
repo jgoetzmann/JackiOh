@@ -19,9 +19,26 @@ export function currentPath(): string {
   return window.location.pathname.replace(/\/+$/, "") || "/";
 }
 
+/** "/login?mode=forgot" -> { pathname: "/login", search: "?mode=forgot" }; a bare path has "". */
+function splitTarget(path: string): { pathname: string; search: string } {
+  const at = path.indexOf("?");
+  const rawPath = at === -1 ? path : path.slice(0, at);
+  const query = at === -1 ? "" : path.slice(at + 1);
+  return {
+    pathname: rawPath.replace(/\/+$/, "") || "/",
+    search: query.length === 0 ? "" : `?${query}`,
+  };
+}
+
+/**
+ * Moves to `path`, which may carry a query (`loginPath` builds the only ones). A navigation to the
+ * page already showing -- same pathname AND same query -- is a no-op, so a guard that re-renders
+ * cannot stack history entries.
+ */
 export function navigate(path: string, options: { replace?: boolean } = {}): void {
   if (typeof window === "undefined") return;
-  if (currentPath() === path.replace(/\/+$/, "")) return;
+  const target = splitTarget(path);
+  if (currentPath() === target.pathname && window.location.search === target.search) return;
   if (options.replace === true) {
     window.history.replaceState(null, "", path);
   } else {
@@ -48,6 +65,7 @@ export function usePathname(): string {
 export const paths = {
   landing: "/",
   login: "/login",
+  resetPassword: "/reset-password",
   invite: "/invite",
   decks: "/decks",
   play: "/play",
@@ -62,4 +80,37 @@ export function matchIdOf(path: string): string | null {
   const parts = path.split("/").filter((part) => part.length > 0);
   if (parts.length !== 2 || parts[0] !== "match") return null;
   return parts[1] ?? null;
+}
+
+// --- the sign-in screen's two entry states --------------------------------------------------------
+//
+// `/login` can be opened to say why (the session ended) or to open straight onto the forgot-password
+// form (the reset screen's "request a new link"). Those are the ONLY two things ever put in its
+// query, each an exact token, so no destination, message or address can travel through a URL into
+// the screen (B35, R193). A sign-in always lands on a `paths` value, never on a URL it was given.
+
+export type LoginReason = "expired";
+export type LoginEntryMode = "forgot";
+
+/** "/login", "/login?reason=expired" or "/login?mode=forgot". Nothing else is ever put in the query. */
+export function loginPath(options: { reason?: LoginReason; mode?: LoginEntryMode } = {}): string {
+  const query = new URLSearchParams();
+  if (options.reason === "expired") query.set("reason", "expired");
+  if (options.mode === "forgot") query.set("mode", "forgot");
+  const search = query.toString();
+  return search.length === 0 ? paths.login : `${paths.login}?${search}`;
+}
+
+function queryValue(search: string, key: string): string | null {
+  return new URLSearchParams(search).get(key);
+}
+
+/** Exactly "expired", else null. */
+export function loginReasonOf(search: string): LoginReason | null {
+  return queryValue(search, "reason") === "expired" ? "expired" : null;
+}
+
+/** Exactly "forgot", else null. */
+export function loginModeOf(search: string): LoginEntryMode | null {
+  return queryValue(search, "mode") === "forgot" ? "forgot" : null;
 }
