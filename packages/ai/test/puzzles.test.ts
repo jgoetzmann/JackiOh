@@ -1,4 +1,5 @@
-// Hand-built puzzles P1–P14 (docs/polish/3-ai.md B17–B19, the puzzle table).
+// Hand-built puzzles P1–P14 (docs/polish/3-ai.md B17–B19, the puzzle table), and P15–P17 for The
+// Coin (SPEC §2.1, §7, R244, R245), which the seat going second holds from its first turn.
 //
 // Every puzzle is a `scenario({ active: "p1", turn: 9, … })` with the AI as p1, p2 at 30 health
 // unless stated and every p1 unit not summoning sick (the harness default). The AI plays one whole
@@ -13,6 +14,8 @@
 //   B19 prompts  P11 discovers True Strike off Reminisce and casts it for lethal; P14 answers
 //                Masochism Mask's start-of-turn prompt at 3 health without losing health or
 //                summoning the Spikey Pillow, through the search (reason "prompt").
+//   The Coin     P15 plays it for the mana a lethal line needs; P16 plays it to put a 2-drop down
+//                with 1 mana; P17 keeps it when the extra mana would buy nothing.
 
 import { describe, expect, it } from "vitest";
 import { createRng, type GameState } from "@jackioh/engine";
@@ -225,5 +228,45 @@ describe("prompts through the search (B19)", () => {
     expect(after.result).toBeNull();
     expect(after.players.p1.hero.health).toBe(3);
     expect(onField(after, AI, "core-065-1")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The Coin (R244, R245): a 0-cost Spell token, "gain 1 mana this turn"
+// ---------------------------------------------------------------------------------------------
+
+const COIN = "core-t-coin";
+
+function inHand(state: GameState, player: "p1" | "p2", defId: string): boolean {
+  return state.players[player].hand.some((card) => card.defId === defId);
+}
+
+describe("The Coin (R245)", () => {
+  it("P15: with 1 mana, The Coin pays for Deft Duelist's Charge, and Duelist plus Tempo Timmy finish a 7-health hero", { timeout: PUZZLE_TIMEOUT }, () => {
+    const run = runPuzzle("P15", {
+      p1: { hand: [COIN, "core-045"], mana: 1, field: ["core-011"] },
+      p2: { health: 7 },
+    });
+    expectEnemyDead(run);
+    expectFirstReasonLethal(run);
+    expect(inGraveyard(run.end, AI, COIN), trace(run.turn)).toBe(true);
+  });
+
+  it("P16: with 1 mana on empty boards, the AI plays The Coin and then Pointmaster rather than pass", { timeout: PUZZLE_TIMEOUT }, () => {
+    const run = runPuzzle("P16", {
+      p1: { hand: [COIN, "core-020"], mana: 1 },
+      p2: {},
+    });
+    expect(onField(run.end, AI, "core-020"), trace(run.turn)).toBe(true);
+    expect(inGraveyard(run.end, AI, COIN), trace(run.turn)).toBe(true);
+  });
+
+  it("P17: with 1 mana and only a 1-drop to spend it on, the AI plays the 1-drop and keeps The Coin", { timeout: PUZZLE_TIMEOUT }, () => {
+    const run = runPuzzle("P17", {
+      p1: { hand: [COIN, "core-011"], mana: 1 },
+      p2: {},
+    });
+    expect(onField(run.end, AI, "core-011"), trace(run.turn)).toBe(true);
+    expect(inHand(run.end, AI, COIN), trace(run.turn)).toBe(true);
   });
 });

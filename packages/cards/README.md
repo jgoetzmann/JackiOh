@@ -1,6 +1,6 @@
 # `@jackioh/cards` — the card layer
 
-109 card definitions (100 cards + 9 tokens), one script file and one test file per card, and the
+110 card definitions (100 cards + 10 tokens), one script file and one test file per card, and the
 catalog query every random pool in the game goes through.
 
 `SPEC.md` is the only source of rules and card text. `BUILD.md` M4-T1…M4-T4 is the work order, and
@@ -46,7 +46,7 @@ three digits, plus a slug:
 
 `scripts/missing-tests.ts` is the authority on the pairing: for every catalog id whose test file it
 cannot find it prints the id, the card name and the exact path it expected, and it prints nothing
-when all 109 are covered. Run it to learn what to call your files:
+when all 110 are covered. Run it to learn what to call your files:
 
 ```
 pnpm --filter @jackioh/cards run missing-tests | grep core-043
@@ -173,7 +173,7 @@ What the registry exports, for the server, the client and the tests:
 
 | export | meaning |
 | --- | --- |
-| `CATALOG`, `CATALOG_IDS`, `CATALOG_VERSION` | all 109 defs from `catalog.json`, script or no script |
+| `CATALOG`, `CATALOG_IDS`, `CATALOG_VERSION` | all 110 defs from `catalog.json`, script or no script |
 | `cardDef(id)`, `cardDefByIndex(index)` | one def, throwing rather than returning `undefined` |
 | `CARDS` | `Record<catalogId, { def, base, radiant }>` — one entry per script file present |
 | `registerAll()` | `registerCatalog(CATALOG, CATALOG_VERSION)` then `registerScripts(...)`; idempotent |
@@ -352,7 +352,8 @@ M4 fuzz gate still passes with those cards in the fuzz deck pool; do not start t
 **Wave 1 — keywords and single primitives (45):** #1, #2, #5, #6, #7, #8, #10, #11, #13, #14, #15,
 #16, #17, #19, #20, #25, #26, #28, #29, #34, #37, #40, #42, #43, #44, #47, #48, #49, #51.1, #53,
 #54, #56, #57, #58, #62, #63, #68, #69, #70, #72, #74, #88, #90, #93.1, #95.1 — plus the four
-shared tokens (`t-rush`, `t-sheep`, `t-felinor`, `t-bread`), which have no §8 row of their own.
+shared tokens (`t-rush`, `t-sheep`, `t-felinor`, `t-bread`) and The Coin (`t-coin`, which §2.1's
+setup deals to the seat going second, R244), which have no §8 row of their own.
 
 **Wave 2 — stored state, prompts, delayed and cross-turn effects, traps (49):** #3, #4, #9, #12,
 #18, #21, #22, #23, #24, #27, #30, #31, #32, #33, #35, #36, #38, #39, #41, #45, #46, #50, #51, #55,

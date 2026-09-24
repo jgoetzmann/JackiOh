@@ -80,7 +80,7 @@ export function injectedEnginePort(): EnginePort | null {
 }
 
 /**
- * The import is dynamic so Vite code-splits the engine and the 109 card scripts out of the first
+ * The import is dynamic so Vite code-splits the engine and the 110 card scripts out of the first
  * paint — `/login`, `/invite` and `/decks` never need them. It is a plain analyzable
  * `import("./engine.real.ts")`, not the `@vite-ignore` string specifier this used to be: that
  * workaround existed only while `packages/engine/src/index.ts` re-exported modules that did not

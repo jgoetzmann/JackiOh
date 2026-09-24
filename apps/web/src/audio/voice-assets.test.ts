@@ -1,7 +1,7 @@
 // Polish task 2 (docs/polish/2-sound.md), behaviours B35, B36 and B37: the pre-rendered voice set
 // on disk, its manifest, its size budget and `gen-voice.mjs --check`.
 //
-//   B35  the 152 expected files exist under apps/web/public/audio/voice/, each an MP4 with `ftyp` at
+//   B35  the 153 expected files exist under apps/web/public/audio/voice/, each an MP4 with `ftyp` at
 //        byte 4 and brand `M4A ` at byte 8; the manifest lists exactly those keys with each file's
 //        size and its recomputed voiceHash; the directory holds nothing else.
 //        Each file's MP4 header (moov/mvhd) also puts it within VOICE_FILE_MAX_MS.
@@ -58,7 +58,7 @@ const REL_LINES = join("src", "audio", "voice-lines.json");
 const REL_MANIFEST = join("src", "audio", "voice-manifest.json");
 const REL_VOICE_DIR = join("public", "audio", "voice");
 
-const EXPECTED_FILE_COUNT = 152;
+const EXPECTED_FILE_COUNT = 153;
 const BLOCK = 4096;
 const CHECK_TIMEOUT_MS = 60_000;
 
@@ -259,7 +259,7 @@ function expectReported(root: string, keys: readonly string[]): void {
 // ------------------------------------------------------------------------------------ B35 ---
 
 describe("the committed voice files (B35)", () => {
-  it("B35 expects 152 files: a play and a death line per unit, one cast line per spell and trap", () => {
+  it("B35 expects 153 files: a play and a death line per unit, one cast line per spell and trap", () => {
     expect(EXPECTED_KEYS).toHaveLength(EXPECTED_FILE_COUNT);
     expect(new Set(EXPECTED_KEYS).size, "no key twice").toBe(EXPECTED_FILE_COUNT);
   });
@@ -343,7 +343,7 @@ describe("the committed voice files (B35)", () => {
     expect(wrong).toEqual([]);
   });
 
-  it("B35 keeps nothing in the voice directory but the 152 expected files", () => {
+  it("B35 keeps nothing in the voice directory but the 153 expected files", () => {
     expect(existsSync(VOICE_DIR), `${VOICE_DIR} exists`).toBe(true);
     const expected = new Set(EXPECTED_FILES);
     const present = readdirSync(VOICE_DIR);
@@ -377,7 +377,7 @@ describe("gen-voice.mjs --check (B37)", () => {
   });
 
   it(
-    "B37 exits 0 on the committed tree and reports 152 files and their bytes",
+    "B37 exits 0 on the committed tree and reports 153 files and their bytes",
     () => {
       const run = runCheck();
       expect(run.status, describeRun(run)).toBe(0);

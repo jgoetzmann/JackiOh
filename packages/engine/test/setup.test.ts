@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DECK_SIZE, OPENING_DRAW } from "../src/config";
+import type { CardDef } from "@jackioh/shared";
+import { registerCatalog, registeredCatalog } from "../src/catalog";
+import { COIN_DEF_ID, DECK_SIZE, OPENING_COINS, OPENING_DRAW } from "../src/config";
 import { beginGame, reduce } from "../src/reduce";
-import type { GameState } from "../src/state";
+import { createGame, type GameState } from "../src/state";
 import { vanillaDeck } from "./fixtures/catalog";
-import { newGame } from "./fixtures/harness";
+import { newGame, setupCatalog } from "./fixtures/harness";
 import { goingLong, heroicPower, HERO_POWERS } from "./fixtures/scripts";
 
 function started(seed = "setup", decks?: [string[], string[]]): GameState {
@@ -131,5 +133,61 @@ describe("setup (M1-T5)", () => {
     const card = [...side.library, ...side.hand].find((c) => c.defId === heroicPower.id);
     expect(card, "the returned Heroic Power is in the library or back in hand").toBeDefined();
     expect(HERO_POWERS).toContain(card?.memory.power);
+  });
+});
+
+describe("The Coin (R244)", () => {
+  /** A stand-in for the catalog's The Coin: the engine deals the id and reads nothing else of it. */
+  const coin: CardDef = {
+    id: COIN_DEF_ID,
+    index: "T-coin",
+    name: "Fixture Coin",
+    set: "Core",
+    type: "Spell",
+    tags: ["Token"],
+    rarity: "Token",
+    token: true,
+    cost: 0,
+    base: { keywords: [], text: "gain 1 mana" },
+    radiant: { keywords: [], text: "gain 2 mana" },
+  };
+
+  function keepAll(state: GameState): GameState {
+    let next = state;
+    for (const player of ["p1", "p2"] as const) {
+      next = reduce(next, {
+        type: "mulligan",
+        keep: next.players[player].hand.map((c) => c.id),
+        playerId: player,
+        nonce: `coin-${player}`,
+      }).state;
+    }
+    return next;
+  }
+
+  it("R244 deals each seat its OPENING_COINS copies once both mulligans are answered, as its last card", () => {
+    setupCatalog();
+    registerCatalog({ ...registeredCatalog(), [coin.id]: coin });
+    const created = createGame({ seed: "coin", decks: [vanillaDeck(DECK_SIZE, 1), vanillaDeck(DECK_SIZE, 21)] });
+    const dealt = beginGame(created).state;
+    expect(dealt.players.p2.hand.some((c) => c.defId === COIN_DEF_ID), "not during the deal").toBe(false);
+
+    const state = keepAll(dealt);
+
+    expect(state.turn).toBe(1);
+    (["p1", "p2"] as const).forEach((player, seat) => {
+      const hand = state.players[player].hand;
+      expect(hand.filter((c) => c.defId === COIN_DEF_ID)).toHaveLength(OPENING_COINS[seat] ?? 0);
+    });
+    const p2 = state.players.p2.hand;
+    expect(p2).toHaveLength((OPENING_DRAW[1] as number) + 1);
+    expect(p2[p2.length - 1]?.defId).toBe(COIN_DEF_ID);
+    setupCatalog();
+  });
+
+  it("R244 a registered catalog without The Coin deals none, which is how the engine's fixture catalogs run", () => {
+    const state = keepAll(started("no-coin"));
+    expect(registeredCatalog()[COIN_DEF_ID]).toBeUndefined();
+    expect(state.players.p2.hand).toHaveLength(OPENING_DRAW[1] as number);
   });
 });

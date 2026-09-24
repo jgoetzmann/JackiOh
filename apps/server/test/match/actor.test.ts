@@ -785,7 +785,11 @@ describe("M6-T4 acceptance 4 with the real engine (§10.8, CLAUDE.md rule 7)", (
     // PREMISE: both hands really hold real cards. Empty sets would make every scan below vacuous.
     expect(p1Hand.size).toBeGreaterThan(0);
     expect(p2Hand.size).toBeGreaterThan(0);
-    for (const defId of [...p1Hand, ...p2Hand]) expect(pool).toContain(defId);
+    // Every one is a deck card, but for The Coin setup deals p2, who goes second (§2.1, R244), which
+    // is as much a secret of p2's hand as any deck card in it.
+    for (const defId of [...p1Hand, ...p2Hand]) expect([...pool, "core-t-coin"]).toContain(defId);
+    expect(p2Hand.has("core-t-coin")).toBe(true);
+    expect(p1Hand.has("core-t-coin")).toBe(false);
 
     // PREMISE: the frames really carry the events the fake never produced, so the R97 half of the
     // scan is exercising something.

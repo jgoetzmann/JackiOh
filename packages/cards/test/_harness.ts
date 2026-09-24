@@ -1,5 +1,5 @@
 // The card test harness (BUILD M4-T3). Every card test file imports `scenario` from here and
-// nothing else from the engine: importing this module registers the real 109-card catalog and every
+// nothing else from the engine: importing this module registers the real 110-card catalog and every
 // registered script (`registerAll()`), so a card test never wires the engine up by hand.
 //
 // A scenario is built out of the engine's OWN functions — `createGame`, `newInstance`,

@@ -1,7 +1,7 @@
 // Polish task 2 (docs/polish/2-sound.md), behaviours B33 and B34: `voice-lines.json` against the
 // catalog it voices.
 //
-//   B33  exactly the 109 catalog ids, each `kind` from the catalog type, units carry `play` and
+//   B33  exactly the 110 catalog ids, each `kind` from the catalog type, units carry `play` and
 //        `death` and nothing else carries either, non-units carry `cast`, and every referenced
 //        persona exists with a usable `say` voice and in-range rate, pbas, pmod, web values and
 //        (where set) loudness trim `gain`, 0-2.
@@ -121,10 +121,10 @@ function bannedMatcher(word: string): RegExp {
 }
 
 describe("voice-lines.json covers the catalog (B33)", () => {
-  it("B33 declares version 1 and one cards entry per catalog card, 109 in all", () => {
+  it("B33 declares version 1 and one cards entry per catalog card, 110 in all", () => {
     expect(TABLE.version, "voice-lines.json version").toBe(1);
-    expect(CATALOG_IDS, "packages/cards/catalog.json holds the 100 Core cards and 9 tokens").toHaveLength(109);
-    expect(Object.keys(CARDS), "one cards entry per catalog id").toHaveLength(109);
+    expect(CATALOG_IDS, "packages/cards/catalog.json holds the 100 Core cards and 10 tokens").toHaveLength(110);
+    expect(Object.keys(CARDS), "one cards entry per catalog id").toHaveLength(110);
   });
 
   it("B33 leaves no catalog id, tokens included, without an entry", () => {
@@ -240,11 +240,11 @@ describe("voice-lines.json covers the catalog (B33)", () => {
     expect(wrong).toEqual([]);
   });
 
-  it("B33 comes to 43 units and 66 spells and traps, which is 152 lines", () => {
+  it("B33 comes to 43 units and 67 spells and traps (The Coin included, R245), which is 153 lines", () => {
     const kinds = Object.values(CARDS).map((entry) => entry.kind);
     expect(kinds.filter((kind) => kind === "unit"), "unit entries").toHaveLength(43);
-    expect(kinds.filter((kind) => kind === "spell" || kind === "trap"), "spell and trap entries").toHaveLength(66);
-    expect(allLines(), "lines in the table").toHaveLength(152);
+    expect(kinds.filter((kind) => kind === "spell" || kind === "trap"), "spell and trap entries").toHaveLength(67);
+    expect(allLines(), "lines in the table").toHaveLength(153);
   });
 });
 

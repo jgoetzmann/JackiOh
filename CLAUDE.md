@@ -39,7 +39,7 @@ pnpm test:coverage     # 90% line floor, engine + cards
 pnpm fuzz              # the CI gate: seeds 1–1000 of random-policy games with replay hashing, one seat handicapped in fuzz-handicap, ~100 s
 pnpm ai:gate           # the AI's quality gates at full size (random 100, greedy 50, Hard vs Easy 50); minutes, CI's ai-gate job
 pnpm ai:sweep          # the shadow-ban sweep (R186); prints SHADOW_BAN rows to copy into packages/ai/src/shadowBan.ts by hand
-pnpm validate:catalog  # catalog.json data checks (100 cards, 9 tokens, rarity counts)
+pnpm validate:catalog  # catalog.json data checks (100 cards, 10 tokens, rarity counts)
 pnpm rulings:coverage  # SPEC §11 rows vs named tests vs R-ids cited in code (rule 3)
 pnpm --filter @jackioh/cards missing-tests   # catalog ids with no test file, and the path each one expects
 pnpm test:sql          # schema, RLS and trigger invariants: Docker only, starts a throwaway postgres:16

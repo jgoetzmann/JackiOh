@@ -59,7 +59,7 @@ jackioh/
       src/replay.ts            fold(seed, log) -> state; state hash
       test/                    unit + property tests
     cards/
-      catalog.json             100 cards + 9 tokens (schema in M4-T1)
+      catalog.json             100 cards + 10 tokens (schema in M4-T1)
       src/index.ts             registry: defId -> {def, base, radiant}
       src/scripts/NNN-slug.ts  one file per card, NNN = zero-padded index, tokens as NNN-1-slug.ts
       test/NNN-slug.test.ts    one test file per card
@@ -101,6 +101,8 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `TURN_CAP_PLAYER_TURNS` | 30 | §2.5, R2 (decide) |
 | `HAND_CAP` | 10 | §2.4, R4 (decide) |
 | `OPENING_DRAW` | `[3, 4]` (index = seat, Nth seat = N+2) | §2.1 |
+| `OPENING_COINS` | `[0, 1]` (index = seat: The Coin for the seat going second) | §2.1, R244 |
+| `COIN_DEF_ID` | `"core-t-coin"` | §7, R245 |
 | `UNIT_ZONES` / `BACKROW_ZONES` | 5 / 5 | §3 |
 | `LANE_RESTRICTED_ATTACKS` | false | R5 (decide) |
 | `CRY_ON_PLAY_ONLY` | true | R1 (decide) |
@@ -162,9 +164,10 @@ Acceptance:
 - Stack: pushing onto an occupied zone makes the pushed card top; only the top card appears in `activeUnits(side)`; popping the top resumes the card beneath with its stored damage.
 
 **M1-T5 Setup and mulligan.** Files: `engine/src/setup.ts`.
-Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); mulligan prompt per player; returned cards redraw first, then shuffle back (R9); start-of-game hooks (Heroic Power).
+Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); mulligan prompt per player; returned cards redraw first, then shuffle back (R9); The Coin to the seat going second once both mulligans are answered (`OPENING_COINS`, R244); start-of-game hooks (Heroic Power).
 Acceptance:
 - P1 hand = 3, P2 hand = 4 after setup; libraries 17 and 16.
+- Once both mulligans are answered P2 holds its 4 cards plus The Coin as its last card, and P1 none; a handicapped seat going second gets it too; it is not a draw (R244).
 - A deck with two Quickdraw cards puts both in the opening hand and draws one fewer random card... (exactly `OPENING_DRAW[seat] − quickdrawCount` random draws, minimum 0).
 - Mulligan returning 2 cards: the 2 replacements are not the returned cards (property test over 100 seeds).
 - Heroic Power's power is chosen during setup, deterministically from the seed, including a copy the mulligan returned to the library (R43).
@@ -285,9 +288,9 @@ Schema per card:
   "radiant": { "attack": 6, "health": 20, "keywords": [], "text": "…" }
 }
 ```
-Tokens use `index` `"51.1"`, `"65.1"`, `"90.1"`, `"93.1"`, `"95.1"`, `"T-rush"`, `"T-sheep"`, `"T-felinor"`, `"T-bread"` and `"token": true`. `rarity` is the value in SPEC §8 (assigned by complexity), not the source list's grouping (§8, rarity paragraph). Apply every row of §5.3.
+Tokens use `index` `"51.1"`, `"65.1"`, `"90.1"`, `"93.1"`, `"95.1"`, `"T-rush"`, `"T-sheep"`, `"T-felinor"`, `"T-bread"`, `"T-coin"` and `"token": true`. `rarity` is the value in SPEC §8 (assigned by complexity), not the source list's grouping (§8, rarity paragraph). Apply every row of §5.3.
 Acceptance (`catalog.test.ts`):
-- Exactly 100 entries with `token: false` and 9 with `token: true`; indices 1–100 each present once.
+- Exactly 100 entries with `token: false` and 10 with `token: true`; indices 1–100 each present once.
 - For every entry, `cost`, `type`, `tags`, `rarity`, `base.attack/health`, `radiant.attack/health` equal the values in SPEC §8 (encode §8 as a fixture table in the test; the test is the diff).
 - Rarity counts: 35 Common, 37 Rare, 16 Epic, 7 Legendary, 5 Mythic.
 - Every `tags` value is one of Human, Felinor, KY, CN, Fruit, "Call to Chaos", Quickdraw, Token.
@@ -299,7 +302,7 @@ Acceptance: a registry test asserts every catalog id has a script and every scri
 
 **M4-T3 Test template.** Files: `cards/test/_harness.ts`, `cards/test/NNN-slug.test.ts`.
 `_harness.ts` gives `scenario({ seed, p1: { hand, field, library, health, mana }, p2: {…} })` builders that place real instances, `playFrom(hand)`, `attack`, `answer`, `endTurn`, `view` and assertion helpers (`expectInZone`, `expectStats`, `expectEvents`). Every card test file covers, for base and radiant separately, each behaviour named in its §8 row plus the "must-pass" cases in the table below.
-Acceptance: `pnpm test --filter cards` runs 109 test files; a script that lists catalog ids without a test file (`cards/scripts/missing-tests.ts`) prints nothing.
+Acceptance: `pnpm test --filter cards` runs 110 test files; a script that lists catalog ids without a test file (`cards/scripts/missing-tests.ts`) prints nothing.
 
 **M4-T4 Implement cards in waves.** Wave 1 first (keywords and single primitives), then Wave 2 (stored state, prompts, delayed and cross-turn effects, traps), then Wave 3 (subsystems). Within a wave, go in index order. A wave is done when every card in it passes its tests and the fuzz gate (M4 gate) still passes with those cards added to the fuzz deck pool.
 
@@ -411,6 +414,7 @@ Acceptance: `pnpm test --filter cards` runs 109 test files; a script that lists 
 | 99 | Craft a Card | 3 | Two Discovers, fused def in `transientDefs` with both forms fused, no on-field target and the ingredients' shared type (R77), cost 0 in hand, making it Radiant later switches to the fused radiant form; radiant three |
 | 100 | Ceaseless Void | 2 | Cost = 100 − (drawn + played + destroyed + exiled by both players), floor 0 (R55); Cry exiles every other permanent; radiant Charge |
 | T | Rush, Sheep, Felinor, Bread Tokens | 1 | Vanish on leaving the field; Sheep counts 2 toward Tribute; Bread is X/X with no text; none in random pools |
+| T-coin | The Coin | 1 | Dealt to the seat going second after the mulligan, a handicapped one too, never a draw (R244); gain 1 mana this turn, above the cap, gone at the next refresh; radiant 2; a play that goes to the graveyard; never in a deck or a random pool (R245) |
 
 **M4 gate.** `cards/test/fuzz.test.ts`: 1,000 games per wave (seeds 1–1000) with decks drawn randomly from all implemented cards, played by `aiPolicy`, never throw, always terminate (hero death or cap), and replay to the same hash. Any card that appears in a failing seed is listed in the failure message. A fuzz game is bounded at `TURN_CAP_PLAYER_TURNS` × `AI_PLAYOUT_STEP_CAP` actions. The bound is a failure condition, not a pass condition: a game that reaches it is reported as non-terminating rather than left to hang CI, and a policy that returns no action while the game is live is reported as a stall, since R82 should have ended the turn.
 
@@ -554,7 +558,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 ## 5. Definition of done
 
 - `pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e` all green in CI.
-- `catalog.test.ts` passes: 100 cards, 9 tokens, rarity counts 35/37/16/7/5.
+- `catalog.test.ts` passes: 100 cards, 10 tokens, rarity counts 35/37/16/7/5.
 - `missing-tests.ts` prints nothing.
 - `rulings.test.ts` covers every SPEC §11 row, R1–R168 (script `rulings-coverage.ts` lists any missing id).
 - Fuzz gate: `pnpm fuzz` runs 1,000 seeds with the full card pool and prints its own counts (seeds, throws, non-terminations, replay mismatches, endings). `pnpm test` sweeps the same file at a reduced seed count as a smoke wave; the card pool is never reduced, and any exclusion must be a named entry in `POOL_EXCLUSIONS` with a reason, printed on every run so a narrowing cannot be hidden.

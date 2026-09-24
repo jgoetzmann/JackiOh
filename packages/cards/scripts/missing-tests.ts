@@ -8,7 +8,7 @@
  *   pnpm --filter @jackioh/cards missing-tests
  *
  * stdout is the gate: one line per uncovered card, naming the test file it expects, and exit 1.
- * All 109 covered -> stdout is empty and the exit code is 0, so CI can gate a milestone on it.
+ * All 110 covered -> stdout is empty and the exit code is 0, so CI can gate a milestone on it.
  *
  * ONE FILE MAY COVER A CARD AND ITS TOKEN. A card-defined token (`core-090-1` CN-Virus,
  * `core-093-1` Combo-Fodder, `core-095-1` Chaos Golem) exists only because its generator makes it,
@@ -69,7 +69,7 @@ export type Audit = {
   notes: readonly TestFileNote[];
   /** Tokens covered inside their generator's file; counted as covered, reported as a NOTE. */
   shared: readonly SharedCoverage[];
-  /** How many of the 109 are covered — by a file of their own or by their generator's. */
+  /** How many of the 110 are covered — by a file of their own or by their generator's. */
   covered: number;
   total: number;
 };

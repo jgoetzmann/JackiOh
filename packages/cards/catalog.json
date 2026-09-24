@@ -2605,5 +2605,26 @@
       ],
       "text": "Armor X"
     }
+  },
+  "core-t-coin": {
+    "id": "core-t-coin",
+    "index": "T-coin",
+    "name": "The Coin",
+    "set": "Core",
+    "type": "Spell",
+    "tags": [
+      "Token"
+    ],
+    "rarity": "Token",
+    "token": true,
+    "cost": 0,
+    "base": {
+      "keywords": [],
+      "text": "Gain 1 mana this turn"
+    },
+    "radiant": {
+      "keywords": [],
+      "text": "Gain 2 mana this turn"
+    }
   }
 }

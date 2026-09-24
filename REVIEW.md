@@ -32,7 +32,7 @@ Inputs: `SPEC.md`, `JackiOh_Mechanics.md`, `JackiOh_Core_Cards.md`, `ARCHITECTUR
 | Check | Acceptance condition |
 | --- | --- |
 | A2.1 Cross-references | Every "§n", "section n", "(n.n)" and "R<n>" mentioned in SPEC resolves to an existing heading or row. |
-| A2.2 Counts | §1 says 100 cards and 9 tokens; §7 has 9 token rows; §8 has 100 non-token rows; the rarity distribution sentence in §8 sums to 100 and equals the count of each rarity value in the §8 tables (recount them). |
+| A2.2 Counts | §1 says 100 cards and 10 tokens; §7 has 10 token rows; §8 has 100 non-token rows; the rarity distribution sentence in §8 sums to 100 and equals the count of each rarity value in the §8 tables (recount them). |
 | A2.3 Rulings | Every "(ruling)" or "Ruling:" in §2–§10 has a matching row in §11, and every §11 row's "Cards affected" indices exist in §8. Rows marked "decide" are exactly the ones §11's intro lists. |
 | A2.4 Pipeline order | The 10-step damage order in §4.4 is the order every other mention uses (§6.1 Armor/Divine Shield/Poisonous/Lifesteal/Trample/Cleave rows, §8 True Strike, Anti-oneshot Armor, Fed Fauci). |
 | A2.5 Pools | Compute from §8: KY-tagged non-token cards = {31, 51, 82} (+57 itself); Trap-type cards = {18, 41, 60, 71, 85, 96} all cost 1; Legendary-rarity non-token cards per the §8 rarity column. Check the pool statements in §8 (#57, #67, #83) and in §11 match these computed sets. If the rarity column changed the Legendary set, the Transmogulate pool statement must reflect the new set; otherwise BLOCKER. |
@@ -114,7 +114,7 @@ For each row, name the test(s) that prove it, or trace a fixture state through t
 ### B3 Card conformance (SPEC §8, BUILD §3 M4)
 
 1. `pnpm exec tsx packages/cards/scripts/missing-tests.ts` prints nothing.
-2. Count test files: 109 (`ls packages/cards/test/*.test.ts | grep -v catalog | grep -v _harness | wc -l`).
+2. Count test files: 110 (`ls packages/cards/test/*.test.ts | grep -v catalog | grep -v _harness | wc -l`).
 3. For every card in the BUILD M4-T4 table, open its test file and confirm each "must-pass" clause is a distinct `it(...)`, base and radiant both present. A card whose test skips a clause is MAJOR; a card whose implementation contradicts its §8 row is BLOCKER.
 4. Deep-read 15 scripts against their §8 rows: the fixed set #3, #9, #12, #18, #22, #31, #41, #52, #60, #85, #92, #93, #95, #96, #98, plus 5 more chosen with `seed % 100` from the current commit hash. Record for each: hook used, primitives used, prompt kinds declared, any behaviour not in the spec.
 5. Subsystems: `fuse`, `rotation`, `scorer`, `aiPolicy`, `heroPower`, `comboIndex`, `callToChaos`, `lethal` each have a test file and the acceptance cases in BUILD M3-T7.

@@ -234,7 +234,7 @@ describe("nonces", () => {
   // proved by two things that use the real engine: `e2e/cypress/e2e/01-hotseat-full-game.cy.ts`
   // (browser hash vs a Node fold of the recorded log) and
   // `packages/cards/test/hotseat-replay.test.ts` (that same recorded log folded in vitest with the
-  // real catalog and the 109 card scripts, against a written-down hash).
+  // real catalog and the 110 card scripts, against a written-down hash).
   it("two sessions with the same seed and the same actions agree on hash() and log()", () => {
     const bodies: ActionBody[] = [
       { type: "endTurn" },

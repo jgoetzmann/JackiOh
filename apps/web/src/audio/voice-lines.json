@@ -866,6 +866,11 @@
       "persona": "goof",
       "play": "I'm bread. Butter me up.",
       "death": "Crumbs."
+    },
+    "core-t-coin": {
+      "kind": "spell",
+      "persona": "hustler",
+      "cast": "Heads I win, tails you lose."
     }
   }
 }

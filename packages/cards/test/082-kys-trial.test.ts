@@ -16,7 +16,7 @@ import { CATALOG } from "../src/catalog-data";
 
 const TRIAL = "core-082";
 
-/** The nine token indices are the nine non-integer ones; R54 forbids every one of them. */
+/** The ten token indices are the ten non-integer ones; R54 forbids every one of them. */
 function isNumberedOneToHundred(index: string): boolean {
   return /^\d+$/.test(index) && Number(index) >= 1 && Number(index) <= 100;
 }
