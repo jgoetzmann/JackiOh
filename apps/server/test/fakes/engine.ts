@@ -372,7 +372,7 @@ export function fakeDeck(extra: readonly string[] = []): string[] {
  * blocks of `actor.test.ts` and `recovery.test.ts`).
  *
  * It takes the port as a parameter and imports nothing from `@jackioh/engine`, so a test that only
- * wants the scripted port above still does not pull the engine and `packages/cards`' 109 scripts
+ * wants the scripted port above still does not pull the engine and `packages/cards`' 110 scripts
  * into its process — which is the whole reason `src/match/engine.ts` loads the real binding lazily.
  *
  * The deck size is not written here and not imported either: BUILD §2 keeps `DECK_SIZE` in

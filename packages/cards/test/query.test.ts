@@ -22,7 +22,7 @@ function indices(defs: readonly CardDef[]): string[] {
   return defs.map((def) => def.index);
 }
 
-const TOKEN_INDICES = ["51.1", "65.1", "90.1", "93.1", "95.1", "T-rush", "T-sheep", "T-felinor", "T-bread"];
+const TOKEN_INDICES = ["51.1", "65.1", "90.1", "93.1", "95.1", "T-rush", "T-sheep", "T-felinor", "T-bread", "T-coin"];
 
 beforeAll(() => {
   registerCatalog(CATALOG, CATALOG_VERSION);

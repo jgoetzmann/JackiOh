@@ -39,3 +39,11 @@ X/X
 X/X
 
 **Armor X**
+
+**(0) The Coin Spell, Token, Core, Common**
+
+Gain 1 mana this turn
+
+~~~
+
+Gain 2 mana this turn

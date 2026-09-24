@@ -64,7 +64,7 @@ export const WAVE_SEEDS = 1000;
  *
  * `packages/cards/vitest.config.ts` includes `test/**\/*.test.ts`, so this file is swept into a
  * plain `pnpm test` as well as selected by name by `pnpm fuzz` — and the full wave is ~100 s
- * against ~5 s for the other 109 cards files put together. BUILD's own definition of done splits
+ * against ~5 s for the other 110 cards files put together. BUILD's own definition of done splits
  * them the same way: `pnpm test` is one line and "Fuzz gate: 1,000 seeds with the full card pool"
  * is another. So the whole-suite sweep runs the first 100 seeds (~6 s) as a smoke wave and
  * `pnpm fuzz` runs all 1,000. The smoke wave is the same games, same pool and same four

@@ -484,8 +484,8 @@ step that is not yet implemented says which BUILD task delivers it.
    - `insert into public.collection …` as an `authenticated` user → must be refused. There is no
      policy, so there is no path (§9.4).
 6. **Seed the catalog.** `pnpm --filter @jackioh/server db:seed-catalog`. Requires
-   `packages/cards/catalog.json` (BUILD M4-T1). Check `select count(*) from public.cards;` → 109
-   (100 cards + 9 tokens) and `select app.catalog_version();` → your `CATALOG_VERSION`.
+   `packages/cards/catalog.json` (BUILD M4-T1). Check `select count(*) from public.cards;` → 110
+   (100 cards + 10 tokens) and `select app.catalog_version();` → your `CATALOG_VERSION`.
 7. **Mint an invite code.** `pnpm --filter @jackioh/server codes:mint`. It generates 16 characters
    from `CODE_ALPHABET`, formats them `XXXX-XXXX-XXXX-XXXX`, HMACs with `CODE_PEPPER` and inserts
    only the hash (§9.4). The plaintext goes to stdout **once** — the database cannot give it back —

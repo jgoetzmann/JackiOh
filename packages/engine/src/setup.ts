@@ -1,10 +1,11 @@
-// Shuffle, the opening draw table, Quickdraw, the mulligan and start-of-game effects
-// (SPEC §2.1, R9, R43).
+// Shuffle, the opening draw table, Quickdraw, the mulligan, The Coin and start-of-game effects
+// (SPEC §2.1, R9, R43, R244).
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
-import { OPENING_DRAW } from "./config";
-import { draw } from "./draw";
+import { findDef } from "./catalog";
+import { COIN_DEF_ID, OPENING_COINS, OPENING_DRAW } from "./config";
+import { addToHand, draw } from "./draw";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { closePrompt, runStartOfGame } from "./prompts";
@@ -267,8 +268,36 @@ function runOwedSetup(sink: EngineSink, item: WorkItem): void {
 
 registerWorkHandler(SETUP_WORK, runOwedSetup);
 
-/** Start-of-game effects, then player 1 takes the first turn and draws (§2.1, R10). */
+/**
+ * §2.1 step 3's close, R244: once both mulligans are answered, each seat is dealt its
+ * `OPENING_COINS` copies of The Coin — the seat going second one, the first none — as the last cards
+ * of its hand. After the mulligan, so a Coin is never returned, redrawn or shuffled in (R9); and
+ * whatever the seat's handicap, whose extra opening card the mulligan has already seen (R182).
+ *
+ * It is §6.3's add to hand, not a draw: `draw.addToHand` puts it in, or burns it into the graveyard
+ * off a full hand (§2.4, R4, which no Core opening hand reaches), and it emits `addedToHand` alone,
+ * leaving #100's draw counter where it was (R55). It takes the next instance id and no rng draw, so
+ * `(seed, decks, handicaps, log)` still folds exactly (§9.3, R187).
+ *
+ * A registered catalog without The Coin deals none. The shipped catalog always holds it (the cards
+ * package's catalog tests and `validate-catalog.ts` count it); the engine's own tests register
+ * partial fixture catalogs, and a rule that threw on them would make every one of those catalogs
+ * carry a card none of their tests is about.
+ */
+export function dealCoins(sink: EngineSink): void {
+  if (sink.state.result !== null) return;
+  if (findDef(sink.state, COIN_DEF_ID) === undefined) return;
+  PLAYER_IDS.forEach((player, seat) => {
+    const count = OPENING_COINS[seat] ?? 0;
+    for (let dealt = 0; dealt < count; dealt += 1) {
+      addToHand(sink, newInstance(sink.state, COIN_DEF_ID, player, { z: "hand", player }));
+    }
+  });
+}
+
+/** R244's Coin, the start-of-game effects, then player 1 takes the first turn and draws (§2.1, R10). */
 export function finishSetup(sink: EngineSink): void {
+  dealCoins(sink);
   const cards = PLAYER_IDS.flatMap((player) => {
     const side = sink.state.players[player];
     return [...side.hand, ...side.library].map((card) => card.id);

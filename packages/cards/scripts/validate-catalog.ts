@@ -47,18 +47,21 @@ const NUMBERED_KEYWORDS: ReadonlySet<string> = new Set(["Armor", "Lucky"]);
 
 /* ------------------------------------------------------------- expectations */
 
-/** §8 + §7: the 100 Core indices, the 5 card-defined tokens, the 4 shared tokens. */
+/**
+ * §8 + §7: the 100 Core indices, the 5 card-defined tokens, and the 5 named ones — the 4 tokens
+ * several cards share and The Coin, which §2.1's setup deals (R244).
+ */
 const CARD_DEFINED_TOKEN_INDICES = ["51.1", "65.1", "90.1", "93.1", "95.1"] as const;
-const SHARED_TOKEN_INDICES = ["T-rush", "T-sheep", "T-felinor", "T-bread"] as const;
+const SHARED_TOKEN_INDICES = ["T-rush", "T-sheep", "T-felinor", "T-bread", "T-coin"] as const;
 const EXPECTED_INDICES: readonly string[] = [
   ...Array.from({ length: 100 }, (_, i) => String(i + 1)),
   ...CARD_DEFINED_TOKEN_INDICES,
   ...SHARED_TOKEN_INDICES,
 ];
 
-const EXPECTED_TOTAL = 109;
+const EXPECTED_TOTAL = 110;
 const EXPECTED_NON_TOKEN = 100;
-const EXPECTED_TOKEN = 9;
+const EXPECTED_TOKEN = 10;
 
 /** §8: "Distribution: 35 Common, 37 Rare, 16 Epic, 7 Legendary, 5 Mythic." */
 const EXPECTED_RARITY_COUNTS: Readonly<Record<string, number>> = {
@@ -160,7 +163,7 @@ if (!isPlainObject(raw)) {
 const catalog = raw;
 const entries = Object.entries(catalog);
 
-// 1. 109 entries.
+// 1. 110 entries.
 if (entries.length !== EXPECTED_TOTAL) {
   fail("catalog", `expected ${EXPECTED_TOTAL} entries, found ${entries.length}`);
 }
@@ -279,7 +282,7 @@ for (const [key, value] of entries) {
   if (unknownFields.length > 0) fail(where, `unknown field(s) ${unknownFields.join(", ")}`);
 }
 
-// 2. 100 non-token and 9 token.
+// 2. 100 non-token and 10 token.
 if (nonTokenCount !== EXPECTED_NON_TOKEN) {
   fail("catalog", `expected ${EXPECTED_NON_TOKEN} non-token cards, found ${nonTokenCount}`);
 }
@@ -287,7 +290,7 @@ if (tokenCount !== EXPECTED_TOKEN) {
   fail("catalog", `expected ${EXPECTED_TOKEN} tokens, found ${tokenCount}`);
 }
 
-// 3. Indices 1–100 each exactly once, plus the 9 token indices.
+// 3. Indices 1–100 each exactly once, plus the 10 token indices.
 for (const index of EXPECTED_INDICES) {
   const keys = seenIndices.get(index);
   if (keys === undefined) fail("catalog", `index "${index}" is missing`);

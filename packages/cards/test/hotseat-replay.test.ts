@@ -7,7 +7,7 @@
 // was a fold inside `vitest` — `apps/web/src/game/hotseat.test.ts` runs two sessions against a
 // SCRIPTED engine whose `reduce` increments a turn counter, so it would pass against an engine with
 // no determinism at all. This file is the missing fold: the real `reduce`, the real catalog, the
-// real 109 card scripts, and a hash written down.
+// real 110 card scripts, and a hash written down.
 //
 // WHY IT LIVES IN packages/cards. The log names real cards (`core-003`, `core-045`, …) and folding
 // it without their scripts registered would fizzle every Cry (`scriptsFor` falls back to
@@ -73,12 +73,17 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * through that mapping and nothing else in the log changed; and the state counts the field's
  * departures (`fieldExits`, R174). A fold of the old log under the old numbering and a fold of the
  * relabeled log, relabeled back, differ in `fieldExits` alone — the same game, action for action.
+ *
+ * The Coin (R244) re-recorded it, by the procedure above: p2 is dealt The Coin after the mulligan,
+ * so spec 01, which plays whatever the client offers, plays it on p2's first turn (nonce n6), and
+ * every instance created after setup takes an id one higher. A new game, not a relabeled one: 51
+ * actions where there were 50, still won by p1 by hero death.
  */
-const EXPECTED_HASH = "aca6b485";
+const EXPECTED_HASH = "0349d08f";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;
-const EXPECTED_ACTIONS = 50;
+const EXPECTED_ACTIONS = 51;
 
 function read(path: string): Recording {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
@@ -93,7 +98,7 @@ const recording = read(COMMITTED);
 
 describe("the recorded hotseat game replays in vitest (BUILD M5-T3)", () => {
   it("folds the browser's own (seed, decks, log) to the recorded final state hash", () => {
-    // The catalog and the 109 scripts, exactly as `apps/web/src/game/engine.real.ts` registers them
+    // The catalog and the 110 scripts, exactly as `apps/web/src/game/engine.real.ts` registers them
     // before the browser's first `reduce`. Without them the Crys fizzle and the hash moves.
     registerAll();
 
@@ -139,7 +144,7 @@ describe("the recorded hotseat game replays in vitest (BUILD M5-T3)", () => {
     expect(hashState(second.state)).toBe(hashState(first.state));
   });
 
-  it("carries a real recording: 50 stamped actions over two deck-legal libraries", () => {
+  it("carries a real recording: 51 stamped actions over two deck-legal libraries", () => {
     expect(recording.seed).toBe("01-hotseat");
     expect(recording.log).toHaveLength(EXPECTED_ACTIONS);
     for (const action of recording.log) {

@@ -65,7 +65,7 @@ const SEED = seedFor("13-practice");
 /** Human turns played through the UI before the concede. */
 const HUMAN_TURNS = 3;
 
-/** The module worker loads the engine, the 109 card scripts and the AI before the first answer. */
+/** The module worker loads the engine, the 110 card scripts and the AI before the first answer. */
 const BOOT_TIMEOUT = 60_000;
 
 /** A prompt the human must answer mid-turn (a cast-on-draw, R58) is rare; this bounds the loop. */

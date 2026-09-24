@@ -10,7 +10,7 @@
 // from reading hidden information (SPEC §10.8).
 //
 // WHY `registerAll()` IS HERE. `createGame` looks its card definitions up in the engine's
-// registered catalog, and `packages/cards` is the one module that owns the catalog and the 109
+// registered catalog, and `packages/cards` is the one module that owns the catalog and the 110
 // scripts (SPEC §10.9, BUILD M4-T2). The client must not assemble a catalog of its own — that
 // would be a second source of card data — so it calls the registry's own entry point and asks the
 // engine for the result through `EnginePort.catalog`. It is idempotent by identity comparison in

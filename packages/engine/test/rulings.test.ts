@@ -173,6 +173,8 @@ const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
 const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
 /** R243's proof beside hidden-information.test.ts's, and R46's: the hunt's tenth round. */
 const CARDS_VANILLA_AND_POSITIONS_TEST = "../../cards/test/vanilla-and-positions.test.ts";
+/** R244 and R245's proofs: The Coin, dealt to the seat going second (§2.1, §7). */
+const CARDS_COIN_TEST = "../../cards/test/t-coin.test.ts";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
@@ -1989,6 +1991,20 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // in hand, a crafted card's definition) and vanilla-and-positions.test.ts "R243 …" (a Vanilla copy).
   it("R243 puts in the view what a card is made of beyond its printed face", () => {
     provenIn(243, CARDS_HIDDEN_INFORMATION_TEST, CARDS_VANILLA_AND_POSITIONS_TEST);
+  });
+
+  // Proved by t-coin.test.ts "R244 …" over real games with the real catalog (after both mulligans,
+  // the seat going second's last card, a handicapped seat's too, an add to hand and not a draw, a
+  // full hand's burn, the fold) and by setup.test.ts "R244 …" (`OPENING_COINS` per seat, and none
+  // from a catalog without the card).
+  it("R244 deals The Coin to the seat going second once both mulligans are answered", () => {
+    provenIn(244, CARDS_COIN_TEST, "setup.test.ts");
+  });
+
+  // Proved by t-coin.test.ts "R245 …": a 0-cost Token Spell gaining 1 temporary mana (2 Radiant)
+  // above the cap, a play that goes to the graveyard, and in no deck or random pool.
+  it("R245 makes The Coin a 0-cost Token Spell that gains 1 mana this turn, 2 when Radiant", () => {
+    provenIn(245, CARDS_COIN_TEST);
   });
 });
 

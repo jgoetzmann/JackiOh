@@ -13,7 +13,8 @@
 //                         form keeps those stats; an empty cell means the card has no stats).
 //                         In "Type, tags" the first comma-separated segment is the card type
 //                         (no type name contains a comma) and the rest are tags.
-//   the four shared tokens (`T-rush`, `T-sheep`, `T-felinor`, `T-bread`)
+//   the five named tokens (`T-rush`, `T-sheep`, `T-felinor`, `T-bread`, and `T-coin`, the one
+//                         §2.1's setup deals rather than a card, R244)
 //                       — SPEC §7, columns "Token", "Index", "Cost", "Type",
 //                         "Stats and text" (its leading `A/B`; Bread Token's printed 0/0) and
 //                         "Radiant form". §7 has no rarity column and its "Type" column omits
@@ -166,6 +167,7 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "T-sheep", name: "Sheep Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
   { index: "T-felinor", name: "Felinor Token", cost: 1, type: "Unit", tags: ["Felinor", "Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
   { index: "T-bread", name: "Bread Token", cost: 0, type: "Unit", tags: ["Token"], rarity: "Token", base: [0, 0], radiant: [0, 0] },
+  { index: "T-coin", name: "The Coin", cost: 0, type: "Spell", tags: ["Token"], rarity: "Token", base: [null, null], radiant: [null, null] },
 ];
 
 /** BUILD M4-T1: the only tags any entry may carry. */
@@ -224,12 +226,12 @@ const label = (entry: CardDef, field: string, expected: unknown, actual: unknown
   `${entry.id} (#${entry.index}) ${field}: expected ${show(expected)}, got ${show(actual)}`;
 
 describe("catalog membership (BUILD M4-T1)", () => {
-  it("holds exactly 100 cards and 9 tokens", () => {
+  it("holds exactly 100 cards and 10 tokens", () => {
     const cards = ENTRIES.filter((entry) => entry.token === false);
     const tokens = ENTRIES.filter((entry) => entry.token === true);
     expect(cards.length, "entries with token: false").toBe(100);
-    expect(tokens.length, "entries with token: true").toBe(9);
-    expect(ENTRIES.length, "catalog entries").toBe(109);
+    expect(tokens.length, "entries with token: true").toBe(10);
+    expect(ENTRIES.length, "catalog entries").toBe(110);
   });
 
   it("has indices 1-100 each present exactly once", () => {
@@ -247,8 +249,8 @@ describe("catalog membership (BUILD M4-T1)", () => {
     expect(ENTRIES.filter((entry) => /^\d+$/.test(entry.index)).length, "plain numeric indices").toBe(100);
   });
 
-  it("has the five card-defined tokens and the four shared tokens", () => {
-    const expected = ["51.1", "65.1", "90.1", "93.1", "95.1", "T-rush", "T-sheep", "T-felinor", "T-bread"];
+  it("has the five card-defined tokens, the four shared tokens and The Coin", () => {
+    const expected = ["51.1", "65.1", "90.1", "93.1", "95.1", "T-rush", "T-sheep", "T-felinor", "T-bread", "T-coin"];
     for (const index of expected) {
       const entry = BY_INDEX.get(index);
       expect(entry?.index, `token index ${index}`).toBe(index);
@@ -266,7 +268,7 @@ describe("catalog membership (BUILD M4-T1)", () => {
       (entry) => `${entry.id} (#${entry.index})`,
     );
     expect(extra, "catalog entries with no SPEC row").toEqual([]);
-    expect(SPEC_8.length, "SPEC §8 + §7 fixture rows").toBe(109);
+    expect(SPEC_8.length, "SPEC §8 + §7 fixture rows").toBe(110);
   });
 });
 
