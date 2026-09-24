@@ -15,9 +15,12 @@ import {
   animTestid,
   createAnimationQueue,
   durationFor,
+  HIDDEN_ID,
   locateInstance,
+  newEventsSince,
   planEntries,
   prefersReducedMotion,
+  sameOccurrence,
   targetFor,
 } from "./animations";
 import { testid } from "./contract";
@@ -896,5 +899,100 @@ describe("createAnimationQueue", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/* ------------------------------------------------------------------------------------------- *
+ * newEventsSince: the part of a view's window the runner has not been given
+ * ------------------------------------------------------------------------------------------- *
+ *
+ * R97 redacts the whole window again for every view, judging each card by where it sits now, so an
+ * event two successive views share can read differently in each. The diff compared them byte for
+ * byte, found no overlap, and handed the runner the whole window: every animation already played
+ * ran a second time before the new ones (the "animations play twice" report).
+ */
+
+describe("newEventsSince", () => {
+  const turn: GameEvent = { type: "turnStarted", player: "p2", turn: 4 };
+  const mana: GameEvent = { type: "manaChanged", player: "p2", current: 4, max: 4 };
+  const hiddenDraw: GameEvent = { type: "drawn", player: "p2", instanceId: HIDDEN_ID, defId: HIDDEN_ID };
+  const namedDraw: GameEvent = { type: "drawn", player: "p2", instanceId: "c26", defId: "core-004" };
+  const play: GameEvent = { type: "cardPlayed", player: "p2", instanceId: "c26", defId: "core-004", costPaid: 3 };
+  const land: GameEvent = { type: "summoned", player: "p2", instanceId: "c26", defId: "core-004", row: "units", lane: 1 };
+  /** Every event the next view shares with the last one, as a fresh copy (views never share objects). */
+  const again = (events: readonly GameEvent[]): GameEvent[] => events.map((event) => ({ ...event }));
+
+  it("hands over only the new action when the next view names a card the window drew face-down (R97)", () => {
+    const prev = [turn, mana, hiddenDraw];
+    const next = [...again([turn, mana]), namedDraw, play, land];
+
+    const fresh = newEventsSince(prev, next);
+
+    expect(fresh).toEqual([play, land]);
+    // The very objects of the newer window, so the sound director can match the runner's entries.
+    expect(fresh[0]).toBe(next[3]);
+    expect(planEntries(fresh, baseView(), false).map((entry) => entry.type)).toEqual(["cardPlayed"]);
+  });
+
+  it("hands over only the new action when the next view hides a card the window named (R97, R177, R227)", () => {
+    const resolved: GameEvent = { type: "cardResolved", player: "p1", instanceId: "c7", defId: "core-031", permanent: false, costPaid: 2, radiant: true };
+    const set: GameEvent = { type: "cardPlayed", player: "p1", instanceId: "c9", defId: "core-041", costPaid: 1, formerId: "c3" };
+    const buff: GameEvent = { type: "buffed", instanceId: "c7", attack: 2, health: 1 };
+    const discount: GameEvent = { type: "costChanged", instanceId: "c7", cost: 1 };
+    const radiant: GameEvent = { type: "radiantSet", instanceId: "c7", defId: "core-031", zone: { z: "hand", player: "p1" } };
+    const kill: GameEvent = { type: "destroyed", instanceId: "u4", defId: "core-004", owner: "p2", attack: 3, maxHealth: 4, killerId: "c7" };
+    const prev = [resolved, set, buff, discount, radiant, kill];
+    // The other seat's copies, once #31 has gone back to p1's hand and the trap sits face-down.
+    const redacted: GameEvent[] = [
+      { type: "cardResolved", player: "p1", instanceId: HIDDEN_ID, defId: HIDDEN_ID, permanent: false, costPaid: 2 },
+      { type: "cardPlayed", player: "p1", instanceId: HIDDEN_ID, defId: HIDDEN_ID, costPaid: 1 },
+      { type: "buffed", instanceId: HIDDEN_ID, attack: 0, health: 0 },
+      { type: "costChanged", instanceId: HIDDEN_ID, cost: -1 },
+      { type: "radiantSet", instanceId: HIDDEN_ID, defId: HIDDEN_ID, zone: { z: "hand", player: "p1" } },
+      { ...kill, killerId: HIDDEN_ID },
+    ];
+    const ended: GameEvent = { type: "turnEnded", player: "p1", turn: 5, unspentMana: 0 };
+
+    expect(newEventsSince(prev, [...redacted, ended])).toEqual([ended]);
+    // And the reverse: a window that hid them, followed by one that reads them.
+    expect(newEventsSince(redacted, [...again(prev), ended])).toEqual([ended]);
+  });
+
+  it("follows the window as it slides, with a rewritten event inside the overlap", () => {
+    const prev = [turn, mana, hiddenDraw, { type: "manaChanged", player: "p2", current: 1, max: 4 } satisfies GameEvent];
+    const next = [...again(prev.slice(2)).map((event) => (event.type === "drawn" ? namedDraw : event)), play, land];
+
+    expect(newEventsSince(prev, next)).toEqual([play, land]);
+  });
+
+  it("still tells two different occurrences apart", () => {
+    expect(sameOccurrence(hiddenDraw, namedDraw)).toBe(true);
+    expect(sameOccurrence(namedDraw, hiddenDraw)).toBe(true);
+    expect(sameOccurrence(hiddenDraw, { ...namedDraw, player: "p1" }), "another player's draw").toBe(false);
+    expect(sameOccurrence(hiddenDraw, { ...namedDraw, type: "addedToHand" }), "another event").toBe(false);
+    expect(sameOccurrence(mana, { ...mana, current: 3 }), "another amount").toBe(false);
+    expect(sameOccurrence(turn, { ...turn, turn: 5 }), "another turn").toBe(false);
+    // A card both copies can read keeps every field R97 would otherwise rewrite.
+    expect(sameOccurrence({ type: "buffed", instanceId: "c7", attack: 2, health: 1 }, { type: "buffed", instanceId: "c7", attack: 1, health: 1 })).toBe(false);
+    expect(sameOccurrence({ type: "costChanged", instanceId: "c7", cost: 1 }, { type: "costChanged", instanceId: "c7", cost: 2 })).toBe(false);
+    expect(sameOccurrence(play, { ...play, formerId: "c3" })).toBe(false);
+    // R97 rewrites only what `redactEvent` rewrites: a hidden `destroyed` keeps its stats.
+    const kill: GameEvent = { type: "destroyed", instanceId: "u4", defId: "core-004", owner: "p2", attack: 3, maxHealth: 4, killerId: null };
+    expect(sameOccurrence({ ...kill, instanceId: HIDDEN_ID, defId: HIDDEN_ID }, kill)).toBe(true);
+    expect(sameOccurrence({ ...kill, instanceId: HIDDEN_ID, defId: HIDDEN_ID, attack: 0 }, kill)).toBe(false);
+    // An event naming no card by `instanceId` has nothing R97 rewrites but its ids.
+    expect(sameOccurrence(
+      { type: "damage", sourceId: HIDDEN_ID, targetId: "hero-p1", amount: 2, combat: false },
+      { type: "damage", sourceId: "c7", targetId: "hero-p1", amount: 3, combat: false },
+    )).toBe(false);
+    // `undefined` is absent, as JSON would carry it.
+    expect(sameOccurrence(play, { ...play, x: undefined })).toBe(true);
+  });
+
+  it("finds nothing new in the same window, and all of it when the windows share nothing", () => {
+    expect(newEventsSince([turn, mana], again([turn, mana]))).toEqual([]);
+    expect(newEventsSince([], [turn, mana])).toEqual([turn, mana]);
+    const ended: GameEvent = { type: "turnEnded", player: "p2", turn: 4, unspentMana: 0 };
+    expect(newEventsSince([ended], [turn, mana])).toEqual([turn, mana]);
   });
 });
