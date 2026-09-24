@@ -640,6 +640,8 @@ type GameState = {
   result: null | { winner: PlayerId | 'draw'; reason: string };
   nextId: number; nextSeq: number;  // deterministic ids and R68's creation order
   applied: { nonce: string; events: GameEvent[] }[];  // nonce dedupe (9.3)
+  castChain?: number;           // cards the running cast-on-draw chain has cast, so R58's cap bounds it (R217)
+  fieldExits?: { count: number; last: Record<string, number> };  // the field's departures, which survive a pause (R174)
 };
 type PlayerState = {
   hero: { health: number; armor: number };  // Heroic Power lives on its instance (R43)

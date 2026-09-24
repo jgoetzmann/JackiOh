@@ -12,8 +12,11 @@ export default defineConfig({
     specPattern: "cypress/e2e/**/*.cy.ts",
     supportFile: "support/e2e.ts",
     fixturesFolder: "fixtures",
-    screenshotsFolder: "artifacts/screenshots",
-    videosFolder: "artifacts/videos",
+    // E2E_ARTIFACTS moves the screenshots and videos (and E2E_KEEP_ASSETS=1 stops the trash at the
+    // start of a run), so two runs on one machine never delete each other's evidence (e2e/README.md).
+    screenshotsFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/screenshots`,
+    videosFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/videos`,
+    trashAssetsBeforeRuns: process.env.E2E_KEEP_ASSETS !== "1",
     downloadsFolder: "artifacts/downloads",
     video: false,
     screenshotOnRunFailure: true,
@@ -112,8 +115,9 @@ export default defineConfig({
     // NOT the e2e run's `artifacts/screenshots`: Cypress trashes its screenshots folder at the
     // start of every run, so sharing one would mean a component run silently deleting the
     // evidence a red e2e run had just left behind.
-    screenshotsFolder: "artifacts/component/screenshots",
-    videosFolder: "artifacts/component/videos",
+    screenshotsFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/component/screenshots`,
+    videosFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/component/videos`,
+    trashAssetsBeforeRuns: process.env.E2E_KEEP_ASSETS !== "1",
     video: false,
     screenshotOnRunFailure: true,
     // BUILD M5-T1's first viewport, matching the e2e block above. Nothing measured depends on it:

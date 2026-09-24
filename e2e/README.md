@@ -86,6 +86,21 @@ pnpm test:e2e --expose wsUrl=ws://127.0.0.1:8787/ws/match --expose apiUrl=http:/
 16 replaced `Cypress.env()` with `expose` / `Cypress.expose()`, which is why the flag is
 `--expose`.
 
+Two runs on one machine (parallel agents, a component run beside an e2e run) must not share the
+artifacts folder: Cypress empties its screenshots folder at the start of every run, so one run
+deletes the other's evidence. Give each its own, and keep what is already there:
+
+```
+E2E_ARTIFACTS=artifacts/my-run E2E_KEEP_ASSETS=1 pnpm exec cypress run --spec …
+```
+
+`E2E_ARTIFACTS` moves the e2e and the component folders alike (the CLI's `--config
+screenshotsFolder` does not reach the component block). Stop a server you started by its port
+(`lsof -tiTCP:<port> -sTCP:LISTEN | xargs kill`), never by a process-name pattern, which also ends
+everyone else's. Headless Chrome's default window crops a capture taller than about 633 px; pass
+`--config viewportHeight=…` with a browser launched at a larger `--window-size` when a shot must
+show a full 768x1024 or 390x844 screen.
+
 ## What must be true of the app first
 
 The suite is written against the contract BUILD M5-T1 and M5-T4 fix. Until these hold, specs fail
