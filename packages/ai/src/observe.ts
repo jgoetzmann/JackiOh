@@ -11,7 +11,7 @@
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
-import { cloneState, findDef, handicapOf, type CardInstance, type GameState } from "@jackioh/engine";
+import { cloneState, findDef, handicapOf, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
 
 export const HIDDEN_DEF_ID = "ai:hidden";
 
@@ -197,9 +197,9 @@ export function redact(state: GameState, seat: PlayerId): GameState {
   for (const card of everyInstance(next)) {
     if (!hidden.has(card.id)) referenced.add(card.defId);
   }
-  // A kept fusion of a fusion names its older ingredient in `fusedFrom`, and the engine rebuilds
-  // its scripts from there, so that ingredient stays too. Its faces are already public, summed
-  // into the kept def's own.
+  // A kept fusion of a fusion names its older ingredient in its id (R179), so that ingredient's
+  // definition stays too: the id already says what it is, and its faces are public, summed into
+  // the kept def's own.
   const transient: Record<string, (typeof next.transientDefs)[string]> = {};
   const keep = [...referenced].filter((defId) => next.transientDefs[defId] !== undefined);
   while (keep.length > 0) {
@@ -207,9 +207,8 @@ export function redact(state: GameState, seat: PlayerId): GameState {
     const def = next.transientDefs[defId];
     if (def === undefined || transient[defId] !== undefined) continue;
     transient[defId] = def;
-    const from = (def as { fusedFrom?: unknown }).fusedFrom;
-    if (Array.isArray(from)) {
-      for (const id of from) if (typeof id === "string" && next.transientDefs[id] !== undefined) keep.push(id);
+    for (const id of subsystems.fusedIngredients(defId) ?? []) {
+      if (next.transientDefs[id] !== undefined) keep.push(id);
     }
   }
   next.transientDefs = Object.fromEntries(

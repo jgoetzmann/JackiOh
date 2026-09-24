@@ -16,6 +16,11 @@
 //     it is open and whose it is, nothing more.
 //   - R97: the event stream is redacted, not truncated. An event that names a card the viewer may
 //     not read keeps its type and its animation fields and shows `HIDDEN_ID` for that card.
+//   - R177: more fields follow R97 — a prompt option offering a face-down card names it by id only,
+//     a `costChanged` on an unreadable card hides its cost and a `buffed` one its amounts, and a
+//     `transformed` whose new card is unreadable hides the card it replaced, as does one whose old
+//     card was unreadable where it ceased to exist (`hiddenFrom`), whatever became of its
+//     replacement since.
 //   - R169: the player modifiers (§10.1 `mods`) travel on both seats as `{ id, label }`, because
 //     every one of them is installed by a card played FACE-UP and `modifierChanged` is already
 //     public in both directions. Face-up, not "by a Cry": #35 and #78 are Spells and can never have
@@ -39,11 +44,13 @@ import type {
   Row,
   SideView,
   UnitView,
+  Zone,
 } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf, findDef } from "./catalog";
 import { hasExertion } from "./combat";
 import { heroArmorOf } from "./damage";
+import { echoGrantOf } from "./echo";
 import { unitView as unitLayers } from "./layers";
 import { effectiveCost, modifierIsLive } from "./mana";
 import {
@@ -72,6 +79,16 @@ export const HIDDEN_ID = "hidden";
 /** R97, §9.1: the slot a shuffled-in card landed in would give away library order, to either side. */
 const HIDDEN_POSITION = -1;
 
+/**
+ * R177: the cost a `costChanged` event reports for a card the viewer may not read. A cost is a
+ * property of the card as much as its definition is — the opponent's hand is a count (§10.8) — and
+ * a sequence of costs over a library would spell out its order (§9.1).
+ */
+const HIDDEN_COST = -1;
+
+/** R177: what a prompt option names when it offers a card the chooser may not read (§10.8, R33). */
+export const HIDDEN_OPTION_LABEL = "Face-down card";
+
 // ---------------------------------------------------------------------------
 // Visibility
 // ---------------------------------------------------------------------------
@@ -87,6 +104,42 @@ function backrowIsPublic(state: GameState, card: CardInstance, viewer: PlayerId)
   return card.controller === viewer;
 }
 
+/** §10.8, R33: a card in the backrow that this viewer sees only as a face-down card. */
+function isFaceDownTo(state: GameState, card: CardInstance, viewer: PlayerId): boolean {
+  const zone = card.zone;
+  return zone.z === "field" && zone.row === "backrow" && !backrowIsPublic(state, card, viewer);
+}
+
+/**
+ * R177: the card that took each vanished card's place, read off the events that replaced it — a
+ * Replace (`transformed`, §6.3, R35) or a Fuse (`fused`, R77) — so a card that has ceased to exist
+ * can still be judged by a zone: its replacement's. `state.applied` holds every event a view can
+ * show, so every replacement that matters to one is in it.
+ */
+type Replacements = {
+  /** Each vanished card's replacement. */
+  replacedBy: ReadonlyMap<string, string>;
+  /** The players each replaced card was hidden from where it ceased to exist (`transformed.hiddenFrom`). */
+  hiddenFrom: ReadonlyMap<string, readonly PlayerId[]>;
+};
+
+function replacementsOf(events: readonly GameEvent[]): Replacements {
+  const replacedBy = new Map<string, string>();
+  const hiddenFrom = new Map<string, readonly PlayerId[]>();
+  for (const event of events) {
+    if (event.type === "transformed" && event.newInstanceId !== event.instanceId) {
+      replacedBy.set(event.instanceId, event.newInstanceId);
+      if (event.hiddenFrom !== undefined) hiddenFrom.set(event.instanceId, event.hiddenFrom);
+    }
+    if (event.type === "fused") {
+      for (const id of event.instanceIds) {
+        if (id !== event.resultInstanceId) replacedBy.set(id, event.resultInstanceId);
+      }
+    }
+  }
+  return { replacedBy, hiddenFrom };
+}
+
 /**
  * R97: whether this viewer may read the identity of the card an event names, judged by where the
  * card sits *now* and not where it was — so a card drawn last turn and played this turn reads
@@ -94,11 +147,26 @@ function backrowIsPublic(state: GameState, card: CardInstance, viewer: PlayerId)
  * lands there (§9.1).
  *
  * A card in the resolving zone is public: playing it was public, and R98 keeps it itself while it
- * sits there. A card the state no longer holds at all is a unit token that has ceased to exist
- * (R11) or one that was exiled out of existence (R86); both were public when the event fired.
+ * sits there. A card the state no longer holds at all has ceased to exist, and R177 judges it by
+ * the card that replaced it: a face-down trap #83 Transmogulate replaced keeps the secret its
+ * replacement keeps, and a library #83 replaced still never reads, so its earlier `cardPlayed` or
+ * `costChanged` cannot spell out what it was or in what order. With no replacement — a unit token
+ * that left the field (R11), a card exiled out of existence (R86) — it was public when it went.
  */
-function mayRead(state: GameState, viewer: PlayerId, instanceId: string): boolean {
-  const card = findInstance(state, instanceId);
+function mayRead(state: GameState, viewer: PlayerId, instanceId: string, replaced: Replacements): boolean {
+  const { replacedBy, hiddenFrom } = replaced;
+  let id = instanceId;
+  let card = findInstance(state, id);
+  for (let hops = 0; card === undefined && hops < replacedBy.size; hops += 1) {
+    // R177: a card that ceased to exist where this viewer could not read it — a library card, an
+    // enemy face-down trap — stays unread for good. Its replacement may reach a public pile later,
+    // and judged by that pile alone the card it replaced would read, though it never was public.
+    if (hiddenFrom.get(id)?.includes(viewer) === true) return false;
+    const next = replacedBy.get(id);
+    if (next === undefined) break;
+    id = next;
+    card = findInstance(state, id);
+  }
   if (card === undefined) return true;
   const zone = card.zone;
   if (zone.z === "library") return false;
@@ -232,15 +300,16 @@ function discountLabel(mod: Extract<PlayerModifier, { kind: "costDiscount" }>): 
  * `PlayerModifier["kind"]` on purpose: with no `default`, a new kind does not compile until someone
  * decides what the player is told about it.
  *
- * `sourceId` (#79 Twinspell's instance) is deliberately not read: it is a card id, and the view
- * must not hand either seat an identity through a badge.
+ * `sourceId` (#79 Twinspell's instance) is deliberately not read here: it is a card id, and the view
+ * must not hand either seat an identity through a badge. `echo` is the grant as it stands
+ * (`echo.echoGrantOf`), a number read off the permanent's current face (R209, §5.2).
  */
-function modifierLabel(mod: PlayerModifier): string {
+function modifierLabel(mod: PlayerModifier, echo: number): string {
   switch (mod.kind) {
     case "costDiscount":
       return discountLabel(mod);
     case "echoNextSpell":
-      return `Next Spell gains Echo +${mod.amount}`;
+      return `Next Spell gains Echo +${echo}`;
     case "radiantFirstCheapCard":
       return `First card costing ${mod.maxCost} or less becomes Radiant`;
     case "comboDraw":
@@ -264,10 +333,10 @@ function modifierLabel(mod: PlayerModifier): string {
  * discount on the very turn the discount does nothing.
  */
 function modifierViews(state: GameState, player: PlayerId): ModifierView[] {
-  return state.players[player].mods.map((mod) => ({
-    id: mod.id,
-    label: modifierIsLive(state, mod) ? modifierLabel(mod) : `${modifierLabel(mod)} (next turn)`,
-  }));
+  return state.players[player].mods.map((mod) => {
+    const label = modifierLabel(mod, echoGrantOf(state, player, mod));
+    return { id: mod.id, label: modifierIsLive(state, mod) ? label : `${label} (next turn)` };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -323,12 +392,20 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
  * it: the chooser sees it in full". These options only ever travel to the chooser (R81), so naming
  * the definition behind an option is exactly what the chooser is owed.
  */
-function optionView(state: GameState, option: PromptOption): PendingOption {
+function optionView(state: GameState, viewer: PlayerId, option: PromptOption): PendingOption {
   const base = { key: option.key, label: option.label };
   const selection = option.selection;
   switch (selection.pick) {
     case "instance": {
       const card = findInstance(state, selection.instanceId);
+      // R177: a prompt may offer a card its chooser may not read — a target prompt reaching an
+      // enemy face-down trap (#49, #50, an Echo repeat's fresh pick). The option is the zone's card
+      // and nothing more: the id to answer with, never the definition, and neither the label nor
+      // the key the engine built from its name. A card revealed out of a library is the opposite
+      // case: the prompt IS its reveal, so the chooser sees it in full (above).
+      if (card !== undefined && isFaceDownTo(state, card, viewer)) {
+        return { key: `instance:${selection.instanceId}`, label: HIDDEN_OPTION_LABEL, instanceId: selection.instanceId };
+      }
       return card === undefined
         ? { ...base, instanceId: selection.instanceId }
         : { ...base, instanceId: selection.instanceId, defId: card.defId };
@@ -356,7 +433,7 @@ function pendingView(state: GameState, viewer: PlayerId): PendingView | null {
     forYou: true,
     choiceId: pending.id,
     kind: pending.kind,
-    options: pending.options.map((option) => optionView(state, option)),
+    options: pending.options.map((option) => optionView(state, viewer, option)),
     min: pending.min,
     max: pending.max,
     prompt: pending.prompt,
@@ -377,23 +454,38 @@ function pendingView(state: GameState, viewer: PlayerId): PendingView | null {
  * The switch is exhaustive over all 40 event types on purpose (§10.3): with no `default`, adding an
  * event type does not compile until someone decides what it reveals.
  */
-function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): GameEvent {
-  const hidden = (id: string): boolean => !mayRead(state, viewer, id);
+function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, replaced: Replacements): GameEvent {
+  const hidden = (id: string): boolean => !mayRead(state, viewer, id, replaced);
 
   switch (event.type) {
     // A card named with its definition: both go, or neither.
     //
-    // `cardResolved` (§10.5 step 7) belongs here rather than among the public events below: R97
-    // judges a card by where it sits *now*, and once resolution is over a Spell has reached the
-    // graveyard and a permanent is on the field, both public — so it ordinarily reads openly, and
-    // `mayRead` keeps the sentinel for the card that ended up somewhere this viewer may not read
-    // (a Trap set face-down, a card resolved back into a hand or a library). Its `player` and
-    // `permanent` are not identity fields and never travel redacted; `permanent` is R61's "still
-    // in play" answer, which #85 keys on.
+    // `cardResolved` (§10.5 step 7) is one of these rather than a public event: R97 judges a card
+    // by where it sits *now*, and once resolution is over a Spell has reached the graveyard and a
+    // permanent is on the field, both public — so it ordinarily reads openly, and `mayRead` keeps
+    // the sentinel for the card that ended up somewhere this viewer may not read (a Trap set
+    // face-down, a card resolved back into a hand or a library). Its `player` and `permanent` are
+    // not identity fields and never travel redacted; `permanent` is R61's "still in play" answer,
+    // which #85 keys on. The face that resolved (`radiant`) is the card's, so it goes with the id.
+    case "cardResolved": {
+      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95).
+      const { arrivedDuring: _arrivals, ...shown } = event;
+      if (!hidden(event.instanceId)) return shown;
+      const { radiant: _face, ...rest } = shown;
+      return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
+    }
+
+    // R97, R177: `killerId` names a card as well, and the card that dealt the lethal hit — a unit,
+    // or a Spell whose damage was lethal — may since have gone somewhere this viewer cannot read,
+    // like the #31 KY's Math Equation that returns to its owner's hand at the end of the turn.
+    case "destroyed": {
+      const killerHidden = event.killerId !== null && hidden(event.killerId);
+      const redacted = hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : event;
+      return killerHidden ? { ...redacted, killerId: HIDDEN_ID } : redacted;
+    }
+
     case "cardPlayed":
-    case "cardResolved":
     case "summoned":
-    case "destroyed":
     case "enteredGraveyard":
     case "exiled":
     case "bounced":
@@ -401,8 +493,24 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): Game
     case "discarded":
     case "drawn":
     case "addedToHand":
-    case "radiantSet":
       return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : event;
+
+    // R177: a Make Radiant on a card in a library (#42's roll over every card, top down) is one nobody
+    // could read where it happened (§3), and read openly once the card does, its place in the batch
+    // would say where it lay. The event's `zone` is where it happened, so it stays unread for good.
+    //
+    // And a cue on the other player's card this viewer may not read says only whose it was: a random
+    // pick over several hidden zones (#28's hand, library and field) picks among non-Radiant cards
+    // only (R60), so a cue located in the hand, or at a face-down trap's lane, would tell this viewer
+    // that the hand still held a base-face card, or that the trap was base-face (R33). The zone is
+    // given as that player's hand, the region this viewer is shown the player's unread cards in.
+    case "radiantSet": {
+      const unread = event.zone.z === "library" || hidden(event.instanceId);
+      if (!unread) return event;
+      const owner = event.zone.player;
+      const zone: Zone = owner === viewer ? event.zone : { z: "hand", player: owner };
+      return { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID, zone };
+    }
 
     /**
      * R154: the one identity R97's "judged by where the card sits now" cannot decide, so the row
@@ -426,12 +534,18 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): Game
         ? { ...event, instanceId: HIDDEN_ID, defId: HIDDEN_ID, position: HIDDEN_POSITION }
         : { ...event, position: HIDDEN_POSITION };
 
-    case "transformed":
+    // R177: a Replace puts the new card where the old one was (§6.3), and the old one ceased to
+    // exist there (R35), so no zone of its own is left to judge it by — it is judged by its
+    // replacement's. A card replaced inside a library or a face-down backrow zone never reads.
+    case "transformed": {
+      const newHidden = hidden(event.newInstanceId);
+      const { hiddenFrom: _record, ...shown } = event;
       return {
-        ...event,
-        ...(hidden(event.instanceId) ? { instanceId: HIDDEN_ID, fromDefId: HIDDEN_ID } : {}),
-        ...(hidden(event.newInstanceId) ? { newInstanceId: HIDDEN_ID, toDefId: HIDDEN_ID } : {}),
+        ...shown,
+        ...(newHidden || hidden(event.instanceId) ? { instanceId: HIDDEN_ID, fromDefId: HIDDEN_ID } : {}),
+        ...(newHidden ? { newInstanceId: HIDDEN_ID, toDefId: HIDDEN_ID } : {}),
       };
+    }
 
     case "fused":
       return {
@@ -440,15 +554,27 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent): Game
         ...(hidden(event.resultInstanceId) ? { resultInstanceId: HIDDEN_ID, defId: HIDDEN_ID } : {}),
       };
 
+    // R177: a buff's size is the card's too — #89 Corpse Eater gains double on its radiant face —
+    // so a hidden card's buff keeps its type for the cue and says nothing of how much.
+    case "buffed":
+      return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID, attack: 0, health: 0 } : event;
+
     // One instance, no definition: the id alone would still name a card in a hidden zone.
     case "divineShieldLost":
-    case "buffed":
     case "keywordGranted":
     case "counterChanged":
-    case "costChanged":
     case "positionSwitched":
     case "controlChanged":
       return hidden(event.instanceId) ? { ...event, instanceId: HIDDEN_ID } : event;
+
+    // R177: the new cost is the card's too, and over a library it would give the order away — so a
+    // change made in a library stays unread for good (`hiddenFrom`), whatever became of the card.
+    case "costChanged": {
+      const { hiddenFrom, ...shown } = event;
+      return hiddenFrom?.includes(viewer) === true || hidden(event.instanceId)
+        ? { ...shown, instanceId: HIDDEN_ID, cost: HIDDEN_COST }
+        : shown;
+    }
 
     case "healed":
       return hidden(event.targetId) ? { ...event, targetId: HIDDEN_ID } : event;
@@ -515,7 +641,10 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
   const all = state.applied.flatMap((entry) => entry.events);
   const newest = state.applied[state.applied.length - 1]?.events.length ?? 0;
   const window = Math.max(VIEW_EVENT_LIMIT, newest);
-  return all.slice(Math.max(0, all.length - window)).map((event) => redactEvent(state, viewer, event));
+  const replaced = replacementsOf(all);
+  return all
+    .slice(Math.max(0, all.length - window))
+    .map((event) => redactEvent(state, viewer, event, replaced));
 }
 
 // ---------------------------------------------------------------------------

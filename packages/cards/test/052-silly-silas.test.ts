@@ -187,7 +187,7 @@ describe("#52 Silly Silas — a Locked destination (R14, R88)", () => {
 });
 
 describe("#52 Silly Silas — radiant", () => {
-  it("R14 every card that would cross is bounced to its owner's hand costing 0 instead", () => {
+  it("R14 every card that would move to the opponent is bounced to its owner's hand costing 0 instead, and a card crossing to its side still crosses", () => {
     const s = scenario({
       p1: { hand: ["core-052"], field: [{ def: "core-053", lane: 5, damage: 2 }] },
       p2: { field: [{ def: "core-019", lane: 1 }] },
@@ -200,16 +200,21 @@ describe("#52 Silly Silas — radiant", () => {
 
     s.play("core-052", { zone: 1, modes: ["right"] });
 
-    // Both would have crossed; instead both go home, at cost 0 (R12: the OWNER's hand, R65).
+    // "Cards that would move to the opponent": Reno would move from p1's lane 5 to p2's, so it goes
+    // home instead, at cost 0 (R12: the OWNER's hand, R65).
     s.expectInZone(reno, "hand");
     expect(s.card(reno).owner).toBe("p1");
     expect(s.card(reno).costOverride).toBe(0);
-    s.expectInZone(menace, "hand");
+    // Midrange Menace moves from p2's lane 1 to p1's — to Silas's controller, not to the opponent —
+    // so the radiant clause leaves it alone and the base clause holds: it crosses and changes
+    // control, still owned by p2 and at its printed cost (§8 Conventions, R14, R171).
+    expect(unitAt(s, "p1", 1).id).toBe(menace);
+    expect(s.card(menace).controller).toBe("p1");
     expect(s.card(menace).owner).toBe("p2");
-    expect(s.card(menace).costOverride).toBe(0);
-    // So nothing changed control at all on this face.
-    expect(s.lastEvents.filter((event) => event.type === "controlChanged")).toHaveLength(0);
-    s.expectEvents("rotated", "bounced", "bounced");
+    expect(s.card(menace).costOverride).toBeUndefined();
+    expect(s.lastEvents.filter((event) => event.type === "controlChanged").map((event) => event.instanceId)).toEqual([
+      menace,
+    ]);
   });
 
   it("§8 Conventions keep the rest: the rotation still happens and Silas still moves", () => {

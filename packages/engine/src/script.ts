@@ -16,7 +16,7 @@ export type EffectContext = {
    * shape in #24, #31, #33, #38 — must read `events.slice(eventsFrom)` and never the earlier
    * entries, or a second copy of a card, or a trap firing mid-action, feeds its condition. Set once
    * where the context is built (`resolve.makeContext`), so a step re-entered after a prompt opens a
-   * new window rather than reviving the original one.
+   * new window on the action it resumes in; what the list did before the pause is `summoned`.
    *
    * Optional only because `packages/engine/test/pauses.test.ts` (line 227) hand-builds a context
    * literal instead of calling `makeContext`, and a test is not this task's to edit. Every engine
@@ -25,10 +25,38 @@ export type EffectContext = {
    * it slices. Once that literal is allowed to change this becomes required.
    */
   eventsFrom: number;
+  /**
+   * R174: the field's departures when this script's run began (`stays.exitMark`), so an effect later
+   * in the list can tell a card an earlier one took off the field from the card that stood there
+   * when the run began — across a prompt too, since a paused list resumes with the mark it began
+   * with (`work.PausedStep.exitsFrom`). Set by `makeContext`; absent reads as "now".
+   */
+  exitsFrom?: number;
+  /**
+   * R174, §10.6: the field's departures when `targets` were chosen, where that is later than the
+   * run began — the answer to this run's own prompt, picked as the prompt offered the board. A card
+   * the list took off the field before it asked, and that stood there again when the prompt offered
+   * it (a Reborn body, R83), is picked on that new stay, and the answered step's effect lands on it.
+   * Absent reads as `exitsFrom`: a play's declared targets were chosen as its run began.
+   */
+  chosenFrom?: number;
+  /**
+   * R136: the units this script's run summoned in the actions before a prompt split it. The window
+   * `eventsFrom` opens is the action's own event list, and a list the answer continues resumes in a
+   * later action, so what its head summoned is carried here (`work.PausedStep.summoned`,
+   * `work.RunMarks`). Absent for a run that has not paused.
+   */
+  summoned?: readonly string[];
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */
   self: CardInstance | null;
+  /**
+   * R127: the definition whose script is running, set where a continuation is re-entered
+   * (`prompts.runResume`), because `self` is null once the card has ceased to exist and a step that
+   * asks again must still name its script. Absent elsewhere, where `self` names it.
+   */
+  defId?: string;
   /** Whether the radiant text is the one running (§5.2). */
   radiant: boolean;
   targets: Selection[];
@@ -46,7 +74,22 @@ export type EffectContext = {
 export type Effect = {
   readonly kind: string;
   apply: (ctx: EffectContext) => void;
+  /**
+   * A part of a composed list, built when the list reaches it: a fused hook runs each ingredient's
+   * list in turn (R77, R102), and a later ingredient's list reads the board the earlier ones left
+   * (#68's threshold after Reno's heal, #22's meal after #100's exile), which a list built all at
+   * once cannot. `prompts.applyResumable` runs the part it builds as a nested list, so a prompt
+   * inside it pauses the part and everything after it, and the pause records where it stood
+   * (`work.PausedStep.part`) — so the part is built again on resume, and only the part the pause
+   * stood in. `memo` is what the first build must hand every rebuild so the part is the same one:
+   * #95's roll, which must not be rolled again (R87). A caller that only calls `apply` gets the
+   * part built and applied in one go, as `resolve.lazyPart` writes it.
+   */
+  readonly expand?: (ctx: EffectContext, memo: unknown) => EffectPart;
 };
+
+/** What a part of a composed list builds (`Effect.expand`): its effects, and what a rebuild reads. */
+export type EffectPart = { effects: readonly Effect[]; memo?: unknown };
 
 export type Hook = (ctx: EffectContext) => Effect[];
 
@@ -91,8 +134,27 @@ export type StaticFlags = {
   deftDuelist?: boolean;
   /** R30: this card's own Echo, so its play resolves this many extra times. */
   echo?: number;
+  /** R30, R209: the Echo this permanent's rider gives the next Spell, read off its face now (#79). */
+  echoGrant?: number;
+  /**
+   * #38: while on the field, its controller's cards gain "Combo X: X damage to the enemy hero". A
+   * number is how many times the card grants it: a card fused from two Quickstrikers carries both
+   * texts (R102), and `true` is once.
+   */
+  quickstriker?: boolean | number;
+  /**
+   * #64 Gifted Program: while on the field, the first card costing this much or less its controller
+   * plays each turn becomes Radiant as it is played (§10.5 step 3, R56, R213).
+   */
+  giftedProgram?: number;
   /** Tribute cost in units, Sheep Tokens counting 2 (§6.3). */
   tribute?: number;
+  /**
+   * §3.2, §7: what this unit counts toward a Tribute while it is on the field — the Sheep Token's
+   * "worth 2 Tributes" (3 on its radiant face). Absent is 1. It is the face's text, so a Vanilla
+   * unit is worth 1, and a fused card takes the larger of its ingredients' (R102).
+   */
+  tributeWorth?: number;
   /** R101: only a card that says so may pay its Tribute with the opponent's units (§8 #55). */
   tributeEnemies?: boolean;
   /** Anti-oneshot Armor: caps each hit on this player's hero at ANTI_ONESHOT_CAP (§4.4 step 3). */
@@ -101,9 +163,10 @@ export type StaticFlags = {
    * #84 Going Long: while this card is in a backrow it gives that hero Armor from `HERO_ARMOR`,
    * picked by the instance's own `radiant` and `embiggened`, and §4.4 step 2 subtracts it. R124:
    * several sources add up, so this is a layer and not a value — a card carrying its own numbers
-   * would put rules constants in a card file, which BUILD §2 keeps in `config.ts`.
+   * would put rules constants in a card file, which BUILD §2 keeps in `config.ts`. A card fused from
+   * two carries both grants (R102), so a fused face may hold a count.
    */
-  heroArmor?: boolean;
+  heroArmor?: boolean | number;
 };
 
 export type Script = {

@@ -81,8 +81,11 @@ describe(`gate perf: one decision at AI_BUDGET (${FULL ? "full" : "smoke"}: ${GA
   for (const [name, setup] of Object.entries(WIDE_BOARDS)) {
     it(`a decision on the ${name} board stays within the node budget and under ${AI_GATE.maxDecisionMs} ms`, { timeout: 60_000 }, () => {
       const state = scenario({ seed: `perf-${name}`, active: "p1", turn: 9, ...setup }).state;
-      // Wide enough to be the worst case the header describes.
-      expect(candidateActions(state, "p1").length).toBeGreaterThan(250);
+      // Wide enough to be the worst case the header describes: 232 candidates at Easy's four
+      // crystals, 343 at Hard's seven. Easy's count was above 250 until task 4's
+      // `TargetDecl.forModes` (R90) stopped listing Efficiency Dividend's mana mode once per target
+      // it never reads.
+      expect(candidateActions(state, "p1").length).toBeGreaterThan(200);
       const timed = timeDecision(state, "p1", `perf:${name}`);
       expect(timed.nodes, JSON.stringify(timed)).toBeLessThanOrEqual(AI_BUDGET.nodes);
       expect(timed.ms, `${name}: ${JSON.stringify(timed)}`).toBeLessThan(AI_GATE.maxDecisionMs);

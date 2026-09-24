@@ -356,7 +356,7 @@ Acceptance: `pnpm test --filter cards` runs 109 test files; a script that lists 
 | 50 | Kpop Fanatic | 2 | Steal fires at your next start of turn even if it died (R76); fizzles if the target left; radiant Divine Shield |
 | 51 | KY's Private Tutor | 2 | Only types and brackets with a match offered; 3 random matches revealed; no match → Notebook; Field Trap counts as Trap; radiant runs twice |
 | 51.1 | KY's Empty Notebook | 1 | Draw 1; radiant 2; absent from every random pool |
-| 52 | Silly Silas | 3 | Rotate both rings either direction, control changes on crossing, damage travels, Silas moves too; Locked destination bounces; radiant bounces crossing cards to their owner's hand at cost 0 (R14) |
+| 52 | Silly Silas | 3 | Rotate both rings either direction, control changes on crossing, damage travels, Silas moves too; Locked destination bounces; radiant bounces the cards that would cross to the opponent to their owner's hand at cost 0, while the opponent's crossing cards still change control (R14) |
 | 53 | Reno | 1 | 12 → 30; 35 stays 35; radiant 60 |
 | 54 | Straaza | 1 | 2 random units of cost 3 or 4, no tokens, not #54, cost override 1; radiant 0 |
 | 55 | Lava Golem | 2 | Tribute 3 counts enemy units and Sheep as 2, enemies sacrificed; Taunt and Armor 3; radiant Indestructible; Sheepish's free copy still needs tributes |

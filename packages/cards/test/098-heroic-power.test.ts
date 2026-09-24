@@ -631,3 +631,26 @@ describe("#98 Heroic Power — the roll (R43)", () => {
     expect(effectiveCost(s.state, arrived)).toBe(subsystems.powerCostOf(arrived));
   });
 });
+
+describe("#98 Heroic Power — every visible change is announced (§10.3)", () => {
+  it("§10.3 radiant #98's Recruit reports the Make Radiant half with radiantSet (§10.10, §6.3 Make Radiant)", () => {
+    // Radiant #98 reads "Recruit and make it Radiant". The recruited card reaches the field and is
+    // made Radiant, and §10.10 animates that from `radiantSet` (the glow), as it does every other
+    // Make Radiant. The polish-4 hunt's round 5 (lens "engine invariants") found the flag set inside
+    // the summon with only `summoned` to say so.
+    const s = scenario({
+      seed: "inv-r5-recruit-radiant",
+      p1: { hand: [MENACE], library: [MENACE], mana: 8, backrow: [{ def: HEROIC, radiant: true }] },
+    });
+    const power = s.backrow("p1", 1) as CardInstance;
+    s.card(power).memory[subsystems.POWER_KEY] = "recruit";
+    const recruit = s.pile("p1", "library")[0] as CardInstance;
+    expect(recruit.radiant).toBe(false);
+    s.activate(power);
+
+    s.expectInZone(recruit, "field");
+    expect(s.card(recruit).radiant).toBe(true);
+    const cue = s.lastEvents.find((event) => event.type === "radiantSet" && event.instanceId === recruit.id);
+    expect(cue).toBeDefined();
+  });
+});

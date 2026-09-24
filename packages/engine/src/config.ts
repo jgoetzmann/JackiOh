@@ -41,6 +41,12 @@ export const FATIGUE_DAMAGE = (n: number): number => n;
 export const DRAW_OFFERS_PER_TURN = 1;
 /** §2.5, R36: a declined offer blocks that player for this many of their turns. */
 export const DRAW_OFFER_BLOCK_TURNS = 3;
+/**
+ * §2.5, R79: the most prompts one `timeout` answers for the active player before it ends the turn.
+ * A chain of prompts is a handful (KY's Private Tutor asks three times); this only bounds a card
+ * that would keep asking, so a timeout always finishes.
+ */
+export const TIMEOUT_ANSWER_CAP = 500;
 
 /** R28 */
 export const CALL_TO_CHAOS_CHAIN_CAP = 20;
@@ -107,7 +113,7 @@ export type Handicap = {
   readonly deckSize: number;
   /** R181: crystals added to the turns-started count before the cap. */
   readonly manaBonus: number;
-  /** R181: the most max mana a refresh gives, before persistent and next-turn modifiers. */
+  /** R181: the most max mana a refresh gives, before persistent modifiers. */
   readonly manaCap: number;
   /** R182: cards added to §2.1's opening draw. */
   readonly extraOpeningCards: number;

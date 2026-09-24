@@ -28,7 +28,7 @@ import {
   type Handicap,
 } from "../src/config";
 import { DRAW_COUNT_WORK, owedDrawCountOf } from "../src/draw";
-import { maxManaFor } from "../src/mana";
+import { maxManaFor, refreshMana } from "../src/mana";
 import { openPrompt, resumeSelf } from "../src/prompts";
 import { beginGame, reduce } from "../src/reduce";
 import { fold, hashState } from "../src/replay";
@@ -433,24 +433,31 @@ describe("R181 max mana under a handicap", () => {
     }
   });
 
-  it("R181 B3: the persistent and next-turn modifiers apply after the cap, and the total floors at 0", () => {
+  it("R181 B3: a persistent modifier applies after the cap, a next-turn one moves only that refresh, and both floor at 0", () => {
     const state = game("r181-mods", { p2: AI_DIFFICULTY.medium });
     const side = state.players.p2;
+    const cap = AI_DIFFICULTY.medium.manaCap;
 
+    // §2.3 as task 4 read it: the next-turn rider is spent on one refresh and never reaches max mana.
     side.turnsStarted = 9;
     side.mana.nextTurnMod = 2;
-    expect(maxManaFor(side)).toBe(AI_DIFFICULTY.medium.manaCap + 2);
+    expect(maxManaFor(side)).toBe(cap);
+    refreshMana(side);
+    expect(side.mana).toMatchObject({ max: cap, current: cap + 2, nextTurnMod: 0 });
 
     side.mana.nextTurnMod = -1;
-    expect(maxManaFor(side)).toBe(AI_DIFFICULTY.medium.manaCap - 1);
+    refreshMana(side);
+    expect(side.mana).toMatchObject({ max: cap, current: cap - 1, nextTurnMod: 0 });
 
-    side.mana.nextTurnMod = 0;
     side.mana.permMod = 1;
-    expect(maxManaFor(side)).toBe(AI_DIFFICULTY.medium.manaCap + 1);
+    expect(maxManaFor(side)).toBe(cap + 1);
 
     side.turnsStarted = 0;
     side.mana.permMod = -5;
+    side.mana.nextTurnMod = -1;
     expect(maxManaFor(side)).toBe(0);
+    refreshMana(side);
+    expect(side.mana).toMatchObject({ max: 0, current: 0 });
   });
 
   it("R181 B3: a Medium seat refreshes to 2 on its first turn and to 5 from its fourth; the human is unchanged", () => {
@@ -482,12 +489,12 @@ describe("R181 max mana under a handicap", () => {
 
     onTopOfLibrary(state, "p1", [hinder.id]);
     state = passTurn(state).state; // p1 draws Hinder, cast on draw
-    state = passTurn(state).state; // p2's second turn: min(2 + 1, 5) − 1
+    state = passTurn(state).state; // p2's second turn: max min(2 + 1, 5), refreshed to one less
     expect(state.active).toBe("p2");
-    expect(state.players.p2.mana.max).toBe(2);
+    expect(state.players.p2.mana).toMatchObject({ max: 3, current: 2 });
 
     state = advanceTo(state, "p2", 3);
-    expect(state.players.p2.mana.max).toBe(4);
+    expect(state.players.p2.mana).toMatchObject({ max: 4, current: 4 });
   });
 
   it("R181 B3: Hinder at the cap takes the Medium seat below its cap, not back to it", () => {
@@ -496,28 +503,28 @@ describe("R181 max mana under a handicap", () => {
 
     onTopOfLibrary(state, "p1", [hinder.id]);
     state = advanceTo(state, "p2", 5);
-    expect(state.players.p2.mana.max).toBe(4);
+    expect(state.players.p2.mana).toMatchObject({ max: 5, current: 4 });
 
     state = advanceTo(state, "p2", 6);
-    expect(state.players.p2.mana.max).toBe(5);
+    expect(state.players.p2.mana).toMatchObject({ max: 5, current: 5 });
   });
 
-  it("R181 B3: a next-turn gain lifts a capped Hard seat above its cap for one refresh, and a persistent one every refresh", () => {
+  it("R181 B3: a next-turn gain lifts a capped Hard seat's refresh above its cap once, and a persistent one lifts its max every refresh", () => {
     let state = advanceTo(started("r181-gain", { p2: AI_DIFFICULTY.hard }), "p2", 6);
-    expect(state.players.p2.mana.max).toBe(7);
+    expect(state.players.p2.mana).toMatchObject({ max: 7, current: 7 });
 
     state.players.p2.mana.nextTurnMod = 2;
     state = advanceTo(state, "p2", 7);
-    expect(state.players.p2.mana.max).toBe(9);
+    expect(state.players.p2.mana).toMatchObject({ max: 7, current: 9 });
 
     state = advanceTo(state, "p2", 8);
-    expect(state.players.p2.mana.max).toBe(7);
+    expect(state.players.p2.mana).toMatchObject({ max: 7, current: 7 });
 
     state.players.p2.mana.permMod = 1;
     state = advanceTo(state, "p2", 9);
-    expect(state.players.p2.mana.max).toBe(8);
+    expect(state.players.p2.mana).toMatchObject({ max: 8, current: 8 });
     state = advanceTo(state, "p2", 10);
-    expect(state.players.p2.mana.max).toBe(8);
+    expect(state.players.p2.mana).toMatchObject({ max: 8, current: 8 });
   });
 });
 

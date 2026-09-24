@@ -400,8 +400,8 @@ export function aiToAct(state: GameState, seat: PlayerId): boolean;
    `resume.instanceId`) is in H are dropped. In `dispatch`, every event field `defId` next to an
    `instanceId` in H becomes `HIDDEN_DEF_ID`.
 6. Each `transientDefs` entry that no instance outside H references is dropped, except an entry a
-   kept entry names in `fusedFrom` (a fusion of a fusion), which the engine needs to rebuild the
-   kept card's scripts.
+   kept entry's id names as an ingredient (a fusion of a fusion, R179), which the engine needs to
+   rebuild the kept card's scripts.
 7. If `pending` belongs to `opp`, its `options := []`.
 
 Everything else is kept on purpose, because it is public history the seat watched happen: board
@@ -2223,3 +2223,15 @@ its header, and it was run again on the AI as it ships, on the same deals the co
   the line ends; practice holds the AI's next step for it (at most 4 s).
 - **For task 5:** the landing's Play vs AI CTA is what makes `/practice` reachable for a visitor
   with no account; `/play` is gated.
+
+## Integration note: one fused-script mechanism
+
+Task 4 fixed the same registry bug with R179 (a fused definition's id names its ingredients,
+`t-<n>:<a>+<b>`). The integration branch keeps that one mechanism and drops `fusedFrom`: a nested
+ingredient is written in parentheses (`t-2:(t-1:<a>+<b>)+<c>`) so the id reads back one way,
+`subsystems.fusedIngredients` parses it, and `syncFusedScripts` rebuilds from the id alone any of a
+state's fused scripts the registry lacks, still on entry to `reduce`, `legalActions` and `viewFor`.
+Two states that fuse different cards into one slot now get two ids, so neither can overwrite the
+other's entry. `redact` step 6 follows the ingredients the id names. The tests moved with it:
+`packages/engine/test/fuse-registry.test.ts` and `packages/ai/test/redact-fusion.test.ts` use R179's
+ids and are named after R179 and R185.

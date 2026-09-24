@@ -52,7 +52,8 @@ describe("forced moves and nothing to do (B16)", () => {
     s.play("core-072");
     const state = s.state;
     expect(state.pending?.playerId).toBe(AI);
-    const legal = legalActions(state, AI);
+    // R211 offers concede beside the prompt's answers; the AI skips it (R84, R188).
+    const legal = legalActions(state, AI).filter((action) => action.type !== "concede");
     expect(legal).toHaveLength(1);
 
     const rng = createRng("decide-forced-prompt");

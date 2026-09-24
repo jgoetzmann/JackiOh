@@ -7,6 +7,7 @@ import { defOf } from "../catalog";
 import type { DamageTarget } from "../damage";
 import type { EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
+import { exitMark, leftFieldAfter } from "../stays";
 import { adjacent, cardAt, slotOf, slotsOf, type ZoneSlot } from "../zones";
 
 export type TargetSpec =
@@ -31,12 +32,15 @@ export function playerOf(ctx: EffectContext, spec: PlayerSpec): PlayerId {
 }
 
 export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarget | null {
-  if (spec.of === "self") return ctx.self === null ? null : { kind: "unit", instance: ctx.self };
+  if (spec.of === "self") {
+    const self = selfOnItsStay(ctx);
+    return self === null ? null : { kind: "unit", instance: self };
+  }
   if (spec.of === "selfHero") return { kind: "hero", player: ctx.controller };
   if (spec.of === "enemyHero") return { kind: "hero", player: opponentOf(ctx.controller) };
   if (spec.of === "instance") {
-    const instance = findInstance(ctx.state, spec.instanceId);
-    return instance === undefined ? null : { kind: "unit", instance };
+    const instance = instanceOnItsStay(ctx, spec.instanceId);
+    return instance === null ? null : { kind: "unit", instance };
   }
 
   const selection = ctx.targets[spec.index ?? 0];
@@ -44,9 +48,63 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
   if (selection.pick === "hero") return { kind: "hero", player: selection.player };
   if (selection.pick === "instance") {
     const instance = findInstance(ctx.state, selection.instanceId);
-    return instance === undefined ? null : { kind: "unit", instance };
+    if (instance === undefined) return null;
+    // R174: a card chosen on the field is chosen as that stay. One an earlier effect of this same
+    // list took off the field is gone for this one, wherever it is now: back already — a fused
+    // card's #22 half sacrificed it and Reborn returned it, a new arrival (R83) — or in a graveyard
+    // or a hand, reset (R78), where a buff or an exile aimed at the unit on the field has nothing to
+    // land on (§8 Conventions). The same holds when a prompt split the list across actions (R113),
+    // and for a play's declared target a trap answering the play took off the field at §10.5 step 4
+    // (the play's Cry runs with the mark step 1 checked the choices at). A pick an answer made is
+    // chosen as its prompt offered it (`ctx.chosenFrom`, §10.6): a Reborn body the list's own
+    // sacrifice put back before it asked is the stay that was picked.
+    if (leftFieldAfter(ctx.state, ctx.chosenFrom ?? ctx.exitsFrom ?? exitMark(ctx.state), instance.id)) return null;
+    return { kind: "unit", instance };
   }
   return null;
+}
+
+/**
+ * R174: a card a script names by its id — captured in a continuation's data, read off the event a
+ * trigger answers, or enumerated by the list itself — on the stay it had when the run began. An
+ * effect later in the list is aimed at the card the list named, and a card an earlier effect of the
+ * same list took off the field is gone for it wherever it is now, a Reborn body included (R83);
+ * naming it by id rather than as "the chosen one" changes nothing, and neither does a prompt that
+ * split the list (R113). Null when there is no such card.
+ */
+export function instanceOnItsStay(ctx: EffectContext, instanceId: string): CardInstance | null {
+  const instance = findInstance(ctx.state, instanceId);
+  if (instance === undefined) return null;
+  return leftFieldSince(ctx, instance.id) ? null : instance;
+}
+
+/**
+ * R174: the card running the script, while it is on the stay it had when the run began — a card an
+ * earlier effect of the same list took off the field (#22's sacrifice, radiant #52's bounce) is gone
+ * for "this", even once it is back, and a card R78 has reset in a hand is not what the effect was
+ * aimed at. A card that never stood on the field in the run (a Spell resolving, a hand card) has no
+ * stay to lose, and a Death hook's snapshot (R89) died before its hook began.
+ */
+export function selfOnItsStay(ctx: EffectContext): CardInstance | null {
+  const self = ctx.self;
+  if (self === null) return null;
+  return leftFieldSince(ctx, self.id) ? null : self;
+}
+
+/**
+ * R174: whether a card is on the field on the same stay it had when the running script began — on
+ * the field now, and not taken off it since. A card an earlier effect of the list bounced,
+ * sacrificed or exiled has no stay left, even once it is back.
+ */
+export function standsSinceScriptBegan(ctx: EffectContext, instanceId: string): boolean {
+  const card = findInstance(ctx.state, instanceId);
+  if (card === undefined || card.zone.z !== "field") return false;
+  return !leftFieldSince(ctx, instanceId);
+}
+
+/** R174: whether a card has left the field since the running script began (`ctx.exitsFrom`). */
+function leftFieldSince(ctx: EffectContext, instanceId: string): boolean {
+  return leftFieldAfter(ctx.state, ctx.exitsFrom ?? exitMark(ctx.state), instanceId);
 }
 
 /** The instance a `TargetSpec` names, or null when it named a hero or nothing. */

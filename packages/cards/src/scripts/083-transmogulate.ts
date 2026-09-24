@@ -53,7 +53,7 @@
 // Reading is not mutation either way (CLAUDE.md rule 5 bans writing, and nothing here writes).
 
 import type { CardInstance, Effect, EffectContext, Script } from "@jackioh/engine";
-import { cardAt, defOf, slotsOf, zoneCards } from "@jackioh/engine";
+import { cardAt, defOf, numberingOrder, slotsOf, unitHas, zoneCards } from "@jackioh/engine";
 import { transform } from "@jackioh/engine/effects";
 import type { CardDef, CardType } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
@@ -77,12 +77,17 @@ function sameTypeLegendaries(type: CardType): CardDef[] {
   return legendaries(type === "Trap" || type === "Field Trap" ? TRAP_TYPES : type);
 }
 
-/** §3.2 and R13: "your board" is the card acting in each zone — the top of a pile, not the pile. */
+/**
+ * §3.2 and R13: "your board" is the card acting in each zone — the top of a pile, not the pile.
+ * R35 and R23: an Immutable board card stays, since on the field a Replace is a Transform, so it is
+ * left out here rather than handed to `transform` to refuse: R129 has an effect that finds nothing
+ * to do draw no random number, and a pick rolled for a card that stays would be exactly that.
+ */
 function boardCards(ctx: EffectContext): CardInstance[] {
   return (["units", "backrow"] as const).flatMap((row) =>
     slotsOf(ctx.controller, row).flatMap((ref) => {
       const card = cardAt(ctx.state, ref);
-      return card === null ? [] : [card];
+      return card === null || unitHas(ctx.state, card, "Immutable") ? [] : [card];
     }),
   );
 }
@@ -96,7 +101,12 @@ function pileCards(
   ctx: EffectContext,
   zone: (typeof OFF_FIELD_ZONES)[number],
 ): readonly CardInstance[] {
-  return zoneCards(ctx.state, ctx.controller, zone);
+  const cards = zoneCards(ctx.state, ctx.controller, zone);
+  // R223: each replacement takes a new id, and walked top down the library's would be one run of
+  // numbers in library order, so any of them the owner is later shown (#51's reveal, a Recruit)
+  // would say where it lies. The library is walked in an order of the seed's own instead; each
+  // replacement still takes its card's place (R35).
+  return zone === "library" ? numberingOrder(ctx.state, cards) : cards;
 }
 
 /** §6.3 Replace: one card, one random Legendary from its pool, named by instance (R81 does not apply). */
@@ -120,7 +130,8 @@ function transmogulate(radiantResult: boolean): Script {
       ...boardCards(ctx).flatMap((card) =>
         replace(ctx, card, sameTypeLegendaries(defOf(ctx.state, card.defId).type), radiantResult),
       ),
-      // Then library (top down), graveyard and exile: "any card from the pool, same counts".
+      // Then library (in `pileCards` order, R223), graveyard and exile: "any card from the pool, same
+      // counts".
       ...OFF_FIELD_ZONES.flatMap((zone) =>
         pileCards(ctx, zone).flatMap((card) => replace(ctx, card, legendaries(), radiantResult)),
       ),
