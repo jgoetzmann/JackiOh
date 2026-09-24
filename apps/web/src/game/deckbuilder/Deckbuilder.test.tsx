@@ -260,10 +260,21 @@ describe("dragging a card", () => {
     expect(screen.getByTestId(`deck-card-3-${SPARE_CARD_ID}`)).toBeInTheDocument();
   });
 
-  it("falls back to a click, which lands the card in the open deck", () => {
+  // Polish 6 (a deliberate change): the brief makes a click on a pool card open its detail view,
+  // whose "Add to Deck N" adds it; the card's "+" adds it in one tap. Drags are unchanged.
+  it("a click opens the card's detail, whose Add to Deck N lands the card in the open deck", () => {
     mount(legalDecks());
     fireEvent.click(screen.getByTestId("deck-tab-2"));
     fireEvent.click(screen.getByTestId(`card-pool-${SPARE_CARD_ID}`));
+    expect(screen.queryByTestId(`deck-card-2-${SPARE_CARD_ID}`)).toBeNull();
+    fireEvent.click(screen.getByTestId("db-detail-add"));
+    expect(screen.getByTestId(`deck-card-2-${SPARE_CARD_ID}`)).toBeInTheDocument();
+  });
+
+  it("the + on a pool card lands it in the open deck in one tap", () => {
+    mount(legalDecks());
+    fireEvent.click(screen.getByTestId("deck-tab-2"));
+    fireEvent.click(screen.getByTestId(`db-add-${SPARE_CARD_ID}`));
     expect(screen.getByTestId(`deck-card-2-${SPARE_CARD_ID}`)).toBeInTheDocument();
   });
 
@@ -346,7 +357,7 @@ describe("saving", () => {
       expect(screen.getByTestId("loadout-error-L1")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByTestId(`card-pool-${SPARE_CARD_ID}`));
+    fireEvent.click(screen.getByTestId(`db-add-${SPARE_CARD_ID}`));
     await waitFor(() => {
       expect(screen.queryByTestId("loadout-error-L1")).toBeNull();
     });

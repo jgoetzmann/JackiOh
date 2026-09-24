@@ -11,42 +11,55 @@
 // This component is presentational and does no I/O: the route hands it a catalog, a collection, a
 // starting draft and a `save` function. That is what makes "the sentence came from the validator"
 // testable without a server.
+//
+// THE LAYOUT (docs/polish/6-cards.md, Surface D). A browse column (`FilterBar` over `PoolGrid`, a
+// grid of full cards) beside a deck sidebar (`DeckSidebar`: the tabs, the open deck's mana curve
+// and tiles, and the save control); one column with the sidebar first on a phone. The sidebar
+// comes first in the DOM too, so the focus and reading order match the phone's visual order (the
+// desktop grid places it on the right by area name). This file keeps the state and the moves: the
+// draft, the open deck, the filter and sort, the save and its verdict, which card's detail view is
+// open, and the status line that names the last add or removal. Filter and sort are never
+// persisted.
+//
+// A click on a pool card opens its detail view, whose "Add to Deck N" adds it (the brief's
+// "a click opens a detail view"); the card's "+" and a drag onto a deck add it in one gesture.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
-import type { CardCost, CardDef } from "@jackioh/shared";
 import type { CatalogSnapshot, Collection, LoadoutError } from "@jackioh/validator";
 
 import "./deckbuilder.css";
-import { DECK_SIZE } from "./deckSize.ts";
+import { CardDetail, closeInspect } from "../../cards/index.ts";
+import DeckSidebar from "./DeckSidebar.tsx";
+import FilterBar from "./FilterBar.tsx";
+import { DEFAULT_FILTER, DEFAULT_SORT, visiblePool, type PoolFilter, type PoolSort } from "./filters.ts";
 import {
   DECK_NUMBERS,
   addCard,
   deckHolding,
   draftFrom,
   issuesOf,
-  poolFrom,
   removeCard,
   type Draft,
 } from "./loadout.ts";
+import PoolGrid from "./PoolGrid.tsx";
 import { BackLink } from "../../routes/nav.tsx";
+import { DECK_SIZE } from "./deckSize.ts";
 import {
-  CARD_POOL,
+  DB_DECK_STATUS,
+  DB_DETAIL_ADD,
+  DB_EMPTY,
   DECKBUILDER,
   DECK_DRAG_MIME,
   LOADOUT_ERRORS,
   LOADOUT_SAVE,
   LOADOUT_SAVED,
   LOADOUT_SAVE_ERROR,
-  deckCardId,
-  deckCardRowId,
-  deckCountId,
-  deckDropId,
-  deckListId,
-  deckTabId,
   loadoutErrorId,
-  poolCardId,
 } from "./testids.ts";
+
+/** How long the status line shows what the last add or removal did. */
+export const DECK_STATUS_MS = 2600;
 
 /** What `PUT /api/loadout` said, with the server's own words kept intact. */
 export type SaveOutcome =
@@ -72,18 +85,6 @@ export type DeckbuilderProps = {
   save: (decks: readonly (readonly string[])[]) => Promise<SaveOutcome>;
 };
 
-function nameOf(def: CardDef | undefined, cardId: string): string {
-  return def?.name ?? cardId;
-}
-
-/** §5's three shapes of `CardCost`: a number, `X`, or an embiggen pair. Display only. */
-export function formatCost(cost: CardCost | undefined): string {
-  if (cost === undefined) return "";
-  if (typeof cost === "number") return String(cost);
-  if (cost === "X") return cost;
-  return `${String(cost.base)}/${String(cost.embiggen)}`;
-}
-
 export default function Deckbuilder(props: DeckbuilderProps) {
   const { catalog, collection, save } = props;
 
@@ -96,9 +97,31 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusedCardId, setRefusedCardId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<PoolFilter>(DEFAULT_FILTER);
+  const [sort, setSort] = useState<PoolSort>(DEFAULT_SORT);
+  const [detailCardId, setDetailCardId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const dragged = useRef<string | null>(null);
 
-  const pool = useMemo(() => poolFrom(catalog, collection), [catalog, collection]);
+  // The status line fades after a moment; the next add or removal replaces it.
+  useEffect(() => {
+    if (status === null) return undefined;
+    const timer = window.setTimeout(() => {
+      setStatus(null);
+    }, DECK_STATUS_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [status]);
+
+  const nameOf = useCallback((cardId: string) => catalog.cards[cardId]?.name ?? cardId, [catalog]);
+
+  // `poolFrom(catalog, filter.ownedOnly ? collection : null)`, filtered and sorted. With the
+  // default filter this is exactly the shelf the builder always offered: the owned cards.
+  const pool = useMemo(
+    () => visiblePool(catalog, collection, filter, sort),
+    [catalog, collection, filter, sort],
+  );
 
   /** One tab and one panel per deck the draft actually has, so an L1 draft is visible, not hidden. */
   const deckNumbers = useMemo(
@@ -123,12 +146,16 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       if (!move.applied) {
         // BUILD M8: "a card dragged into a second deck is refused". Refused, not reworded.
         setRefusedCardId(cardId);
+        const holder = deckHolding(draft, cardId);
+        setStatus(holder === null ? null : `${nameOf(cardId)} is already in Deck ${String(holder)}`);
         return;
       }
       setRefusedCardId(null);
       edited(move.draft);
+      const size = move.draft[deck - 1]?.length ?? 0;
+      setStatus(`${nameOf(cardId)} added to Deck ${String(deck)} · ${String(size)}/${String(DECK_SIZE)}`);
     },
-    [draft, edited],
+    [draft, edited, nameOf],
   );
 
   const takeFromDeck = useCallback(
@@ -137,9 +164,58 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       if (!move.applied) return;
       setRefusedCardId(null);
       edited(move.draft);
+      const size = move.draft[deck - 1]?.length ?? 0;
+      setStatus(`${nameOf(cardId)} removed from Deck ${String(deck)} · ${String(size)}/${String(DECK_SIZE)}`);
     },
-    [draft, edited],
+    [draft, edited, nameOf],
   );
+
+  const addToActiveDeck = useCallback(
+    (cardId: string) => {
+      putInDeck(activeDeck, cardId);
+    },
+    [activeDeck, putInDeck],
+  );
+
+  const startDrag = useCallback((cardId: string, event: DragEvent<HTMLElement>) => {
+    dragged.current = cardId;
+    // A drag is not an inspection: any preview still open would sit over the drop targets.
+    closeInspect();
+    try {
+      event.dataTransfer.setData(DECK_DRAG_MIME, cardId);
+      event.dataTransfer.setData("text/plain", cardId);
+      event.dataTransfer.effectAllowed = "move";
+    } catch {
+      // Cypress and jsdom synthesise drag events without a DataTransfer; the id is already in
+      // `dragged`, which is what a drop reads first.
+    }
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragged.current = null;
+  }, []);
+
+  /** A drop on a deck's tab (which also opens that deck) or on its panel. */
+  const dropCard = useCallback(
+    (deck: number, event: DragEvent<HTMLElement>, select: boolean) => {
+      event.preventDefault();
+      const cardId = droppedCardId(event, dragged.current);
+      if (cardId === null) return;
+      if (select) setActiveDeck(deck);
+      putInDeck(deck, cardId);
+    },
+    [putInDeck],
+  );
+
+  const openDetail = useCallback((cardId: string) => {
+    // At most one inspect overlay at a time: a hover preview on a deck tile gives way to the detail.
+    closeInspect();
+    setDetailCardId(cardId);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setDetailCardId(null);
+  }, []);
 
   const onSave = useCallback(() => {
     setSaving(true);
@@ -169,145 +245,86 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   // shown. Editing clears it (see `edited`) and the client's own verdict takes over again.
   const issues: readonly LoadoutError[] = serverIssues ?? clientIssues;
 
+  const detailDef = detailCardId === null ? undefined : catalog.cards[detailCardId];
+  const detailHeldBy = detailCardId === null ? null : deckHolding(draft, detailCardId);
+  const detailOwned =
+    detailCardId === null || collection === null ? null : (collection[detailCardId] ?? 0) > 0;
+
   return (
     <div className="app-shell app-shell--wide deckbuilder" data-testid={DECKBUILDER}>
-      <BackLink />
-      <h1>JackiOh — decks</h1>
+      <header className="db-header">
+        <BackLink />
+        {/* The same words as the loading and error screens (routes/decks.tsx); only the look is
+            the builder's own. */}
+        <h1 className="db-title">
+          <span className="db-title-brand">JackiOh</span>
+          <span className="db-title-sep"> — </span>
+          <span className="db-title-page">decks</span>
+        </h1>
+      </header>
 
-      <div className="db-tabs" role="tablist" aria-label="Decks">
-        {deckNumbers.map((deck) => (
-          <button
-            key={deck}
-            type="button"
-            role="tab"
-            data-testid={deckTabId(deck)}
-            data-deck={deck}
-            aria-selected={deck === activeDeck}
-            data-active={deck === activeDeck ? "true" : "false"}
-            onClick={() => {
-              setActiveDeck(deck);
-            }}
-            onDragOver={allowDrop}
-            onDrop={(event) => {
-              event.preventDefault();
-              const cardId = droppedCardId(event, dragged.current);
-              if (cardId === null) return;
-              setActiveDeck(deck);
-              putInDeck(deck, cardId);
-            }}
-          >
-            {`Deck ${String(deck)}`}
-            <span
-              className="db-count"
-              data-testid={deckCountId(deck)}
-              data-count={String(draft[deck - 1]?.length ?? 0)}
-              data-deck-size={String(DECK_SIZE)}
-            >
-              {`${String(draft[deck - 1]?.length ?? 0)}/${String(DECK_SIZE)}`}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="db-panes">
-        <section className="db-pool" aria-label="Card pool" data-testid={CARD_POOL}>
-          {pool.map((cardId) => {
-            const heldBy = deckHolding(draft, cardId);
-            const def = catalog.cards[cardId];
-            return (
-              <button
-                key={cardId}
-                type="button"
-                className="db-card"
-                data-testid={poolCardId(cardId)}
-                data-card={cardId}
-                // `e2e/support/testids.ts` already exports this as ILLEGAL (M5-T2's vocabulary):
-                // a card the builder will not put in the open deck, because one is already held.
-                data-legal={heldBy === null ? "true" : "false"}
-                data-in-deck={heldBy === null ? undefined : String(heldBy)}
-                data-refused={refusedCardId === cardId ? "true" : undefined}
-                aria-disabled={heldBy !== null}
-                draggable
-                onDragStart={(event) => {
-                  dragged.current = cardId;
-                  try {
-                    event.dataTransfer.setData(DECK_DRAG_MIME, cardId);
-                    event.dataTransfer.setData("text/plain", cardId);
-                    event.dataTransfer.effectAllowed = "move";
-                  } catch {
-                    // Cypress and jsdom synthesise drag events without a DataTransfer; the id is
-                    // already in `dragged`, which is what `onDrop` reads first.
-                  }
-                }}
-                onDragEnd={() => {
-                  dragged.current = null;
-                }}
-                onClick={() => {
-                  putInDeck(activeDeck, cardId);
-                }}
-              >
-                <span className="db-card-name">{nameOf(def, cardId)}</span>
-                <span className="db-card-cost">{formatCost(def?.cost)}</span>
-              </button>
-            );
-          })}
-        </section>
-
-        {deckNumbers.map((deck) => (
-          <section
-            key={deck}
-            className="db-deck"
-            aria-label={`Deck ${String(deck)}`}
-            data-testid={deckDropId(deck)}
-            data-deck={deck}
-            // All three decks are on screen at once: L1 fixes the count at three, L4 is about all
-            // of them together, and `09-deckbuilder.cy.ts` reads a card out of each. The tab only
-            // says which deck a click or a drop lands in.
-            data-active={deck === activeDeck ? "true" : "false"}
-            onDragOver={allowDrop}
-            onDrop={(event) => {
-              event.preventDefault();
-              const cardId = droppedCardId(event, dragged.current);
-              if (cardId === null) return;
-              putInDeck(deck, cardId);
-            }}
-          >
-            <ul className="db-deck-list" data-testid={deckListId(deck)}>
-              {(draft[deck - 1] ?? []).map((cardId) => (
-                <li key={`${String(deck)}:${cardId}`} data-testid={deckCardRowId(deck, cardId)}>
-                  <button
-                    type="button"
-                    className="db-card"
-                    data-testid={deckCardId(deck, cardId)}
-                    data-card={cardId}
-                    onClick={() => {
-                      takeFromDeck(deck, cardId);
-                    }}
-                  >
-                    <span className="db-card-name">{nameOf(catalog.cards[cardId], cardId)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-
-      <div className="db-actions">
-        <button
-          type="button"
-          data-testid={LOADOUT_SAVE}
-          onClick={onSave}
-          disabled={saving}
-          aria-busy={saving}
+      <div className="db-layout">
+        <DeckSidebar
+          deckNumbers={deckNumbers}
+          activeDeck={activeDeck}
+          draft={draft}
+          catalog={catalog}
+          onSelectDeck={setActiveDeck}
+          onDropCard={dropCard}
+          onRemove={takeFromDeck}
+          onInspect={openDetail}
         >
-          Save loadout
-        </button>
-        {saved ? (
-          <span className="db-saved" data-testid={LOADOUT_SAVED} role="status">
-            Saved
-          </span>
-        ) : null}
+          <div className="db-actions">
+            <button
+              type="button"
+              data-testid={LOADOUT_SAVE}
+              onClick={onSave}
+              disabled={saving}
+              aria-busy={saving}
+            >
+              Save loadout
+            </button>
+            {saved ? (
+              <span className="db-saved" data-testid={LOADOUT_SAVED} role="status">
+                Saved
+              </span>
+            ) : null}
+          </div>
+        </DeckSidebar>
+
+        <section className="db-browse" aria-label="Browse cards">
+          <FilterBar
+            filter={filter}
+            onFilter={setFilter}
+            sort={sort}
+            onSort={setSort}
+            count={pool.length}
+            ownedUnavailable={collection === null}
+          />
+          {/* What the last add or removal did, as a toast at the foot of the screen: deep in the
+              pool on a phone, the deck's own count has scrolled away. Polite, so a screen reader
+              hears each add too. It ignores the pointer, so it never covers a card (deckbuilder.css). */}
+          <p className="db-deck-status" data-testid={DB_DECK_STATUS} role="status" aria-live="polite">
+            {status ?? ""}
+          </p>
+          <PoolGrid
+            ids={pool}
+            activeDeck={activeDeck}
+            catalog={catalog}
+            collection={collection}
+            draft={draft}
+            refusedCardId={refusedCardId}
+            onAdd={addToActiveDeck}
+            onInspect={openDetail}
+            onDragStart={startDrag}
+            onDragEnd={endDrag}
+          />
+          {pool.length === 0 ? (
+            <p className="db-empty" data-testid={DB_EMPTY}>
+              No card matches these filters.
+            </p>
+          ) : null}
+        </section>
       </div>
 
       {serverMessage === null ? null : (
@@ -332,22 +349,40 @@ export default function Deckbuilder(props: DeckbuilderProps) {
           </li>
         ))}
       </ul>
+
+      {detailCardId === null || detailDef === undefined ? null : (
+        <CardDetail
+          def={detailDef}
+          onClose={closeDetail}
+          meta={
+            <span className="db-detail-meta">
+              {detailHeldBy === null ? "In no deck" : `In Deck ${String(detailHeldBy)}`}
+              {detailOwned === false ? " · not in your collection" : ""}
+            </span>
+          }
+          actions={
+            <button
+              type="button"
+              className="db-detail-add"
+              data-testid={DB_DETAIL_ADD}
+              // One copy per loadout: a card any deck holds cannot be added again (the same
+              // refusal a click or a drop gets), so the action says so by being unavailable.
+              disabled={detailHeldBy !== null}
+              onClick={() => {
+                putInDeck(activeDeck, detailCardId);
+              }}
+            >
+              {`Add to Deck ${String(activeDeck)}`}
+            </button>
+          }
+        />
+      )}
     </div>
   );
 }
 
-/** A drop target has to say so, or the browser never fires `drop`. */
-function allowDrop(event: React.DragEvent<HTMLElement>): void {
-  event.preventDefault();
-  try {
-    event.dataTransfer.dropEffect = "move";
-  } catch {
-    // Synthesised events carry no DataTransfer; `preventDefault` is the part that matters.
-  }
-}
-
 /** The dragged card: the id this component recorded, else whatever the DataTransfer carries. */
-function droppedCardId(event: React.DragEvent<HTMLElement>, held: string | null): string | null {
+function droppedCardId(event: DragEvent<HTMLElement>, held: string | null): string | null {
   if (held !== null && held.length > 0) return held;
   for (const mime of [DECK_DRAG_MIME, "text/plain"]) {
     try {
