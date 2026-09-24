@@ -11,6 +11,8 @@ export const INSPECT_FACE = "inspect-face";
 export const INSPECT_FACE_BASE = "inspect-face-base";
 export const INSPECT_FACE_RADIANT = "inspect-face-radiant";
 export const INSPECT_GLOSSARY = "inspect-glossary";
+/** A face in play's printed text, where the two differ (SPEC §10.10). */
+export const INSPECT_PRINTED = "inspect-printed";
 
 // A list of cards (a graveyard or an exile pile): the hover preview, the sheet, and inside them.
 export const INSPECT_LIST_HOVER = "inspect-list-hover";

@@ -15,6 +15,11 @@
 //     `x`, `embiggen`, `zone`, `tribute` and `direction` prompt kinds for later sets, so both
 //     routes render the same picker with the same `data-prompt-kind`.
 //
+// A card option is drawn as the card in play (faces.ts, SPEC §10.10): a card the view lists — a hand
+// card in a mulligan or a hand pick, a unit a target reaches — as it stands, and a Discover's card as
+// the game shows it. An option that names no card is its label; a Discover of numbers (#82 KY's
+// Trial, R247) offers exactly that, and each number is drawn on a card back, with no face to read.
+//
 // `data-prompt-source` says which route opened the modal ("engine" or "play"), for layout only:
 // prompt.css turns a play's board picks into a slim bar on a phone while drag to play is on
 // (polish task 7), because their answers already glow on the board.
@@ -26,7 +31,7 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 
-import type { ActionBody, PendingView, PlayerId, PlayerView, PromptKind, Selection } from "@jackioh/shared";
+import type { ActionBody, CardView, PendingView, PlayerId, PlayerView, PromptKind, Selection } from "@jackioh/shared";
 
 import {
   IDLE,
@@ -42,8 +47,9 @@ import {
   type PlayBuild,
   type PlayNeed,
 } from "./actions.ts";
-import { CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
-import { useCardInfo } from "./catalog.ts";
+import { CardBack, CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
+import { MatchCardsProvider, useCardInfo, useFieldPower } from "./catalog.ts";
+import { liveFace } from "./faces.ts";
 import { sideOf } from "./contract.ts";
 import { modeText } from "./modeText.ts";
 import "./prompt.css";
@@ -78,6 +84,8 @@ type PickerItem = {
   radiant?: boolean;
   /** The card's cost as the view carries it (`CardView.cost`), for its face's gem. */
   cost?: number;
+  /** The card as the view lists it, when it lists it: its face is then the card as it stands. */
+  card?: CardView;
   /** Where the card sits ("Enemy unit, lane 2"), which tells two copies of one card apart. */
   where?: string;
   /** The row a zone option sits in, so the zone grid can group by it without parsing keys. */
@@ -110,23 +118,25 @@ type Picker = {
 // Labels. Read out of the view, never computed.
 // ---------------------------------------------------------------------------------------------
 
-type CardRef = { defId: string; radiant: boolean; cost: number };
+type CardRef = { defId: string; radiant: boolean; cost: number; card: CardView };
 
-/** Where an instance id sits in the viewer's own view, for a picker label. */
+function refOf(card: CardView): CardRef {
+  return { defId: card.defId, radiant: card.radiant, cost: card.cost, card };
+}
+
+/** Where an instance id sits in the viewer's own view, for a picker label and the option's face. */
 function cardRefFor(view: PlayerView, instanceId: string): CardRef | null {
   for (const side of [view.you, view.opponent]) {
     for (const pile of side.units) {
-      if (pile !== null && pile.instanceId === instanceId) return { defId: pile.defId, radiant: pile.radiant, cost: pile.cost };
+      if (pile !== null && pile.instanceId === instanceId) return refOf(pile);
     }
     for (const slot of side.backrow) {
-      if (slot !== null && slot.faceDown === false && slot.instanceId === instanceId) {
-        return { defId: slot.defId, radiant: slot.radiant, cost: slot.cost };
-      }
+      if (slot !== null && slot.faceDown === false && slot.instanceId === instanceId) return refOf(slot);
     }
     const piles = [Array.isArray(side.hand) ? side.hand : [], side.graveyard, side.exile];
     for (const pile of piles) {
       for (const card of pile) {
-        if (card.instanceId === instanceId) return { defId: card.defId, radiant: card.radiant, cost: card.cost };
+        if (card.instanceId === instanceId) return refOf(card);
       }
     }
   }
@@ -159,7 +169,7 @@ function itemForInstance(view: PlayerView, instanceId: string, fallback: string)
   const where = whereOf(view, instanceId);
   const item: PickerItem = ref === null
     ? { key: instanceId, label: fallback }
-    : { key: instanceId, label: fallback, defId: ref.defId, radiant: ref.radiant, cost: ref.cost };
+    : { key: instanceId, label: fallback, defId: ref.defId, radiant: ref.radiant, cost: ref.cost, card: ref.card };
   if (where !== null) item.where = where;
   return item;
 }
@@ -203,6 +213,7 @@ function pickerForPending(
         base.defId = ref.defId;
         base.radiant = ref.radiant;
         base.cost = ref.cost;
+        base.card = ref.card;
       }
       const where = whereOf(view, option.instanceId);
       if (where !== null) base.where = where;
@@ -324,7 +335,9 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
           const ref = cardRefFor(view, selection.instanceId);
           const where = whereOf(view, selection.instanceId);
           const item: PickerItem =
-            ref === null ? { key, label } : { key, label, defId: ref.defId, radiant: ref.radiant, cost: ref.cost };
+            ref === null
+              ? { key, label }
+              : { key, label, defId: ref.defId, radiant: ref.radiant, cost: ref.cost, card: ref.card };
           if (where !== null) item.where = where;
           return item;
         }),
@@ -367,6 +380,9 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
 // The modal.
 // ---------------------------------------------------------------------------------------------
 
+/** R247: a Discover option that is a number rather than a card (#82 KY's Trial). */
+const NUMBER_OPTION = /^\d+$/;
+
 // Polish 6 (a minimal edit to task 7's file, flagged in the PR): a card option draws the card's face,
 // the one the hand and the deck builder draw, with the same hover preview and long-press sheet, in
 // whatever box prompt.css gives it. An option that names no card keeps its name and text.
@@ -378,37 +394,52 @@ function CardOption(props: {
   onPick: () => void;
 }) {
   const info = useCardInfo(props.item.defId ?? "", props.item.radiant === true);
+  const fieldPower = useFieldPower(props.item.card?.instanceId);
   const name = props.item.defId === undefined ? props.item.label : info.name;
   const radiant = props.item.radiant === true;
   const cost = props.item.cost;
+  // The card in play: as the view lists it when it does, else a definition as the game shows it.
   const face =
     props.item.defId === undefined
       ? null
-      : faceModel({
-          defId: props.item.defId,
-          def: info.def,
-          name: info.name,
-          radiant,
-          ...(cost === undefined ? {} : { liveCost: cost }),
-        });
+      : props.item.card !== undefined
+        ? liveFace(info, props.item.card, fieldPower === undefined ? {} : { fieldPower })
+        : faceModel({
+            defId: props.item.defId,
+            def: info.def,
+            name: info.name,
+            radiant,
+            ...(cost === undefined ? {} : { liveCost: cost }),
+            inPlay: {},
+          });
+  // R247: a number names no card here, so it is drawn on a card back and nothing opens it.
+  const number = face === null && NUMBER_OPTION.test(props.item.label) ? props.item.label : null;
   const testId = `prompt-option-${props.item.key}`;
   const inspect = useInspectTrigger(face === null ? null : { key: testId, face }, { prefer: "above" });
   const verdict = props.verdicts === true ? (props.pressed ? "keep" : "redraw") : undefined;
   // The name, then the cost the gem shows, so a screen reader hears what a sighted player reads.
-  const label = face === null ? undefined : `${name}, costs ${face.cost.text}`;
+  const label = face === null ? (number === null ? undefined : `Number ${number}`) : `${name}, costs ${face.cost.text}`;
   return (
     <>
       <button
         type="button"
-        className="prompt-card"
+        className={number === null ? "prompt-card" : "prompt-card prompt-card--number"}
         data-testid={testId}
         data-verdict={verdict}
+        data-number={number ?? undefined}
         aria-pressed={props.pressed}
         aria-label={label}
         onClick={props.onPick}
         {...inspect.handlers}
       >
-        {face === null ? (
+        {number !== null ? (
+          <span className="cf-option prompt-number">
+            <CardBack />
+            <span className="prompt-number-value" aria-hidden="true">
+              {number}
+            </span>
+          </span>
+        ) : face === null ? (
           <>
             <span className="prompt-card-name">{name}</span>
             {info.text === "" ? null : <span className="prompt-card-text">{info.text}</span>}
@@ -749,17 +780,21 @@ export default function Prompt(props: PromptProps) {
 
   if (pending !== null && !pending.forYou) return <Waiting pendingFor={pending.pendingFor} />;
 
+  // R243: an option naming a match-made card (a crafted card in a hand pick) reads its definition
+  // from the view, and a Heroic Power on the field its power.
   if (pending !== null) {
     return (
-      <PromptModal
-        key={pending.choiceId}
-        source="engine"
-        picker={pickerForPending(pending, props.view, props.legal ?? [])}
-        boardTestids={boardTestids}
-        onAction={props.onAction}
-        {...(props.onInteraction === undefined ? {} : { onInteraction: props.onInteraction })}
-        {...(props.onCancel === undefined ? {} : { onCancel: props.onCancel })}
-      />
+      <MatchCardsProvider view={props.view}>
+        <PromptModal
+          key={pending.choiceId}
+          source="engine"
+          picker={pickerForPending(pending, props.view, props.legal ?? [])}
+          boardTestids={boardTestids}
+          onAction={props.onAction}
+          {...(props.onInteraction === undefined ? {} : { onInteraction: props.onInteraction })}
+          {...(props.onCancel === undefined ? {} : { onCancel: props.onCancel })}
+        />
+      </MatchCardsProvider>
     );
   }
 
@@ -768,14 +803,16 @@ export default function Prompt(props: PromptProps) {
   if (need === null) return null;
 
   return (
-    <PromptModal
-      key={needKey(need)}
-      source="play"
-      picker={pickerForNeed(need, interaction, props.view)}
-      boardTestids={boardTestids}
-      onAction={props.onAction}
-      {...(props.onInteraction === undefined ? {} : { onInteraction: props.onInteraction })}
-      {...(props.onCancel === undefined ? {} : { onCancel: props.onCancel })}
-    />
+    <MatchCardsProvider view={props.view}>
+      <PromptModal
+        key={needKey(need)}
+        source="play"
+        picker={pickerForNeed(need, interaction, props.view)}
+        boardTestids={boardTestids}
+        onAction={props.onAction}
+        {...(props.onInteraction === undefined ? {} : { onInteraction: props.onInteraction })}
+        {...(props.onCancel === undefined ? {} : { onCancel: props.onCancel })}
+      />
+    </MatchCardsProvider>
   );
 }

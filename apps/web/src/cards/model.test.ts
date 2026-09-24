@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { CATALOG } from "@jackioh/cards";
 import { KEYWORD_KINDS, type CardDef, type CardFace } from "@jackioh/shared";
 
+import { fusedDef } from "../test/fixtures.ts";
+import { CONCEALED_TEXT, VANILLA_TEXT } from "./inPlay.ts";
 import { faceModel, type FaceModel, type FaceSource } from "./model.ts";
 import { splitKeywordLine } from "./radiantText.ts";
 import { termsIn } from "./rules.ts";
@@ -465,5 +467,120 @@ describe("B9: faceModel stat tones", () => {
   it("B9 printed stats with no live numbers give base tones and health equal to max health", () => {
     const f = face("core-022", true);
     expect(f.stats).toEqual({ attack: 8, health: 12, maxHealth: 12, attackTone: "base", healthTone: "base" });
+  });
+});
+
+/* --------------------------------------------------------------------- faces in play (§10.10) */
+
+describe("a face in play is the card as the view says it stands; the collection's is the card as printed", () => {
+  it("a face with no `inPlay` is the collection's: printed text, no marks, nothing held beside it", () => {
+    const f = face("core-089", false);
+    expect(f).toMatchObject({ inPlay: false, vanilla: false, gained: [], printed: null });
+    expect(f.text.base).toBe(def("core-089").base.text);
+  });
+
+  it("R243 a hand Corpse Eater shows the stats it has grown to, toned as a buff (#89)", () => {
+    const f = face("core-089", false, { liveCost: 4, inPlay: { handStats: { attack: 9, health: 11 } } });
+    expect(f.stats).toEqual({ attack: 9, health: 11, maxHealth: 11, attackTone: "buffed", healthTone: "buffed" });
+    // Its text and keywords are still the card's own: a meal changes numbers, not words.
+    expect(f.text.base).toBe(def("core-089").base.text);
+    expect(f.keywords).toEqual(def("core-089").base.keywords);
+    expect(f.printed).toBeNull();
+    // The collection's Corpse Eater is the printed 2/2.
+    expect(face("core-089", false).stats).toMatchObject({ attack: 2, health: 2 });
+  });
+
+  it("R243 a hand Unit at its printed stats reads base, on the radiant face too", () => {
+    const f = face("core-089", true, { inPlay: { handStats: { attack: 6, health: 6 } } });
+    expect(f.stats).toMatchObject({ attackTone: "base", healthTone: "base" });
+  });
+
+  it("R43 a Heroic Power in play prints only the power it rolled, with its X on the gem", () => {
+    const f = face("core-098", false, { liveCost: 3, inPlay: { power: { name: "recruit", x: 3 } } });
+    expect(f.text).toEqual({
+      base: "Indestructible. Once per turn, spend 3: Recruit a permanent. Playing it activates it once",
+      radiant: null,
+    });
+    expect(f.cost).toEqual({ text: "3", value: "3", tone: "base", alt: null });
+    for (const other of ["7 random powers", "Felinor Token", "Discover a Unit", "lose 2 health"]) {
+      expect(f.text.base).not.toContain(other);
+    }
+    // The printed list of seven is held beside it for the inspect overlays.
+    expect(f.printed).toEqual({ base: def("core-098").base.text, radiant: null });
+  });
+
+  it("R43 a radiant Heroic Power prints its rolled power's radiant clause", () => {
+    const f = face("core-098", true, { liveCost: 1, inPlay: { power: { name: "felinor", x: 1 } } });
+    expect(f.text.base).toBe("Indestructible. Once per turn, spend 1: Summon two Felinor Tokens. Playing it activates it once");
+    expect(f.printed?.radiant).not.toBeNull();
+  });
+
+  it("a Heroic Power in the collection keeps the list of seven and the X on its gem", () => {
+    const f = face("core-098", false);
+    expect(f.text.base).toContain("gain one of 7 random powers");
+    expect(f.cost.text).toBe("X");
+    // In play with no power named (one that has not rolled, R43), it prints the card as printed.
+    expect(face("core-098", false, { inPlay: {} }).text.base).toContain("gain one of 7 random powers");
+  });
+
+  it("Call to Chaos reads ??? in play on both faces, and keeps no printed text beside it", () => {
+    for (const radiant of [false, true]) {
+      const f = face("core-095", radiant, { liveCost: 4, inPlay: {} });
+      expect(f.text, `radiant ${String(radiant)}`).toEqual({ base: CONCEALED_TEXT, radiant: null });
+      expect(f.printed).toBeNull();
+      // Everything else about it is the card's: its name, tags, rarity and cost.
+      expect(f).toMatchObject({ name: "Call to Chaos (Core Edition)", tags: ["Call to Chaos"], rarity: "Legendary" });
+    }
+  });
+
+  it("Call to Chaos in the collection prints its real text, both faces", () => {
+    expect(face("core-095", false).text.base).toBe(def("core-095").base.text);
+    expect(face("core-095", true).text.radiant).toContain("cast a random Call to Chaos");
+  });
+
+  it("R243 a Vanilla unit says its text is gone, and prints the keywords it still has as gained", () => {
+    // #61's copy of #91 Fed Fauci: its printed Rush is gone; a granted Taunt stays (§6.3 Vanilla).
+    const f = face("core-091", false, {
+      live: { attack: 1, health: 6, maxHealth: 6, keywords: [{ kind: "Taunt" }] },
+      inPlay: { vanilla: true },
+    });
+    expect(f.vanilla).toBe(true);
+    expect(f.text).toEqual({ base: VANILLA_TEXT, radiant: null });
+    expect(f.gained).toEqual([{ kind: "Taunt" }]);
+    expect(f.printed).toEqual({ base: def("core-091").base.text, radiant: null });
+  });
+
+  it("a unit in play prints the keywords it has gained since it was printed, and only those", () => {
+    // Pointmaster (First Strike) after a Plastic Surgery's Poisonous, in Defense Position (Taunt, Armor 1).
+    const f = face("core-020", false, {
+      live: {
+        attack: 10,
+        health: 5,
+        maxHealth: 5,
+        keywords: [{ kind: "First Strike" }, { kind: "Poisonous" }, { kind: "Taunt" }, { kind: "Armor", n: 1 }],
+      },
+      inPlay: {},
+    });
+    expect(f.gained).toEqual([{ kind: "Poisonous" }, { kind: "Taunt" }, { kind: "Armor", n: 1 }]);
+    expect(f.text.base).toBe("First Strike");
+    expect(f.printed).toBeNull();
+  });
+
+  it("R243 a fused definition prints its own name, tags, keywords, stats and a line of text per ingredient", () => {
+    const fused = fusedDef([def("core-011"), def("core-089")]);
+    const f = faceModel({ defId: fused.id, def: fused, radiant: false, liveCost: 4, inPlay: {} });
+    expect(f).toMatchObject({ known: true, name: "Tempo Timmy + Corpse Eater", type: "Unit", tags: ["Human"] });
+    expect(f.text.base).toBe(`${def("core-011").base.text}\n${def("core-089").base.text}`);
+    expect(f.keywords.map((keyword) => keyword.kind)).toEqual(["Rush", "First Strike"]);
+    expect(f.stats).toMatchObject({ attack: 5, health: 5 });
+  });
+
+  it("R102 a radiant fused face reads each ingredient's radiant cell against its own base line", () => {
+    const fused = fusedDef([def("core-011"), def("core-002")]);
+    const f = faceModel({ defId: fused.id, def: fused, radiant: true, inPlay: {} });
+    // Tempo Timmy's radiant keyword line replaces its base one; Bigot's radiant Cry replaces its own,
+    // which leaves Bigot no kept line and its new Cry under the gold rule.
+    expect(f.text.base.split("\n")).toEqual(["Charge, First Strike"]);
+    expect(f.text.radiant).toBe(def("core-002").radiant.text);
   });
 });

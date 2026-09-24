@@ -1,5 +1,6 @@
 // The bottom sheet a touch long-press opens (B24, B25): the live face, its glossary and Close, over
 // a scrim. Focus moves to Close on open and back on close; Escape, the scrim and Close all close it.
+// A face in play whose printed text differs (SPEC §10.10) has that text beside it as well.
 
 import { useRef } from "react";
 import type { ReactElement } from "react";
@@ -8,6 +9,7 @@ import { CardFace } from "../CardFace.tsx";
 import type { FaceModel } from "../model.ts";
 import { glossaryFor } from "../rules.ts";
 import { Glossary } from "./Glossary.tsx";
+import { Printed } from "./Printed.tsx";
 import { OVERLAY_ROOT_PROPS, useModalOverlay } from "./store.ts";
 import { INSPECT_CLOSE, INSPECT_FACE, INSPECT_SCRIM, INSPECT_SHEET } from "./testids.ts";
 import "./inspect.css";
@@ -33,6 +35,7 @@ export function InspectSheet({ face, onClose }: InspectSheetProps): ReactElement
           <div className="inspect-face inspect-face--sheet" data-testid={INSPECT_FACE}>
             <CardFace face={face} layout="full" />
           </div>
+          <Printed face={face} />
           <Glossary entries={glossaryFor(face)} />
         </div>
         <button

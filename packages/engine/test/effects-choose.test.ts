@@ -17,6 +17,7 @@ import {
   targetsInScope,
 } from "../src/effects";
 import { makeContext } from "../src/resolve";
+import { viewFor } from "../src/viewFor";
 import type { EffectContext } from "../src/script";
 import { newInstance, type CardInstance, type GameState } from "../src/state";
 import { placeOnField } from "../src/zones";
@@ -347,6 +348,32 @@ describe("the choose effects (§6.3, §10.6, M3-T1)", () => {
     for (const id of wide) expect(registeredCatalog()[id]?.token).toBe(false);
     expect(state.pending?.resume).toMatchObject({ defId: "", step: "chosen" });
     expect(state.pending?.resume.instanceId).toBeUndefined();
+  });
+
+  it("R247 a Discover of numbers offers the same three cards by their indices, and the view names none of them", () => {
+    const byCard = game("discover-numbers");
+    const self = put(byCard, fruitGenerator.id, slot("p1", "units", 1));
+    run(ctxFor(byCard, self), [discoverFromCatalog({ step: "chosen", query: { tags: ["Fruit"] } })]);
+    const cards = (byCard.pending?.options ?? []).flatMap((option) =>
+      option.selection.pick === "mode" ? [option.selection.option] : [],
+    );
+
+    // The same seed and pool, offered as numbers: the draw is untouched, only what each option is.
+    const byNumber = game("discover-numbers");
+    const numberSelf = put(byNumber, fruitGenerator.id, slot("p1", "units", 1));
+    run(ctxFor(byNumber, numberSelf), [
+      discoverFromCatalog({ step: "chosen", query: { tags: ["Fruit"] }, offer: "index" }),
+    ]);
+    const options = byNumber.pending?.options ?? [];
+    const indices = cards.map((id) => registeredCatalog()[id]?.index ?? "");
+    expect(options.map((option) => option.selection)).toEqual(indices.map((index) => ({ pick: "mode", option: index })));
+    expect(options.map((option) => option.key)).toEqual(indices.map((index) => `mode:${index}`));
+    expect(options.map((option) => option.label)).toEqual(indices);
+
+    // §10.8: the chooser's view carries each number and no definition behind it.
+    const pending = viewFor(byNumber, "p1").pending;
+    if (pending?.forYou !== true) throw new Error("p1 holds the prompt");
+    expect(pending.options).toEqual(indices.map((index) => ({ key: `mode:${index}`, label: index })));
   });
 
   it("R50 Discover from the graveyard offers the cards actually in your own graveyard", () => {

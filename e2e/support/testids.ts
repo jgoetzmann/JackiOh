@@ -440,6 +440,8 @@ export const INSPECT_FACE_BASE = "inspect-face-base";
 export const INSPECT_FACE_RADIANT = "inspect-face-radiant";
 /** A14: the keyword glossary, one `li[data-glossary-term]` per term. */
 export const INSPECT_GLOSSARY = "inspect-glossary";
+/** A14: a face in play's printed text, beside it in the preview or the sheet where the two differ (SPEC §10.10). */
+export const INSPECT_PRINTED = "inspect-printed";
 
 /** A14: lower-case, every run of characters outside `[a-z0-9]` becomes one "-", trimmed of "-". */
 export function slugOf(value: string): string {

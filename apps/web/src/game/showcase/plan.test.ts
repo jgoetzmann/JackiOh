@@ -23,9 +23,12 @@ function summoned(player: "p1" | "p2", instanceId: string, defId: string, row: "
 const view = baseView();
 
 describe("which plays are held up", () => {
-  it("holds up the opponent's play, by its definition", () => {
+  it("holds up the opponent's play, by its definition, its instance and what it cost", () => {
     const plays = opponentPlays([MANA, played("p2", "c7", "core-032"), summoned("p2", "c7", "core-032", "units")], view);
-    expect(plays).toEqual([{ player: "p2", defId: "core-032", radiant: false, set: false }]);
+    // The instance and the price paid let the showcase draw the card in play (SPEC §10.10).
+    expect(plays).toEqual([
+      { player: "p2", defId: "core-032", instanceId: "c7", costPaid: 1, radiant: false, set: false },
+    ]);
   });
 
   it("never holds up the viewer's own play", () => {

@@ -43,6 +43,60 @@
   overflow: hidden;
 }
 
+/* A face in play whose printed text differs: the printed text above the glossary, in one column. */
+.inspect-hover .inspect-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px; /* PREVIEW_GLOSSARY_WIDTH_PX */
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.inspect-hover .inspect-side .inspect-glossary {
+  width: auto;
+  max-height: none;
+}
+
+/* ---- Printed text (SPEC §10.10) ---------------------------------------------------------------- */
+
+.inspect-printed {
+  flex: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(11, 13, 19, 0.94);
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  color: var(--text, #e8eaf2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.inspect-printed-label {
+  margin: 0 0 4px;
+  color: var(--text-dim, #9aa1b8);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inspect-printed-text {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.inspect-printed-text--radiant {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 210, 74, 0.35);
+  color: var(--radiant, #ffd24a);
+}
+
 /* ---- Glossary -------------------------------------------------------------------------------- */
 
 .inspect-glossary {
@@ -164,7 +218,8 @@
   height: min(380px, 56dvh);
 }
 
-.inspect-sheet .inspect-glossary {
+.inspect-sheet .inspect-glossary,
+.inspect-sheet .inspect-printed {
   flex: 1 1 220px;
   max-width: 420px;
   box-shadow: none;
@@ -419,12 +474,36 @@
     grid-row: 3;
     justify-self: start;
   }
+
+  /* A face in play whose printed text differs: that text over the glossary, one more row. */
+  .inspect-sheet:has(.inspect-printed) {
+    grid-template-rows: auto auto auto 1fr;
+  }
+
+  .inspect-sheet:has(.inspect-printed) .inspect-face--sheet {
+    grid-row: 2 / span 3;
+  }
+
+  .inspect-sheet .inspect-printed {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: none;
+  }
+
+  .inspect-sheet:has(.inspect-printed) .inspect-glossary {
+    grid-row: 3;
+  }
+
+  .inspect-sheet:has(.inspect-printed) .inspect-close {
+    grid-row: 4;
+  }
 }
 
 /* A phone has no room beside the enlarged card for the glossary, and a hover there is rare anyway
    (touch opens the sheet), so the preview shows the card alone rather than spilling off-screen. */
 @media (max-width: 600px) {
-  .inspect-hover .inspect-glossary {
+  .inspect-hover .inspect-glossary,
+  .inspect-hover .inspect-side {
     display: none;
   }
 }
@@ -643,7 +722,8 @@
   height: min(420px, calc(100dvh - 200px));
 }
 
-.inspect-list-detail .inspect-glossary {
+.inspect-list-detail .inspect-glossary,
+.inspect-list-detail .inspect-printed {
   flex: 1 1 220px;
   max-width: 420px;
   box-shadow: none;

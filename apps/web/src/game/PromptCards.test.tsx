@@ -184,3 +184,66 @@ describe("card options are card faces", () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("R247: #82 KY's Trial's Discover offers numbers", () => {
+  /**
+   * The chooser's view exactly as `viewFor` builds it for #82 (packages/cards/test/082-kys-trial.test.ts
+   * "R247 …"): each option is the number, keyed `mode:<n>` and labelled `<n>`, with no definition.
+   */
+  const NUMBERS = ["17", "42", "88"] as const;
+
+  function trialView(): PlayerView {
+    return baseView({
+      you: emptySide("p1", { hand: [card({ instanceId: "h1", defId: "core-002" })] }),
+      opponent: emptySide("p2", { hand: { count: 3 } }),
+      pending: pendingFor(
+        "discover",
+        NUMBERS.map((n) => ({ key: `mode:${n}`, label: n })),
+        { prompt: "KY's Trial: Discover a number from 1 to 100" },
+      ),
+    });
+  }
+
+  /** The cards those numbers name, which the picker must not show. */
+  const NAMED = NUMBERS.map((n) => Object.values(CATALOG).find((def) => def.index === n)?.name ?? n);
+
+  it("R247 draws each option as its number on a card back, with no face, name or text of the card it names", () => {
+    renderPrompt(trialView());
+    const modal = screen.getByTestId("prompt-modal");
+    expect(modal).toHaveAttribute("data-prompt-kind", "discover");
+    for (const n of NUMBERS) {
+      const option = screen.getByTestId(`prompt-option-mode:${n}`);
+      expect(option).toHaveAttribute("data-number", n);
+      expect(option.querySelector(".prompt-number-value")?.textContent).toBe(n);
+      expect(option.querySelector(".cf-back")).not.toBeNull();
+      expect(option.querySelector(".cf"), n).toBeNull();
+      expect(option.querySelector(".card-name"), n).toBeNull();
+      expect(option.getAttribute("aria-label")).toBe(`Number ${n}`);
+    }
+    for (const name of NAMED) expect(modal.textContent).not.toContain(name);
+  });
+
+  it("R247 a number opens no preview, and picking one answers with that number", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    renderPrompt(trialView(), onAction);
+    const option = screen.getByTestId("prompt-option-mode:42");
+    fireEvent.pointerEnter(option, { pointerType: "mouse" });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_DELAY_MS * 2);
+    });
+    expect(screen.queryByTestId(INSPECT_HOVER)).toBeNull();
+
+    fireEvent.click(option);
+    expect(onAction).toHaveBeenCalledWith({ type: "answer", choiceId: "ch1", selection: [{ pick: "mode", option: "42" }] });
+  });
+
+  it("R247 every other Discover still offers its cards' faces", () => {
+    renderPrompt(discoverView());
+    for (const defId of DISCOVER) {
+      const option = screen.getByTestId(`prompt-option-mode:${defId}`);
+      expect(option).not.toHaveAttribute("data-number");
+      expect(option.querySelector(".cf .card-name")?.textContent).toBe(nameOf(defId));
+    }
+  });
+});

@@ -26,6 +26,12 @@ export type ShowcasePlay = {
   player: PlayerId;
   /** The card's definition, or null for a card the view redacts: it is drawn as a back. */
   defId: string | null;
+  /**
+   * The played instance and what its play cost, for a card the view names: the face is the card in
+   * play (SPEC §10.10), as it stands where the view still lists it, else at the price it was paid.
+   */
+  instanceId?: string;
+  costPaid?: number;
   /** The face that was played, as far as the view says (its resolution, else where it stands now). */
   radiant: boolean;
   /** A hidden play that put a card face down into a backrow: "set a card" rather than "played a card". */
@@ -110,7 +116,14 @@ export function opponentPlays(fresh: readonly GameEvent[], view: PlayerView): Sh
     plays.push(
       hidden
         ? { player: event.player, defId: null, radiant: false, set: wasSet(event, at, fresh) }
-        : { player: event.player, defId: event.defId, radiant: radiantOf(event, fresh, view), set: false },
+        : {
+            player: event.player,
+            defId: event.defId,
+            instanceId: event.instanceId,
+            costPaid: event.costPaid,
+            radiant: radiantOf(event, fresh, view),
+            set: false,
+          },
     );
   });
   return plays;

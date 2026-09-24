@@ -15,6 +15,11 @@
 // strip, compact in the backrow). This file keeps the root element and everything the tests, the
 // e2e specs and the animation table read off it; the face inside is `.cf`, which ignores the
 // pointer, so the root and the badges drawn beside it take every click.
+//
+// The face is the card in play (faces.ts, SPEC §10.10): what the view says it is now — a hand
+// Unit's grown stats (#89), a unit's numbers and keywords, the Vanilla mark, a Heroic Power's rolled
+// power — and a match-made card (a Fuse's) reads its definition from the view (`MatchCardsContext`,
+// R243) where the catalog has none.
 
 import type { DragEvent, KeyboardEvent, MouseEvent, ReactElement } from "react";
 
@@ -29,7 +34,8 @@ import {
   useInspectTrigger,
   type FaceModel,
 } from "../cards/index.ts";
-import { useCardInfo } from "./catalog.ts";
+import { useCardInfo, useFieldPower } from "./catalog.ts";
+import { liveFace } from "./faces.ts";
 import { NO_HIGHLIGHT, testid, type AnimatingMap, type ClickTarget, type Highlight } from "./contract.ts";
 import { conditionAttr, glowAttr } from "./glow.ts";
 import { useSetting } from "../settings/store.ts";
@@ -167,24 +173,22 @@ function formOf(card: CardView | null, unit: UnitView | null | undefined, type: 
 export default function Card(props: CardProps): ReactElement {
   const { card, unit, target, testId } = props;
   const info = useCardInfo(card?.defId ?? "", card?.radiant ?? false);
+  const fieldPower = useFieldPower(card?.instanceId);
   const settings = useCardSettings();
   // The preview opens only while the panel's "Hover previews" is on too (useInspectTrigger.tsx).
   const panelHover = useSetting("hoverPreviews");
   const form = formOf(card, unit, props.type);
 
-  const live =
-    unit === undefined || unit === null
-      ? undefined
-      : { attack: unit.attack, health: unit.health, maxHealth: unit.maxHealth, keywords: unit.keywords };
-  const model = faceModel({
-    defId: card?.defId ?? "",
-    def: info.def,
-    name: info.name,
-    type: props.type,
-    radiant: card?.radiant ?? false,
-    liveCost: card?.cost,
-    live,
-  });
+  // The card in play: the unit's view when it is one, else the card's own (a hand card's stats and
+  // power, a face-up backrow card's power off the hero's list). A back has no face at all.
+  const shown = unit ?? card;
+  const model: FaceModel =
+    shown === null
+      ? faceModel({ defId: "", radiant: false })
+      : liveFace(info, shown, {
+          ...(props.type === undefined ? {} : { type: props.type }),
+          ...(fieldPower === undefined ? {} : { fieldPower }),
+        });
   // A face-up backrow card is drawn as the type its `BackrowView` names: the view is what the
   // client renders (CLAUDE.md rule 7), and the catalog only fills in what the view leaves out.
   const face: FaceModel = props.type === undefined ? model : { ...model, type: props.type };
@@ -265,6 +269,7 @@ export default function Card(props: CardProps): ReactElement {
       data-condition-active={conditionAttr(card)}
       data-owner={props.owner ?? unit?.owner}
       data-controller={props.controller ?? unit?.controller}
+      data-vanilla={unit?.vanilla === true ? "true" : undefined}
       data-position={position}
       // `canAct` is drawn as state, never read as permission: legality is `props.highlight`.
       data-can-act={unit === undefined || unit === null ? undefined : unit.canAct ? "true" : "false"}

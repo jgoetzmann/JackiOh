@@ -8,10 +8,14 @@
 //
 // `layout="compact"` is a face-up backrow card: cost, art, name, rarity gem and type line, with no
 // rules box, tags or stats.
+//
+// A face in play (FaceModel.inPlay, SPEC §10.10) prints the card as it stands: the rules box ends
+// with the keywords it has gained since it was printed (`.cf-text-gained`), and a Vanilla unit's box
+// says its text is gone. A fused card's text is a line per ingredient (R102), which the box keeps.
 
 import { useRef, type CSSProperties, type ReactElement } from "react";
 
-import type { CardType } from "@jackioh/shared";
+import { keywordKey, type CardType } from "@jackioh/shared";
 
 import { CardArt, type ArtShape } from "./art/index.ts";
 import { FIT_FLOOR_PX, TIER_SCALE } from "./constants.ts";
@@ -38,9 +42,16 @@ function join(...parts: (string | false | undefined)[]): string {
   return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join(" ");
 }
 
-/** Base text and the radiant clause, as one string: what `textTier` and `useFitText` measure. */
+/** The keywords a face in play has gained, as the rules box prints them. Empty when none. */
+export function gainedLine(face: FaceModel): string {
+  return face.gained.map(keywordKey).join(", ");
+}
+
+/** Everything the rules box prints, as one string: what `textTier` and `useFitText` measure. */
 function printedText(face: FaceModel): string {
-  return face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
+  const text = face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
+  const gained = gainedLine(face);
+  return gained === "" ? text : `${text} ${gained}`;
 }
 
 /** Hearthstone draws no gem on Free and Core cards; tokens and unknown cards get none here. */
@@ -85,6 +96,8 @@ export function CardFace({ face, layout = "full", className }: CardFaceProps): R
       data-text-tier={texts}
       data-foil={foilFor(face, settings.animatedFoil)}
       data-radiant-face={face.radiant ? "true" : undefined}
+      data-in-play={face.inPlay ? "true" : undefined}
+      data-vanilla={face.vanilla ? "true" : undefined}
       style={scales}
     >
       <span className="cf-scale">
@@ -123,6 +136,11 @@ export function CardFace({ face, layout = "full", className }: CardFaceProps): R
             {face.text.radiant !== null && (
               <span className="cf-text-radiant">
                 <RulesText text={face.text.radiant} />
+              </span>
+            )}
+            {face.gained.length > 0 && (
+              <span className="cf-text-gained" data-gained={face.gained.map(keywordKey).join("|")}>
+                <RulesText text={gainedLine(face)} />
               </span>
             )}
           </span>

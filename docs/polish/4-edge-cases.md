@@ -1654,7 +1654,8 @@ would keep the two from drifting apart.
   them. And R46's Taunt loss is a `keywordGranted` with `lost` set: `Log.tsx` says "lost" (one line,
   apart from task 7's scroll edits), and the keyword pop should play as the icon going. A random Make
   Radiant's events now come group by group (public cards, then the owner's hidden ones, then the
-  library's, R242), not in the zones' order.
+  library's, R242), not in the zones' order. (The live-cards change of 2026-09-24 made the client read
+  all of R243's fields: SPEC §10.10's faces in play, and R247.)
 - `script.ts`, review of round 10: `EffectContext` gained an optional `eventStay` (the cards a queued
   trigger's event names and the stays it happened on, R174, R212). Additive, and no card file sets
   it. The cards README's read table lists `instanceOf(ctx, spec)`, which #22 has read its meal

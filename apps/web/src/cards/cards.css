@@ -627,6 +627,35 @@
   color: #5e3f00;
 }
 
+/* A fused card's text is a line per ingredient (R102): keep the lines, collapse everything else. */
+.cf .cf-text-base,
+.cf .cf-text-radiant {
+  white-space: pre-line;
+}
+
+/* In play, the keywords a card has gained since it was printed, under a green rule (the buffed
+   stat's colour): a Plastic Surgery's, an aura's, Defense Position's, a Vanilla unit's granted ones. */
+.cf .cf-text-gained {
+  display: block;
+  flex: 0 0 auto;
+  margin-top: 0.35em;
+  padding-top: 0.3em;
+  border-top: 0.3cqh solid #3f8a3a;
+  color: #1d5a1f;
+}
+
+.cf .cf-text-base:empty + .cf-text-gained {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* A Vanilla unit's box says its text is gone, quietly. */
+.cf[data-vanilla="true"] .cf-text-base {
+  font-style: italic;
+  opacity: 0.8;
+}
+
 /* A radiant clause that replaced the only base clause (Bigot's Cry) has nothing above its rule. */
 .cf .cf-text-base:empty {
   display: none;
@@ -1073,6 +1102,49 @@
     0 0.4cqh 0.8cqh rgb(0 0 0 / 0.55),
     inset 0 0.3cqh 0 rgb(255 255 255 / 0.18);
   clip-path: none;
+}
+
+/* R243's Vanilla marker: a plain paper stamp at the portrait's top right, clear of the cost gem and
+   the keyword column on the left, legible at the same floor as a keyword chip. */
+.cf .cf-vanilla {
+  position: absolute;
+  z-index: 4;
+  top: calc(0.5cqh + 2cqmin);
+  right: 0.5cqw;
+  padding: max(1.5px, 0.8cqmin) max(2.5px, 1.4cqmin);
+  border-radius: max(3px, 2cqmin);
+  background: linear-gradient(180deg, #fbf5e6, #d9ccb0);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.75),
+    0 1px 2px rgb(0 0 0 / 0.5);
+  color: #5a4a32;
+  font-size: max(7px, 8cqmin);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: rotate(8deg);
+}
+
+.cf .cf-vanilla-mark {
+  display: none;
+}
+
+/* A phone's minion is about 50px wide, where the word would cover the portrait and the keyword
+   chips: it wears a "V" chip instead, and the preview spells it out. */
+@container cardface (max-width: 72px) {
+  .cf .cf-vanilla {
+    transform: none;
+  }
+
+  .cf .cf-vanilla-word {
+    display: none;
+  }
+
+  .cf .cf-vanilla-mark {
+    display: inline;
+  }
 }
 
 /* One row along the bottom: attack on the left, health on the right, and Armor tucked against

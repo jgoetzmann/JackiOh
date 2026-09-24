@@ -1121,6 +1121,10 @@ describe("the glossary (B26)", () => {
     stats: { attack: 1, health: 1, maxHealth: 1, attackTone: "base", healthTone: "base" },
     text: { base: "Death: deal 2. Cry: draw 1", radiant: "Lifesteal. Cry: again" },
     keywords: [{ kind: "Taunt" }, { kind: "Lifesteal" }, { kind: "Rush" }],
+    inPlay: false,
+    vanilla: false,
+    gained: [],
+    printed: null,
   };
   const ORDER: GlossaryTermId[] = ["Death", "Cry", "Lifesteal", "Taunt", "Rush"];
 

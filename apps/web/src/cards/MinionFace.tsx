@@ -14,6 +14,11 @@
 // at a pixel floor (cards.css); past that the last one becomes a "+n" count, and the hover preview
 // and the inspect sheet list them all.
 //
+// Vanilla. A unit a Vanilla took the text of (§6.3, R115) is marked Vanilla in the view
+// (`UnitView.vanilla`, R243), since its definition still names what it lost: the minion wears a
+// plain "Vanilla" stamp at its portrait's corner (`.cf-vanilla`, a "V" on a minion too small for
+// the word), and its hover preview's rules box says the text is gone. Its keyword chips are the view's, which already leave the lost ones out.
+//
 // There is no "zzz". `canAct` is false for every unit whose controller is not the active player,
 // and a summoning-sick unit may still switch (§4.1), so it can neither say "this unit is asleep"
 // nor "this one can attack". Whether a unit can attack is `legalActions`', drawn by the board's
@@ -95,6 +100,7 @@ export function MinionFace({ face, unit, className }: MinionFaceProps): ReactEle
       data-foil={foilFor(face, settings.animatedFoil)}
       data-radiant-face={face.radiant ? "true" : undefined}
       data-taunt={hasKeyword(unit.keywords, "Taunt") ? "true" : undefined}
+      data-vanilla={unit.vanilla === true ? "true" : undefined}
     >
       <span className="cf-scale">
         <span className="cf-portrait">
@@ -114,6 +120,15 @@ export function MinionFace({ face, unit, className }: MinionFaceProps): ReactEle
         <span className="card-name" ref={nameRef}>
           {face.name}
         </span>
+
+        {unit.vanilla === true && (
+          <span className="cf-vanilla" title="Vanilla: its text is gone">
+            <span className="cf-vanilla-word">Vanilla</span>
+            <span className="cf-vanilla-mark" aria-hidden="true">
+              V
+            </span>
+          </span>
+        )}
 
         <span className="stats">
           <span className="stat stat-attack" data-attack={unit.attack} data-tone={attackTone}>

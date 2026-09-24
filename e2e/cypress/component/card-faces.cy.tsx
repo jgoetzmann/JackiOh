@@ -10,6 +10,10 @@
 //        (scroll <= client + 1). At 270 px nothing may clamp; at 170 px only a face whose printed
 //        text (base plus radiant clause) runs past 260 characters may carry `data-clamped`, and a
 //        clamped rules box instead stays inside the face at the reading floor (FIT_FLOOR_PX).
+//   §10.10  faces in play (the live card, `faceModel` with `inPlay`): a fused card's text a line
+//        per ingredient, each of #98's seven rolled powers on both faces, Call to Chaos's ???, a
+//        Vanilla unit with the keywords it kept — all inside their boxes at 270 and 170 px; and
+//        #82's Discover of numbers (R247) drawn inside its options at both viewports.
 //   B21  `Game` rendering `fullBoardView()` inside `.app-shell.app-shell--wide`, WITH the real
 //        catalog in `CatalogContext`: no horizontal overflow and all 20 field cards visible at
 //        1280x720 and 390x844. board-layout.cy.tsx measures the same board with no catalog, where
@@ -26,11 +30,11 @@
 // from outside apps/web/src/cards only through its barrel, cards/index.ts.
 
 import { CATALOG } from "../../../packages/cards/src/catalog-data.ts";
-import { CardFace, FACE_ASPECT, TEXT_TIER_MAX, faceModel } from "../../../apps/web/src/cards/index.ts";
+import { CardFace, FACE_ASPECT, POWER_WORDS, TEXT_TIER_MAX, faceModel, type FaceModel } from "../../../apps/web/src/cards/index.ts";
 import { FIT_FLOOR_PX } from "../../../apps/web/src/cards/constants.ts";
 import { CatalogContext, lookupFromDefs } from "../../../apps/web/src/game/catalog.ts";
 import Game from "../../../apps/web/src/game/Game.tsx";
-import { fullBoardView, pendingFor } from "../../../apps/web/src/test/fixtures.ts";
+import { baseView, card, emptySide, fullBoardView, fusedDef, pendingFor } from "../../../apps/web/src/test/fixtures.ts";
 
 type CardDef = (typeof CATALOG)[string];
 
@@ -385,6 +389,146 @@ describe("a card option in a prompt draws the card's face across its box", () =>
           expect(drawn.width, `${label} face width`).to.be.at.least(box.width - 12);
           expect(drawn.right, `${label} inside its box`).to.be.at.most(box.right + 0.5);
           expect(face.querySelector(".card-name")?.textContent ?? "", `${label} is named`).to.not.eq("");
+        }
+      });
+    });
+  }
+});
+
+/* ------------------------------------------------------------------- faces in play, §10.10 */
+
+// A face in play prints the card as the view says it stands, which can be text no catalog face
+// has: a fused card's ingredients a line each (R102), a Heroic Power's one rolled power (R43), ???
+// for Call to Chaos, a Vanilla unit's note and the keywords it kept. Each must fit its boxes as
+// B15's catalog faces do, and a fused card's lines must really break.
+describe("faces in play fit their boxes (SPEC §10.10)", () => {
+  function catalogDef(id: string): CardDef {
+    const found = CATALOG[id];
+    if (found === undefined) throw new Error(`no ${id} in the catalog`);
+    return found;
+  }
+
+  type Entry = { key: string; face: FaceModel };
+
+  const fusedPair = fusedDef([catalogDef("core-011"), catalogDef("core-020")], 1);
+  const crafted = fusedDef([catalogDef("core-002"), catalogDef("core-012"), catalogDef("core-053")], 2);
+  const heroic = catalogDef("core-098");
+  const ENTRIES: readonly Entry[] = [
+    { key: "fused-base", face: faceModel({ defId: fusedPair.id, def: fusedPair, radiant: false, inPlay: {} }) },
+    { key: "fused-radiant", face: faceModel({ defId: fusedPair.id, def: fusedPair, radiant: true, inPlay: {} }) },
+    { key: "crafted", face: faceModel({ defId: crafted.id, def: crafted, radiant: false, liveCost: 0, inPlay: {} }) },
+    ...Object.keys(POWER_WORDS).flatMap((name) =>
+      [false, true].map((radiant) => ({
+        key: `power-${name}-${String(radiant)}`,
+        face: faceModel({ defId: heroic.id, def: heroic, radiant, liveCost: 3, inPlay: { power: { name, x: 3 } } }),
+      })),
+    ),
+    { key: "chaos", face: faceModel({ defId: "core-095", def: catalogDef("core-095"), radiant: true, inPlay: {} }) },
+    {
+      key: "vanilla",
+      face: faceModel({
+        defId: "core-056",
+        def: catalogDef("core-056"),
+        radiant: false,
+        live: { attack: 3, health: 2, maxHealth: 2, keywords: [{ kind: "Poisonous" }, { kind: "Taunt" }, { kind: "Armor", n: 1 }] },
+        inPlay: { vanilla: true },
+      }),
+    },
+  ];
+
+  function InPlayGrid({ width }: { width: number }) {
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 8, padding: 8 }}>
+        {ENTRIES.map((entry) => (
+          <div key={entry.key} data-fit-box={entry.key} style={{ width, height: heightFor(width), flex: "none" }}>
+            <CardFace face={entry.face} layout="full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  for (const box of FIT_BOXES) {
+    it(`every face in play keeps its name and text inside their boxes at ${box.width}px`, () => {
+      cy.mount(<InPlayGrid width={box.width} />);
+      cy.get("[data-fit-box] > .cf").should("have.length", ENTRIES.length);
+      cy.document({ log: false, timeout: SETTLE_TIMEOUT_MS }).should((doc) => {
+        const problems: string[] = [];
+        for (const entry of ENTRIES) {
+          const cf = doc.querySelector<HTMLElement>(`[data-fit-box="${entry.key}"] > .cf`);
+          if (cf === null) {
+            problems.push(`${entry.key}: no face`);
+            continue;
+          }
+          for (const selector of [".card-name", ".card-text"]) {
+            const el = cf.querySelector<HTMLElement>(selector);
+            if (el === null) {
+              problems.push(`${entry.key}: no ${selector}`);
+              continue;
+            }
+            if (el.clientWidth === 0 || el.clientHeight === 0) problems.push(`${entry.key}: ${selector} has no box`);
+            if (selector === ".card-text" && el.getAttribute("data-clamped") === "true") {
+              const px = parseFloat(getComputedStyle(el).fontSize);
+              if (px < FIT_FLOOR_PX - 0.05) problems.push(`${entry.key}: clamped text at ${px.toFixed(2)}px`);
+              continue;
+            }
+            if (el.scrollHeight > el.clientHeight + 1) problems.push(`${entry.key}: ${selector} overflows its height`);
+            if (el.scrollWidth > el.clientWidth + 1) problems.push(`${entry.key}: ${selector} overflows its width`);
+          }
+          if (cf.querySelector(".card-name")?.textContent !== entry.face.name) problems.push(`${entry.key}: wrong name`);
+        }
+        expect(problems, `faces in play at ${box.width}px`).to.deep.equal([]);
+      });
+    });
+  }
+
+  it("a fused card's text breaks a line per ingredient", () => {
+    cy.mount(<InPlayGrid width={270} />);
+    cy.get('[data-fit-box="fused-base"] .cf-text-base').should(($text) => {
+      const el = $text[0];
+      expect(el, "the fused rules text").to.not.eq(undefined);
+      if (el === undefined) return;
+      const style = getComputedStyle(el);
+      expect(style.whiteSpace).to.eq("pre-line");
+      // Two ingredients, two lines at least: the box is taller than one line of its own text.
+      expect(el.getBoundingClientRect().height).to.be.greaterThan(parseFloat(style.lineHeight) * 1.5);
+    });
+  });
+
+  for (const viewport of VIEWPORTS) {
+    const where = `${viewport.label} ${viewport.width}x${viewport.height}`;
+    it(`R247 #82's Discover draws three numbers inside their options, with no face, at ${where}`, () => {
+      cy.viewport(viewport.width, viewport.height);
+      const view = baseView({
+        you: emptySide("p1", { hand: [card({ instanceId: "h1", defId: "core-002" })] }),
+        opponent: emptySide("p2", { hand: { count: 3 } }),
+        pending: pendingFor(
+          "discover",
+          ["7", "42", "100"].map((n) => ({ key: `mode:${n}`, label: n })),
+          { prompt: "KY's Trial: Discover a number from 1 to 100" },
+        ),
+      });
+      cy.mount(
+        <CatalogContext.Provider value={lookupFromDefs(CATALOG)}>
+          <div className="app-shell app-shell--wide">
+            <Game view={view} legal={[]} onAction={() => undefined} />
+          </div>
+        </CatalogContext.Provider>,
+      );
+      cy.document({ log: false }).should((doc) => {
+        const options = [...doc.querySelectorAll<HTMLElement>("[data-number]")];
+        expect(options.map((option) => option.getAttribute("data-number"))).to.deep.equal(["7", "42", "100"]);
+        for (const option of options) {
+          expect(option.querySelector(".cf"), "no face").to.eq(null);
+          const value = option.querySelector<HTMLElement>(".prompt-number-value");
+          expect(value, "a number").to.not.eq(null);
+          if (value === null) continue;
+          const box = option.getBoundingClientRect();
+          const drawn = value.getBoundingClientRect();
+          expect(drawn.width, "the number has a box").to.be.greaterThan(0);
+          expect(drawn.left).to.be.at.least(box.left - 0.5);
+          expect(drawn.right).to.be.at.most(box.right + 0.5);
+          expect(parseFloat(getComputedStyle(value).fontSize), "legible").to.be.at.least(18);
         }
       });
     });
