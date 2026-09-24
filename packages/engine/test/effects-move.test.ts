@@ -8,6 +8,7 @@ import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { HAND_CAP, HERO_HEALTH } from "../src/config";
 import { damage } from "../src/effects";
 import { bounce, counter, discard, discardRandom, exile } from "../src/effects/move";
+import { giftedMakesRadiant } from "../src/playChoices";
 import { makeContext } from "../src/resolve";
 import { createRng } from "../src/rng";
 import type { CardScripts, Effect, Script } from "../src/script";
@@ -43,12 +44,14 @@ function unitDefOf(name: string, overrides: Partial<CardDef> = {}): CardDef {
 
 /** A unit with both a Cry and a Death hook: Exile and Counter must fire neither. */
 const noisy = unitDefOf("noisy");
+/** A permanent carrying #64 Gifted Program's static flag (threshold 1), for R213's count. */
+const gifted = unitDefOf("gifted");
 /** A unit-token card that can sit in a hand (#75), for R11's "leaves that zone" clause. */
 const handToken: CardDef = { ...tokenDef("rush"), id: "mv-hand-token", index: "T-hand" };
 
 const rushToken = tokenDef("rush");
 
-const DEFS: CardDef[] = [noisy, handToken];
+const DEFS: CardDef[] = [noisy, gifted, handToken];
 
 function both(script: Script): CardScripts {
   return { base: script, radiant: script };
@@ -59,6 +62,7 @@ const SCRIPTS: Record<string, CardScripts> = {
     cry: () => [damage({ to: { of: "enemyHero" }, amount: 4 })],
     death: () => [damage({ to: { of: "enemyHero" }, amount: 6 })],
   }),
+  [gifted.id]: both({ staticFlags: { giftedProgram: 1 } }),
 };
 
 /** A fresh game whose catalog and script registry also carry this file's fixtures. */
@@ -385,6 +389,27 @@ describe("counter (§6.3, M3-T1)", () => {
     expect(side.turnLog.playedIds).toEqual([]);
     expect(side.turnLog.cardsPlayed).toBe(0);
     expect(state.counters.played).toBe(0);
+  });
+
+  it("R213 a countered play takes back what it paid, so the next cheap card is still Gifted Program's first", () => {
+    const state = game();
+    put(state, gifted.id, slot("p1", "units", 1));
+    const [earlier] = inHand(state, noisy.id, "p1");
+    const [card] = inHand(state, noisy.id, "p1");
+    // What §10.5 step 4 logs for a 3-cost play and then a 1-cost one, before a Counter cancels the
+    // second: the turn log keeps what each play paid beside its id (R213).
+    const side = state.players.p1;
+    side.turnLog.playedIds.push(earlier?.id ?? "", card?.id ?? "");
+    side.turnLog.costsPaid = [3, 1];
+    side.turnLog.cardsPlayed = 2;
+    state.counters.played = 2;
+    expect(giftedMakesRadiant(state, "p1", 1)).toBe(false);
+
+    run(state, counter({ target: chosen }), card);
+
+    expect(side.turnLog.playedIds).toEqual([earlier?.id]);
+    expect(side.turnLog.costsPaid).toEqual([3]);
+    expect(giftedMakesRadiant(state, "p1", 1)).toBe(true);
   });
 
   it("§6.3 counters a card that is already resolving", () => {

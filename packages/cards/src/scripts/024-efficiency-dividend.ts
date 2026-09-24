@@ -41,11 +41,20 @@ const MODE_MANA = "mana";
 const modes: ModeDecl[] = [{ kind: "mode", options: [MODE_DAMAGE, MODE_HEAL, MODE_MANA] }];
 
 /**
- * R81: the target travels with the play. `min: 0` because the mana mode names no target, and §8's
- * Conventions make an unnamed or empty target a fizzle rather than an illegal play.
+ * R81: the target travels with the play. It is the damage and heal modes' target alone
+ * (`forModes`): §8's Conventions have "a target" picked from every legal unit and hero, and only an
+ * EMPTY set lets the effect fizzle — a hero always stands, so those two modes always name one, while
+ * the mana mode names none at all (R90). With `min: 0` for every mode, a damage or heal play could
+ * name nobody and pay its X for nothing.
  */
 const targets: TargetDecl[] = [
-  { kind: "target", min: 0, max: 1, filter: { side: "any", of: ["unit", "hero"] } },
+  {
+    kind: "target",
+    min: 1,
+    max: 1,
+    filter: { side: "any", of: ["unit", "hero"] },
+    forModes: [MODE_DAMAGE, MODE_HEAL],
+  },
 ];
 
 function amountX(ctx: EffectContext, bonus: number): number {

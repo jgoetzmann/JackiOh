@@ -23,9 +23,11 @@ import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
-import { runTrapWindow } from "./traps";
-import { cardsInTriggerOrder, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
-import { owe, registerWorkHandler } from "./work";
+import { registerDeclarationCheck, runTrapWindow } from "./traps";
+import { cardsInTriggerOrder, dispatchPending, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
+import { moveSourcedModifiers } from "./modifiers";
+import { exitMark, leftFieldAfter, movesIn, type LaterMoves } from "./stays";
+import { owe, paused as isPaused, registerWorkHandler } from "./work";
 import { activeUnitsOf, adjacent, cardAt, slotOf } from "./zones";
 
 /**
@@ -68,10 +70,29 @@ export function hasExertion(unit: CardInstance, kind: ExertionKind): boolean {
 
 /**
  * §4.1: a unit that entered the field this turn is summoning sick. A unit that enters again, a
- * Reborn body included, entered it on that turn like any other (R83), so this is the one comparison.
+ * Reborn body included, entered it on that turn like any other (R83), and so does a unit whose
+ * controller changed this turn (R171, through `enterNewSide` below), so this is the one comparison.
  */
 export function isSick(state: GameState, unit: CardInstance): boolean {
   return unit.summonedTurn === state.turn;
+}
+
+/**
+ * R171: a card whose controller changes has entered its new controller's side on this turn — §4.1's
+ * "entered the field" for `isSick`, and a fresh exertion for its new controller. Every path that
+ * changes control on the field calls this at the moment it emits `controlChanged`, for every card
+ * that changes sides (a card dormant under a Stack and a backrow card included), and for nothing
+ * else: a card moving along its own side has not entered anything.
+ *
+ * `from` is the controller the card had before. A player modifier a permanent installed and still
+ * owns (#79 Twinspell's "the next Spell you play gains Echo +1", `sourceId`) is that permanent's
+ * lasting effect (§5.1), and §8's conventions read its "you" as the controller, so it follows the
+ * card to its new side rather than staying with the player it left.
+ */
+export function enterNewSide(sink: EngineSink, card: CardInstance, from: PlayerId): void {
+  card.summonedTurn = sink.state.turn;
+  card.exertion = { attacked: false, switched: false };
+  moveSourcedModifiers(sink, card.id, from, card.controller);
 }
 
 /**
@@ -373,11 +394,24 @@ function withholdFromFrontier(sink: SettleSink, at: number): void {
  * replaces with the window, so calling `dispatchEvent` itself would offer the event to the traps a
  * second time. Queueing only reads the board, so it cannot pause, and the entries pop in the
  * caller's own resolution loop — after the combat, exactly where they popped before step 4 existed.
+ *
+ * R212, as `dispatchEvent` reads it: the board is read after the window, which can have moved it, so
+ * the events the window emitted since the declaration say how. A card that moved zones since — a
+ * unit a trap in the window summoned, a Reborn body, anything My Pawn's AI turn put on the field — is
+ * on a stay that did not see the declaration and does not answer it (R174), and a card whose
+ * controller changed since — a unit a trap in the window stole — answers for the player who
+ * controlled it when the attack was declared (R171).
  */
-function queueDeclarationTriggers(sink: EngineSink, event: GameEvent): void {
+function queueDeclarationTriggers(sink: EngineSink, event: GameEvent, since: readonly GameEvent[]): void {
+  let later: LaterMoves | null = null;
   for (const holder of cardsInTriggerOrder(sink.state)) {
     if (holder.isTrap) continue;
-    for (const def of triggersOnEvent(holder, event.type)) queueTrigger(sink, holder, def, event);
+    const defs = triggersOnEvent(holder, event.type);
+    if (defs.length === 0) continue;
+    later ??= movesIn(since);
+    if (later.moved.has(holder.card.id)) continue;
+    const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
+    for (const def of defs) queueTrigger(sink, { ...holder, controller }, def, event);
   }
 }
 
@@ -411,8 +445,40 @@ function closeWindow(state: GameState, id: string): DeclaredAttack | null {
 }
 
 /**
+ * R220: whether a declaration still stands as it was declared, which §4.2 step 5 asks before it
+ * resolves anything and the traps later in the window ask before they answer it (`traps.ts`).
+ *
+ * §4.2 step 2 makes an attack "an enemy unit, or the enemy hero", and a trap in step 4's window can
+ * change that before step 5: destroy the attacker or its target, steal either, swap the boards. The
+ * attack is aimed at the stays that were declared (R174), so an attacker or a target that has left
+ * the field is gone even when a Reborn body stands in its zone — a new arrival, summoning sick
+ * (R83), which declared nothing. The attacker must still be the declarer's: p1 declared the attack,
+ * and a unit p2 now controls is not p1's to attack with. And the target must still be the
+ * attacker's enemy (R173 says the same of a forced attack). Otherwise the attack is over, like one
+ * My Pawn cancelled: no combat, and the exertion stays spent (R44). Hearthstone cancels an attack
+ * whose attacker or defender has left play.
+ */
+export function declaredAttackStands(state: GameState, open: DeclaredAttack): boolean {
+  if (open.cancelled) return false;
+  const mark = open.exitsFrom ?? exitMark(state);
+  const attacker = findInstance(state, open.attackerId);
+  if (attacker === undefined || !isActiveOnField(state, attacker)) return false;
+  if (leftFieldAfter(state, mark, attacker.id)) return false;
+  if (open.by !== undefined && attacker.controller !== open.by) return false;
+  const target = attackTargetOf(state, open.targetId);
+  if (target === null) return false;
+  if (target.kind === "unit") {
+    if (!isActiveOnField(state, target.instance)) return false;
+    if (leftFieldAfter(state, mark, target.instance.id)) return false;
+  }
+  return isEnemyOf(attacker, target);
+}
+
+registerDeclarationCheck(declaredAttackStands);
+
+/**
  * §4.2 step 5, once step 4's window has closed: resolve the combat the declaration still owes, then
- * run the state check.
+ * run the state check — when the declaration still stands (R220).
  *
  * The attacker and the target are read back out of `state.declaredAttack` by id rather than from
  * the caller's own variables, because the window can have replaced every instance in the state:
@@ -432,6 +498,7 @@ function resolveDeclaredAttack(sink: EngineSink, id: string): void {
   const open = closeWindow(state, id);
   if (open === null || open.cancelled) return;
   if (state.result !== null) return;
+  if (!declaredAttackStands(state, open)) return;
 
   const attacker = findInstance(state, open.attackerId);
   if (attacker === undefined) return;
@@ -442,10 +509,36 @@ function resolveDeclaredAttack(sink: EngineSink, id: string): void {
   stateCheck(sink);
 }
 
-/** `work.ts`'s handler for a parked attack: the same attack, continued where it stopped (R113). */
+/**
+ * §10.3, §4.2 step 4: the traps answer what the window did before step 5. A trap in the window is an
+ * effect like any other, so its events — the hit it dealt the attacker, the unit it summoned — reach
+ * the traps at once, and a trap answering them fires and resolves inside step 4, before any damage of
+ * the attack: one that destroys the hit attacker leaves no attacker for step 5 (R220). The ordinary
+ * triggers they wake are queued behind the declaration's and wait for the loop after the combat, as
+ * they did before. A trap that asks here pauses step 4 again, and the combat stays owed behind its
+ * answer (R113). False when the combat must not resolve now.
+ */
+function windowAnswered(sink: EngineSink, id: string): boolean {
+  dispatchPending(sink as SettleSink);
+  if (sink.state.result !== null) {
+    closeWindow(sink.state, id);
+    return false;
+  }
+  if (sink.state.pending !== null) {
+    oweDeclaredAttack(sink, id);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * `work.ts`'s handler for a parked attack: the same attack, continued where it stopped (R113) — the
+ * window's own events answered first, the answer's included (`windowAnswered`).
+ */
 function runOwedAttack(sink: EngineSink, item: WorkItem): void {
   const id: unknown = item.resume.data.declaredAttack;
   if (typeof id !== "string") return;
+  if (!windowAnswered(sink, id)) return;
   resolveDeclaredAttack(sink, id);
 }
 
@@ -487,6 +580,9 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
     attackerId: attacker.id,
     targetId,
     cancelled: false,
+    // R220: whose attack it is, and the stays it was declared on.
+    by: attacker.controller,
+    exitsFrom: exitMark(state),
   };
   state.nextSeq += 1;
   state.declaredAttack = declared;
@@ -498,7 +594,7 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
 
   // Step 4's second sentence: the traps answer the declaration, before any damage.
   runTrapWindow(sink, event);
-  queueDeclarationTriggers(sink, event);
+  queueDeclarationTriggers(sink, event, sink.events.slice(at + 1));
 
   if (state.result !== null) {
     // The window ended the game; there is no step 5 and nothing to resume into.
@@ -510,6 +606,7 @@ export function declareAttack(sink: EngineSink, attacker: CardInstance, target: 
     return {};
   }
 
+  if (!windowAnswered(sink, declared.id)) return {};
   resolveDeclaredAttack(sink, declared.id);
   return {};
 }
@@ -540,6 +637,11 @@ export function forceAttack(sink: EngineSink, attacker: CardInstance, target: At
   if (state.result !== null) return;
   if (!isActiveOnField(state, attacker)) return;
   if (target.kind === "unit" && !isActiveOnField(state, target.instance)) return;
+  // R173: the compulsion waives position, sickness and Taunt (R53), never whose side the target is
+  // on. A target that is not this attacker's enemy — it changed sides mid-run, or had crossed to
+  // the attacker's side before the run began — is not attacked, and the attacker is passed over in
+  // silence, as R96 passes over one that is gone.
+  if (!isEnemyOf(attacker, target)) return;
 
   sink.events.push({
     type: "attackDeclared",
@@ -552,15 +654,92 @@ export function forceAttack(sink: EngineSink, attacker: CardInstance, target: At
   stateCheck(sink);
 }
 
+/** §4.2 step 2: an attack is made on an enemy unit or the enemy hero, forced or not (R173). */
+function isEnemyOf(attacker: CardInstance, target: AttackTarget): boolean {
+  const enemy = opponentOf(attacker.controller);
+  return target.kind === "hero" ? target.player === enemy : target.instance.controller === enemy;
+}
+
 /**
  * R53: the named units attack the named target one at a time, in the order given (lane order, as
  * `activeUnitsOf` reports it), each its own combat with its own state check, and the sequence stops
- * as soon as the target is no longer on the field.
+ * as soon as the target is no longer on the field — and R174 has a target that left and came back
+ * (a Reborn body) count as gone, since what is standing there now is a new arrival (R83). The same
+ * holds for each attacker the run named: one that died in an earlier combat of the run and came back
+ * through Reborn before its turn is not the unit the run named, so it is passed over in silence like
+ * any attacker that is gone (R96).
  */
-export function forceAttacksOn(sink: EngineSink, attackers: readonly CardInstance[], target: AttackTarget): void {
-  for (const attacker of attackers) {
+export function forceAttacksOn(
+  sink: EngineSink,
+  attackers: readonly CardInstance[],
+  target: AttackTarget,
+  since = exitMark(sink.state),
+): void {
+  for (let at = 0; at < attackers.length; at += 1) {
+    const attacker = attackers[at];
+    if (attacker === undefined) continue;
     if (sink.state.result !== null) return;
-    if (target.kind === "unit" && !isActiveOnField(sink.state, target.instance)) return;
+    if (target.kind === "unit") {
+      if (!isActiveOnField(sink.state, target.instance)) return;
+      if (leftFieldAfter(sink.state, since, target.instance.id)) return;
+    }
+    // R53, R113: the check after the last combat collected a unit whose Death asks something, and
+    // that check belongs to that combat (R59). The run waits for the answer rather than walking on
+    // over the prompt: the attackers still to come are owed, and the answer's drain brings them.
+    if (isPaused(sink)) {
+      oweForcedRun(sink, attackers.slice(at), target, since);
+      return;
+    }
+    if (leftFieldAfter(sink.state, since, attacker.id)) continue;
     forceAttack(sink, attacker, target);
   }
 }
+
+/**
+ * R113: the `resume.hook` of a forced run a Death hook's prompt stopped between two combats: the
+ * attackers it has not reached and the target, by id, since R44's AI turn can replace every
+ * instance before the answer (the same reason `ATTACK_WINDOW_WORK` carries ids).
+ */
+export const FORCED_RUN_WORK = "@forcedRun";
+
+type OwedForcedRun = { attackers: string[]; target: { unit: string } | { hero: PlayerId }; since?: number };
+
+/**
+ * Park the rest of a run at the pause, with the mark it began at, so the answer's own departures
+ * count against the stays the run named too (R174).
+ */
+function oweForcedRun(sink: EngineSink, rest: readonly CardInstance[], target: AttackTarget, since: number): void {
+  if (sink.state.result !== null) return;
+  if (target.kind === "unit" && leftFieldAfter(sink.state, since, target.instance.id)) return;
+  const attackers = rest.filter((unit) => !leftFieldAfter(sink.state, since, unit.id)).map((unit) => unit.id);
+  if (attackers.length === 0) return;
+  const owed: OwedForcedRun = {
+    attackers,
+    target: target.kind === "unit" ? { unit: target.instance.id } : { hero: target.player },
+    since,
+  };
+  owe(sink, { defId: "", hook: FORCED_RUN_WORK, step: "run", radiant: false, data: { run: owed } });
+}
+
+/** `work.ts`'s handler for a forced run a prompt stopped: the same run, where it stopped (R53). */
+function runOwedForcedRun(sink: EngineSink, item: WorkItem): void {
+  const raw: unknown = item.resume.data.run;
+  if (raw === null || typeof raw !== "object") return;
+  const owed = raw as Partial<OwedForcedRun>;
+  if (!Array.isArray(owed.attackers) || owed.target === undefined) return;
+  let target: AttackTarget;
+  if ("unit" in owed.target) {
+    const instance = findInstance(sink.state, owed.target.unit);
+    if (instance === undefined) return;
+    target = { kind: "unit", instance };
+  } else {
+    target = { kind: "hero", player: owed.target.hero };
+  }
+  const attackers = owed.attackers.flatMap((id) => {
+    const unit = typeof id === "string" ? findInstance(sink.state, id) : undefined;
+    return unit === undefined ? [] : [unit];
+  });
+  forceAttacksOn(sink, attackers, target, typeof owed.since === "number" ? owed.since : exitMark(sink.state));
+}
+
+registerWorkHandler(FORCED_RUN_WORK, runOwedForcedRun);

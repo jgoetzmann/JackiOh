@@ -300,6 +300,12 @@ export type CodeStore = {
   /** §9.4 step 4: the attempt is logged either way. Written by `Store.redeem`. */
   logAttempt: (attempt: CodeAttempt) => Promise<void>;
   countAttemptsByProfile: (profileId: string, since: number) => Promise<number>;
+  /**
+   * When this profile's oldest attempt at or after `since` was made (epoch ms), or null when it
+   * made none. R192: `GET /api/codes/status` adds the window to it to say when an account that has
+   * used up §9.4 step 2's tries gets one back.
+   */
+  oldestAttemptAtByProfile: (profileId: string, since: number) => Promise<number | null>;
   countAttemptsByIp: (ipHash: string, since: number) => Promise<number>;
   /** §9.4: the server-side circuit breaker's input — system-wide failures in a window (R106). */
   countFailures: (since: number) => Promise<number>;
@@ -595,4 +601,10 @@ export type ServerDeps = {
    * both ways and keeps `src/api/**` free of the environment (see this file's header).
    */
   e2e?: boolean;
+  /**
+   * SPEC §11 R190: how many `X-Forwarded-For` entries, counted from the right, this deployment's own
+   * proxies wrote. Set by `src/index.ts` from `env.TRUSTED_PROXY_HOPS`; when absent the router uses
+   * `DEFAULT_TRUSTED_PROXY_HOPS`. 0 ignores the header and keys every request on its peer address.
+   */
+  trustedProxyHops?: number;
 };

@@ -57,8 +57,9 @@ describe("#26 Glowy Jelly Bean — base", () => {
     s.play("core-026", { targets: [{ pick: "instance", instanceId: chosen }] });
 
     expect(radiantHand(s.state)).toEqual([chosen]);
-    // It was already Radiant, so there is no second `radiantSet` for it.
-    expect(s.lastEvents.filter((event) => event.type === "radiantSet")).toHaveLength(0);
+    // It was already Radiant, so the flag is unchanged; the cue still goes out, because the card is
+    // hidden from the opponent and its absence would tell them its face (R177, R97).
+    expect(s.lastEvents.filter((event) => event.type === "radiantSet")).toHaveLength(1);
   });
 
   it("§8 conventions: an empty hand fizzles the pick and the spell still counts as played", () => {

@@ -7,6 +7,7 @@
 // single-card form uses. One implementation per move, so "bounce" can only ever mean one thing.
 
 import { addToHand } from "../draw";
+import { exileOnLanding } from "../echo";
 import { effectiveCost, isXCost } from "../mana";
 import { zoneCards } from "../query";
 import type { Effect, EffectContext } from "../script";
@@ -30,6 +31,12 @@ import {
  */
 function exileCard(ctx: EffectContext, card: CardInstance): void {
   if (card.zone.z === "exile") return;
+  // R178: a resolving Spell's "exile this" names where §10.5 step 7 sends it, so it stays itself
+  // until then — for the rest of its text and for its Echo repeats (§6.2) — and lands in exile.
+  if (card.zone.z === "resolving" && ctx.self?.id === card.id) {
+    exileOnLanding(card);
+    return;
+  }
 
   const moved = moveToZone(ctx.state, card, "exile");
   if (moved === "moved") ctx.state.counters.exiled += 1;
@@ -166,12 +173,13 @@ export function exileMatching(
     apply(ctx): void {
       const { zones, player, ...filter } = args;
       const owner = playerOf(ctx, player ?? "self");
-      for (const zone of zones ?? EXILE_ZONE_ORDER) {
-        for (const card of zoneCards(ctx.state, owner, zone)) {
-          if (!matchesCost(ctx, card, filter)) continue;
-          exileCard(ctx, card);
-        }
-      }
+      // R66: "every odd-cost card" is one set, read as the clause resolves — each card's cost per
+      // R65 at that moment — and then exiled a card at a time (R135). Read again after each exile, a
+      // cost that counts the exiles (#100 Ceaseless Void, R55) flipped its parity halfway through.
+      const matching = (zones ?? EXILE_ZONE_ORDER).flatMap((zone) =>
+        zoneCards(ctx.state, owner, zone).filter((card) => matchesCost(ctx, card, filter)),
+      );
+      for (const card of matching) exileCard(ctx, card);
     },
   };
 }
@@ -312,6 +320,10 @@ export function counter(args: { target?: TargetSpec } = {}): Effect {
       const side = ctx.state.players[card.controller];
       const at = side.turnLog.playedIds.lastIndexOf(card.id);
       if (at >= 0) {
+        // R213: what each play paid is logged beside its id, in the same order, so the countered
+        // play's cost goes with it — a countered cheap card was never Gifted Program's first.
+        const paid = side.turnLog.costsPaid;
+        if (paid !== undefined && paid.length === side.turnLog.playedIds.length) paid.splice(at, 1);
         side.turnLog.playedIds.splice(at, 1);
         side.turnLog.cardsPlayed = Math.max(0, side.turnLog.cardsPlayed - 1);
         ctx.state.counters.played = Math.max(0, ctx.state.counters.played - 1);

@@ -46,7 +46,9 @@ function returnToHand(ctx: EffectContext): Effect[] {
   if (self.zone.z !== "graveyard") return [];
   if (!wasPlayedThisTurn(ctx.state, self.owner, self)) return [];
   // R78: the +1 rides on the instance in every zone, so it is what the next play's Fib index reads.
-  return [setCostMod({ amount: 1 }), bounce({ target: { of: "self" } })];
+  // It is the price of the return, so it lands only on a card that reached the hand: a full hand
+  // burns the card back to the graveyard (§2.4, R4), which is no return at all.
+  return [bounce({ target: { of: "self" } }), setCostMod({ amount: 1, inHandOnly: true })];
 }
 
 /** R81: the target travels in the `play` action; "target" is any unit or hero (§8 Conventions). */

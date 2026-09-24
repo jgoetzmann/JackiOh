@@ -332,7 +332,7 @@ function signInThroughForm(email: string): void {
     cy.visit("/account");
 
     cy.get('[data-testid="account-email"]', { timeout: 40_000 }).should("contain.text", P1);
-    cy.get('[data-testid="account-status"]').should("contain.text", "active");
+    cy.get('[data-testid="account-status"]').should("have.attr", "data-status", "active");
     // Seeded accounts have played during these runs, so the record is real data off `results`.
     cy.get('[data-testid="account-rating"]').invoke("text").should("match", /^\d+$/);
     cy.get('[data-testid="account-record"]').invoke("text").should("match", /^\d+–\d+–\d+$/);

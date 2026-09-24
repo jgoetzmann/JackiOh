@@ -30,10 +30,19 @@
  *  - Supabase caveat worth naming: deleting a user does not invalidate tokens already issued.
  *    The admin lookup below turns an explicit "no such user" into a failed verification, and
  *    `profiles.status` (§9.4) remains the only authority on what an account may do.
+ *  - The same is true of ending a SESSION (R194). A signature and an unexpired `exp` prove only
+ *    that the provider issued the token; a sign-out, a link's session the client dropped, or a
+ *    password reset that signed other devices out ends the session at the provider, and its access
+ *    token is still well-signed for up to an hour. So a token that names its session
+ *    (`session_id`, which every Supabase access token carries) is checked against the provider
+ *    (`GET /auth/v1/user`, which refuses a token whose session is gone), and only the answer that
+ *    it is live is remembered, per session, for `AUTH_SESSION_LIVE_CACHE_SECONDS`. That one answer
+ *    is also the authoritative user, so it stands in for the admin lookup when it is fresh.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { AUTH_PROVIDER_TIMEOUT_SECONDS, AUTH_SESSION_LIVE_CACHE_SECONDS } from "../config";
 import { ApiError, ok, route, str, type Route } from "./http";
 import {
   systemTimers,
@@ -320,7 +329,27 @@ export function createRealClients(input: SupabaseAuthClientInput): SupabaseAuthC
 // The provider
 // ---------------------------------------------------------------------------
 
-type LocalClaims = { sub: string; email: string | null; appMetadata: Record<string, unknown> };
+type LocalClaims = {
+  sub: string;
+  email: string | null;
+  appMetadata: Record<string, unknown>;
+  /** The provider's session this token belongs to (`session_id`), when the token names one. */
+  sessionId: string | null;
+};
+
+/** What the provider said about a verified token's session (R194). */
+type SessionCheck =
+  /** It was live a moment ago (remembered); nothing new was learned about the user. */
+  | { kind: "remembered" }
+  /** Asked just now: live, and this is the authoritative user. */
+  | { kind: "live"; user: AuthApiUser }
+  /** The provider has ended the session (or the user): the token must not be honoured. */
+  | { kind: "ended" }
+  /** Nobody answered. The identity stands, as for R159's outage; see `verifyAccessToken`. */
+  | { kind: "unavailable" };
+
+/** Unit conversion, not configuration. */
+const MS_PER_SECOND = 1000;
 
 export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
   const baseUrl = trimTrailingSlash(input.url);
@@ -355,17 +384,23 @@ export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
   /** userId -> when its *confirmed* email was last read from the auth server. */
   const confirmed = new Map<string, { at: number; email: string | null }>();
 
+  /** session id -> when the provider last said that session is live (R194). Positives only. */
+  const liveSessions = new Map<string, number>();
+  const liveSessionTtlMs = AUTH_SESSION_LIVE_CACHE_SECONDS * MS_PER_SECOND;
+
   const verifyOptions = { issuer: authBase, audience: AUTHENTICATED_AUDIENCE };
 
   const claimsFrom = (payload: JWTPayload): LocalClaims | null => {
     const sub = payload.sub;
     if (typeof sub !== "string" || sub.length === 0) return null;
     const email = payload["email"];
+    const sessionId = payload["session_id"];
     return {
       sub,
       email: typeof email === "string" ? email : null,
       // `app_metadata` only. `user_metadata` is user-editable and is never read.
       appMetadata: asRecord(payload["app_metadata"]),
+      sessionId: typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null,
     };
   };
 
@@ -394,10 +429,11 @@ export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
   };
 
   /**
-   * Last-resort verification for a project that is still signing with a symmetric secret this
-   * server has not been given: ask the auth server itself. The `apikey` header is the publishable
-   * key when one is configured, otherwise the secret key — both are Supabase's own credentials
-   * and neither is ever echoed back to a caller.
+   * Ask the auth server who a token belongs to. Two callers: tier 3, the last-resort verification
+   * for a project still signing with a symmetric secret this server has not been given, and
+   * `checkSession` (R194), since the provider refuses a token whose session it has ended. The
+   * `apikey` header is the publishable key when one is configured, otherwise the secret key — both
+   * are Supabase's own credentials and neither is ever echoed back to a caller.
    */
   const fetchUserByToken = async (token: string): Promise<AdminLookup> => {
     let response: Response;
@@ -409,6 +445,9 @@ export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
           authorization: `Bearer ${token}`,
           accept: "application/json",
         },
+        // The session check (R194) sits in front of API requests: a provider that hangs must cost
+        // them a bounded wait, after which the answer is "unavailable" and the identity stands.
+        signal: AbortSignal.timeout(AUTH_PROVIDER_TIMEOUT_SECONDS * MS_PER_SECOND),
       });
     } catch {
       return { kind: "unavailable" };
@@ -452,6 +491,37 @@ export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
     return lookup;
   };
 
+  /**
+   * R194: is the session this verified token names still live at the provider? Asked of
+   * `GET /auth/v1/user` with the token itself, which the provider refuses once the session (or the
+   * user) is gone. Only a live answer is remembered, per session, so a session ended at the
+   * provider is refused here within `AUTH_SESSION_LIVE_CACHE_SECONDS`.
+   */
+  const checkSession = async (sessionId: string, sub: string, token: string): Promise<SessionCheck> => {
+    const at = liveSessions.get(sessionId);
+    if (at !== undefined && now() - at < liveSessionTtlMs) return { kind: "remembered" };
+
+    const lookup = await fetchUserByToken(token);
+    if (lookup.kind === "unavailable") return { kind: "unavailable" };
+    // `/user` answers for the token's own user; any other id is the provider misbehaving, and a
+    // token is never honoured on someone else's answer.
+    if (lookup.kind === "missing" || lookup.user.id !== sub) {
+      liveSessions.delete(sessionId);
+      return { kind: "ended" };
+    }
+
+    const checkedAt = now();
+    // Forget sessions whose answer has lapsed, so the map holds only the recently active ones.
+    for (const [id, seen] of liveSessions) {
+      if (checkedAt - seen >= liveSessionTtlMs) liveSessions.delete(id);
+    }
+    liveSessions.set(sessionId, checkedAt);
+    // The same answer is R159's authoritative user: a confirmed email is remembered as the admin
+    // lookup's would be.
+    if (isEmailConfirmed(lookup.user)) confirmed.set(sub, { at: checkedAt, email: lookup.user.email ?? null });
+    return { kind: "live", user: lookup.user };
+  };
+
   const requirePasswordClient = (): PasswordAuthClient => {
     const password = lazyClients().password;
     if (password === null) throw new ApiError("unavailable", PASSWORD_PATH_DISABLED_MESSAGE);
@@ -469,6 +539,23 @@ export function createSupabaseAuth(input: SupabaseAuthInput): AuthProvider {
       if (claims === null && hsKey !== null) claims = await verifyAgainstSecret(token, hsKey);
 
       if (claims !== null) {
+        if (claims.sessionId !== null) {
+          const session = await checkSession(claims.sessionId, claims.sub, token);
+          // Ended at the provider (a sign-out, a dropped link, a reset elsewhere): not valid.
+          if (session.kind === "ended") return null;
+          if (session.kind === "live") {
+            const authoritative = toAuthUser(session.user);
+            return {
+              userId: claims.sub,
+              email: authoritative.email ?? claims.email,
+              emailVerified: authoritative.emailVerified,
+              appMetadata: claims.appMetadata,
+            };
+          }
+          // `remembered` or `unavailable`: the admin lookup below decides the email. A provider
+          // that cannot be reached does not sign every player out (sign-in is down with it); the
+          // identity stands, and the email counts as unverified unless it was already known (R159).
+        }
         const lookup = await authoritativeUser(claims.sub);
         // The auth server says this user no longer exists: not currently valid.
         if (lookup.kind === "missing") return null;

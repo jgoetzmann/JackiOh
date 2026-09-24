@@ -7,13 +7,16 @@
 //   heal and not "lose health" (R18), so there is no pipeline and no armor step: the only event is
 //   `swapped` (§10.3).
 // - Board: zone contents change sides lane by lane, in both rows of §3.1. A swapped card never
-//   leaves the field, so R78's reset never runs and its damage, buffs, counters, position and
-//   summoning sickness all come along, exactly as a rotated card's do (R14). `controller` changes
-//   because every destination is on the other side of the centre line; `owner` does not (R12), so
-//   the card still goes to its owner's hand, library, graveyard or exile when it later leaves the
-//   field. Locks are zone flags, so they stay with their zones and never travel with a card (R73,
-//   §3.2). A face-down trap stays face-down and is readable by its new controller only: `viewFor`
-//   keys that on `controller`, so `faceUp` is deliberately untouched here (R33).
+//   leaves the field, so R78's reset never runs and its damage, buffs, counters and position all
+//   come along, exactly as a rotated card's do (R14). `controller` changes because every
+//   destination is on the other side of the centre line, and that is an entry (R171): every card
+//   that lands, a dormant Stack card and a backrow card included, takes this turn as its
+//   `summonedTurn` and a fresh exertion, so the units a player receives are summoning sick for the
+//   rest of the turn. `owner` does not change (R12), so the card still goes to its owner's hand,
+//   library, graveyard or exile when it later leaves the field. Locks are zone flags, so they stay
+//   with their zones and never travel with a card (R73, §3.2). A face-down trap stays face-down and
+//   is readable by its new controller only: `viewFor` keys that on `controller`, so `faceUp` is
+//   deliberately untouched here (R33).
 // - Library: the two piles change places whole and keep their order, so the card on top of a
 //   library is still the next draw. Every swapped card's owner becomes the player whose library now
 //   holds it — the one exception in R12 (R73). Fatigue is player state, not library state (§2.4),
@@ -21,6 +24,7 @@
 
 import type { PlayerId, Row } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
+import { enterNewSide } from "../combat";
 import { addToHand } from "../draw";
 import type { Effect, EffectContext } from "../script";
 import type { CardInstance, GameState } from "../state";
@@ -167,11 +171,14 @@ function swapBoardNow(ctx: EffectContext): void {
       continue;
     }
 
+    const before = entry.cards.map((card) => card.controller);
     placeContents(state, entry.cards, entry.to);
 
     // Every destination is on the other side, so every card that landed changed controller (R73),
-    // dormant Stack cards included: they are in the zone and moved with it (§3.2).
-    for (const card of entry.cards) {
+    // dormant Stack cards included: they are in the zone and moved with it (§3.2). Each one has
+    // entered its new side (R171).
+    entry.cards.forEach((card, at) => {
+      enterNewSide(ctx, card, before[at] ?? card.owner);
       ctx.events.push({
         type: "controlChanged",
         instanceId: card.id,
@@ -179,7 +186,7 @@ function swapBoardNow(ctx: EffectContext): void {
         row: entry.to.row,
         lane: entry.to.lane,
       });
-    }
+    });
   }
 }
 
