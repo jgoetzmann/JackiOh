@@ -122,13 +122,17 @@ function leftFieldSince(ctx: EffectContext, instanceId: string): boolean {
  * on — a Reborn body the list's own sacrifice put back before it asked — and the answered step is
  * aimed at that stay however it names the card: as the chosen one, or by the id it read off the
  * selection, as a delayed effect that watches it (#50's shape), a steal, a Transform or a Make
- * Radiant by id do. Any other card is judged from when the run began (`ctx.exitsFrom`).
+ * Radiant by id do. A card the event a queued trigger answers names is judged from when that event
+ * happened (`ctx.eventStay`, R212): the played unit a trigger reads off its `cardPlayed` is not the
+ * Reborn body an earlier trigger on the same play made. Any other card is judged from when the run
+ * began (`ctx.exitsFrom`) — a card a trigger reads off the board as it resolves included.
  */
 function stayMarkOf(ctx: EffectContext, instanceId: string): number {
   const picked =
     ctx.chosenFrom !== undefined &&
     ctx.targets.some((selection) => selection.pick === "instance" && selection.instanceId === instanceId);
   if (picked && ctx.chosenFrom !== undefined) return ctx.chosenFrom;
+  if (ctx.eventStay !== undefined && ctx.eventStay.ids.includes(instanceId)) return ctx.eventStay.from;
   return ctx.exitsFrom ?? exitMark(ctx.state);
 }
 

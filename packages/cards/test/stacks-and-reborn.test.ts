@@ -10,6 +10,9 @@
 //  - Round 10 (lens "engine invariants"). R212, R119: a card that resumes as its pile's top did not
 //    see what happened while it lay dormant (§3.2, R153), so it answers neither the death that
 //    uncovered it nor the play that was resolving when it resumed.
+//  - The review of round 10. R212: that is kept against the one removal that uncovered it, so a
+//    later move of the card that left — exiled out of its graveyard — does not make the card that
+//    resumed long before miss what its batch did first.
 
 import {
   newInstance,
@@ -19,7 +22,7 @@ import {
   type CardInstance,
   type Script,
 } from "@jackioh/engine";
-import { damage } from "@jackioh/engine/effects";
+import { damage, exileMatching, sacrifice } from "@jackioh/engine/effects";
 import type { CardDef, GameEvent, Selection } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
@@ -237,5 +240,126 @@ describe("R212, R119: a card that resumes on top of its pile did not see what un
     const hits = g.lastEvents.filter((e) => e.type === "damage" && e.sourceId === watcher.id);
     expect(hits, JSON.stringify(g.lastEvents)).toEqual([]);
     expect(g.state.players.p2.hero.health).toBe(20);
+  });
+});
+
+/**
+ * A test-only unit on p1's side that deals 1 damage to the enemy hero whenever another source deals
+ * damage, so a firing is a `damage` event whose source is this card (and it never answers its own).
+ */
+function placeHitWatcher(g: Scenario, id: string, lane: number): CardInstance {
+  const script: Script = {
+    triggers: [
+      {
+        id: `${id}:on-damage`,
+        on: ["damage"],
+        run: (ctx) =>
+          ctx.event.type === "damage" && ctx.event.sourceId !== ctx.self?.id
+            ? [damage({ to: { of: "enemyHero" }, amount: 1 })]
+            : [],
+      },
+    ],
+  };
+  const face = { attack: 1, health: 5, keywords: [], text: "Whenever another source deals damage, deal 1 to the enemy hero" };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Unit",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  g.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+  const card = newInstance(g.state, id, "p1", { z: "hand", player: "p1" });
+  if (!placeOnField(g.state, card, { player: "p1", row: "units", lane })) throw new Error("could not place the watcher");
+  card.summonedTurn = 0;
+  return card;
+}
+
+/** A test-only 0-cost Spell in p1's hand whose Cry is `cry`. */
+function spellInHand(g: Scenario, id: string, cry: Script["cry"]): CardInstance {
+  const face = { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Spell",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  g.state.transientDefs[id] = def;
+  const script: Script = cry === undefined ? {} : { cry };
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+  const card = newInstance(g.state, id, "p1", { z: "hand", player: "p1" });
+  g.state.players.p1.hand.push(card);
+  return card;
+}
+
+describe("R212: a resume is kept against the removal that caused it, and no later move (§3.2, R153)", () => {
+  // Review of round 10: the note a pile top's removal leaves (`stays.noteUncovered`) was kept until
+  // that card next left the field, so every later move of the card that left — exiled out of its
+  // graveyard, discarded, shuffled back — read as the removal again, and the card that had resumed
+  // long before was taken for one that resumed after whatever the same batch did first.
+  it("R212 a card that resumed under a Stack answers a later hit even when the same list then exiles the card that uncovered it from the graveyard", () => {
+    const g = scenario({
+      p1: { hand: [FIENDER, HIT_JOB], mana: 4 },
+      p2: { field: ["core-011"], health: 20 },
+    });
+    const watcher = placeHitWatcher(g, "fixture:r11-hit-watcher", 1);
+    const fiender = g.card(FIENDER);
+    g.play(fiender, { zone: 1 });
+    g.play(HIT_JOB, { targets: at(fiender) });
+    // The Fiender died on top of the watcher, which resumed then and answered nothing of it.
+    expect(g.unit("p1", 1)?.id).toBe(watcher.id);
+    expect(g.state.players.p2.hero.health).toBe(20);
+
+    // A later action: a Spell hits p2's hero, then exiles p1's graveyard, the Fiender with it. The
+    // watcher has stood on top since the last action, so it saw the hit; the exile is a move out of a
+    // graveyard, not the death that uncovered it.
+    const spell = spellInHand(g, "fixture:r11-hit-then-exile", () => [
+      damage({ to: { of: "enemyHero" }, amount: 1 }),
+      exileMatching({ zones: ["graveyard"] }),
+    ]);
+    g.play(spell);
+    expect(g.lastEvents.some((e) => e.type === "exiled" && e.instanceId === fiender.id)).toBe(true);
+    const hits = g.lastEvents.filter((e) => e.type === "damage" && e.sourceId === watcher.id);
+    expect(hits, JSON.stringify(g.lastEvents)).toHaveLength(1);
+    expect(g.state.players.p2.hero.health).toBe(18);
+  });
+
+  it("R212 a card still dormant when a hit landed does not answer it, though the same list then kills the card above it and exiles that card from the graveyard", () => {
+    const g = scenario({
+      p1: { hand: [FIENDER], mana: 4 },
+      p2: { field: ["core-011"], health: 20 },
+    });
+    const watcher = placeHitWatcher(g, "fixture:r11-dormant-watcher", 1);
+    const fiender = g.card(FIENDER);
+    g.play(fiender, { zone: 1 });
+
+    // The hit lands while the watcher lies under the Fiender; the sacrifice uncovers it, and the
+    // exile then takes the Fiender on out of the graveyard before the loop reaches the hit. The
+    // watcher resumed after the hit, so it did not see it — the later exile changes nothing.
+    const spell = spellInHand(g, "fixture:r11-hit-sacrifice-exile", () => [
+      damage({ to: { of: "enemyHero" }, amount: 1 }),
+      sacrifice({ target: { of: "instance", instanceId: fiender.id } }),
+      exileMatching({ zones: ["graveyard"] }),
+    ]);
+    g.play(spell);
+    expect(g.unit("p1", 1)?.id).toBe(watcher.id);
+    expect(g.lastEvents.some((e) => e.type === "exiled" && e.instanceId === fiender.id)).toBe(true);
+    const hits = g.lastEvents.filter((e) => e.type === "damage" && e.sourceId === watcher.id);
+    expect(hits, JSON.stringify(g.lastEvents)).toEqual([]);
+    expect(g.state.players.p2.hero.health).toBe(19);
   });
 });

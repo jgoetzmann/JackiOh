@@ -1784,10 +1784,7 @@ describe("SPEC §11 R124–R125: hero Armor (M3 gate)", () => {
     expect(armoured.players.p1.hero.health).toBe(full - 1);
     expect(drawOne(sink, "p1")).toBe("fatigue");
     expect(armoured.players.p1.hero.health).toBe(full - 1 - 2);
-    expect(hits(sink.events).filter((hit) => hit.amount > 0)).toEqual([
-      { from: "", to: "hero-p1", amount: 1 },
-      { from: "", to: "hero-p1", amount: 2 },
-    ]);
+    expect(hits(sink.events)).toEqual([0, 0, 0, 1, 2].map((amount) => ({ from: "", to: "hero-p1", amount })));
 
     // Step 3's cap rides along too, since it is the same pipeline: a fatigue above the cap is
     // clamped to it.

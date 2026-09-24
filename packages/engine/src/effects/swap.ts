@@ -162,7 +162,7 @@ function swapBoardNow(ctx: EffectContext): void {
 
   // Read first, then place: every card comes off the field before any card lands.
   for (const entry of entries) {
-    for (const card of entry.cards) removeFromField(state, card);
+    for (const card of entry.cards) removeFromField(state, card, { withPile: true });
   }
 
   for (const entry of entries) {

@@ -199,6 +199,7 @@ function runMarks(ctx: EffectContext): RunMarks {
     exitsFrom: ctx.exitsFrom ?? exitMark(ctx.state),
     ...(summoned.length === 0 ? {} : { summoned }),
     ...(ctx.selfResolving === true ? { resolving: true } : {}),
+    ...(ctx.eventStay === undefined ? {} : { eventStay: ctx.eventStay }),
   };
 }
 
@@ -599,6 +600,8 @@ export function runResume(
   // R98: the run began with its card in the resolving zone, and the card is its self only while it
   // is still there — a Spell its own list returned to a hand before it asked resumes with none.
   const resolving = paused?.resolving === true || run?.resolving === true;
+  // R174, R212: a queued trigger's continuation still judges its event's cards from the event.
+  const eventStay = paused?.eventStay ?? run?.eventStay;
   const data = cardData(resume.data);
   const found = resume.instanceId === undefined ? null : findInstance(sink.state, resume.instanceId) ?? null;
   const instance = selfSnapshotOf(data) ?? (resolving && found?.zone.z !== "resolving" ? null : found);
@@ -623,6 +626,7 @@ export function runResume(
     ...(summoned === undefined || summoned.length === 0 ? {} : { summoned }),
     // R98: and it stays the resolving card's run across a further pause, card or no card.
     ...(resolving ? { selfResolving: true } : {}),
+    ...(eventStay === undefined ? {} : { eventStay }),
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };

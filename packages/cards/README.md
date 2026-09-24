@@ -98,7 +98,8 @@ do not reach into state.
 adds how: `grep -r "state.players[" packages/cards` must come back empty, so a card file names the
 FACT it needs and never a field of `PlayerState` — otherwise the state model cannot change shape
 without editing every card that reads it. Verbs come from `@jackioh/engine/effects`; facts come
-from `@jackioh/engine`, and these are all of them:
+from `@jackioh/engine`, except `instanceOf`, which the effects barrel exports because it resolves a
+`TargetSpec` exactly as the verbs do. These are all of them:
 
 | read | what it answers |
 | --- | --- |
@@ -113,13 +114,16 @@ from `@jackioh/engine`, and these are all of them:
 | `faceOf` / `statsWithBuffs` / `unitView` | a unit through the §10.4 layers — never off the instance |
 | `defOf` / `printedCost` / `effectiveCost` / `queryCost` | a definition and R65's two costs |
 | `findInstance` | an instance id, wherever the card has since landed (R98) |
+| `instanceOf(ctx, spec)` | the card a `TargetSpec` names on the stay the run aimed at — a chosen card on the stay its prompt or the play offered it on (R174) — or `null` for a hero, for nothing, or for a card buried under a Stack pile (§3.2, R13) (#22's meal) |
 | `recalled(ctx, key)` | what the running card remembers under a key (`remember`'s write) — on a fused card, its own ingredient's (R102, #22) |
 
 `zone` is `"hand" | "library" | "graveyard" | "exile"`; the field is not a pile, so read it by lane.
-Every one of these returns a number, a boolean or a fresh `readonly` array, so a card cannot write
-the game through a value it read. Board facts live in `packages/engine/src/query.ts` (the read half
-of the surface, next to `src/effects/index.ts`, the write half); if the fact you need is not there,
-it is missing from the engine — extend that module and test it, do not reach into `state.players`.
+Every one of these but `findInstance` and `instanceOf` returns a number, a boolean or a fresh
+`readonly` array, so a card cannot write the game through a value it read; those two hand back the
+card itself, which a card file reads and never writes (CLAUDE.md rule 5). Board facts live in
+`packages/engine/src/query.ts` (the read half of the surface, next to `src/effects/index.ts`, the
+write half); if the fact you need is not there, it is missing from the engine — extend that module
+and test it, do not reach into `state.players`.
 
 Randomness goes through `ctx.rng` (seeded, cursor in state) and every pool through
 `catalog.query` — see §3 below. A player choice is either a play-time choice you *declare*

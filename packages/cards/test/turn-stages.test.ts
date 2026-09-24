@@ -623,20 +623,63 @@ describe("R169, R240: what the start of a turn changes, it reports (§10.3)", ()
 
     s.endTurn(); // p2's turn: its draw meets an empty library, and the 1st fatigue deals 1 (R3)
 
-    // Armor 2 takes the whole 1 (§4.4 step 2), so the hero keeps 30 and §4.4's zero rule sends no
-    // `damage` event. The fatigue still happened: the count both seats read went from 0 to 1, and
+    // Armor 2 takes the whole 1 (§4.4 step 2), so the hero keeps 30, and the hit is no damage
+    // instance (R63). The fatigue still happened: the count both seats read went from 0 to 1, and
     // the next one deals 2.
     expect(s.state.players.p2.hero.health).toBe(30);
     expect(s.state.players.p2.fatigueCount).toBe(1);
     expect(s.view("p1").opponent.fatigueCount).toBe(1);
-    // §10.3: "every visible state change emits an event". Nothing this action emitted names p2's
-    // empty-library draw: no `drawn` for p2 (R3: no card is drawn) and no hit on p2's hero.
-    expect(
-      s.lastEvents.some(
-        (e) =>
-          (e.type === "damage" && e.sourceId === null && e.targetId === "hero-p2") ||
-          (e.type === "drawn" && e.player === "p2"),
-      ),
-    ).toBe(true);
+    // §10.3: "every visible state change emits an event", so the draw reports itself — by a
+    // `damage` of 0 from no source on p2's hero, once, and by nothing else: R3 draws no card, so
+    // there is no `drawn` for p2.
+    expect(s.lastEvents.filter((e) => e.type === "damage" && e.targetId === "hero-p2")).toEqual([
+      { type: "damage", sourceId: null, targetId: "hero-p2", amount: 0, combat: false },
+    ]);
+    expect(s.lastEvents.some((e) => e.type === "drawn" && e.player === "p2")).toBe(false);
+  });
+
+  it("R240 the report of an absorbed fatigue draw is answered by no trigger and no trap (R63)", () => {
+    const s = scenario({
+      seed: "r11-fatigue-report",
+      p1: { hand: [HIT_JOB], field: [TEMPO_TIMMY], library: [TEMPO_TIMMY, TEMPO_TIMMY] },
+      p2: { hand: [STOCKPILE], field: [TEMPO_TIMMY], backrow: [GOING_LONG], library: [] },
+    });
+    // p1's unit and p1's face-down trap each answer any hit on a hero by dealing 1 to p2's hero.
+    const onHeroHit = (ctx: { event: { type: string; targetId?: string } }): boolean =>
+      ctx.event.type === "damage" && (ctx.event.targetId ?? "").startsWith("hero-");
+    fixture(s, "fixture:r11-hero-hit-watcher", "Unit", {
+      triggers: [
+        {
+          id: "on-hero-hit",
+          on: ["damage"],
+          run: (ctx) => (onHeroHit(ctx) ? [damage({ to: { of: "enemyHero" }, amount: 1 })] : []),
+        },
+      ],
+    });
+    fixture(s, "fixture:r11-hero-hit-trap", "Trap", {
+      triggers: [
+        {
+          id: "on-hero-hit",
+          on: ["damage"],
+          when: onHeroHit,
+          run: () => [damage({ to: { of: "enemyHero" }, amount: 1 })],
+        },
+      ],
+    });
+    const watcher = placeFixture(s, "fixture:r11-hero-hit-watcher", "p1", "units", 3);
+    const trap = placeFixture(s, "fixture:r11-hero-hit-trap", "p1", "backrow", 3);
+    trap.faceUp = false;
+
+    s.endTurn(); // p2's draw meets an empty library; Going Long's Armor 2 takes the whole 1
+
+    // The draw is reported by a `damage` of 0, and it is no damage instance (R63): the unit queues
+    // nothing for it, the trap stays set, and p2's hero keeps its 30.
+    expect(s.lastEvents.filter((e) => e.type === "damage" && e.targetId === "hero-p2")).toEqual([
+      { type: "damage", sourceId: null, targetId: "hero-p2", amount: 0, combat: false },
+    ]);
+    expect(s.lastEvents.some((e) => e.type === "damage" && e.sourceId === watcher.id)).toBe(false);
+    expect(s.lastEvents.some((e) => e.type === "trapFired")).toBe(false);
+    expect(s.backrow("p1", 3)?.id).toBe(trap.id);
+    expect(s.state.players.p2.hero.health).toBe(30);
   });
 });

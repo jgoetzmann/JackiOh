@@ -593,7 +593,7 @@ describe("R102: a fused card's layers are each ingredient's", () => {
   });
 });
 
-describe("R77, R102: a Fuse leaves the kept card's memory as it was, but for the prices its ingredients read", () => {
+describe("R77, R102: a Fuse leaves the kept card's memory as it was, but for the prices its ingredients read and what its own texts remembered", () => {
   /** p2 plays Going Long, at its embiggen price or not; p1's Unlicensed Experimentation fuses it onto p1's own, played for 2. */
   function fusedGoingLongs(embiggen: boolean): { g: Scenario; kept: CardInstance; before: Record<string, unknown> } {
     const g = scenario({
@@ -606,7 +606,9 @@ describe("R77, R102: a Fuse leaves the kept card's memory as it was, but for the
       p2: { hand: [GOING_LONG, STOCKPILE], library: [...LAYER_LIBRARY], mana: 4 },
     });
     const kept = backrowAt(g, "p1", 1);
-    // Something the kept card remembers from before the Fuse, which R77 keeps.
+    // Something the kept card remembers from before the Fuse, which R77 keeps where it is: no text
+    // of the card wrote it through `remember`, so it is none of what moves with the card's texts
+    // (re-entry.test.ts's R77 case has a Cube's meal move).
     kept.memory["r77-before"] = "kept";
     const before = { ...kept.memory };
     g.play(GOING_LONG, { zone: 1, embiggen });

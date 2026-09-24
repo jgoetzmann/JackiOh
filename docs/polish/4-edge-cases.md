@@ -1254,6 +1254,57 @@ optional `defs`. One existing test changed: `hidden-information.test.ts`'s round
 seed whose pick lands on the base-face trap under R242's draws. The recorded hotseat game's hash did
 not move.
 
+#### The review of round 10
+
+A review of the round-9 and round-10 branch found twelve problems, all confirmed and fixed; none
+needed a new row. Three were engine bugs, each reproduced by a failing test first. None is reachable
+with Core cards alone (no Core non-trap trigger watches another card's event from the field or aims
+by id at a board card it reads while resolving, and no Core trap kills in an attack window beside My
+Pawn), so their tests build the card as a fixture:
+
+- **A Stack note belonged to no removal.** Round 10's `stays.noteUncovered` kept the card a removal
+  from a pile's top uncovered until the card that left next left the field, so a later move of
+  that card — exiled out of the graveyard it died into — read as the removal again, and the card
+  that had resumed long before missed what the same batch did first. A note now belongs to one removal
+  (`FieldExits.uncovered` holds an `UncoveredNote`): it lasts while that removal's report is owed to
+  the loop (`stays.noteReported`, from `triggers.dispatchEvent`) and while the card that left has not
+  moved again (`stays.noteMoved`, from `zones.removeFromAnyZone`), and goes once both have happened.
+  #87's board swap and #52's rotation lift whole piles, and note no resume (`removeFromField`'s
+  `withPile`). R212 now says so.
+- **A queued trigger judged every card from its event.** Round 10 ran a queued trigger with its
+  event's mark as the run's own, so a card it read off the board as it resolved — a Reborn body an
+  earlier trigger on the same event made — was judged as if the run had begun before the body came
+  back: a buff by id missed the body where the same buff over the board reached it. The run begins
+  when it runs again, and the event's cards and mark travel apart (`stays.eventStayOf`,
+  `EffectContext.eventStay`, carried across a pause in `RunMarks` and `PausedStep`), read by
+  `targets.stayMarkOf` for the cards the event names alone. R174 now says so.
+- **R212 did not read what another loop had dispatched.** `eventsAfterDispatched` read the rest of
+  the frontier and what the sink had not yet collected, leaving out every event another loop had
+  taken — a cast's step-4 window inside a trap, and #96's AI turn above all, which the frontier never
+  collects (`dispatchedElsewhere`). A #89 drawn during the AI turn fed on a death a trap had dealt
+  earlier in the same window. It now reads the action's own list after the event, which is in
+  emission order, and the frontier's events from an earlier action before it; `collected` and
+  `dispatchedElsewhere` decide only what the frontier collects, and their comments say so (the
+  second's now names combat's withheld declaration too). R212 now says so.
+
+The other nine were rows, proofs and notes that did not say what the code did. R240's proof asserted
+less than the row (an OR that a `drawn` could pass, no amount, and comments describing the bug), and
+nothing tested that no trigger and no trap answers the report; the proof now pins one `damage` of 0,
+a new case has a fixture unit and a fixture trap that watch hits on a hero answer nothing, and R125's
+case in `rulings-c.test.ts` asserts the fatigue hits exactly as `[0, 0, 0, 1, 2]` again. §4.4's zero
+rule names R240's exception. R77 says that what the kept card's texts remembered moves with them
+(R102), and a Carnivorous Cube's meal pins it (`re-entry.test.ts`). R155, R241, `config.SETUP_TURN`
+and `setup.ts` cite BUILD M1-T1 for turn 0, which §2.1 never numbers, and R240 and `draw.ts` say
+Armor alone takes a whole hit (the cap only clamps). The rulings index's comment for
+`vanilla-and-positions.test.ts` names R243 and R46, and R241's entry adds the setup case. The cards
+README lists `instanceOf`, which #22 reads its meal through. BUILD M5-T4's `keywordGranted` row is
+back to its own text: the client still plays the pop for R46's `lost`, and making it play as the icon
+going is task 7's (see "Merge notes"). "Out of scope" counts the client's third edit.
+
+No event type was added and no existing assertion was loosened: R125's fatigue case is tightened
+back, and `effects-swap.test.ts` and `rotation.test.ts` each gained a line that a whole pile's move
+notes no resume.
+
 ---
 
 ## Out of scope
@@ -1263,8 +1314,10 @@ not move.
   errs on the side the user complained about (units attacking too early), and changing it is a
   balance call. It stays as it is unless the user asks.
 - **UI.** No "sleeping" indicator. The client already follows `legalActions` (rule 7), and task 7
-  owns the highlights. The only client edits are two lines the hunt's findings forced: the log's
-  wording for a redacted buff (R177) and the highlight guard R211 changed (see "Merge notes").
+  owns the highlights. The only client edits are three lines the hunt's findings forced: the log's
+  wording for a redacted buff (R177), the highlight guard R211 changed, and the log's "lost" or
+  "gained" for a `keywordGranted` (R46) (see "Merge notes"). The animation a `lost` keyword plays is
+  left to task 7.
 - **Events and fields.** No new `GameEvent` type and no `CardInstance` field.
 - **The C-paths.** Refactoring the entry paths to call `enterNewSide` is out: they are correct, and
   touching them widens the merge surface.
@@ -1328,7 +1381,10 @@ was rejected; they needed two new rows (R242, R243) and thirteen amended ones. T
 and three lenses came back empty: control change (L1) for the second round running, combat windows,
 and legality agreement (L9). The other seven still found something: prompts mid-sequence (L7) six,
 keywords and layers three, and re-entry and stays, turn boundaries (L8), the view (L10), card by card
-and engine invariants two each.
+and engine invariants two each. The review of rounds 9 and 10 then found twelve more problems, all
+fixed (see "The review of round 10"): three engine bugs, two of them in round 10's own fixes (the
+Stack note and the queued trigger's mark) and one in how R212 read another loop's events, and nine
+rows, proofs and notes that did not say what the code did.
 
 Where round 10's findings come from follows round 9's two kinds. Some carry older rules further:
 R174's stays to the moment an event happened (a late `cardResolved`, a trigger queued behind one that
@@ -1398,6 +1454,8 @@ finding, and a test named after its rule proves it.
 | `state.ts` (round 10) | `isTurnOf(state, player)` (setup is no player's turn), `createGame` starts at `SETUP_TURN`, and `FieldExits.uncovered` (the card each removal from a pile's top uncovered) | R155, R241, R212 (all amended) |
 | `setup.ts` (round 10) | `finishSetup` runs the start-of-game clauses resumably, one card at a time (`startOfGameFrom`, owed step `startOfGame`), and clears the return flags before `startTurn` | R151, R155 (both amended), R113 |
 | `subsystems/fuse.ts` (round 10) | The kept card's roll runs through `prompts.runStartOfGame` instead of `resolve.runHook` | R151 (amended) |
+| `state.ts` (review of round 10) | `FieldExits.uncovered` maps a card to an `UncoveredNote` (`resumed`, `reported`, `movedOn`) rather than to the resumed card's id | R212 (amended): a note belongs to one removal |
+| `draw.ts`, `config.ts`, `setup.ts` (review of round 10) | Comments only: Armor alone takes a fatigue draw's whole hit; `SETUP_TURN` and setup's turn 0 cite BUILD M1-T1 | R240, R155, R241 |
 
 Round 7 also changed the fuse subsystem's shape in a way task 3's registry rebuild will meet:
 `scriptRecord(script, defId, index)` now takes the ingredient's index, and `combineObjects` takes
@@ -1597,10 +1655,18 @@ would keep the two from drifting apart.
   apart from task 7's scroll edits), and the keyword pop should play as the icon going. A random Make
   Radiant's events now come group by group (public cards, then the owner's hidden ones, then the
   library's, R242), not in the zones' order.
-- The branch leaves one seam open. R171 makes a stolen, swapped or rotated unit sick, but `UnitView`
+- `script.ts`, review of round 10: `EffectContext` gained an optional `eventStay` (the cards a queued
+  trigger's event names and the stays it happened on, R174, R212). Additive, and no card file sets
+  it. The cards README's read table lists `instanceOf(ctx, spec)`, which #22 has read its meal
+  through since round 9, and says that it and `findInstance` hand back the card itself.
+- The branch leaves two seams open. R171 makes a stolen, swapped or rotated unit sick, but `UnitView`
   carries only `canAct`, so the client cannot draw Hearthstone's sleep marker. Task 7's green glow
   already leaves `switchPosition` unlit, so a sick unit does not glow. A `sick` flag on `UnitView`
-  (owned by task 7) would let it draw the marker.
+  (owned by task 7) would let it draw the marker. And a `keywordGranted` with `lost` (R46) still
+  plays `jk-icon-pop` (`animations.ts`, `animations.css`), the icon popping in, where it should play
+  as the icon going. The animation table keys a row by event type and the board sets
+  `data-animating="<eventType>"` (`contract.ts`), so a variant for `lost` is task 7's change, and
+  BUILD M5-T4's `keywordGranted` row ("icon present") should gain the `lost` case with it.
 
 ### SPEC and BUILD outside §4.1 and the new §11 rows
 
@@ -1652,7 +1718,10 @@ would keep the two from drifting apart.
 | R122, R151 | The engine's one answer entry point hands the play pipeline's own prompts to it; a start-of-game clause that asks pauses, at setup too | Round 10 |
 | R155, R241 | Setup is no player's turn: a setup cast's return flag is cleared before turn 1, and its end-of-turn clause is not armed | Round 10 |
 | R174, R226 | Task 4's own rows, amended again: a response meets the stay its event happened on, and an answered pick by id; a cast card that left the resolving zone is not placed | Round 10 |
-| BUILD M5-T4, `keywordGranted` row | The icon goes when the event carries `lost` (R46) | Round 10 |
+| §4.4 zero rule | Names R240's exception: an absorbed fatigue draw is reported by a `damage` of 0 that nothing answers | Round 10 review |
+| R77 | What the kept card's own texts remembered moves with them to the place they now run at (R102) | Round 10 review |
+| R155, R241, R240 | Setup's turn 0 is cited to BUILD M1-T1; Armor alone takes a fatigue draw's whole hit | Round 10 review |
+| R174, R212 | Task 4's own rows, amended again: only the cards a queued trigger's event names are judged from the event; R212 reads what another loop dispatched (the AI turn), and a Stack note is kept for its one removal | Round 10 review |
 
 Rows R209 to R226 come from the overflow range, because R171 to R179 filled up in round 1 (R215 and
 R216 in round 4, R217 to R219 in round 5, R220 to R223 in round 6, R224 in round 7, R225 and R226 in
@@ -1685,5 +1754,6 @@ stripped the same way, and `keywordGranted` an optional `lost` (R46), which does
   specs share. The gap predates this branch. The PR should open a tracked issue for it.
 - **The hunt is not finished** (see "Hunt status"): it was halted after round 8 and continued at the
   user's request for rounds 9 and 10; in round 10 seven of the ten lenses still found something.
-- **No sleep marker** for a sick unit (see the seam under task 7).
+- **No sleep marker** for a sick unit, and a lost keyword animates as a pop (see the seams under
+  task 7).
 - **Transform readiness** (see "Out of scope").

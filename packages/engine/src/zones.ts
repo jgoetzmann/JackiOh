@@ -6,7 +6,7 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { BACKROW_ZONES, UNIT_ZONES } from "./config";
 import { defOf } from "./catalog";
 import type { CardInstance, GameState, Pile, PlayerState } from "./state";
-import { noteFieldExit, noteUncovered } from "./stays";
+import { noteFieldExit, noteMoved, noteUncovered } from "./stays";
 
 export type ZoneSlot = { player: PlayerId; row: Row; lane: number };
 
@@ -170,9 +170,15 @@ export function replaceInZone(state: GameState, old: CardInstance, replacement: 
 
 /**
  * Take a card off the field; the card beneath a Stack resumes acting (§3.2), which is noted against
- * the card that left (`stays.noteUncovered`, R212): no event reports a resume.
+ * the card that left (`stays.noteUncovered`, R212): no event reports a resume. `withPile` is for a
+ * move that lifts whole piles and sets each down whole elsewhere (#87's board swap, #52's rotation):
+ * its cards come off one at a time, but nothing beneath any of them resumes, so no resume is noted.
  */
-export function removeFromField(state: GameState, instance: CardInstance): boolean {
+export function removeFromField(
+  state: GameState,
+  instance: CardInstance,
+  options: { withPile?: boolean } = {},
+): boolean {
   for (const player of PLAYER_IDS) {
     const side = state.players[player];
     for (let i = 0; i < side.units.length; i += 1) {
@@ -182,7 +188,7 @@ export function removeFromField(state: GameState, instance: CardInstance): boole
       if (at >= 0) {
         const rest = pile.filter((card) => card.id !== instance.id);
         side.units[i] = rest.length === 0 ? null : rest;
-        noteUncovered(state, instance.id, at === 0 ? rest[0]?.id : undefined);
+        noteUncovered(state, instance.id, at === 0 && options.withPile !== true ? rest[0]?.id : undefined);
         return true;
       }
     }
@@ -215,6 +221,8 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
       const at = pile.findIndex((card) => card.id === instance.id);
       if (at >= 0) {
         pile.splice(at, 1);
+        // R212: a move of a card that left a pile's top ends that removal's Stack note.
+        noteMoved(state, instance.id);
         // R155: §5.1's end-of-turn return belongs to the Spell its own play landed in the graveyard
         // (§10.5 step 7). A card that leaves the graveyard has spent that landing, so whatever puts
         // it back there this turn — a discard (#76), a burn — is no play of its, and it stays (R153).
@@ -228,6 +236,7 @@ export function removeFromAnyZone(state: GameState, instance: CardInstance): voi
     const resolvingAt = side.resolving.findIndex((card) => card.id === instance.id);
     if (resolvingAt >= 0) {
       side.resolving.splice(resolvingAt, 1);
+      noteMoved(state, instance.id);
       return;
     }
   }

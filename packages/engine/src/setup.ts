@@ -263,9 +263,10 @@ export function finishSetup(sink: EngineSink): void {
  * `prompts.runStartOfGame`): the clauses after it and the first turn are owed behind its tail
  * (`START_OF_GAME_STEP`, R113, R117), so turn 1 never begins with a question of setup's still open.
  *
- * Setup is turn 0, which is no player's turn (§2.1): a Spell cast during it — by the opening deal
- * or a mulligan's replacement draw (§2.4, R70) — was played on no turn of its controller's, so the
- * return §10.5 step 7 flagged it for is over before turn 1, as a turn's cleanup ends it (R155).
+ * Setup is turn 0 (BUILD M1-T1), which is no player's turn (§2.1 step 5): a Spell cast during it
+ * — by the opening deal or a mulligan's replacement draw (§2.4, R70) — was played on no turn of its
+ * controller's, so the return §10.5 step 7 flagged it for is over before turn 1, as a turn's cleanup
+ * ends it (R155).
  * `startTurn` empties the turn logs that cleanup reads, so setup clears it first.
  */
 function startOfGameFrom(sink: EngineSink, ids: readonly string[]): void {

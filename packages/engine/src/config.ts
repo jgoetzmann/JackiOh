@@ -11,8 +11,9 @@ export const MAX_MANA = 4;
 export const HERO_HEALTH = 30;
 
 /**
- * §2.1: the turn number setup runs at. Setup is no player's turn — p1 takes the first turn after it
- * (§2.1 step 5) — so nothing played during it belongs to a turn of its controller's (R155, R241).
+ * BUILD M1-T1 (`createGame` yields `turn = 0`): the turn number §2.1's setup runs at. Setup is no
+ * player's turn — p1 takes the first turn after it (§2.1 step 5) — so nothing played during it
+ * belongs to a turn of its controller's (R155, R241).
  */
 export const SETUP_TURN = 0;
 /** §2.5, R2 (decide): the cap counts player-turns, so 30 means 15 each. */

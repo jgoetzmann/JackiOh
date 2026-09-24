@@ -383,9 +383,10 @@ export function drawOne(sink: EngineSink, player: PlayerId, link?: ChainLink | n
     side.fatigueCount += 1;
     const amount = FATIGUE_DAMAGE(side.fatigueCount);
     const dealt = dealDamage(sink, { source: null, target: { kind: "hero", player }, amount });
-    // R240: a fatigue draw the hero's Armor or cap absorbs whole still happened — the public count
-    // moved and the next one deals more (§10.3) — so it is reported by a hit of 0 from no source,
-    // which is a report and no damage instance: nothing answers it (R63, `triggers.dispatchEvent`).
+    // R240: a fatigue draw whose hit the hero's Armor takes whole (§4.4 step 2; step 3's cap only
+    // clamps) still happened — the public count moved and the next one deals more (§10.3) — so it is
+    // reported by a hit of 0 from no source, which is a report and no damage instance: nothing
+    // answers it (R63, `triggers.dispatchEvent`).
     if (dealt <= 0 && sink.state.result === null) {
       sink.events.push({ type: "damage", sourceId: null, targetId: `hero-${player}`, amount: 0, combat: false });
     }

@@ -50,7 +50,7 @@ import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { eventMark, exitMark, movesIn, uncoveredBy, type LaterMoves } from "./stays";
+import { eventStayOf, exitMark, movesIn, noteReported, uncoveredBy, type LaterMoves } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -310,12 +310,14 @@ function owedMarkOf(state: GameState, entry: QueuedTrigger): number {
 /**
  * Append one of a card's triggers to the queue, behind everything already waiting (R68).
  *
- * R174, R212: the entry carries the stays its event happened on — the mark a play's event was
- * emitted at (`stays.eventMark`), or the field's departures now, as it is dispatched — and the
- * trigger runs with that mark whenever it pops (`runQueuedTrigger`). A trigger aimed at the card its
- * event names, by the id it reads off the event, is aimed at that card's stay: an earlier trigger
- * on the same event that killed it, and the check between the two that let Reborn put a body back
- * (R59), leave the later one nothing to land on (R83).
+ * R174, R212: the entry carries the cards its event names and the stays the event happened on —
+ * the mark a play's event was emitted at (`stays.eventMark`), or the field's departures now, as it
+ * is dispatched (`stays.eventStayOf`) — and the trigger runs with them whenever it pops
+ * (`runQueuedTrigger`). A trigger aimed at a card its event names, by the id it reads off the event,
+ * is aimed at that card's stay: an earlier trigger on the same event that killed it, and the check
+ * between the two that let Reborn put a body back (R59), leave the later one nothing to land on
+ * (R83). Only those cards: one the trigger reads off the board as it resolves is judged from when
+ * its run began, like any run's, so a Reborn body an earlier trigger made is on the board for it.
  */
 export function queueTrigger(
   sink: EngineSink,
@@ -324,7 +326,7 @@ export function queueTrigger(
   event: GameEvent,
 ): QueuedTrigger {
   const { id, seq } = nextEntryId(sink.state, holder.zone === "hand");
-  const marks: RunMarks = { exitsFrom: eventMark(event) ?? exitMark(sink.state) };
+  const marks: RunMarks = { eventStay: eventStayOf(sink.state, event) };
   const entry: QueuedTrigger = {
     id,
     seq,
@@ -436,8 +438,8 @@ function owedToTraps(sink: EngineSink, event: GameEvent, run: ImmediateDispatch)
  */
 function offerToTraps(sink: EngineSink, event: GameEvent): QueuedTrigger | null {
   if (isTrapWindowEvent(event)) return null;
-  // R212: the board the event happened on, read off the events owed behind it.
-  const run = offerEventToTraps(sink, event, () => movesIn(eventsAfterDispatched(sink), sink.state));
+  // R212: the board the event happened on, read off the events that happened after it.
+  const run = offerEventToTraps(sink, event, () => movesIn(eventsAfterDispatched(sink, event), sink.state));
   if (sink.state.result !== null) return null;
   if (sink.state.pending === null) return null;
   return owedToTraps(sink, event, run);
@@ -462,16 +464,24 @@ function runOwedTraps(sink: EngineSink, event: GameEvent, entry: QueuedTrigger):
 }
 
 /**
- * R212: the events that happened after the one being dispatched — the rest of the frontier, and
- * whatever the traps that answered it have emitted since and the frontier has not collected yet. A
- * sink that never collected anything (a caller dispatching by hand) has nothing uncollected.
+ * R212: the events that happened after the one being dispatched, in the order they happened.
+ *
+ * The action's event list is in emission order, so everything after the event on it happened after
+ * it, whichever loop has taken it since or whether any loop ever will: the rest of the frontier, what
+ * the traps answering the event have emitted, what a cast's step-4 window inside one of them has
+ * collected and dispatched on its own context (R70), and #96's AI turn, which the `reduce` of each
+ * of its actions dispatches before the playout copies it onto this list (`dispatchedElsewhere`, R44,
+ * R168) — a card the AI turn drew, played or brought back is on a stay that did not see the event
+ * all the same. `combat.queueDeclarationTriggers` reads the window's declaration the same way.
+ *
+ * An event not on this list is an earlier action's, still owed because a prompt paused the frontier
+ * (§9.3), so every event of this action happened after it, and so did what is owed behind it.
  */
-function eventsAfterDispatched(sink: EngineSink): GameEvent[] {
-  const upTo = (sink as SettleSink).dispatched ?? sink.events.length;
-  // An event a loop on another sink over the same list has taken is in `state.dispatch` already, or
-  // was dispatched before this one (`collected`).
-  const uncollected = sink.events.slice(upTo).filter((event) => !collected.has(event));
-  return [...sink.state.dispatch.map((item) => item.event), ...uncollected];
+function eventsAfterDispatched(sink: EngineSink, event: GameEvent): GameEvent[] {
+  const list = sink.events;
+  const listed = new Set(list);
+  const owedFromEarlier = sink.state.dispatch.map((item) => item.event).filter((owed) => !listed.has(owed));
+  return [...owedFromEarlier, ...list.slice(list.indexOf(event) + 1)];
 }
 
 /**
@@ -505,7 +515,7 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
     if (holder.isTrap) continue;
     const defs = triggersOnEvent(holder, event.type);
     if (defs.length === 0) continue;
-    later ??= movesIn(eventsAfterDispatched(sink), sink.state);
+    later ??= movesIn(eventsAfterDispatched(sink, event), sink.state);
     if (later.moved.has(holder.card.id)) continue;
     // §3.2, R153: nor does the card the event's own removal uncovered in its Stack pile — dormant
     // when it happened, it resumed because of it, as a Reborn body returns because of a death.
@@ -518,6 +528,8 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
       queued.push(queueTrigger(sink, { ...holder, controller }, def, event));
     }
   }
+  // R212: the removal this event reports, if any, has been answered (`stays.noteReported`).
+  noteReported(sink.state, event);
   return queued;
 }
 
@@ -565,11 +577,12 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   // which is what its entry captured — a change of control since does not hand the answer over.
   const queuedFor: unknown = entry.resume.data.controller;
   const controller = PLAYER_IDS.find((player) => player === queuedFor) ?? holder.controller;
-  // R174, R212: the stays the event happened on, which the entry captured as it was queued.
-  const marks = runMarksOf(entry.resume.data);
+  // R174, R212: the cards the event names are judged from the stays it happened on, which the entry
+  // captured as it was queued; the run itself begins now (`makeContext`).
+  const eventStay = runMarksOf(entry.resume.data)?.eventStay;
   const ctx = {
     ...makeContext(sink, card, { controller, data: cardData(entry.resume.data) }),
-    ...(marks?.exitsFrom === undefined ? {} : { exitsFrom: marks.exitsFrom }),
+    ...(eventStay === undefined ? {} : { eventStay }),
     event,
   };
   // Resumable, so a prompt inside the list stops the list there instead of being stepped over. The
@@ -635,13 +648,16 @@ export function dispatchPending(sink: SettleSink): void {
 export type SettleSink = EngineSink & { dispatched?: number };
 
 /**
- * Events some other resolution loop has already dispatched, by object identity. #96 My Pawn's AI turn
- * drives `reduce` once per action, and each of those settles its own events before the playout
- * copies them onto the enclosing action's list so the client is told about them (R168); the
- * enclosing loop must not hand them to the traps and the trigger queue again (§10.3: an event is
- * offered once), or every trigger of the AI turn fires twice. A `WeakSet` holds no game state and
- * outlives nothing it names: the events are the enclosing action's own objects, collected within
- * that same action.
+ * Events the frontier must not collect because they are delivered some other way, by object
+ * identity. Two kinds are: #96 My Pawn's AI turn drives `reduce` once per action, and each of those
+ * settles its own events before the playout copies them onto the enclosing action's list so the
+ * client is told about them (R168), so the enclosing loop must not hand them to the traps and the
+ * trigger queue again (§10.3: an event is offered once), or every trigger of the AI turn fires twice;
+ * and a player's `attackDeclared`, which §4.2 step 4's window delivers itself (`combat.ts`'s
+ * `withholdFromFrontier`). It decides only what `collectEvents` takes: R212's reading of what
+ * happened after an event (`eventsAfterDispatched`) reads the list itself, the AI turn's events
+ * included. A `WeakSet` holds no game state and outlives nothing it names: the events are the
+ * running action's own objects, collected within that same action.
  */
 const dispatchedElsewhere = new WeakSet<GameEvent>();
 
@@ -655,8 +671,9 @@ export function markDispatched(events: readonly GameEvent[]): void {
  * sink's copy of the list, and a loop can run on a sink other than the action's own over the same
  * array: a cast's §10.5 step-4 window (R70) runs inside an effect, whose context is the only sink it
  * has (`effects/draw`, #95), and that context has no position of its own. An event is taken into
- * the frontier once, whichever sink reaches it first. Like `dispatchedElsewhere`, it holds no game
- * state: the events are the running action's own objects.
+ * the frontier once, whichever sink reaches it first. Like `dispatchedElsewhere`, it decides only
+ * what `collectEvents` takes, never what R212 reads, and it holds no game state: the events are the
+ * running action's own objects.
  */
 const collected = new WeakSet<GameEvent>();
 

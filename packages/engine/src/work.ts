@@ -44,6 +44,7 @@ import type { EngineSink } from "./resolve";
 import type { Hook, Script } from "./script";
 import { scriptsFor } from "./scripts";
 import type { GameState, Resume, WorkItem } from "./state";
+import type { EventStay } from "./stays";
 
 /**
  * How one owed item is run. The module that owns the sequence writes it, so the payload it reads
@@ -96,6 +97,8 @@ export type PausedStep = {
   summoned?: string[];
   /** R98: the list's card was in the resolving zone as it began (`EffectContext.selfResolving`). */
   resolving?: boolean;
+  /** R174, R212: a queued trigger's event's cards and its stays (`EffectContext.eventStay`). */
+  eventStay?: EventStay;
 };
 
 /**
@@ -107,7 +110,15 @@ export type PausedStep = {
 export const RUN_MARKS_KEY = "__run";
 
 /** What a continuation carries of the run it continues. All JSON. */
-export type RunMarks = { exitsFrom?: number; summoned?: string[]; resolving?: boolean };
+export type RunMarks = { exitsFrom?: number; summoned?: string[]; resolving?: boolean; eventStay?: EventStay };
+
+/** An `EventStay` read back out of stored JSON, or undefined when there is none. */
+function eventStayIn(block: unknown): EventStay | undefined {
+  if (block === null || typeof block !== "object") return undefined;
+  const stay = block as Partial<EventStay>;
+  if (typeof stay.from !== "number" || !Array.isArray(stay.ids)) return undefined;
+  return { from: stay.from, ids: stay.ids.filter((id): id is string => typeof id === "string") };
+}
 
 /** The marks a continuation's data carries, or null when it carries none. */
 export function runMarksOf(data: Record<string, unknown>): RunMarks | null {
@@ -120,7 +131,13 @@ export function runMarksOf(data: Record<string, unknown>): RunMarks | null {
       ? { summoned: marks.summoned.filter((id): id is string => typeof id === "string") }
       : {}),
     ...(marks.resolving === true ? { resolving: true } : {}),
+    ...withEventStay(marks.eventStay),
   };
+}
+
+function withEventStay(block: unknown): { eventStay?: EventStay } {
+  const eventStay = eventStayIn(block);
+  return eventStay === undefined ? {} : { eventStay };
 }
 
 const handlers = new Map<WorkKind, WorkHandler>();
@@ -178,6 +195,7 @@ export function pausedOf(data: Record<string, unknown>): PausedStep | null {
       ? { summoned: step.summoned.filter((id): id is string => typeof id === "string") }
       : {}),
     ...(step.resolving === true ? { resolving: true } : {}),
+    ...withEventStay(step.eventStay),
   };
 }
 

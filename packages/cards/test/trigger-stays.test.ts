@@ -22,10 +22,15 @@
 // list that cast it (R70), or a trigger queued behind one that killed the event's card (R59) — is
 // aimed at the stay the card had then, not a Reborn body that has come back since (R83). No Core
 // card casts a Unit, and none has a non-trap trigger aimed at its event's card, so those are fixtures.
+//
+// The review of round 10 narrowed that to the cards the event names: every other card a queued
+// trigger reads off the board as it resolves is on the stay it has then, a Reborn body an earlier
+// trigger on the same event made included (R174).
 
 import type { CardDef, CardType, GameEvent, Keyword, PlayerId, Selection } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
 import {
+  activeUnitsOf,
   cardAt,
   newInstance,
   placeOnField,
@@ -35,7 +40,7 @@ import {
   type EffectContext,
   type Script,
 } from "@jackioh/engine";
-import { buff, destroy, destroyAll, draw, steal, summon } from "@jackioh/engine/effects";
+import { buff, buffAllUnits, damage, destroy, destroyAll, draw, forEachCard, steal, summon } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -513,4 +518,86 @@ describe("R174: a queued trigger aimed at the card its event names meets that ca
     expect(s.events.some((e) => e.type === "buffed" && e.instanceId === played.id)).toBe(false);
     expect(s.stats(played).attack).toBe(1);
   });
+});
+
+describe("R174: only the card a queued trigger's event names is judged from when the event happened", () => {
+  // Review of round 10: a queued trigger ran with its event's mark for every card it aimed at, so a
+  // card it read off the board while it resolved — a Reborn body an earlier trigger on the same
+  // event made — was judged as if the run had begun before that body arrived, and a buff by id
+  // missed it where the same buff over the board reached it. R174's row takes the event's stay for
+  // the card the event names alone.
+  const HIT_JOB = "core-016";
+
+  /** "Whenever an enemy unit dies, …": p1's fixture units answer p2's unit dying. */
+  const enemyDied = (ctx: { controller: PlayerId; event: GameEvent }): boolean =>
+    ctx.event.type === "destroyed" && ctx.event.owner !== ctx.controller;
+
+  function board(s: Scenario, perUnit: "byId" | "overTheBoard"): { reborn: CardInstance; victim: CardInstance } {
+    // A 1/1 with Reborn and nothing else (a Right-house defender's Divine Shield would take the hit).
+    unitFixture(s, "edge-r11-reborn", {}, { attack: 1, health: 1, keywords: [{ kind: "Reborn" }] });
+    const reborn = unitOnField(s, "edge-r11-reborn", "p1", 3);
+    unitFixture(
+      s,
+      "edge-r11-striker",
+      {
+        triggers: [
+          {
+            id: "strike",
+            on: ["destroyed"],
+            run: (ctx) =>
+              enemyDied(ctx) ? [damage({ to: { of: "instance", instanceId: reborn.id }, amount: 5 })] : [],
+          },
+        ],
+      },
+      { attack: 1, health: 5 },
+    );
+    unitFixture(
+      s,
+      `edge-r11-rally-${perUnit}`,
+      {
+        triggers: [
+          {
+            id: "rally",
+            on: ["destroyed"],
+            run: (ctx) => {
+              if (!enemyDied(ctx)) return [];
+              if (perUnit === "overTheBoard") return [buffAllUnits({ side: "self", attack: 1 })];
+              return [
+                forEachCard({
+                  cards: (c) => activeUnitsOf(c.state, c.controller),
+                  each: (id) => buff({ target: { of: "instance", instanceId: id }, attack: 1 }),
+                }),
+              ];
+            },
+          },
+        ],
+      },
+      { attack: 1, health: 5 },
+    );
+    unitOnField(s, "edge-r11-striker", "p1", 1);
+    unitOnField(s, `edge-r11-rally-${perUnit}`, "p1", 2);
+    const victim = must(s.unit("p2", 1), "p2's unit");
+    return { reborn, victim };
+  }
+
+  for (const perUnit of ["overTheBoard", "byId"] as const) {
+    it(`R174 a trigger that buffs each of its side's units ${perUnit === "byId" ? "by id" : "over the board"} reaches the Reborn body an earlier trigger on the same death made (R59, R83)`, () => {
+      const s = scenario({
+        p1: { hand: [HIT_JOB], mana: 4, library: [...LIBRARY] },
+        p2: { field: [VANILLA], library: [...LIBRARY] },
+      });
+      const { reborn, victim } = board(s, perUnit);
+
+      s.play(HIT_JOB, { targets: at(victim) });
+
+      // The striker answered the death first (lane 1, R68) and killed the 1/1; the check after it
+      // brought a Reborn body back (§4.5 step 4, R59). The rally, queued on the same death, reads
+      // p1's units as it resolves, the body among them, and each one is aimed at the stay it stands
+      // on now: the event named none of them.
+      expect(died(s, reborn)).toBe(true);
+      s.expectInZone(reborn, "field");
+      expect(s.events.filter((e) => e.type === "buffed" && e.instanceId === reborn.id)).toHaveLength(1);
+      expect(s.stats(reborn).attack).toBe(2);
+    });
+  }
 });

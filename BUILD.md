@@ -457,7 +457,7 @@ A table `eventType → { animation, durationMs, testid }` with exactly one row p
 | `addedToHand` | Card appears at the hand edge (own) or the hand count bumps (opponent) | 250 ms | hand length or count increments |
 | `shuffledIn` | Card flies into the library, library pulses | 300 ms | library count increments |
 | `buffed` | Stat numbers flash and tick to their new values | 250 ms | shown stats equal the view |
-| `keywordGranted` | Keyword icon pops in (with `lost`, R46: the icon goes) | 200 ms | icon present (absent with `lost`) |
+| `keywordGranted` | Keyword icon pops in | 200 ms | icon present |
 | `counterChanged` | Counter badge ticks | 200 ms | badge text equals the counter |
 | `transformed` | Card spins and shows its new face | 400 ms | card name equals the new definition |
 | `swapped` | Swapped health, boards or library counts cross the centre line together | 500 ms | the swapped values are exchanged |

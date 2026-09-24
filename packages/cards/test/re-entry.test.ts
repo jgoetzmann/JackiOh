@@ -35,6 +35,7 @@
 
 import type { Selection } from "@jackioh/shared";
 import {
+  INGREDIENTS_KEY,
   createRng,
   effectiveCost,
   newInstance,
@@ -852,6 +853,40 @@ describe("R102, R77, R41: a card #85 keeps reads its meals with its own text", (
     // Cube's text ate a Mana Well on another instance, never a Timmy. The engine hands the kept
     // card's one meal to both texts and summons four Timmies.
     expect(count(unitRow(s), TIMMY)).toBe(2);
+  });
+
+  it("R77 a Fuse moves what the kept card's own text remembered to the place that text now runs at, and leaves the rest of its memory as it was (R102)", () => {
+    const s = scenario({
+      seed: "r11-r77-kept-memory",
+      p1: {
+        mana: 10,
+        hand: [CUBE, RENO],
+        field: [{ def: TIMMY, lane: 1 }],
+        backrow: [UNLICENSED],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [CUBE, STOCKPILE], backrow: [MANA_WELL], library: [...LIBRARY] },
+    });
+    // p1's Cube eats Tempo Timmy: its text remembers the meal through `remember`, under "eaten".
+    s.play(CUBE, { targets: [{ pick: "instance", instanceId: must(s.unit("p1", 1), "Tempo Timmy").id }] });
+    const kept = must(s.unit("p1", 2), "p1's Cube");
+    const before = structuredClone(s.card(kept).memory);
+    expect(before).toHaveProperty("eaten");
+
+    // p2's Cube, after its Cry, is fused onto p1's Cube by #85 (R61): the kept instance's texts are
+    // one ingredient of the new fusion now, and the meal goes with them to that ingredient's path.
+    s.endTurn();
+    s.play(CUBE, { targets: [{ pick: "instance", instanceId: must(s.backrow("p2", 1), "Mana Well").id }] });
+    const after = s.card(kept).memory;
+    expect(s.card(kept).defId).toMatch(/core-022\+core-022/);
+    expect(after).not.toHaveProperty("eaten");
+    const moved = Object.keys(after).filter((key) => key.startsWith("eaten@"));
+    expect(moved).toHaveLength(1);
+    expect(after[moved[0] ?? ""]).toEqual(before.eaten);
+    // Every other entry is as it was; the only one the Fuse may add is the ingredients' prices.
+    const { eaten: _meal, ...restBefore } = before;
+    const { [moved[0] ?? ""]: _movedMeal, [INGREDIENTS_KEY]: _prices, ...restAfter } = after;
+    expect(restAfter).toEqual(restBefore);
   });
 
   it("R102 a crafted Cube + Cube that #85 fuses a played Cube onto still copies both of its own meals (R77)", () => {

@@ -46,6 +46,40 @@ export function eventMark(event: GameEvent): number | undefined {
 }
 
 /**
+ * R174, R212: the cards an event names, and the field's departures when it happened — what a
+ * queued trigger answering the event carries (`triggers.queueTrigger`, `EffectContext.eventStay`),
+ * so a card the event names is aimed at the stay it had then, while every other card the trigger
+ * reads off the board as it resolves is judged from when its run began. All JSON.
+ */
+export type EventStay = { from: number; ids: readonly string[] };
+
+/** Every card id an event names: the card it is about, the source and target of a hit, and so on. */
+export function cardsNamedBy(event: GameEvent): string[] {
+  const fields = event as Record<string, unknown>;
+  const named = CARD_FIELDS.flatMap((field) => {
+    const value = fields[field];
+    return typeof value === "string" ? [value] : [];
+  });
+  return event.type === "fused" ? [...named, ...event.instanceIds] : named;
+}
+
+const CARD_FIELDS = [
+  "instanceId",
+  "newInstanceId",
+  "resultInstanceId",
+  "sourceId",
+  "targetId",
+  "killerId",
+  "attackerId",
+  "byInstanceId",
+] as const;
+
+/** The stays an event happened on, for a trigger queued on it now (`EventStay`). */
+export function eventStayOf(state: GameState, event: GameEvent): EventStay {
+  return { from: eventMark(event) ?? exitMark(state), ids: cardsNamedBy(event) };
+}
+
+/**
  * R174: a card has just left the field — died, bounced, exiled, returned to a library, or ceased to
  * exist there (replaced by a Transform, fused away). Called from `zones.moveToZone` and
  * `zones.ceaseToExist`, the two funnels every such move goes through, so a reader that names the
@@ -97,48 +131,85 @@ export function leftFieldSince(events: readonly GameEvent[], from: number, insta
 
 /**
  * §3.2, R153, R212: a card has just been taken off the field, and `resumed` is the card beneath it in
- * its Stack pile that is its pile's top now, if any. A dormant card registers nothing (R153), so the
- * resumed card did not see what happened before it resumed — the death that uncovered it above all —
- * and no event reports a resume, so it is kept here against the card whose leaving caused it, and
- * `movesIn` reads it off that card's departure. Only a card's latest removal is kept: every removal
- * writes or clears its entry, so a departure event always reads the removal it reports.
+ * its Stack pile that is the pile's top now, if it was on top of one. A dormant card registers nothing
+ * (R153), so the resumed card did not see what happened before it resumed — the death that uncovered
+ * it above all — and no event reports a resume, so it is kept here against the card whose leaving
+ * caused it, for `uncoveredBy` to read off the events that report that leaving.
+ *
+ * A note belongs to one removal. It lasts while the report of that removal is still owed to the loop
+ * (`noteReported`) and while the card that left has not moved again (`noteMoved`), and goes once
+ * both have happened: a later move of the same card — exiled out of the graveyard it died into,
+ * discarded, shuffled back — is no removal from a pile's top, so a card that resumed long before is
+ * not taken for one that resumed after whatever that move's batch did first. Every removal is such a
+ * move, whether or not it uncovers anything.
  */
 export function noteUncovered(state: GameState, removedId: string, resumed: string | undefined): void {
-  if (resumed === undefined) {
-    if (state.fieldExits?.uncovered?.[removedId] !== undefined) delete state.fieldExits.uncovered[removedId];
-    return;
-  }
+  noteMoved(state, removedId);
+  if (resumed === undefined) return;
   const exits = state.fieldExits ?? { count: 0, last: {} };
-  exits.uncovered = { ...exits.uncovered, [removedId]: resumed };
+  exits.uncovered = { ...exits.uncovered, [removedId]: { resumed } };
   state.fieldExits = exits;
 }
 
 /**
- * R212, §3.2: the card an event's report of a card leaving the field, or changing hands (a steal
- * takes only a pile's top, R13), uncovered in its Stack pile — which resumed then, after the event
- * and whatever came before it. Arrivals are not read: they name no removal.
+ * R212: a card has moved zones again (`zones.removeFromAnyZone`), so the note of its last removal
+ * from a pile's top is done once the loop has dispatched that removal's report; until then the
+ * report still reads it, and the note goes with the report (`noteReported`).
+ */
+export function noteMoved(state: GameState, instanceId: string): void {
+  const uncovered = state.fieldExits?.uncovered;
+  const note = uncovered?.[instanceId];
+  if (uncovered === undefined || note === undefined) return;
+  if (note.reported === true) delete uncovered[instanceId];
+  else note.movedOn = true;
+}
+
+/**
+ * R212: the loop has dispatched an event (`triggers.dispatchEvent`). A removal it reports has been
+ * answered: its note stays for the rest of that removal's reports (a death's `enteredGraveyard`
+ * after its `destroyed`) until the card moves again, or goes now if it already has.
+ */
+export function noteReported(state: GameState, event: GameEvent): void {
+  const uncovered = state.fieldExits?.uncovered;
+  if (uncovered === undefined) return;
+  for (const id of removalsIn(event)) {
+    const note = uncovered[id];
+    if (note === undefined) continue;
+    if (note.movedOn === true) delete uncovered[id];
+    else note.reported = true;
+  }
+}
+
+/**
+ * The cards an event reports leaving the field, or changing hands (a steal takes only a pile's top,
+ * R13) — the removals a Stack note can hang on. Arrivals are not read: they name no removal.
+ */
+function removalsIn(event: GameEvent): readonly string[] {
+  switch (event.type) {
+    case "destroyed":
+    case "enteredGraveyard":
+    case "exiled":
+    case "bounced":
+    case "shuffledIn":
+    case "controlChanged":
+      return [event.instanceId];
+    case "fused":
+      return event.instanceIds.filter((id) => id !== event.resultInstanceId);
+    default:
+      return [];
+  }
+}
+
+/**
+ * R212, §3.2: the card the removal an event reports uncovered in its Stack pile — which resumed then,
+ * after the event and whatever came before it (`noteUncovered`).
  */
 export function uncoveredBy(state: GameState, event: GameEvent): string[] {
   const uncovered = state.fieldExits?.uncovered;
   if (uncovered === undefined) return [];
-  const removed = (() => {
-    switch (event.type) {
-      case "destroyed":
-      case "enteredGraveyard":
-      case "exiled":
-      case "bounced":
-      case "shuffledIn":
-      case "controlChanged":
-        return [event.instanceId];
-      case "fused":
-        return event.instanceIds.filter((id) => id !== event.resultInstanceId);
-      default:
-        return [];
-    }
-  })();
-  return removed.flatMap((id) => {
-    const resumed = uncovered[id];
-    return resumed === undefined ? [] : [resumed];
+  return removalsIn(event).flatMap((id) => {
+    const note = uncovered[id];
+    return note === undefined ? [] : [note.resumed];
   });
 }
 

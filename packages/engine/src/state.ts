@@ -298,11 +298,18 @@ export type GameState = {
 
 /**
  * R174: `count` departures so far; `last` maps a card to the departure that was its latest.
- * `uncovered` (R212, §3.2) maps a card that last left the top of a Stack pile — died, bounced,
- * exiled, stolen, fused away — to the dormant card that resumed as that pile's top when it did
- * (`stays.noteUncovered`), so an event its leaving caused is not answered by the card it uncovered.
+ * `uncovered` (R212, §3.2) maps a card that has left the top of a Stack pile — died, bounced,
+ * exiled, stolen, fused away — to the note of that removal (`stays.noteUncovered`), so the events
+ * reporting its leaving, and every event before them, are not answered by the card it uncovered.
  */
-export type FieldExits = { count: number; last: Record<string, number>; uncovered?: Record<string, string> };
+export type FieldExits = { count: number; last: Record<string, number>; uncovered?: Record<string, UncoveredNote> };
+
+/**
+ * R212, §3.2: `resumed` is the dormant card that became its pile's top when the card left.
+ * `reported`: the loop has dispatched a report of that removal (`stays.noteReported`). `movedOn`: the
+ * card that left has moved zones again since (`stays.noteMoved`). The note goes once both are true.
+ */
+export type UncoveredNote = { resumed: string; reported?: boolean; movedOn?: boolean };
 
 function emptyRow<T>(size: number): (T | null)[] {
   return Array.from({ length: size }, () => null);
