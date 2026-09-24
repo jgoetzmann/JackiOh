@@ -576,17 +576,19 @@ describe("§6.3 mana and next-turn mana (§2.3, M3-T1)", () => {
     expect(side.mana.current).toBe(3); // this turn is untouched
     expect(eventsOfType(events, "modifierChanged")).toHaveLength(1);
 
+    // §2.3: the rider lowers what the refresh gives, not max mana, which is min(turns, 4) plus the
+    // persistent modifiers only.
     side.turnsStarted = 4;
-    expect(maxManaFor(side)).toBe(MAX_MANA - 1);
+    expect(maxManaFor(side)).toBe(MAX_MANA);
     refreshMana(side);
-    expect(side.mana).toMatchObject({ current: 3, max: 3 });
+    expect(side.mana).toMatchObject({ current: MAX_MANA - 1, max: MAX_MANA });
     // One refresh only: the modifier is spent.
     expect(side.mana.nextTurnMod).toBe(0);
 
     // A big penalty floors the refresh at 0 rather than going negative.
     run(state, nextTurnMana({ amount: -9, player: "enemy" }), { controller: "p1" });
     refreshMana(side);
-    expect(side.mana).toMatchObject({ current: 0, max: 0 });
+    expect(side.mana).toMatchObject({ current: 0, max: MAX_MANA });
   });
 });
 

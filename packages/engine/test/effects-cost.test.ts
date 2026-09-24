@@ -179,3 +179,24 @@ describe("setCostOverride (§6.3 Cost, R65, M3-T1)", () => {
     expect(effectiveCost(state, unit)).toBe(5);
   });
 });
+
+describe("a price for a card in a hand (inHandOnly, R4)", () => {
+  it("R4 a price given with inHandOnly lands on a card in a hand and on nothing a full hand burned (§2.4, R78)", () => {
+    const state = newGame("price-in-hand");
+    const inHand = handCard(state, "fx-1");
+    const burned = newInstance(state, "fx-1", "p1", { z: "graveyard", player: "p1" });
+    state.players.p1.graveyard.push(burned);
+    const sink = sinkFor(state);
+
+    // #31's "+1", #37r's and #72's "costs 1 less", #72r's "costs 0": written after the move, each is
+    // the price of a card that reached the hand, and a card the move burned keeps its cost.
+    for (const card of [inHand, burned]) {
+      run(sink, setCostMod({ target: { of: "chosen" }, amount: -1, inHandOnly: true }), { targets: onInstance(card) });
+      run(sink, setCostOverride({ target: { of: "chosen" }, cost: 0, inHandOnly: true }), { targets: onInstance(card) });
+    }
+
+    expect({ costMod: inHand.costMod, costOverride: inHand.costOverride }).toEqual({ costMod: -1, costOverride: 0 });
+    expect({ costMod: burned.costMod, costOverride: burned.costOverride }).toEqual({ costMod: 0, costOverride: undefined });
+    expect(eventsOfType(sink.events, "costChanged").map((event) => event.instanceId)).toEqual([inHand.id, inHand.id]);
+  });
+});

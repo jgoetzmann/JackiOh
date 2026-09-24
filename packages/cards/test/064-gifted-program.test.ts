@@ -3,10 +3,10 @@
 // Must-pass: "First ≤1-cost card each turn is radiant before it resolves (its Cry uses radiant
 // text); second is not; radiant threshold 2 (R56)."
 //
-// The whole card is its `onPlayHook`, which `playSteps.ts` runs as §10.5 step 3: "the Gifted
-// Program hook may set `radiant` now". Nothing else on the card exists, which is what the first
-// test pins down, and `backrow: [GIFTED]` is enough to arm it — the hook needs the card on the
-// field, not a Cry.
+// The whole card is its `giftedProgram` static flag, which `playSteps.ts` reads as §10.5 step 3:
+// "the Gifted Program hook may set `radiant` now" (R213, R214). Nothing else on the card exists,
+// which is what the first test pins down, and `backrow: [GIFTED]` is enough to arm it — the flag
+// needs the card on the field, not a Cry.
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";
@@ -33,11 +33,12 @@ function sel(card: CardInstance): Selection {
 }
 
 describe("#64 Gifted Program", () => {
-  it("§10.5 step 3 both faces register the pre-resolution hook and nothing else", () => {
-    // The card is the hook: it has no Cry, no trigger and no aura, so if `onPlayHook` were not
-    // step 3's hook the card would do nothing at all.
-    expect(typeof base.onPlayHook).toBe("function");
-    expect(typeof radiant.onPlayHook).toBe("function");
+  it("§10.5 step 3 both faces carry the pre-resolution threshold and nothing else", () => {
+    // The card is its flag: it has no Cry, no trigger, no hook and no aura, so if step 3 did not read
+    // `giftedProgram` the card would do nothing at all. The faces differ only in the threshold.
+    expect(base.staticFlags).toEqual({ giftedProgram: 1 });
+    expect(radiant.staticFlags).toEqual({ giftedProgram: 2 });
+    expect(base.onPlayHook).toBeUndefined();
     expect(base.cry).toBeUndefined();
     expect(base.startOfTurn).toBeUndefined();
     expect(base.aura).toBeUndefined();
@@ -90,7 +91,8 @@ describe("#64 Gifted Program", () => {
     s.play(SURGERY, { targets: [sel(timmy)] });
     s.expectStats(timmy, { attack: 9, maxHealth: 9 });
 
-    // The per-turn flag is spent, so this one resolves its base text: fill only, no +2/+2.
+    // The turn's first cheap card has been played (R213), so this one resolves its base text: fill
+    // only, no +2/+2.
     s.play(FRIEND);
 
     s.expectStats(timmy, { attack: 9, maxHealth: 9 });
@@ -120,7 +122,7 @@ describe("#64 Gifted Program", () => {
     s.expectStats(POINTMASTER, { attack: 14, maxHealth: 4 });
   });
 
-  it("R56 the per-turn flag resets, so the next turn's first cheap card is Radiant too", () => {
+  it("R56 the count starts again each turn, so the next turn's first cheap card is Radiant too", () => {
     const s = scenario({
       p1: {
         backrow: [GIFTED],

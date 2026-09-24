@@ -24,6 +24,7 @@ const POINTMASTER = "core-020"; // Unit, cost 2, 7/2 — above the base ceiling,
 const MENACE = "core-019"; // Unit, cost 3 — above both ceilings.
 const TRAP = "core-041"; // Sheepish, Trap, cost 1 — a cheap permanent that is not a Unit.
 const SPELL = "core-010"; // Rapid Replenish, Spell, cost 0 — never a Recruit candidate (§6.3).
+const RUSH_TOKEN = "core-t-rush"; // Unit token, cost 1 — a card that leaves a library only by a draw (R11).
 
 type Board = ReturnType<typeof scenario>;
 
@@ -185,5 +186,19 @@ describe("#69 Call to Arms", () => {
 
     expect(unitIds(s)).toEqual([TIMMY, TIMMY, TIMMY, TIMMY, POINTMASTER]);
     expect(libraryIds(s)).toEqual([TIMMY, VANILLA]);
+  });
+});
+
+describe("R218: a Recruit passes over a unit-token card", () => {
+  it("R218 Call to Arms does not recruit a unit-token card out of the library (R11)", () => {
+    // A Rush Token card in the library, as #33 shuffles in copies of one #75 gave (R34): it leaves a
+    // library only by being drawn (R11), so the Recruit passes over it to the Timmy behind it.
+    const s = board({ p1: { hand: [CALL], library: [RUSH_TOKEN, TIMMY, MENACE] } });
+    const token = s.pile("p1", "library")[0];
+    s.play(CALL);
+
+    expect(unitIds(s)).toEqual([TIMMY, null, null, null, null]);
+    expect(s.pile("p1", "library").map((card) => card.id)).toContain(token?.id);
+    expect(libraryIds(s)).toEqual([RUSH_TOKEN, MENACE]);
   });
 });

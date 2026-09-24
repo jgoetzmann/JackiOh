@@ -27,7 +27,9 @@
 // names below say which is which, and neither exports a bare `query`.
 
 import type { PlayerId } from "@jackioh/shared";
-import type { CardInstance, GameState } from "./state";
+import type { EffectContext } from "./script";
+import { findInstance, type CardInstance, type GameState } from "./state";
+import { partMemoryKey } from "./work";
 import type { OffFieldZone } from "./zones";
 
 /**
@@ -102,6 +104,27 @@ export function playedIdsThisTurn(state: GameState, player: PlayerId): readonly 
 }
 
 /**
+ * §6.2 Combo X: how many cards this player played earlier this turn than this card's play — its
+ * place in the turn's log, which §10.5 step 4 wrote as it played the card ("`turnLog.cardsPlayed`
+ * checked at play time", §8 #10). A card the play itself goes on to cast (a cast-on-draw card that
+ * /fullsend's Combo draw takes at step 5, R70) is played after it, never earlier, so the count does
+ * not move while the play resolves. A card played twice this turn is counted from its latest play.
+ * A card still in a hand, or one the log does not hold, has not been played: every play this turn
+ * is earlier than the one it would be. `null` is a script running with no instance (`ctx.self` of a
+ * card that has ceased to exist, R127): its play is taken as the latest one in the log, so every
+ * play but that one is earlier.
+ */
+export function playedEarlier(state: GameState, player: PlayerId, card: CardInstance | string | null): number {
+  const log = state.players[player].turnLog;
+  if (card === null) return Math.max(0, log.cardsPlayed - 1);
+  const id = typeof card === "string" ? card : card.id;
+  const instance = typeof card === "string" ? findInstance(state, card) : card;
+  if (instance?.zone.z === "hand") return log.cardsPlayed;
+  const at = log.playedIds.lastIndexOf(id);
+  return at >= 0 ? at : log.cardsPlayed;
+}
+
+/**
  * Whether this player played this card this turn — the one-shot gate §5.1's "End of turn: add this
  * back to your hand" spells need (#23, #24, #31, R68): the card returns on the turn it was played
  * and not at every end of turn thereafter, and a copy that reached the graveyard by being discarded
@@ -115,4 +138,18 @@ export function wasPlayedThisTurn(
 ): boolean {
   const id = typeof card === "string" ? card : card.id;
   return state.players[player].turnLog.playedIds.includes(id);
+}
+
+/**
+ * What the card running a script remembers under `key` (§10.1: #22 Carnivorous Cube's meal), read
+ * the way `effects/memory.remember` wrote it. On a fused card each ingredient remembers apart (R102),
+ * so an ingredient reads its own first — two Cubes crafted into one card copy two meals — and then
+ * what the card remembered before the Fuse kept it (R77 keeps the target's memory). The value is
+ * handed back as stored, JSON, for the card to read defensively.
+ */
+export function recalled(ctx: Pick<EffectContext, "self" | "data">, key: string): unknown {
+  const memory = ctx.self?.memory;
+  if (memory === undefined) return undefined;
+  const own = memory[partMemoryKey(ctx.data, key)];
+  return own !== undefined ? own : memory[key];
 }

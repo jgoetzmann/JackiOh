@@ -428,3 +428,33 @@ describe("#51 KY's Private Tutor — radiant", () => {
     expect(revealedDefIds(s, open(s))).toEqual([FIELD_TRAP_1]);
   });
 });
+
+describe("#51 KY's Private Tutor — R218: a unit-token card in the library", () => {
+  it("R218 a unit-token card in the library never reaches a hand through the Tutor (§3.2, R11)", () => {
+    // #33 copies of a played Rush Token card (R34) are how one gets into a library. R11: it
+    // "ceases to exist if it leaves that zone other than by being drawn or played", and the Tutor's
+    // "choose one to hand" is neither, so R218's reasoning for Recruit holds here too. Either the
+    // Tutor passes over it (so "Unit" is not offered at all) or the card ceases to exist on the
+    // way; it never lands in the hand.
+    const g = scenario({
+      p1: { hand: ["core-051", "core-010"], library: ["core-t-rush", "core-005"] },
+      p2: { hand: ["core-008"], library: [...LIBRARY] },
+    });
+    const token = must(
+      g.pile("p1", "library").find((card) => card.defId === "core-t-rush"),
+      "the Rush Token card in p1's library",
+    );
+
+    g.play("core-051");
+    const types = g.state.pending?.options.flatMap((option) =>
+      option.selection.pick === "mode" ? [option.selection.option] : [],
+    );
+    if (types?.includes("Unit") === true) {
+      g.answer("Unit");
+      g.answer("0-1");
+      g.answer([{ pick: "instance", instanceId: token.id }]);
+    }
+
+    expect(g.pile("p1", "hand").map((card) => card.id)).not.toContain(token.id);
+  });
+});

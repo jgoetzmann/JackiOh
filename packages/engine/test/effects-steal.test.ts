@@ -54,13 +54,16 @@ describe("steal (§6.3, R15, M3-T1)", () => {
     expect(victim.owner).toBe("p2");
     expect(victim.zone).toEqual({ z: "field", player: "p1", row: "units", lane: 3 });
 
-    // The card never left the field, so R78's reset does not apply: everything on it stays.
+    // The card never left the field, so R78's reset does not apply: damage, buffs, position and
+    // counters stay.
     expect(victim.damage).toBe(1);
     expect(victim.buffs).toEqual({ attack: 2, health: 0 });
     expect(victim.position).toBe("DEF");
     expect(victim.counters).toEqual({ plague: 2 });
-    expect(victim.exertion).toEqual({ attacked: true, switched: false });
     expect(unitView(state, victim).attack).toBe(5);
+    // R171: but it has entered p1's side on this turn, so it is summoning sick with a fresh exertion.
+    expect(victim.summonedTurn).toBe(state.turn);
+    expect(victim.exertion).toEqual({ attacked: false, switched: false });
 
     expect(eventsOfType(events, "controlChanged")).toEqual([
       { type: "controlChanged", instanceId: victim.id, controller: "p1", row: "units", lane: 3 },

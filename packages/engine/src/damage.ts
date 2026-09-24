@@ -5,7 +5,7 @@ import type { GameEvent, PlayerId } from "@jackioh/shared";
 import { armorOf, hasKeyword, opponentOf } from "@jackioh/shared";
 import { ANTI_ONESHOT_CAP, HERO_ARMOR } from "./config";
 import { unitView } from "./layers";
-import { flagsOf } from "./scripts";
+import { flagsOf, textsOf } from "./scripts";
 import type { CardInstance, GameState } from "./state";
 import { cardAt, slotsOf } from "./zones";
 
@@ -45,9 +45,14 @@ export function heroArmorOf(state: GameState, player: PlayerId): number {
   return slotsOf(player, "backrow")
     .map((ref) => cardAt(state, ref))
     .reduce((sum, card) => {
-      if (card === null || flagsOf(card).heroArmor !== true) return sum;
+      if (card === null) return sum;
       const side = card.radiant ? HERO_ARMOR.radiant : HERO_ARMOR.base;
-      return sum + (card.embiggened === true ? side.embiggen : side.paid);
+      // R124, R102: every Going Long text a card carries grants its own Armor, at the price that
+      // text's card was played for — a Going Long fused onto a Going Long is Armor 4 as two apart are.
+      return textsOf(card).reduce((total, text) => {
+        const grants = text.flags.heroArmor === true ? 1 : typeof text.flags.heroArmor === "number" ? text.flags.heroArmor : 0;
+        return total + Math.max(0, Math.trunc(grants)) * (text.embiggened ? side.embiggen : side.paid);
+      }, sum);
     }, state.players[player].hero.armor);
 }
 
@@ -62,6 +67,30 @@ export function heroDamageCap(state: GameState, player: PlayerId): number | null
   return caps.length === 0 ? null : Math.min(...caps);
 }
 
+/** The card that acts in its unit zone: on the field, and the top of its pile (§3.2). */
+function actsOnField(state: GameState, unit: CardInstance): boolean {
+  const zone = unit.zone;
+  if (zone.z !== "field") return false;
+  return cardAt(state, { player: zone.player, row: zone.row, lane: zone.lane })?.id === unit.id;
+}
+
+/**
+ * R42, R89: "a death whose lethal damage instance came from this unit". A hit is lethal when it
+ * takes the unit from above 0 health to 0 or less, and that is the moment it is credited — never at
+ * death, which a layer can cause long after the last hit (an aura lowering max health, #46): a hit
+ * that left the unit standing clears any older credit, and a later hit on a unit already at 0 or
+ * less (a Cleave, a second spell) changes nothing, since the first one killed it. Poisonous credits
+ * its own hit in step 7. The state check forgets a credit whose unit is standing again.
+ */
+function creditKiller(unit: CardInstance, source: CardInstance | null, before: number, after: number): void {
+  if (before <= 0) return;
+  if (after > 0 || source === null) {
+    delete unit.lastDamagedBy;
+    return;
+  }
+  unit.lastDamagedBy = source.id;
+}
+
 /**
  * Deal one damage instance. Returns the amount actually dealt. A hit of 0 before step 1 is not a
  * damage instance at all: Divine Shield stays and nothing triggers (R63).
@@ -71,6 +100,11 @@ export function dealDamage(sink: DamageSink, args: DamageArgs): number {
   const { source, target } = args;
   const amountIn = Math.trunc(args.amount);
   if (amountIn <= 0) return 0;
+  // §4: damage is a unit's on the field — it stays there between turns and leaving the field takes
+  // it off (R78). A card that has left the field, or lies dormant under a Stack (R13), is no unit to
+  // hit: an effect still aimed at it fizzles (§8 Conventions), rather than leaving damage on a card
+  // in a graveyard or a hand that would follow it back onto the field.
+  if (target.kind === "unit" && !actsOnField(state, target.instance)) return 0;
 
   // Step 1: Divine Shield negates the whole hit and is gone.
   if (target.kind === "unit") {
@@ -139,8 +173,9 @@ export function dealDamage(sink: DamageSink, args: DamageArgs): number {
   }
 
   if (target.kind === "unit") {
+    const before = unitView(state, target.instance).health;
     target.instance.damage += dealt;
-    if (source !== null) target.instance.lastDamagedBy = source.id;
+    creditKiller(target.instance, source, before, before - dealt);
   } else {
     state.players[target.player].hero.health -= dealt;
   }
@@ -163,6 +198,8 @@ export function dealDamage(sink: DamageSink, args: DamageArgs): number {
     hasKeyword(unitView(state, source).keywords, "Poisonous")
   ) {
     target.instance.markedDestroyed = true;
+    // R42: the Poisonous hit is the one that destroys it, whatever health it left.
+    target.instance.lastDamagedBy = source.id;
   }
 
   // Step 8: Lifesteal heals the source's controller's hero by the amount dealt. R85: an effect

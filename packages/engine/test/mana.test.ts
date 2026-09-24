@@ -149,7 +149,7 @@ describe("R65 cost calculation (M1-T6)", () => {
     expect(canAfford(state, card)).toBe(true);
   });
 
-  it("refreshes to min(turns started, 4) plus modifiers and clears the one-shot (§2.3)", () => {
+  it("refreshes to min(turns started, 4) plus persistent modifiers, and the one-shot moves only current (§2.3)", () => {
     const state = newGame("refresh");
     const side = state.players.p1;
 
@@ -161,15 +161,22 @@ describe("R65 cost calculation (M1-T6)", () => {
     refreshMana(side);
     expect(side.mana.max).toBe(MAX_MANA);
 
+    // §2.3: max mana is min(turns, 4) plus the persistent modifier; the one-shot rider (Hinder's −2,
+    // Efficiency Dividend's +) moves only what this refresh gives, and is then cleared.
     side.mana.nextTurnMod = -2;
     side.mana.permMod = 1;
-    expect(maxManaFor(side)).toBe(3);
+    expect(maxManaFor(side)).toBe(MAX_MANA + 1);
     refreshMana(side);
-    expect(side.mana.max).toBe(3);
+    expect(side.mana).toMatchObject({ current: MAX_MANA - 1, max: MAX_MANA + 1 });
     expect(side.mana.nextTurnMod).toBe(0);
 
+    side.mana.nextTurnMod = -20;
+    refreshMana(side);
+    expect(side.mana).toMatchObject({ current: 0, max: MAX_MANA + 1 }); // never below 0
+
+    refreshMana(side);
     gainMana(side, 3);
-    expect(side.mana.current).toBe(6); // temporary mana may exceed max
+    expect(side.mana.current).toBe(MAX_MANA + 4); // temporary mana may exceed max
     spendMana(side, 10);
     expect(side.mana.current).toBe(0); // and never goes below 0
   });
