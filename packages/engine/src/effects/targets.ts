@@ -8,7 +8,7 @@ import type { DamageTarget } from "../damage";
 import type { EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import { exitMark, leftFieldAfter } from "../stays";
-import { adjacent, cardAt, slotOf, slotsOf, type ZoneSlot } from "../zones";
+import { adjacent, cardAt, isBuried, slotOf, slotsOf, type ZoneSlot } from "../zones";
 
 export type TargetSpec =
   /** The unit running the script. */
@@ -59,6 +59,10 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
     // chosen as its prompt offered it (`ctx.chosenFrom`, §10.6): a Reborn body the list's own
     // sacrifice put back before it asked is the stay that was picked.
     if (leftFieldAfter(ctx.state, ctx.chosenFrom ?? ctx.exitsFrom ?? exitMark(ctx.state), instance.id)) return null;
+    // §3.2, R13, R174: nor is a card on the field for an effect while it lies dormant under a Stack
+    // pile — one the play's own Stack card buried at §10.5 step 4 (a crafted Felinor Fiender played
+    // onto the unit its Cry chose): #61's copy and #22's meal fizzle, as #68's damage does.
+    if (isBuried(ctx.state, instance)) return null;
     return { kind: "unit", instance };
   }
   return null;
@@ -75,6 +79,8 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
 export function instanceOnItsStay(ctx: EffectContext, instanceId: string): CardInstance | null {
   const instance = findInstance(ctx.state, instanceId);
   if (instance === undefined) return null;
+  // §3.2, R13: a card dormant under a Stack pile is not on the field for effects.
+  if (isBuried(ctx.state, instance)) return null;
   return leftFieldSince(ctx, instance.id) ? null : instance;
 }
 

@@ -140,10 +140,19 @@ export function setRadiantRandom(args: {
       const player = playerOf(ctx, args.player ?? "self");
       const zones = Array.isArray(args.zones) ? args.zones : [args.zones];
       const count = Math.max(0, Math.trunc(args.count ?? 1));
+      // The zones' cards in their own order, read before anything changes: the order the events go
+      // out in (R177, below).
+      const everyCard = poolOf(ctx, player, zones, { radiantToo: true });
       const pool = poolOf(ctx, player, zones);
-      const picked = pool.length === 0 ? [] : ctx.rng.shuffle(pool).slice(0, count);
-      for (const card of picked) makeRadiant(ctx, card);
-      cueUnpicked(ctx, player, zones, count - picked.length, new Set(picked.map((card) => card.id)));
+      const picked = new Set((pool.length === 0 ? [] : ctx.rng.shuffle(pool).slice(0, count)).map((card) => card.id));
+      const cued = new Set(cuesFor(ctx, everyCard, count - picked.size, picked).map((card) => card.id));
+      // R177: the picks and the cues go out together, in the zones' own order — hand order, the
+      // library top down, lane order — never the shuffle's with the cues after it: the cues stand for
+      // picks R60 could not make, and trailing the real ones they said so, since a hidden card's cue
+      // before a public pick could only have been a pick of a base-face card.
+      for (const card of everyCard) {
+        if (picked.has(card.id) || cued.has(card.id)) makeRadiant(ctx, card);
+      }
     },
   };
 }
@@ -153,26 +162,27 @@ export function setRadiantRandom(args: {
  * library holds fewer of them than the pick wants, fewer cards change — and a cue for the changed
  * cards alone would tell the other seat how many of the hidden ones were Radiant already (none at all
  * for an all-Radiant hand under #27). So the picks R60 could not make are cued on the zones' Radiant
- * cards in their own order, as a Make Radiant on a card that was already Radiant is (R177), until the
- * cues number what the pick wanted or the zones run out — and the zones' sizes are public. No card
- * changes and no random number is drawn for them (R129). A public card's face is public either way,
- * so only cards hidden from someone are cued.
+ * cards, as a Make Radiant on a card that was already Radiant is (R177), until the cues number what
+ * the pick wanted or the zones run out — and the zones' sizes are public. No card changes and no
+ * random number is drawn for them (R129). A public card's face is public either way, so only cards
+ * hidden from someone are cued.
+ *
+ * The cards nobody reads come first — the library's, in its order (§3) — and then the ones only one
+ * player reads, a hand's or a face-down trap's, in the zones' order: the owner reads their own hand,
+ * so a cue landing there that a pick of a base-face library card would have landed in the library
+ * would tell the owner how many of their library cards were base-face (§9.1, §10.8).
  */
-function cueUnpicked(
+function cuesFor(
   ctx: EffectContext,
-  player: PlayerId,
-  zones: readonly RadiantZone[],
+  everyCard: readonly CardInstance[],
   missing: number,
   picked: ReadonlySet<string>,
-): void {
-  if (missing <= 0) return;
-  let left = missing;
-  for (const card of poolOf(ctx, player, zones, { radiantToo: true })) {
-    if (left <= 0) return;
-    if (picked.has(card.id) || !card.radiant || !hiddenFromSomeone(ctx, card)) continue;
-    makeRadiant(ctx, card);
-    left -= 1;
-  }
+): CardInstance[] {
+  if (missing <= 0) return [];
+  const candidates = everyCard.filter((card) => !picked.has(card.id) && card.radiant && hiddenFromSomeone(ctx, card));
+  const unreadByAll = candidates.filter((card) => card.zone.z === "library");
+  const readByOne = candidates.filter((card) => card.zone.z !== "library");
+  return [...unreadByAll, ...readByOne].slice(0, missing);
 }
 
 /** §6.1's Lucky X keeps "the best"; for a chance roll that is a success beating a failure (R32). */

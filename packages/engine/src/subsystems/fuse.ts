@@ -40,7 +40,7 @@ import {
   scriptsFor,
 } from "../scripts";
 import { newInstance, type CardInstance, type GameState } from "../state";
-import { PART_DEPTH_KEY, PART_KEY, partPathOf } from "../work";
+import { PART_DEPTH_KEY, PART_KEY, partPathOf, rerootRemembered } from "../work";
 import { ceaseToExist } from "../zones";
 
 /** R77: Craft a Card fuses "two or three cards", and #85 fuses two. Fewer is not a fusion. */
@@ -56,6 +56,8 @@ export const CRAFTED_CARD_COST = 0;
  * member of `Script` that returns something other than a list belongs in this pair.
  */
 const COST_KEY = "cost";
+/** The `Script` key of the step table a continuation re-enters (`prompts.RESUME_HOOK`). */
+const RESUME_KEY = "resume";
 const SET_STAT_KEY = "setStat";
 
 /** The script keys whose entries carry an `id` that has to stay unique across the ingredients. */
@@ -337,10 +339,14 @@ function ingredientPart(index: number, build: (ctx: EffectContext) => readonly E
  * back to its list alone: the answer to one Masochism Mask's "choose one" is that Mask's pick, not a
  * pick for every ingredient that names its step the same.
  */
-function combinedHook(fns: readonly (ListFn | undefined)[]): (ctx: EffectContext) => Effect[] {
+function combinedHook(fns: readonly (ListFn | undefined)[], step = false): (ctx: EffectContext) => Effect[] {
   return (ctx) => {
     const depth = typeof ctx.data[PART_DEPTH_KEY] === "number" ? (ctx.data[PART_DEPTH_KEY] as number) : 0;
-    const routed = partPathOf(ctx.data)?.[depth];
+    // A step of the `resume` table is one continuation of one text, so one that names no part — the
+    // engine left it for the card as a whole, not one of its texts: the prompt of the power R43
+    // activates once (`heroPower.activatePower`) — comes back to the first ingredient that has the
+    // step, once, rather than to every ingredient that names its step the same (R43, R102).
+    const routed = partPathOf(ctx.data)?.[depth] ?? (step ? fns.findIndex((fn) => fn !== undefined) : undefined);
     const indices = fns.flatMap((fn, index) =>
       fn === undefined || (routed !== undefined && routed !== index) ? [] : [index],
     );
@@ -367,7 +373,7 @@ function combinedHook(fns: readonly (ListFn | undefined)[]): (ctx: EffectContext
  *     stricter requirement rather than a doubled one (`staticFlags.tribute`) — except an amount of
  *     what the text does, which adds up (`SUMMED_FLAGS`).
  */
-function combineValues(values: readonly unknown[], key = ""): unknown {
+function combineValues(values: readonly unknown[], key = "", parent = ""): unknown {
   const defined = values.filter((value) => value !== undefined);
   if (defined.length === 0) return undefined;
   if (defined.every((value) => typeof value === "function")) {
@@ -376,7 +382,7 @@ function combineValues(values: readonly unknown[], key = ""): unknown {
       if (defined.length === 1) return defined[0];
       return (...args: unknown[]): unknown[] => fns.flatMap((fn) => (fn === undefined ? [] : fn(...args)));
     }
-    return combinedHook(fns);
+    return combinedHook(fns, parent === RESUME_KEY);
   }
   if (SUMMED_FLAGS.includes(key) && defined.every((value) => typeof value === "number" || typeof value === "boolean")) {
     return defined.reduce<number>((sum, value) => sum + (value === true ? 1 : typeof value === "number" ? value : 0), 0);
@@ -386,19 +392,23 @@ function combineValues(values: readonly unknown[], key = ""): unknown {
   if (defined.every((value) => typeof value === "boolean")) return defined.some((value) => value === true);
   if (defined.every((value) => typeof value === "number")) return Math.max(...(defined as number[]));
   if (defined.every((value) => isPlainObject(value))) {
-    return combineObjects(values.map((value) => (isPlainObject(value) ? value : undefined)));
+    return combineObjects(
+      values.map((value) => (isPlainObject(value) ? value : undefined)),
+      key,
+    );
   }
   // Nothing in `Script` mixes kinds under one key; the last ingredient wins if one ever does.
   return defined[defined.length - 1];
 }
 
-function combineObjects(objects: readonly (Record<string, unknown> | undefined)[]): Record<string, unknown> {
+function combineObjects(objects: readonly (Record<string, unknown> | undefined)[], parent = ""): Record<string, unknown> {
   const keys = [...new Set(objects.flatMap((object) => (object === undefined ? [] : Object.keys(object))))];
   const out: Record<string, unknown> = {};
   for (const key of keys) {
     const value = combineValues(
       objects.map((object) => object?.[key]),
       key,
+      parent,
     );
     if (value !== undefined) out[key] = value;
   }
@@ -581,6 +591,9 @@ function keepInstance(
   // R102: the price each ingredient's text reads as its own, recorded before any of them ceases to
   // exist and only when they are not all the kept card's (`scripts.INGREDIENTS_KEY`).
   const record = ingredientRecord(kept, ingredients);
+  // R77, R102: the kept card's texts become ingredient `index` of the fusion, and what they
+  // remembered moves with them to the path they now run at (`work.rerootRemembered`).
+  rerootRemembered(kept.memory, ingredients.findIndex((card) => card.id === kept.id));
   gainPrintedKeywords(kept, before, def);
   kept.defId = def.id;
   kept.buffs = { attack, health };

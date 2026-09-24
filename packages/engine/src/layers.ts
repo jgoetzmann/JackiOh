@@ -73,6 +73,23 @@ function auraMods(state: GameState, unit: CardInstance): StatMod[] {
   return mods;
 }
 
+/**
+ * §6.1: a unit's keywords are "computed as a set per unit", and §10.4 makes them the union of the
+ * printed, granted, aura and position keywords — so a keyword two sources give is had once (Tempo
+ * Timmy's printed Rush under Jlockeed's Weapons, a Taunt unit's own Taunt in Defense Position), and
+ * the view hands the client one entry for it (§10.8). The numbered keywords are the exception: Armor
+ * sums across its sources (§10.4) and Lucky X stacks, so every entry of theirs is kept for the sum.
+ */
+function asSet(keywords: readonly Keyword[]): Keyword[] {
+  const seen = new Set<Keyword["kind"]>();
+  return keywords.filter((keyword) => {
+    if (keyword.kind === "Armor" || keyword.kind === "Lucky") return true;
+    if (seen.has(keyword.kind)) return false;
+    seen.add(keyword.kind);
+    return true;
+  });
+}
+
 export function unitView(state: GameState, instance: CardInstance): UnitView {
   const printed = faceOf(state, instance);
   const position = instance.position ?? "ATK";
@@ -125,11 +142,13 @@ export function unitView(state: GameState, instance: CardInstance): UnitView {
   // R46: an Indestructible unit that would have been destroyed loses Taunt for the turn.
   // A spent Divine Shield and a used Reborn are gone until granted again (§6.1, §4.5 step 4).
   const tauntSuppressed = instance.tauntSuppressedTurn === state.turn;
-  const finalKeywords = keywords.filter(
-    (k) =>
-      !(tauntSuppressed && k.kind === "Taunt") &&
-      !(instance.divineShieldSpent === true && k.kind === "Divine Shield") &&
-      !(instance.rebornSpent === true && k.kind === "Reborn"),
+  const finalKeywords = asSet(
+    keywords.filter(
+      (k) =>
+        !(tauntSuppressed && k.kind === "Taunt") &&
+        !(instance.divineShieldSpent === true && k.kind === "Divine Shield") &&
+        !(instance.rebornSpent === true && k.kind === "Reborn"),
+    ),
   );
 
   // Attack floors at 0; max health may fall to 0, which the state check turns into a death (§10.4).

@@ -190,8 +190,18 @@ function isOwnArrival(trap: CardInstance, event: GameEvent): boolean {
   const about: unknown = (event as { instanceId?: unknown }).instanceId;
   if (about === trap.id) return true;
   // R119: nor the play the trap arrived on the field during, whatever put it there — #95 summoning a
-  // Bear Honeypot face-down does not have that Honeypot answer #95's own `cardResolved`.
-  return event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(trap.id);
+  // Bear Honeypot face-down does not have that Honeypot answer #95's own `cardResolved`, and a
+  // Sheepish a tributed Cube's Death copied at step 2 does not answer the `cardPlayed` of the play
+  // that paid the Tribute.
+  return arrivedDuringPlay(event).includes(trap.id);
+}
+
+/** R119: the arrivals a play's `cardPlayed`, `summoned` or `cardResolved` names, which it does not answer. */
+export function arrivedDuringPlay(event: GameEvent): readonly string[] {
+  if (event.type === "cardPlayed" || event.type === "summoned" || event.type === "cardResolved") {
+    return event.arrivedDuring ?? [];
+  }
+  return [];
 }
 
 /**

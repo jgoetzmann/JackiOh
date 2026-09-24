@@ -11,8 +11,22 @@
 // rolling only for a hand that held a base-face card, both of which told p2 about p1's hidden faces
 // (R177). The last case, R119's, is the one that did not fail first: it pins the strip `viewFor`
 // already made of `cardResolved.arrivedDuring`, which would name a face-down trap if it went out.
+//
+// Round 9 found three more: a card the mulligan returned, waiting in no pile while a replacement
+// draw's cast asks, read as public, so the deal's events named it to the other seat (R224); and #28's
+// cues trailed its real picks and landed on the owner's own hand first, so their order told the
+// other seat, and their place told the owner, which hidden faces were base-face (R177).
 
-import type { Action, ActionBody, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
+import type {
+  Action,
+  ActionBody,
+  GameEvent,
+  PlayerId,
+  PlayerView,
+  ActionInput,
+  CardDef,
+  CardType,
+} from "@jackioh/shared";
 import {
   beginGame,
   createGame,
@@ -24,9 +38,15 @@ import {
   viewFor,
   type GameState,
   type PendingChoice,
+  HIDDEN_ID,
+  newInstance,
+  registerScripts,
+  registeredScripts,
+  type Script,
 } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
+import { chooseMode } from "@jackioh/engine/effects";
 
 /** viewFor's R97 sentinel. */
 const HIDDEN = "hidden";
@@ -1026,5 +1046,184 @@ describe("R119: the arrivals a play's cardResolved names stay the engine's", () 
       expect(JSON.stringify(s.view(seat).events)).not.toContain("arrivedDuring");
     }
     expect(JSON.stringify(s.view("p2").events)).not.toContain(`"${honeypot.id}"`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: the mulligan's returned cards and #28's cues (R224, R177)
+// ---------------------------------------------------------------------------
+
+function fixtureDef(id: string, type: CardType): CardDef {
+  const face = type === "Unit" ? { attack: 2, health: 2, keywords: [], text: id } : { keywords: [], text: id };
+  return {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+}
+
+let setupNonce = 0;
+function actAs(state: GameState, player: PlayerId, body: ActionInput | Record<string, unknown>): GameState {
+  setupNonce += 1;
+  const result = reduce(state, { ...body, playerId: player, nonce: `edge-r9-view-${setupNonce}` } as Action);
+  if (result.error !== undefined) throw new Error(result.error);
+  return result.state;
+}
+
+/** Every id or def id an event names, for "does this view name X" checks. */
+function named(event: GameEvent): string[] {
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(event)) {
+    if (typeof value === "string" && /(Id|Ids)$/.test(key)) out.push(value);
+    if (Array.isArray(value) && /Ids$/.test(key)) out.push(...value.filter((v): v is string => typeof v === "string"));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The mulligan's returned cards while setup waits on a cast's question (R224, R97)
+// ---------------------------------------------------------------------------
+
+const ASKING = "edge-r9-view-cod-asks";
+
+function asking(state: GameState): void {
+  state.transientDefs[ASKING] = fixtureDef(ASKING, "Spell");
+  const script: Script = {
+    staticFlags: { castOnDraw: true },
+    cry: () => [chooseMode({ options: ["ok"], step: "ok", prompt: "the cast's question" })],
+    resume: { ok: () => [] },
+  };
+  registerScripts({ ...registeredScripts(), [ASKING]: { base: script, radiant: script } });
+}
+
+const SETUP_P1_DECK = Array.from({ length: 20 }, (_, at) => `core-${String(at + 1).padStart(3, "0")}`);
+const SETUP_P2_DECK = Array.from({ length: 20 }, (_, at) => `core-${String(at + 30).padStart(3, "0")}`);
+
+describe("R224, R97: a card the mulligan returned, while setup waits", () => {
+  it("R224 p2's returned opening card stays unread by p1 while p2's replacement cast asks (R97, §9.1)", () => {
+    // p1's opening draw hits an asking cast, so p2's opening deal happens inside p1's answer: a
+    // recorded action, whose `drawn` events for p2's cards are in p1's view, redacted (R97).
+    let seed: string | undefined;
+    let begun: GameState | undefined;
+    for (let at = 0; at < 300 && seed === undefined; at += 1) {
+      const candidate = `edge-r9-view-deal-${at}`;
+      const game = createGame({ seed: candidate, decks: [[...SETUP_P1_DECK], [...SETUP_P2_DECK]] });
+      asking(game);
+      game.players.p1.library[0] = newInstance(game, ASKING, "p1", { z: "library", player: "p1" });
+      const state = beginGame(game).state;
+      if (state.pending?.kind === "mode" && state.pending.playerId === "p1") {
+        seed = candidate;
+        begun = state;
+      }
+    }
+    let state = must(begun, "a seed whose opening draw casts the asking card");
+    const first = must(state.pending, "p1's cast question");
+    state = actAs(state, "p1", { type: "answer", choiceId: first.id, selection: [{ pick: "mode", option: "ok" }] });
+    expect(state.pending?.kind).toBe("mulligan");
+    expect(state.players.p2.hand.length).toBeGreaterThan(0);
+
+    // p1 keeps its hand; p2's mulligan opens.
+    state = actAs(state, "p1", { type: "mulligan", keep: state.players.p1.hand.map((card) => card.id) });
+    expect(state.pending?.kind).toBe("mulligan");
+    expect(state.pending?.playerId).toBe("p2");
+
+    // p2 returns one card, and its replacement draw is an asking cast, so setup waits (R224) with
+    // the returned card in no pile until it goes back.
+    const returned = must(state.players.p2.hand[0], "a card for p2 to return");
+    const cod = newInstance(state, ASKING, "p2", { z: "library", player: "p2" });
+    state.players.p2.library.unshift(cod);
+    state = actAs(state, "p2", { type: "mulligan", keep: state.players.p2.hand.slice(1).map((card) => card.id) });
+    expect(state.pending?.kind).toBe("mode");
+    expect(state.pending?.playerId).toBe("p2");
+
+    // The deal's event naming the returned card is still in p1's window.
+    const view = viewFor(state, "p1");
+    const deal = view.events.filter((event) => event.type === "drawn" && event.player === "p2");
+    expect(deal.length).toBeGreaterThan(0);
+
+    // §9.1: p2's hand is hidden from p1, and the card is on its way back to p2's library, hidden
+    // from both. Nothing in p1's view may name it.
+    const leaks = view.events.filter((event) => named(event).includes(returned.id) || named(event).includes(returned.defId));
+    expect(leaks, JSON.stringify(leaks)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #28's picks and its cues, in the order the other seat sees them (R177, R60, §9.1)
+// ---------------------------------------------------------------------------
+
+/** p2's view of the `radiantSet` events #28's play made, redacted as p2 reads them. */
+function knockoffCues(seed: string, handRadiant: boolean): { order: string[]; events: GameEvent[] } {
+  const s = scenario({
+    seed,
+    p1: {
+      mana: 2,
+      // The one card left in p1's hand once #28 is played, Radiant or not; the library is empty.
+      hand: ["core-028", { def: "core-016", radiant: handRadiant }],
+      library: [],
+      field: ["core-025"],
+    },
+  });
+  s.play("core-028");
+  const unitId = must(s.unit("p1", 1), "p1's unit").id;
+  const events = s.view("p2").events.filter((event) => event.type === "radiantSet");
+  const order = events.map((event) => (event.type === "radiantSet" && event.instanceId === unitId ? "unit" : event.instanceId));
+  return { order, events };
+}
+
+describe("R177, R60: #28's cues keep the hidden faces hidden", () => {
+  it("R177 #28's cue on an all-Radiant hand can come in any order a pick could (R60, §9.1)", () => {
+    // Two worlds p2 cannot tell apart by what changed: p1's one hidden hand card is base-face (A)
+    // or already Radiant (B). Either way #28's two picks make p1's public unit Radiant and cue one
+    // hidden card in p1's hand, since R177 cues the pick R60 could not make on the Radiant card, "so
+    // an all-Radiant hand ... is cued as a hand the pick changed". The order the two arrive in must
+    // not tell the worlds apart either: every order p2 can see in A must be one B can produce.
+    const seeds = Array.from({ length: 40 }, (_, at) => `edge-r9-view-28-${at}`);
+    const orders = (radiant: boolean): Set<string> =>
+      new Set(seeds.map((seed) => JSON.stringify(knockoffCues(seed, radiant).order)));
+    const inA = orders(false);
+    const inB = orders(true);
+    // Sanity: both worlds show p2 the same outcome, the unit and one hidden cue.
+    for (const order of [...inA, ...inB]) expect(JSON.parse(order).slice().sort()).toEqual([HIDDEN_ID, "unit"]);
+    // A cue that always trails the public pick says "the hand was all Radiant" whenever it leads.
+    const onlyInA = [...inA].filter((order) => !inB.has(order));
+    expect(onlyInA, `A ${JSON.stringify([...inA])} B ${JSON.stringify([...inB])}`).toEqual([]);
+  });
+
+  it("R177 #28's cue for a pick it could not make lands where its owner cannot read it either (R60, §9.1, §3)", () => {
+    // p1's hand holds two cards that are already Radiant, and its library one card: base-face in
+    // world A, Radiant in world B. §3 and §9.1: a library is read by nobody, p1 included, so p1
+    // must not learn which world it is in. #28 wants two picks and R177 cues the ones R60 could not
+    // make; if the cues go to p1's own hand cards, which p1 reads, the number of them spells out
+    // how many of p1's library cards were base-face.
+    const cuesFor = (libraryRadiant: boolean): GameEvent[] => {
+      const s = scenario({
+        seed: "edge-r9-view-28-owner",
+        p1: {
+          mana: 2,
+          hand: ["core-028", { def: "core-016", radiant: true }, { def: "core-005", radiant: true }],
+          library: [{ def: "core-010", radiant: libraryRadiant }],
+          field: [],
+        },
+      });
+      s.play("core-028");
+      return s.view("p1").events.filter((event) => event.type === "radiantSet");
+    };
+    const worldA = cuesFor(false);
+    const worldB = cuesFor(true);
+    const shape = (events: readonly GameEvent[]): string[] =>
+      events
+        .map((event) => (event.type === "radiantSet" ? `${event.zone.z}:${event.instanceId === HIDDEN_ID ? "unread" : "read"}` : ""))
+        .sort();
+    expect(worldA).toHaveLength(2);
+    expect(shape(worldB), `A ${JSON.stringify(worldA)}\nB ${JSON.stringify(worldB)}`).toEqual(shape(worldA));
   });
 });

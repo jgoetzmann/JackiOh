@@ -11,8 +11,10 @@
 // the top (engine/src/draw.ts draws it), so scanning top down and keeping only a STRICTLY better
 // cost keeps the first card seen, which is the one nearest the top. The cost function is
 // `mana.effectiveCost`, the one R65 calculation for an instance: it starts from `costOverride` or
-// the printed cost, adds the instance's `costMod` (which persists in every zone, R78) and the
-// player's discounts, and for a library card the printed cost is already R65's out-of-play number,
+// the printed cost and adds the instance's `costMod` (which persists in every zone, R78). The
+// player's discounts price a play from the hand and never a library card (R65), so Professor
+// Curvature's or Lunar Eclipse's discount does not make a 4 in the library a 3 that ties with a 3
+// above it. For a library card the printed cost is already R65's out-of-play number,
 // since a card that was never played has no `x` and is not `embiggened`. `queryCost` is the other
 // half of R65 and is the wrong one here: it reads a DEFINITION, so it cannot see the `costMod` #7
 // Jewelosco Scarab left on the instance or the discount #95 Call to Chaos put on the library, and
@@ -29,7 +31,7 @@
 
 import type { CardInstance, Effect, EffectContext, Script } from "@jackioh/engine";
 import { effectiveCost, zoneCards } from "@jackioh/engine";
-import { chosenOptions, drawFromLibrary } from "@jackioh/engine/effects";
+import { chosenOptions, drawFromLibrary, forEachCard } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-030");
@@ -76,11 +78,20 @@ export const base: Script = {
 };
 
 export const radiant: Script = {
-  cry: (ctx) => {
-    const highest = extreme(ctx, HIGHEST);
-    const lowest = extreme(ctx, LOWEST);
+  cry: () => {
     // A one-card library is its own highest and lowest, so "draw both" draws it once.
-    const both = highest !== null && highest.id === lowest?.id ? [highest] : [highest, lowest];
-    return both.flatMap((card) => drawNamed(card));
+    // The two are read once, as the Cry begins: a highest card that is cast on draw and asks has left
+    // the library by the answer, and a rebuilt pair would name other cards (R113, `forEachCard`).
+    return [
+      forEachCard({
+        cards: (at) => {
+          const high = extreme(at, HIGHEST);
+          const low = extreme(at, LOWEST);
+          const both = high !== null && high.id === low?.id ? [high] : [high, low];
+          return both.flatMap((card) => (card === null ? [] : [card]));
+        },
+        each: (instanceId) => drawFromLibrary({ instanceId }),
+      }),
+    ];
   },
 };

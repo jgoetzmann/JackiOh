@@ -22,7 +22,8 @@
 // Round 7 (lens L7) added the cases at the end: a queued trigger's tail after a prompt runs the face
 // its head ran (§5.2, R113); step 3's hooks, the played card's Cry and the traps owed its
 // `cardPlayed` follow the stays they began with, not a Reborn body or a card in a hand (R174, R118);
-// the answer to a cast's own choice finishes the draw chain before the traps answer the cast (R122);
+// the answer to a cast's own choice goes on with the draw chain rather than the loop (R122), and the
+// traps answer the first cast at the next cast's step-4 window (R70, round 9);
 // and a list a prompt split still reads what its head summoned (R136) and the stays it began with,
 // in the step the answer re-enters as much as in its tail (R174).
 //
@@ -36,6 +37,12 @@
 // No Core card opens a prompt from a delayed effect, a cast on draw, a trap's list or a Death hook,
 // so each case builds the prompting continuation out of engine verbs on a fixture card (a transient
 // def, the way a fusion's is held) and uses real cards for everything else.
+//
+// Round 9 (lens L7) added four: a prompt the engine opens for a fused card as a whole (the ping of the
+// one power R43 activates) comes back to one ingredient (R102); a clause over a set it read off the
+// board resumes over that set, so #94 draws every 2-cost card it began with (R66, R113); a cast's
+// step 4 is a window, so Sheepish answers a cast Unit before its Cry (R70, R17); and a cast makes its
+// choices before it is placed, so a cast Unit is not offered itself (R70, R90).
 
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, Keyword, PlayerId, Row, TargetDecl } from "@jackioh/shared";
@@ -956,8 +963,8 @@ describe("R174, R17: Sheepish owed the play behind a trap that took the unit off
 
 const BEAR_HONEYPOT = "core-060";
 
-describe("R122, §2.4: the answer to a cast's own choice finishes the draw chain before the traps answer the cast", () => {
-  it("R122 the cast-on-draw card under a cast that asked for its target is cast before Bear Honeypot answers the first cast (R113, R70, §2.4)", () => {
+describe("R122, §2.4: the answer to a cast's own choice goes on with the draw chain, not the resolution loop", () => {
+  it("R122 the cast-on-draw card under a cast that asked for its target is drawn and cast before Bear Honeypot answers the first cast (R113, R70, §2.4)", () => {
     const s = scenario({
       p1: { hand: [RENO], library: [RENO, RENO] },
       p2: { backrow: [BEAR_HONEYPOT], hand: [RENO] },
@@ -984,21 +991,25 @@ describe("R122, §2.4: the answer to a cast's own choice finishes the draw chain
     expect(must(s.state.pending, "the cast's target prompt").playerId).toBe("p1");
     s.answer([{ pick: "hero", player: "p2" }]);
 
-    // §2.4: the draw repeats as soon as the cast has resolved, so the sweep is cast inside the same
-    // draw, and the cast's events reach the traps with the rest of the draw's (a cast leaves them to
-    // the effect that cast it, R70). R122: the answer finishes what the prompt interrupted before
-    // the resolution loop moves. So Bear Honeypot's tokens arrive after the sweep: nothing hits them.
+    // §2.4: the draw repeats as soon as the cast has resolved, so the sweep is drawn and cast inside
+    // the same draw. R122: the answer goes on with what the prompt interrupted, the draw chain, and
+    // not with the resolution loop. The traps meet the first cast's resolution at the sweep's own
+    // step 4, which is a window as a play's is (R70, R17): every event so far reaches the traps
+    // there, before the sweep resolves. So Bear Honeypot's tokens arrive before the sweep's 1
+    // damage to each enemy unit, and it hits them.
     const types = s.lastEvents.map((event) => event.type);
     const sweepDrawn = s.lastEvents.findIndex((event) => event.type === "drawn" && event.instanceId === second.id);
+    const sweepCast = s.lastEvents.findIndex((event) => event.type === "cardPlayed" && event.instanceId === second.id);
     const trapFired = types.indexOf("trapFired");
     expect(sweepDrawn, `events: ${types.join(", ")}`).toBeGreaterThanOrEqual(0);
-    expect(trapFired, `events: ${types.join(", ")}`).toBeGreaterThan(sweepDrawn);
+    expect(sweepCast, `events: ${types.join(", ")}`).toBeGreaterThan(sweepDrawn);
+    expect(trapFired, `events: ${types.join(", ")}`).toBeGreaterThan(sweepCast);
     const tokens = [1, 2, 3, 4, 5].flatMap((lane) => {
       const unit = s.unit("p2", lane);
       return unit !== null && unit.defId === RUSH_TOKEN ? [unit] : [];
     });
     expect(tokens).toHaveLength(2);
-    for (const token of tokens) expect(token.damage).toBe(0);
+    for (const token of tokens) expect(token.damage).toBe(1);
   });
 });
 
@@ -1694,5 +1705,213 @@ describe("R59, §10.5 step 4: a trigger that answered the play and asked is foll
     // the Cry counted a dead unit still on the field: p2 took 1.
     s.expectInZone(timmy, "graveyard");
     s.expectHealth("p2", 30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: prompts a fused power opens, lists read off the board, and casts (R102, R66, R70)
+// ---------------------------------------------------------------------------
+
+const EXPERIMENTATION = "core-085";
+
+const GENNS_GREED = "core-094";
+const BIGOT = "core-002"; // Unit, 2
+const SEVEN_SEVEN = "core-025"; // Unit, 4
+
+/** A fixture card: a transient def in the match state and its script in the registry. */
+function fixtureCard(s: Scenario, id: string, type: CardType, script: Script, cost = 0): void {
+  const face = type === "Unit" ? { attack: 2, health: 2, keywords: [], text: id } : { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+/** Put a fresh instance of `defId` into p1's library at `at` (0 is the top). */
+function intoLibrary(s: Scenario, defId: string, at: number): CardInstance {
+  const card = newInstance(s.state, defId, "p1", { z: "library", player: "p1" });
+  s.state.players.p1.library.splice(at, 0, card);
+  return card;
+}
+
+
+describe("R102, R43: a fused Heroic Power's prompted power", () => {
+  it("R102 a Heroic Power fused onto a Heroic Power pings once when its target is picked at the prompt (R43, §10.6)", () => {
+    const g = scenario({
+      p1: { hand: [HEROIC_POWER], library: [RENO, RENO] },
+      p2: {
+        hand: [RENO],
+        library: [RENO, RENO],
+        backrow: [
+          { def: EXPERIMENTATION, lane: 1 },
+          { def: HEROIC_POWER, lane: 2 },
+        ],
+      },
+    });
+    const played = must(
+      g.state.players.p1.hand.find((card) => card.defId === HEROIC_POWER),
+      "p1's Heroic Power",
+    );
+    played.memory[subsystems.POWER_KEY] = "burn";
+    const kept: CardInstance = must(g.backrow("p2", 2), "p2's Heroic Power");
+    kept.memory[subsystems.POWER_KEY] = "ping";
+
+    // p1 plays its Heroic Power (burn, 2 to p2's hero), and p2's #85 fuses it onto p2's own.
+    g.play(played, { zone: 1 });
+    const fused = g.card(kept.id);
+    expect(fused.defId.startsWith("t-")).toBe(true);
+    expect(subsystems.powerOf(fused)?.name).toBe("ping");
+
+    if (g.state.active === "p1") g.endTurn();
+    expect(g.state.active).toBe("p2");
+    expect(g.state.phase).toBe("main");
+    const before = g.state.players.p1.hero.health;
+    // R43: one activation of the card's one power. With no target named, the ping asks (R103).
+    g.activate(fused);
+    expect(g.state.pending?.kind).toBe("target");
+    g.answer([{ pick: "hero", player: "p1" }]);
+
+    // "Deal 1 damage to a target", once — as the same activation with the target named does.
+    const hits = g.lastEvents.filter((event) => event.type === "damage" && event.sourceId === fused.id);
+    expect(hits.map((event) => (event.type === "damage" ? event.amount : 0))).toEqual([1]);
+    expect(g.state.players.p1.hero.health).toBe(before - 1);
+  });
+});
+
+describe("R66, R113: a card's list resumed after a prompt keeps the effects it built", () => {
+  it("R66 Genn's Greed still draws every 2-cost card after one it drew was cast and asked (R113, §8 #94, R135)", () => {
+    const g = scenario({ p1: { hand: [GENNS_GREED], library: [SEVEN_SEVEN, BIGOT, BIGOT, SEVEN_SEVEN] } });
+    // A 2-cost cast-on-draw Spell whose cast asks its caster something (R70, R81).
+    fixtureCard(
+      g,
+      "edge-r9-cod-asks",
+      "Spell",
+      {
+        staticFlags: { castOnDraw: true },
+        cry: () => [chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" })],
+        resume: { picked: () => [] },
+      },
+      2,
+    );
+    // Library, top down: a 4-cost 7/7, the fixture (2), Bigot (2), Bigot (2), a 4-cost 7/7.
+    const cod = intoLibrary(g, "edge-r9-cod-asks", 1);
+    const [top, first, second] = g.state.players.p1.library.filter((card) => card.id !== cod.id);
+    const bigots = g.state.players.p1.library.filter((card) => card.defId === BIGOT);
+    expect(bigots.length).toBe(2);
+    expect(first?.defId).toBe(BIGOT);
+    expect(second?.defId).toBe(BIGOT);
+    expect(top?.defId).toBe(SEVEN_SEVEN);
+
+    // "Draw every 2-cost card from your library": the fixture, then both Bigots. The fixture is
+    // drawn first and cast (§2.4), and its cast asks.
+    g.play(GENNS_GREED);
+    expect(g.state.pending?.kind).toBe("mode");
+    g.answer("a");
+    expect(g.state.pending).toBeNull();
+
+    // Both Bigots were 2-cost cards in the library as the draw clause began, so both are drawn.
+    for (const bigot of bigots) g.expectInZone(bigot, "hand");
+  });
+});
+
+
+describe("R70, R17: a cast Unit and the step-4 trap", () => {
+  it("R70 a cast-on-draw Unit the opponent's Sheepish answers is a Sheep before its Cry resolves (R17, §10.5 step 4)", () => {
+    const g = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO] },
+      p2: { backrow: [{ def: SHEEPISH, lane: 1 }], hand: [RENO], health: 30 },
+    });
+    fixtureCard(
+      g,
+      "edge-r9-cod-unit",
+      "Unit",
+      { staticFlags: { castOnDraw: true }, cry: () => [damage({ to: { of: "enemyHero" }, amount: 5 })] },
+      1,
+    );
+    const cod = intoLibrary(g, "edge-r9-cod-unit", 0);
+
+    g.startTurn();
+    expect(g.events.some((event) => event.type === "trapFired")).toBe(true);
+    // Sheepish answered the cast Unit: a Sheep Token stands where it was.
+    expect(g.unit("p1", 1)?.defId).toBe("core-t-sheep");
+    expect(g.events.some((event) => event.type === "transformed" && event.instanceId === cod.id)).toBe(true);
+    // R17: Sheepish fires at step 4, before the Cry, so the Cry is lost.
+    g.expectHealth("p2", 30);
+  });
+});
+
+describe("R70, R90: a cast Unit's own choices", () => {
+  it("R70 a cast-on-draw Unit asked for its declared target is not offered itself, as a play of it never is (R81, R90)", () => {
+    const g = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO] },
+      p2: { field: [SEVEN_SEVEN], hand: [RENO] },
+    });
+    const enemy = must(g.unit("p2", 1), "p2's 7/7");
+    fixtureCard(
+      g,
+      "edge-r9-cod-unit-targeted",
+      "Unit",
+      {
+        staticFlags: { castOnDraw: true },
+        targets: [{ kind: "target", min: 1, max: 1, filter: { side: "any", of: ["unit"] } }],
+        cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+      },
+      1,
+    );
+    const cod = intoLibrary(g, "edge-r9-cod-unit-targeted", 0);
+
+    g.startTurn();
+    const pending = must(g.state.pending, "the cast's target prompt");
+    expect(pending.playerId).toBe("p1");
+    const offered = pending.options.map((option) =>
+      option.selection.pick === "instance" ? option.selection.instanceId : option.selection.pick,
+    );
+    // A play of this card offers the units on the field as it is played, and never itself.
+    expect(offered).toContain(enemy.id);
+    expect(offered).not.toContain(cod.id);
+  });
+});
+
+describe("R70, §10.3: a cast's step-4 window inside an effect offers each event once", () => {
+  it("R70 a cast's step-4 window inside a Spell's draw does not offer the Spell's own play to the triggers a second time (§10.3)", () => {
+    // The cast runs inside #5 Stockpile's "draw 2", whose context is the only sink its step 4 has.
+    // The play's `cardPlayed` was dispatched by the play's own step 4, before the draw: the cast's
+    // window must not collect it again (§10.3: an event is offered once).
+    const g = scenario({
+      p1: { hand: ["core-005", RENO], field: [{ def: SEVEN_SEVEN, lane: 5 }], library: [RENO, RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO, RENO] },
+    });
+    // p1's unit counts its controller's plays: 1 damage to the enemy hero for each `cardPlayed`.
+    fixtureCard(g, "edge-r9-play-counter", "Unit", {
+      triggers: [
+        {
+          id: "edge-r9-play-counter",
+          on: ["cardPlayed"],
+          when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player === ctx.controller,
+          run: () => [damage({ to: { of: "enemyHero" }, amount: 1 })],
+        },
+      ],
+    });
+    placeFixture(g, "edge-r9-play-counter", "p1", "units", 1);
+    // A cast-on-draw Unit with no text on top of the library, so Stockpile's first draw casts it.
+    fixtureCard(g, "edge-r9-cod-plain", "Unit", { staticFlags: { castOnDraw: true } }, 1);
+    const cod = intoLibrary(g, "edge-r9-cod-plain", 0);
+
+    g.play("core-005");
+
+    // Two plays — Stockpile and the cast Unit (R70) — so two hits, not three.
+    expect(g.events.filter((event) => event.type === "cardPlayed").map((event) => (event.type === "cardPlayed" ? event.instanceId : ""))).toContain(cod.id);
+    g.expectHealth("p2", 28);
   });
 });

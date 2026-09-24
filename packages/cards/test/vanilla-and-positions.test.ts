@@ -6,6 +6,10 @@
 // and scripts", and R115 says so of every hook, so the copy keeps none of the card's text: not Deft
 // Duelist's second exertion, not Spikey Pillow's "cannot be in Defense Position", not Fed Fauci's
 // on-damage trigger and not radiant Right-house defender's Death.
+//
+// Round 9, lens "keywords and layers": §6.1's keywords are a set, so a keyword two sources give — a
+// printed one an aura grants again, a Taunt unit's own Taunt in Defense Position — is listed once in
+// the view (§10.4, §10.8), Armor apart, which sums across its sources.
 
 import type { Selection } from "@jackioh/shared";
 import { legalActions, type CardInstance } from "@jackioh/engine";
@@ -148,5 +152,42 @@ describe("R46 and R91: the knock-down reports a switch only when there is one", 
 
     expect(g.card(rock).position).toBe("ATK");
     expect(g.lastEvents).toContainEqual({ type: "positionSwitched", instanceId: rock.id, position: "ATK" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: a unit's keywords are a set (§6.1, §10.4, §10.8)
+// ---------------------------------------------------------------------------
+
+const TIMMY = "core-011"; // Unit, 1: Rush, First Strike
+const WEAPONS = "core-014"; // Field Spell: your units have +4 attack, Rush, First Strike
+
+
+describe("A unit's keywords are a set (§6.1, §10.4, §10.8)", () => {
+  it("§6.1 the view lists each keyword a unit has once, however many sources give it: Tempo Timmy under Jlockeed's Weapons, a Taunt unit in Defense Position (§10.4, §10.8)", () => {
+    const g = scenario({
+      p1: {
+        hand: [HINDER],
+        field: [
+          { def: TIMMY, lane: 1 },
+          { def: RIGHT_HOUSE, lane: 2, position: "DEF" },
+        ],
+        backrow: [WEAPONS],
+        library: LIBRARY,
+      },
+      p2: { hand: [HINDER], library: LIBRARY },
+    });
+
+    const units = g.view("p1").you.units;
+    const kindsIn = (lane: number): string[] => {
+      const unit = units[lane - 1];
+      if (unit === null || unit === undefined) throw new Error(`no unit in lane ${lane}`);
+      return unit.keywords.map((keyword) => keyword.kind).filter((kind) => kind !== "Armor");
+    };
+
+    // Timmy prints Rush and First Strike, and the Weapons aura grants both again: two keywords, not four.
+    expect(kindsIn(1).sort()).toEqual(["First Strike", "Rush"]);
+    // Right-house defender prints Taunt and Defense Position grants it: one Taunt among its keywords.
+    expect(kindsIn(2).sort()).toEqual(["Divine Shield", "First Strike", "Reborn", "Rush", "Taunt"]);
   });
 });

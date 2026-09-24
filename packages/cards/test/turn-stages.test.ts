@@ -19,6 +19,12 @@
 // No Core card answers a summon or a change of control, and no Core trap asks its controller
 // anything, so the card that makes each case observable is a fixture (a transient def, the way a
 // fusion's is held, as paused-sequences.test.ts does); every other card is a real one.
+//
+// Round 9 (lens L8) added two: cleanup clears the return flags again once its own events are
+// answered, so a return Spell cast then does not come back two turns later (R155, R62), and an
+// end-of-turn clause a Spell arms on the other player's turn is not armed at all (R241, §6.2).
+// Then, from the lens "engine invariants": the refresh's rider is a badge the view lists and the
+// refresh reports spent (R169, §6.3 Mana), and a fatigue draw Armor absorbs is still reported (R240).
 
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, PlayerId, Row } from "@jackioh/shared";
@@ -32,8 +38,19 @@ import {
   registeredScripts,
   type CardInstance,
   type Script,
+  wasPlayedThisTurn,
+  RESUME_HOOK,
 } from "@jackioh/engine";
-import { addPlayerModifier, bounceAll, chooseMode, damage } from "@jackioh/engine/effects";
+import {
+  addPlayerModifier,
+  bounceAll,
+  chooseMode,
+  damage,
+  bounce,
+  delay,
+  draw,
+  exileHand,
+} from "@jackioh/engine/effects";
 import { scenario, type Scenario } from "./_harness";
 
 const VANILLA = "core-008"; // Unit, cost 1, no Cry
@@ -426,5 +443,200 @@ describe("§2.2, R62: a 'this turn' effect made after cleanup ends with that tur
     expect(leftover, "a turn-N 'this turn' discount is still live on turn N+2").toEqual([]);
     const reno = must(s.hand("p1").find((card) => card.defId === RENO), "p1's Reno");
     expect(effectiveCost(s.state, reno)).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: a Spell's clauses belong to the turn it was played on (R155, R241, §6.2, R62)
+// ---------------------------------------------------------------------------
+
+const PREM_PANTHER = "core-032"; // 5/4 Rush; whenever this destroys a unit, draw 2
+const TIMMY = "core-011"; // Tempo Timmy, 3/3 Rush, First Strike
+
+
+
+
+/** Put a fresh instance of `defId` on top of a player's library (index 0 is the top, §3). */
+function onTopOfLibrary(s: Scenario, defId: string, player: PlayerId): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "library", player });
+  s.state.players[player].library.unshift(card);
+  return card;
+}
+
+describe("R155: a return Spell cast after cleanup does not come back on a later turn", () => {
+  it("R155 a Spell with an end-of-turn return cast while cleanup's events are answered stays in the graveyard at the end of its caster's next turn (§5.1, R62)", () => {
+    // p1 plays Lunar Eclipse on turn N and no Spell after it, so cleanup expires its discount and
+    // reports the removal (§2.2). p1's fixture unit answers that removal, on turn N only, by drawing
+    // a card: p1's fixture Spell, cast on draw (§2.4, R70), whose text is #23's "End of turn: returns
+    // from the GY to your hand". Round 7 made cleanup's events answered at the end of turn N (R62),
+    // so the Spell is played on turn N, after that turn's end-of-turn triggers have run: it does not
+    // come back at the end of turn N, and R155 says it "stays in the graveyard rather than coming
+    // back at the end of a later turn it was not played on".
+    const s = scenario({
+      p1: { hand: [LUNAR_ECLIPSE, RENO, RENO], library: [RENO, RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO, RENO, RENO] },
+    });
+    const turnN = s.state.turn;
+
+    // #23's return, verbatim in shape: the flag §10.5 step 7 writes, or a play this turn (R155).
+    fixture(s, "edge-r9-boomerang", "Spell", {
+      staticFlags: { castOnDraw: true },
+      cry: () => [],
+      endOfTurn: (ctx) => {
+        const self = ctx.self;
+        if (self === null) return [];
+        const returns =
+          self.returnToHandAtEndOfTurn === true || wasPlayedThisTurn(ctx.state, self.controller, self);
+        return returns ? [bounce({ target: { of: "self" } })] : [];
+      },
+    });
+    fixture(s, "edge-r9-cleanup-reader", "Unit", {
+      triggers: [
+        {
+          id: "edge-r9-cleanup-reader",
+          on: ["modifierChanged"],
+          run: (ctx) =>
+            ctx.event.type === "modifierChanged" &&
+            ctx.event.player === ctx.controller &&
+            !ctx.event.added &&
+            ctx.state.turn === turnN
+              ? [draw({ count: 1 })]
+              : [],
+        },
+      ],
+    });
+    placeFixture(s, "edge-r9-cleanup-reader", "p1", "units", 3);
+    const boomerang = onTopOfLibrary(s, "edge-r9-boomerang", "p1");
+
+    s.play(LUNAR_ECLIPSE, { targets: [{ pick: "hero", player: "p2" }] });
+    s.endTurn();
+    expect(s.state.turn).toBe(turnN + 1);
+    // Cast at cleanup on turn N: it is in p1's graveyard, not back in hand.
+    s.expectInZone(boomerang, "graveyard");
+
+    s.endTurn();
+    expect({ turn: s.state.turn, active: s.state.active }).toEqual({ turn: turnN + 2, active: "p1" });
+    // p2's turn end is not p1's (§6.2): the Spell is still in the graveyard as p1's turn N+2 begins.
+    s.expectInZone(boomerang, "graveyard");
+    s.endTurn();
+    expect(s.state.turn).toBe(turnN + 3);
+
+    // The end of turn N+2 is p1's own turn end, but the Spell was not played on it.
+    expect(
+      must(s.card(boomerang), "the fixture Spell").zone.z,
+      "the Spell cast at turn N's cleanup came back at the end of turn N+2",
+    ).toBe("graveyard");
+  });
+});
+
+describe("R241: a Spell's end-of-turn clause belongs to the turn it was played on (§6.2, R155, R71)", () => {
+  it("R241 a Spell cast on the opponent's turn with #78's 'at end of turn, exile your hand' does not exile its caster's hand at the end of the caster's next turn (§6.2, R155, R70)", () => {
+    // p2's Tempo Timmy (3/3 First Strike) attacks p1's Prem Panther (5/4): the Panther survives the
+    // first strike and kills Timmy, so p1 draws 2 on p2's turn (#32). The top card is a cast-on-draw
+    // Spell carrying /fullsend's clause verbatim in shape — `delay({ at: { phase: "end", player:
+    // "self" } })` re-entering an `exileHand` step — so p1 casts it on p2's turn (§2.4, R70).
+    const s = scenario({
+      active: "p2",
+      p1: { field: [PREM_PANTHER], hand: [RENO], library: [RENO, RENO, RENO, RENO] },
+      p2: { field: [TIMMY], hand: [RENO], library: [RENO, RENO, RENO, RENO] },
+    });
+    fixture(s, "edge-r9-late-exile", "Spell", {
+      staticFlags: { castOnDraw: true },
+      cry: () => [delay({ at: { phase: "end", player: "self" }, step: "exile", hook: RESUME_HOOK })],
+      resume: { exile: () => [exileHand({ player: "self" })] },
+    });
+    const cod = onTopOfLibrary(s, "edge-r9-late-exile", "p1");
+
+    s.attack(TIMMY, PREM_PANTHER);
+    expect(s.events.some((event) => event.type === "cardPlayed" && event.instanceId === cod.id)).toBe(true);
+
+    // p2's turn (the one the Spell was cast on) ends, and p1's next turn starts with its draw.
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+    const drawnOnOwnTurn = must(s.hand("p1").at(-1), "the card p1 drew at the start of its turn");
+
+    // p1's own turn ends. §6.2 makes "End of turn" the controller's turn end, and R155 reads it for
+    // a Spell cast on the other player's turn: that turn's end is not its controller's, so nothing of
+    // the clause happens "at the end of a later turn it was not played on". /fullsend's own riders
+    // say the same: its "this turn" discount and Combo draw were p2's turn's and ended with it
+    // (§2.2), so an exile at the end of p1's turn is an exile no "this turn" of the card ever
+    // covered — and #39's "every other card you played this turn" would read a turn log the Spell
+    // was never in (R71).
+    s.endTurn();
+    expect(s.state.active).toBe("p2");
+    expect(
+      must(s.card(drawnOnOwnTurn), "p1's card").zone.z,
+      "the end-of-turn clause of a Spell cast on p2's turn exiled p1's hand at the end of p1's next turn",
+    ).toBe("hand");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: the start of a turn reports what it changes (R169, R240, §10.3)
+// ---------------------------------------------------------------------------
+
+const HINDER = "core-021"; // Cast on draw: the opponent's next mana refresh is 1 lower
+const HIT_JOB = "core-016"; // a Spell with no hand trigger
+const STOCKPILE = "core-005"; // likewise
+const GOING_LONG = "core-084"; // Field Spell: your hero has Armor 2
+
+describe("R169, R240: what the start of a turn changes, it reports (§10.3)", () => {
+  it("R169 every modifier a modifierChanged event announces is on the view's badge list, and is reported gone when Hinder's refresh spends it (§10.3, §6.3 Mana)", () => {
+    const s = scenario({
+      seed: "r9-inv-hinder",
+      p1: { hand: [HIT_JOB], field: [TEMPO_TIMMY], library: [HINDER, TEMPO_TIMMY, TEMPO_TIMMY, TEMPO_TIMMY] },
+      p2: { hand: [STOCKPILE], field: [TEMPO_TIMMY], library: [STOCKPILE, STOCKPILE, STOCKPILE] },
+    });
+    s.endTurn(); // p2's turn
+    s.endTurn(); // p1's draw casts Hinder: p2's next refresh is 1 lower (§8 #21)
+
+    // BUILD M5-T4: `modifierChanged` is the badge by the hero appearing or fading, and "badge list
+    // equals the view's modifiers"; R169 puts that list on both seats under the id the event names.
+    const announced = s.events.flatMap((e) =>
+      e.type === "modifierChanged" && e.player === "p2" && e.added ? [e.modifierId] : [],
+    );
+    for (const id of announced) {
+      expect(s.view("p2").you.modifiers.map((m) => m.id), `announced ${id}`).toContain(id);
+      expect(s.view("p1").opponent.modifiers.map((m) => m.id), `announced ${id}`).toContain(id);
+    }
+
+    s.endTurn(); // p2's refresh spends the rider
+    s.expectMana("p2", 3);
+    // Whatever was announced as added and is not on the list any more was reported gone (§10.3).
+    const listed = s.view("p2").you.modifiers.map((m) => m.id);
+    for (const id of announced.filter((added) => !listed.includes(added))) {
+      expect(
+        s.events.some((e) => e.type === "modifierChanged" && e.player === "p2" && e.modifierId === id && !e.added),
+        `removal of ${id}`,
+      ).toBe(true);
+    }
+  });
+
+  it("R240 a fatigue draw that Going Long's Armor absorbs still reports itself, since the public fatigue count moved (§10.3, R3)", () => {
+    const s = scenario({
+      seed: "r9-inv-fatigue",
+      p1: { hand: [HIT_JOB], field: [TEMPO_TIMMY], library: [TEMPO_TIMMY, TEMPO_TIMMY] },
+      p2: { hand: [STOCKPILE], field: [TEMPO_TIMMY], backrow: [GOING_LONG], library: [] },
+    });
+    expect(s.view("p1").opponent.hero.armor).toBe(2);
+    expect(s.view("p1").opponent.fatigueCount).toBe(0);
+
+    s.endTurn(); // p2's turn: its draw meets an empty library, and the 1st fatigue deals 1 (R3)
+
+    // Armor 2 takes the whole 1 (§4.4 step 2), so the hero keeps 30 and §4.4's zero rule sends no
+    // `damage` event. The fatigue still happened: the count both seats read went from 0 to 1, and
+    // the next one deals 2.
+    expect(s.state.players.p2.hero.health).toBe(30);
+    expect(s.state.players.p2.fatigueCount).toBe(1);
+    expect(s.view("p1").opponent.fatigueCount).toBe(1);
+    // §10.3: "every visible state change emits an event". Nothing this action emitted names p2's
+    // empty-library draw: no `drawn` for p2 (R3: no card is drawn) and no hit on p2's hero.
+    expect(
+      s.lastEvents.some(
+        (e) =>
+          (e.type === "damage" && e.sourceId === null && e.targetId === "hero-p2") ||
+          (e.type === "drawn" && e.player === "p2"),
+      ),
+    ).toBe(true);
   });
 });

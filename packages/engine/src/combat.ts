@@ -24,7 +24,7 @@ import { flagsOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Position, type WorkItem } from "./state";
 import { registerDeclarationCheck, runTrapWindow } from "./traps";
-import { cardsInTriggerOrder, dispatchPending, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
+import { cardsInTriggerOrder, dispatchPending, markDispatched, queueTrigger, triggersOnEvent, type SettleSink } from "./triggers";
 import { moveSourcedModifiers } from "./modifiers";
 import { exitMark, leftFieldAfter, movesIn, type LaterMoves } from "./stays";
 import { owe, paused as isPaused, registerWorkHandler } from "./work";
@@ -386,6 +386,10 @@ const ATTACK_COMBAT_STEP = "combat";
 function withholdFromFrontier(sink: SettleSink, at: number): void {
   if ((sink.dispatched ?? 0) !== at) return;
   sink.dispatched = at + 1;
+  // A loop on another sink over the same list — a cast's step-4 window inside an effect the window's
+  // traps run (R70) — reads no cursor of this sink's, so the event is marked as delivered too.
+  const event = sink.events[at];
+  if (event !== undefined) markDispatched([event]);
 }
 
 /**

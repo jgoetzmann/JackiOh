@@ -174,9 +174,10 @@ describe("Make Radiant at random (R60, M3-T1)", () => {
 
     // Only one card was eligible, so only it changes: a pick never lands on a Radiant card.
     expect(hand.map((card) => (card as CardInstance).radiant)).toEqual([true, true, true]);
-    // R177: the two picks R60 could not make are cued on the hand's Radiant cards, in hand order,
-    // so the other seat's stream holds three cues whatever the hidden hand held.
-    expect(radiantIds(events)).toEqual([hand[1], hand[0], hand[2]].map((card) => (card as CardInstance).id));
+    // R177: the two picks R60 could not make are cued on the hand's Radiant cards, so the other
+    // seat's stream holds three cues whatever the hidden hand held — and the pick and the cues go out
+    // together in hand order, so where the real pick stands among them says nothing either.
+    expect(radiantIds(events)).toEqual([hand[0], hand[1], hand[2]].map((card) => (card as CardInstance).id));
   });
 
   it("R60 changes no card and draws nothing when no non-Radiant card is left, though the hidden hand is cued (R177, R129)", () => {

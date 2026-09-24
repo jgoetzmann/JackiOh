@@ -131,8 +131,10 @@ export function registerCastDriver(driver: CastDriver | undefined): CastDriver |
  * owed steps 6 and 7 to `state.work` even when nothing had paused (against R117), so a cast-on-draw
  * Spell's Echo repeat resolved after the draw had already repeated (§2.4). The one difference from a
  * play is where the resolution loop runs: a cast happens inside some other effect — §2.4's draw,
- * #95's recursion — so it settles nothing itself and leaves its events to that effect's loop, and
- * §2.4's chain runs the state check after each cast-on-draw cast (§4.5, R59).
+ * #95's recursion — so it settles nothing itself. Its step 4 is still a window, as a play's is (R70,
+ * R17): every event so far reaches the traps there (`triggers.dispatchPending`), while the other
+ * triggers they wake wait for that effect's loop; and §2.4's chain runs the state check after each
+ * cast-on-draw cast (§4.5, R59).
  *
  * Used by Cast on draw (§2.4) and by Call to Chaos.
  */

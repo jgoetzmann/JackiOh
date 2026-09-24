@@ -10,7 +10,9 @@
 // exile read each card's cost per R65 AT RESOLUTION; X-cost cards are exempt from both". So the
 // number both clauses read is `effectiveCost(state, instance)` — R65's one calculation for an
 // instance: `costOverride`, else the printed cost, plus the instance's `costMod` (which persists in
-// every zone, R78) plus the player's discounts. `queryCost` is the other half of R65 and is wrong
+// every zone, R78). The player's discounts are prices for a play from the hand, so they reach neither
+// a library card nor a graveyard one (R65): /fullsend's "this turn your cards cost 1 less" does not
+// make a 4 in the library a 3. `queryCost` is the other half of R65 and is wrong
 // here because it reads a DEFINITION and so cannot see the `costMod` #7 Jewelosco Scarab left on a
 // card or the discount #95 Call to Chaos put across a whole library. A printed 3 discounted to 2 is
 // therefore drawn, and a printed 2 pushed to 3 is odd and exiled instead.
@@ -22,6 +24,10 @@
 // own exile, so R55's counter moves once per card and anything watching an exile sees them one at a
 // time: `exileMatching` is written to R135 and this file only names the order it already keeps.
 //
+// The draw clause reads its set once, as it begins, and keeps it (`forEachCard`): a drawn card that is
+// cast on draw and asks has left the library by the answer, and the draws still owed are the ones
+// the clause began with (R113). The exile reads its set once too (R135).
+//
 // The two clauses are one effect per card and one sweep, not a loop in this file that touches state:
 // `drawFromLibrary` is the §6.3 Draw of a card a script named (the verb #30 Archivist asks for too),
 // and `exileMatching` is §6.3 Exile over the three off-field zones by cost. Reading the library to
@@ -30,7 +36,7 @@
 
 import type { CardInstance, EffectContext, Hook, Script } from "@jackioh/engine";
 import { effectiveCost, isXCost, zoneCards } from "@jackioh/engine";
-import { drawFromLibrary, exileMatching, gainMana } from "@jackioh/engine/effects";
+import { drawFromLibrary, exileMatching, forEachCard, gainMana } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-094");
@@ -52,10 +58,12 @@ function drawnCards(ctx: EffectContext): readonly CardInstance[] {
 }
 
 function greed(mana: number): Hook {
-  return (ctx) => [
+  return () => [
     // §8 "Draw every 2-cost card from your library": one draw per card, so each counts on the draw
-    // counter, emits its own `drawn` event and meets the hand cap on its own (§2.4, R4, R55).
-    ...drawnCards(ctx).map((card) => drawFromLibrary({ instanceId: card.id })),
+    // counter, emits its own `drawn` event and meets the hand cap on its own (§2.4, R4, R55). The
+    // set is read once, as the clause begins (R66), so a drawn card that is cast and asks does not
+    // reshape the draws still owed after the answer (R113, `forEachCard`).
+    forEachCard({ cards: drawnCards, each: (instanceId) => drawFromLibrary({ instanceId }) }),
 
     // §8 "exile every odd-cost card in your library, hand and GY (X-cost cards exempt)". R135's
     // order is `exileMatching`'s default — library, then hand, then graveyard — and it runs after

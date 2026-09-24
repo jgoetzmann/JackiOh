@@ -19,7 +19,7 @@
 import { scheduleDelayed } from "../modifiers";
 import { SELF_KEY, resumeSelf } from "../prompts";
 import { RUN_MARKS_KEY } from "../work";
-import type { Effect } from "../script";
+import type { Effect, EffectContext } from "../script";
 import type { DelayedEffect } from "../state";
 import { playerOf, standsSinceScriptBegan, type PlayerSpec } from "./targets";
 
@@ -68,6 +68,12 @@ export function delay(args: {
       // it (#52) or sacrificed it (#22) — has no stay left to watch, so the delayed effect fizzles
       // now rather than waiting for whatever later stands under the same id (R78, R83).
       if (args.watch !== undefined && !standsSinceScriptBegan(ctx, args.watch)) return;
+      // R241: "End of turn" is the controller's turn end (§6.2), and an end-of-turn clause is the
+      // turn's it was made on (#39, #78). One made on the other player's turn — a cast on draw there
+      // (R70) — has no end of its controller's turn to wait for, and waiting for the next one would
+      // run it at the end of a turn the card was never played on, as R155 keeps a return Spell cast
+      // then in the graveyard: it is not scheduled at all.
+      if (endsOtherPlayersTurn(ctx, args.at)) return;
       // `resumeSelf` is the one builder for the def id, the face and the instance id, so a delay
       // and a prompt store the same shape; only the hook differs, and only when a card says so.
       const built = resumeSelf(ctx, args.step, args.data ?? {});
@@ -86,4 +92,9 @@ export function delay(args: {
       );
     },
   };
+}
+
+/** R241: an end-of-turn clause of the controller's own, made while the other player's turn runs. */
+function endsOtherPlayersTurn(ctx: EffectContext, at: DelayAt): boolean {
+  return at.phase === "end" && playerOf(ctx, at.player) === ctx.controller && ctx.state.active !== ctx.controller;
 }

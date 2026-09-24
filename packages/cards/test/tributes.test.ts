@@ -9,9 +9,12 @@
 //    fizzles (§8 Conventions) instead of landing on a card in a graveyard.
 //  - Round 5 (lenses L9 and "keywords and layers"). §6.3 Vanilla, §7: a Sheep Token's "worth 2
 //    Tributes" is its text, so a Vanilla copy of one is worth 1 like any other unit.
+//  - Round 9, lens "card by card". R119, R210: a play's arrivals are counted from the moment it
+//    begins, so the copies a tributed Cube's Death puts on the field at step 2 answer neither its step
+//    4 (#41), its step 5 (#38) nor its step 7 (#33).
 
 import { describe, expect, it } from "vitest";
-import type { Selection } from "@jackioh/shared";
+import type { Selection, GameEvent } from "@jackioh/shared";
 import { legalActions, reduce, tributeValueOf, type CardInstance } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 
@@ -216,5 +219,136 @@ describe("R102, §3.2: a Sheep's worth is its text, and a Fuse keeps it", () => 
     expect(offered).toBe(true);
     g.play(golem, { zone: 3, tributes: [fused.id, vanilla.id] });
     expect(g.unit("p1", 3)?.defId).toBe(LAVA_GOLEM);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: what a Tribute's Death puts on the field is an arrival (R119, R210)
+// ---------------------------------------------------------------------------
+
+const MR_VANILLA = "core-008";
+const TEMPO_TIMMY = "core-011";
+const MIDRANGE_MENACE = "core-019";
+const CARNIVOROUS_CUBE = "core-022";
+const UNSTABLE_CLONE_MACHINE = "core-033";
+const QUICKSTRIKER = "core-038";
+const SHEEPISH = "core-041";
+const THE_ROCK = "core-066";
+const SHEEP_TOKEN = "core-t-sheep";
+
+const R119_LIBRARY = [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA];
+
+
+function ofType<T extends GameEvent["type"]>(events: readonly GameEvent[], type: T): Extract<GameEvent, { type: T }>[] {
+  return events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
+}
+
+function backrowDefs(s: Scenario, player: "p1" | "p2"): (string | null)[] {
+  return s.state.players[player].backrow.map((card) => card?.defId ?? null);
+}
+
+function quickstrikersOf(s: Scenario, player: "p1" | "p2"): string[] {
+  return s.state.players[player].backrow.flatMap((card) => (card?.defId === QUICKSTRIKER ? [card.id] : []));
+}
+
+describe("R119, R210: what a Tribute's Death puts on the field does not answer the play that paid it (§10.5 step 2)", () => {
+  it("R119 a Sheepish a tributed Carnivorous Cube's Death copies at step 2 does not turn the Lava Golem being played into a Sheep (R210)", () => {
+    // p2's Cube eats p2's own face-down Sheepish (§8 #22: "any of your other permanents, backrow
+    // included", R41), so its Death summons two Sheepish copies into p2's backrow.
+    const s = scenario({
+      active: "p2",
+      p1: {
+        hand: [LAVA_GOLEM, STOCKPILE],
+        field: [
+          { def: MR_VANILLA, lane: 1 },
+          { def: MR_VANILLA, lane: 2 },
+        ],
+        mana: 10,
+        library: [...R119_LIBRARY],
+      },
+      p2: {
+        hand: [CARNIVOROUS_CUBE, STOCKPILE],
+        backrow: [SHEEPISH],
+        field: [{ def: MIDRANGE_MENACE, lane: 5 }],
+        mana: 10,
+        library: [...R119_LIBRARY],
+      },
+    });
+    const sheepish = must(s.backrow("p2", 1), "p2's face-down Sheepish");
+    s.play(CARNIVOROUS_CUBE, { zone: 1, targets: [{ pick: "instance", instanceId: sheepish.id }] });
+    const cube = must(s.unit("p2", 1), "p2's Carnivorous Cube");
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+    expect(backrowDefs(s, "p2")).toEqual([null, null, null, null, null]);
+
+    // §8 #55: Lava Golem "may tribute enemy units", so the Cube is one of its three.
+    const golem = must(s.hand("p1").find((card) => card.defId === LAVA_GOLEM), "p1's Lava Golem");
+    const first = must(s.unit("p1", 1), "p1's lane-1 Mr. Vanilla");
+    const second = must(s.unit("p1", 2), "p1's lane-2 Mr. Vanilla");
+    s.play(golem, { zone: 4, tributes: [cube.id, first.id, second.id] });
+
+    // Step 2 paid the Tribute and the Cube's Death summoned its two Sheepish copies (R41, R210).
+    expect(backrowDefs(s, "p2").filter((defId) => defId === SHEEPISH).length).toBeGreaterThanOrEqual(1);
+    expect(ofType(s.lastEvents, "summoned").filter((event) => event.defId === SHEEPISH)).toHaveLength(2);
+    // R119: those copies arrived while this play resolved, so they start counting from the next play:
+    // no trap fires on the Golem's `cardPlayed`, and the Golem lands as itself.
+    expect(ofType(s.lastEvents, "trapFired")).toEqual([]);
+    expect(s.unit("p1", 4)?.defId).toBe(LAVA_GOLEM);
+    expect(s.unit("p1", 4)?.defId).not.toBe(SHEEP_TOKEN);
+  });
+
+  it("R119 an Unstable Clone Machine a tributed Cube's Death copies at step 2 does not shuffle copies of the card that paid the Tribute (R210)", () => {
+    const s = scenario({
+      p1: {
+        hand: [CARNIVOROUS_CUBE, THE_ROCK],
+        field: [{ def: MR_VANILLA, lane: 3 }],
+        backrow: [UNSTABLE_CLONE_MACHINE],
+        mana: 20,
+        library: [...R119_LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...R119_LIBRARY] },
+    });
+    const machine = must(s.backrow("p1", 1), "p1's Unstable Clone Machine");
+    // The Cube eats the Clone Machine (R41), so none is on the field when The Rock is played.
+    s.play(CARNIVOROUS_CUBE, { zone: 1, targets: [{ pick: "instance", instanceId: machine.id }] });
+    const cube = must(s.unit("p1", 1), "p1's Carnivorous Cube");
+    expect(backrowDefs(s, "p1")).toEqual([null, null, null, null, null]);
+    const library = s.pile("p1", "library").length;
+
+    // §8 #66: The Rock's Tribute 1 is the Cube, whose Death summons two Clone Machine copies.
+    s.play(THE_ROCK, { zone: 4, tributes: [cube.id] });
+
+    expect(backrowDefs(s, "p1").filter((defId) => defId === UNSTABLE_CLONE_MACHINE)).toHaveLength(2);
+    // R119: "After you play a card" — both copies arrived during this play, so neither answers it.
+    expect(ofType(s.lastEvents, "shuffledIn")).toEqual([]);
+    expect(s.pile("p1", "library")).toHaveLength(library);
+  });
+
+  it("R119 a Quickstriker a tributed Cube's Death copies at step 2 grants the card that paid the Tribute no Combo damage (R210)", () => {
+    const s = scenario({
+      p1: {
+        hand: [CARNIVOROUS_CUBE, TEMPO_TIMMY, THE_ROCK],
+        field: [{ def: MR_VANILLA, lane: 3 }],
+        backrow: [QUICKSTRIKER],
+        mana: 20,
+        library: [...R119_LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...R119_LIBRARY] },
+    });
+    const quickstriker = must(s.backrow("p1", 1), "p1's Quickstriker");
+    s.play(CARNIVOROUS_CUBE, { zone: 1, targets: [{ pick: "instance", instanceId: quickstriker.id }] });
+    const cube = must(s.unit("p1", 1), "p1's Carnivorous Cube");
+    s.play(TEMPO_TIMMY, { zone: 2 });
+    expect(quickstrikersOf(s, "p1")).toEqual([]);
+    const rock = s.card(THE_ROCK);
+
+    s.play(THE_ROCK, { zone: 4, tributes: [cube.id] });
+
+    // Two Quickstrikers arrived at step 2; The Rock is the third card played this turn (X = 2).
+    expect(quickstrikersOf(s, "p1")).toHaveLength(2);
+    // R119: they start counting from the next play, so The Rock's step 5 deals no Combo damage.
+    const hits = ofType(s.lastEvents, "damage").filter((hit) => hit.sourceId === rock.id && hit.targetId === "hero-p2");
+    expect(hits).toEqual([]);
+    s.expectHealth("p2", 30);
   });
 });

@@ -13,7 +13,7 @@
 // come to export — or one that a module renames away — fails `pnpm typecheck` instead of silently
 // vanishing from the barrel (an ESM ambiguous star export resolves to `undefined` at runtime).
 //
-// Collisions: as of this writing there are none. All 62 names below are distinct, so no module
+// Collisions: as of this writing there are none. All 63 names below are distinct, so no module
 // "wins" over another and nothing had to be dropped. Three names do shadow same-named helpers
 // elsewhere in the engine, which is deliberate and not a conflict here, because the root
 // `@jackioh/engine` index exposes this directory as a namespace (`export * as effects`):
@@ -167,3 +167,6 @@ export { rotate } from "./rotate";
 
 // What a card remembers on its own instance (§10.1, R43).
 export { remember, rememberRandom } from "./memory";
+
+// One effect per card of a set read once off the board, which a pause resumes over whole (R113, R66).
+export { forEachCard } from "./each";

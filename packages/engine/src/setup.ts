@@ -8,7 +8,7 @@ import { draw } from "./draw";
 import { runHook, type EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { closePrompt } from "./prompts";
-import { newInstance, type CardInstance, type PendingChoice, type WorkItem } from "./state";
+import { newInstance, type CardInstance, type GameState, type PendingChoice, type WorkItem } from "./state";
 import { startTurn } from "./turn";
 import { owe, paused, registerWorkHandler } from "./work";
 import { moveToZone } from "./zones";
@@ -194,6 +194,26 @@ type OwedSetup =
   | { step: typeof DEAL_STEP; seat: number }
   | { step: typeof QUICKDRAW_STEP; seat: number }
   | { step: typeof MULLIGAN_STEP; player: PlayerId; returned: CardInstance[] };
+
+/**
+ * R224, §9.1: the cards a mulligan returned that wait, in the owed item, for their shuffle-back while
+ * a replacement draw's cast is asking. They are in no pile, so `findInstance` does not see them, and
+ * §10.8 reads them as the library cards they are about to be: nobody reads them (§3), their owner
+ * included, exactly as once they are back (`viewFor`).
+ */
+export function returnedAwaitingShuffle(state: GameState): string[] {
+  return state.work.flatMap((item) => {
+    if (item.resume.hook !== SETUP_WORK || item.resume.step !== MULLIGAN_STEP) return [];
+    const owed: unknown = item.resume.data.owed;
+    if (owed === null || typeof owed !== "object") return [];
+    const returned = (owed as { returned?: unknown }).returned;
+    if (!Array.isArray(returned)) return [];
+    return returned.flatMap((card: unknown) => {
+      const id = card !== null && typeof card === "object" ? (card as { id?: unknown }).id : undefined;
+      return typeof id === "string" ? [id] : [];
+    });
+  });
+}
 
 function oweSetup(sink: EngineSink, owed: OwedSetup): void {
   owe(sink, { defId: "", hook: SETUP_WORK, step: owed.step, radiant: false, data: { owed } });

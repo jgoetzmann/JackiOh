@@ -4,7 +4,21 @@
 import type { Keyword, PlayerId, PromptKind, Row, Zone } from "./catalog-types";
 
 export type GameEvent =
-  | { type: "cardPlayed"; player: PlayerId; instanceId: string; defId: string; costPaid: number; x?: number; embiggened?: boolean }
+  | {
+      type: "cardPlayed";
+      player: PlayerId;
+      instanceId: string;
+      defId: string;
+      costPaid: number;
+      x?: number;
+      embiggened?: boolean;
+      /**
+       * R119: the permanents that arrived on the field during this play before §10.5 step 4
+       * announced it — a tributed unit's Death at step 2 (#22's copies) — which do not answer it, as
+       * `cardResolved`'s field says for step 7. Engine bookkeeping: a view never forwards it.
+       */
+      arrivedDuring?: string[];
+    }
   /**
    * §10.5 step 7: the card has finished resolving — after its Cry and any Echo repeats, and after a
    * Spell has reached the graveyard or exile. R17 keys the post-resolution traps on this moment
@@ -39,7 +53,16 @@ export type GameEvent =
        */
       arrivedDuring?: string[];
     }
-  | { type: "summoned"; player: PlayerId; instanceId: string; defId: string; row: Row; lane: number }
+  | {
+      type: "summoned";
+      player: PlayerId;
+      instanceId: string;
+      defId: string;
+      row: Row;
+      lane: number;
+      /** R119: on a played card's step-4 `summoned`, as on its `cardPlayed`. A view never forwards it. */
+      arrivedDuring?: string[];
+    }
   | { type: "damage"; sourceId: string | null; targetId: string; amount: number; combat: boolean }
   | { type: "healthLost"; player: PlayerId; amount: number }
   | { type: "healed"; targetId: string; amount: number }

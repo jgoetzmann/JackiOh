@@ -404,6 +404,16 @@ export function dormantUnitsOf(state: GameState, player: PlayerId): CardInstance
 }
 
 /**
+ * §3.2, R13: a card dormant under a Stack pile — in a unit zone and not the top of its pile. It is
+ * "not on the field for effects": nothing targets it, and an effect aimed at it fizzles (R174).
+ */
+export function isBuried(state: GameState, instance: CardInstance): boolean {
+  const zone = instance.zone;
+  if (zone.z !== "field" || zone.row !== "units") return false;
+  return cardAt(state, { player: zone.player, row: zone.row, lane: zone.lane })?.id !== instance.id;
+}
+
+/**
  * R64: "fill your board" takes every empty, unlocked unit zone, left to right. The caller makes
  * each card; this returns the zones to fill, in order.
  */

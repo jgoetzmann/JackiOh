@@ -168,6 +168,8 @@ const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
 const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
 /** R225 and R226's proofs: the hunt's eighth round, where it was halted. */
 const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
+/** R240 and R241's proofs: the hunt's ninth round, continued at the user's request. */
+const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1688,6 +1690,18 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // a card, answered with the card being played, leaves that card in the graveyard alone.
   it("R226 plays no card that left its owner's hand before §10.5 step 4", () => {
     provenIn(226, CARDS_PAUSED_SEQUENCES_TEST);
+  });
+
+  // Proved by turn-stages.test.ts "R240 …": a fatigue draw Going Long's Armor absorbs whole is
+  // reported by a hit of 0 on the hero, and rulings-c.test.ts's R125 case sees the same report.
+  it("R240 reports a fatigue draw whose whole hit the hero's Armor absorbs", () => {
+    provenIn(240, CARDS_TURN_STAGES_TEST);
+  });
+
+  // Proved by turn-stages.test.ts "R241 …": a Spell carrying #78's end-of-turn exile, cast on draw on
+  // the other player's turn, exiles nothing at the end of its caster's next turn.
+  it("R241 arms no end-of-turn clause a card makes on the other player's turn", () => {
+    provenIn(241, CARDS_TURN_STAGES_TEST);
   });
 });
 

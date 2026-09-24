@@ -7,11 +7,24 @@
 // side offered, choices a fused card was offered and then ignored, a mode SPEC's conventions require
 // a target for that could name none, and a concede `reduce` accepts while a prompt is open that
 // `legalActions` did not list.
+//
+// Round 9, lens "legality agreement": the bound on `legalActions`' enumeration dropped whole picks —
+// a Lava Golem's all-enemy Tribute, a crafted card's first declaration's later picks — so the client,
+// which builds a play only out of the plays listed (CLAUDE.md rule 7), could not make them. A Tribute's
+// sets are listed whole and a cut keeps every pick of every declaration (R90, amended).
 
 import { describe, expect, it } from "vitest";
 import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
-import { legalActions, reduce, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
-import { scenario } from "./_harness";
+import {
+  legalActions,
+  reduce,
+  subsystems,
+  type CardInstance,
+  type GameState,
+  createRng,
+  type EngineSink,
+} from "@jackioh/engine";
+import { scenario, type Scenario } from "./_harness";
 
 const MR_VANILLA = "core-008";
 const HIT_JOB = "core-016";
@@ -210,5 +223,121 @@ describe("R211: concede is on offer while a prompt is open", () => {
     // The holder is still offered its answers; the other seat nothing else.
     expect(legalActions(g.state, "p1").some((action) => action.type === "answer")).toBe(true);
     expect(legalActions(g.state, "p2")).toEqual([{ type: "concede" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: every pick a play may make is one legalActions offers (R81, R90, R101, R102)
+// ---------------------------------------------------------------------------
+
+type PlayBody = Extract<ActionBody, { type: "play" }>;
+
+const LAVA_GOLEM = "core-055"; // Tribute 3; may tribute enemy units (§8 #55, R101)
+const KPOP_FANATIC = "core-050"; // Unit: Cry: choose an enemy permanent (unit or backrow)
+const RUSH_TOKEN_FARM = "core-058"; // a public Field Spell that acts only at its start of turn
+
+
+function unitsOf(s: Scenario, player: PlayerId): CardInstance[] {
+  return [1, 2, 3, 4, 5].flatMap((lane) => {
+    const unit = s.unit(player, lane);
+    return unit === null ? [] : [unit];
+  });
+}
+
+function playsFor(state: GameState, player: PlayerId, card: CardInstance): PlayBody[] {
+  return legalActions(state, player).filter(
+    (action): action is PlayBody => action.type === "play" && action.instanceId === card.id,
+  );
+}
+
+describe("R81, R90, R101: every Tribute a play may pay is one legalActions offers", () => {
+  it("§8 #55 a Lava Golem play that tributes three enemy units is offered, not only sets holding the player's own first units (R81, R90, R101)", () => {
+    // p1 has four units and one free unit zone, p2 five units: nine units Lava Golem may tribute.
+    const s = scenario({
+      p1: { hand: [LAVA_GOLEM], field: [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA] },
+      p2: { field: [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA], hand: [MR_VANILLA] },
+    });
+    const golem = must(s.state.players.p1.hand.find((card) => card.defId === LAVA_GOLEM), "the Lava Golem in hand");
+    const enemies = unitsOf(s, "p2").map((unit) => unit.id);
+    const allEnemy = [enemies[2]!, enemies[3]!, enemies[4]!];
+
+    // reduce accepts the play: #55 "may tribute enemy units" (R101), three units pay Tribute 3.
+    const accepted = reduce(s.state, {
+      type: "play",
+      playerId: "p1",
+      nonce: "r9-legality-golem",
+      instanceId: golem.id,
+      zone: { row: "units", lane: 5 },
+      tributes: allEnemy,
+    } as Action);
+    expect(accepted.error, "reduce accepts Lava Golem tributing three enemy units").toBeUndefined();
+
+    // …so legalActions, which the client narrows and the AI policy draws from (§10.2, CLAUDE.md
+    // rule 7), must offer it. The Tribute sets are enumerated own units first and cut at
+    // MAX_CHOICE_COMBINATIONS, so with nine candidates every offered set holds one of p1's first
+    // three units and no set of enemy units alone is ever offered.
+    const offered = playsFor(s.state, "p1", golem);
+    expect(offered.length).toBeGreaterThan(0);
+    const enemyOnly = offered.filter((play) => (play.tributes ?? []).every((id) => enemies.includes(id)));
+    expect(
+      enemyOnly.length,
+      "offered Lava Golem plays whose Tribute is paid with enemy units only",
+    ).toBeGreaterThan(0);
+    const exact = offered.some(
+      (play) => [...(play.tributes ?? [])].sort().join(",") === [...allEnemy].sort().join(","),
+    );
+    expect(exact, "the accepted all-enemy Tribute set is among the offered plays").toBe(true);
+  });
+});
+
+describe("R81, R90, R102: every pick a crafted card's declaration may make is one legalActions offers", () => {
+  it("§8 #99 a crafted Twisted Sorcerer + Kpop Fanatic is offered with the Sorcerer's 4 damage aimed at the enemy hero (R81, R90, R102)", () => {
+    // p1: four units and a free lane; p2: five units and three public Field Spells. The Sorcerer's
+    // declaration reaches eleven picks (p1's four units and hero, p2's five units and hero), Kpop's
+    // eight (p2's five units and three backrow cards).
+    const s = scenario({
+      p1: { hand: [TWISTED_SORCERER, KPOP_FANATIC], field: [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA] },
+      p2: {
+        field: [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA],
+        backrow: [RUSH_TOKEN_FARM, RUSH_TOKEN_FARM, RUSH_TOKEN_FARM],
+        hand: [MR_VANILLA],
+      },
+    });
+    const sorcerer = must(s.state.players.p1.hand.find((card) => card.defId === TWISTED_SORCERER), "the Sorcerer");
+    const kpop = must(s.state.players.p1.hand.find((card) => card.defId === KPOP_FANATIC), "the Kpop Fanatic");
+    // §8 #99: "Discover a Unit, then Discover another; Fuse them; the result costs 0 and goes to your
+    // hand" — the fusion #99's last step makes, called where the rule lives (R77, R102).
+    const sink: EngineSink = { state: s.state, events: [], rng: createRng(s.state.seed, s.state.rngCursor) };
+    const crafted = must(subsystems.fuse(sink, { ingredients: [sorcerer, kpop], toHand: "p1" }), "the crafted card");
+    expect(s.state.players.p1.hand.map((card) => card.id)).toContain(crafted.id);
+
+    const enemyUnits = unitsOf(s, "p2").map((unit) => unit.id);
+    const heroPick = { pick: "hero" as const, player: "p2" as const };
+    const play = {
+      type: "play",
+      playerId: "p1",
+      nonce: "r9-legality-crafted",
+      instanceId: crafted.id,
+      zone: { row: "units", lane: 5 },
+      targets: [heroPick, { pick: "instance", instanceId: enemyUnits[0]! }],
+    } as Action;
+    // reduce accepts it: the Sorcerer's part names the enemy hero, Kpop's an enemy unit (R90, R102).
+    const accepted = reduce(s.state, play);
+    expect(accepted.error, "reduce accepts the crafted card's play at the enemy hero").toBeUndefined();
+    expect(accepted.state.players.p2.hero.health, "the Sorcerer's part dealt its 4 to the enemy hero").toBe(26);
+
+    // legalActions must offer the Sorcerer's part every pick it may make. The two declarations are
+    // crossed first-slowest and cut at MAX_CHOICE_COMBINATIONS, so only the Sorcerer's first eight
+    // picks (p1's side, then p2's first three units) ever reach an offered play.
+    const offered = playsFor(s.state, "p1", crafted);
+    expect(offered.length).toBeGreaterThan(0);
+    const firstPicks = new Set(
+      offered.map((action) => {
+        const first = (action.targets ?? [])[0];
+        return first === undefined ? "none" : first.pick === "hero" ? `hero:${first.player}` : first.pick === "instance" ? first.instanceId : first.pick;
+      }),
+    );
+    expect(firstPicks.has("hero:p2"), "an offered play aims the Sorcerer's part at the enemy hero").toBe(true);
+    for (const id of enemyUnits) expect(firstPicks.has(id), `an offered play aims the Sorcerer's part at ${id}`).toBe(true);
   });
 });

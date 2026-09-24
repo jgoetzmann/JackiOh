@@ -210,6 +210,42 @@ export function partMemoryKey(data: Record<string, unknown>, key: string): strin
   return path === null ? key : `${key}@${path.join(".")}`;
 }
 
+/**
+ * R102, R77: the keys `effects/memory.remember` has written on a card, by the key the card named
+ * (`eaten` for #22), so a Fuse that keeps the card can tell what its texts remembered from the
+ * engine's own entries (#98's rolled power, the ingredients' prices) and move it with them.
+ */
+export const REMEMBERED_KEY = "__remembered";
+
+/** Write what a card's text remembers, under its ingredient's own key (R102), and note the key. */
+export function rememberOn(memory: Record<string, unknown>, data: Record<string, unknown>, key: string, value: unknown): void {
+  memory[partMemoryKey(data, key)] = value;
+  const noted = Array.isArray(memory[REMEMBERED_KEY]) ? (memory[REMEMBERED_KEY] as unknown[]) : [];
+  if (!noted.includes(key)) memory[REMEMBERED_KEY] = [...noted, key];
+}
+
+/**
+ * R102, R77: a card a Fuse keeps becomes ingredient `index` of the new fusion, and what its texts
+ * remembered goes with them: its own `key` becomes `key@<index>`, and a key an earlier fusion's part
+ * wrote, `key@<path>`, becomes `key@<index>.<path>` — the path that text now runs at. So the card
+ * reads back what it remembered, and the ingredients fused onto it, which remember nothing yet, read
+ * nothing of it: a Cube kept under a played Cube copies its one meal once, not once per Cube text.
+ */
+export function rerootRemembered(memory: Record<string, unknown>, index: number): void {
+  const noted = Array.isArray(memory[REMEMBERED_KEY])
+    ? (memory[REMEMBERED_KEY] as unknown[]).filter((key): key is string => typeof key === "string")
+    : [];
+  for (const key of noted) {
+    for (const stored of Object.keys(memory)) {
+      if (stored !== key && !stored.startsWith(`${key}@`)) continue;
+      const path = stored === key ? `${index}` : `${index}.${stored.slice(key.length + 1)}`;
+      const value = memory[stored];
+      delete memory[stored];
+      memory[`${key}@${path}`] = value;
+    }
+  }
+}
+
 /** The card's own captured data, with the control blocks taken back out. */
 export function cardData(data: Record<string, unknown>): Record<string, unknown> {
   const { [PAUSE_KEY]: _paused, [RUN_MARKS_KEY]: _run, [PART_DEPTH_KEY]: _depth, ...rest } = data;

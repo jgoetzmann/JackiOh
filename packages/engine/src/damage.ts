@@ -75,15 +75,29 @@ function actsOnField(state: GameState, unit: CardInstance): boolean {
 }
 
 /**
- * R42, R89: "a death whose lethal damage instance came from this unit". A hit is lethal when it
- * takes the unit from above 0 health to 0 or less, and that is the moment it is credited — never at
- * death, which a layer can cause long after the last hit (an aura lowering max health, #46): a hit
- * that left the unit standing clears any older credit, and a later hit on a unit already at 0 or
- * less (a Cleave, a second spell) changes nothing, since the first one killed it. Poisonous credits
- * its own hit in step 7. The state check forgets a credit whose unit is standing again.
+ * R42: a unit something has already killed and the state check has not collected yet — at 0 or less
+ * health, or marked destroyed (a Poisonous hit, a destroy). A unit is killed once, so whatever lands
+ * on it afterwards changes nothing about who killed it: not a later hit (a Cleave, a second spell, a
+ * Death of the same pass), not a Poisonous one, and not a destroy (`effects/destroy.ts`).
  */
-function creditKiller(unit: CardInstance, source: CardInstance | null, before: number, after: number): void {
-  if (before <= 0) return;
+export function alreadyKilled(state: GameState, unit: CardInstance): boolean {
+  const view = unitView(state, unit);
+  // §4.5 step 1's own test: an Indestructible unit dies only once its max health is gone (R69).
+  if (hasKeyword(view.keywords, "Indestructible")) return view.maxHealth <= 0;
+  return unit.markedDestroyed === true || view.health <= 0;
+}
+
+/**
+ * R42, R89: "a death whose lethal damage instance came from this unit". A hit is lethal when it
+ * takes a unit nothing has killed yet (`alreadyKilled`) to 0 or less health, and that is the moment
+ * it is credited — never at death, which a layer can cause long after the last hit (an aura
+ * lowering max health, #46): a hit that left such a unit standing clears any older credit, and a hit
+ * on a unit something already killed changes nothing, since the first one killed it. Poisonous
+ * credits its own hit in step 7 on the same terms. The state check forgets a credit whose unit is
+ * standing again.
+ */
+function creditKiller(unit: CardInstance, source: CardInstance | null, killedBefore: boolean, after: number): void {
+  if (killedBefore) return;
   if (after > 0 || source === null) {
     delete unit.lastDamagedBy;
     return;
@@ -172,10 +186,12 @@ export function dealDamage(sink: DamageSink, args: DamageArgs): number {
     return 0;
   }
 
+  // R42: whether something had killed the unit before this hit, which then kills nothing.
+  const killedBefore = target.kind === "unit" && alreadyKilled(state, target.instance);
   if (target.kind === "unit") {
     const before = unitView(state, target.instance).health;
     target.instance.damage += dealt;
-    creditKiller(target.instance, source, before, before - dealt);
+    creditKiller(target.instance, source, killedBefore, before - dealt);
   } else {
     state.players[target.player].hero.health -= dealt;
   }
@@ -198,8 +214,9 @@ export function dealDamage(sink: DamageSink, args: DamageArgs): number {
     hasKeyword(unitView(state, source).keywords, "Poisonous")
   ) {
     target.instance.markedDestroyed = true;
-    // R42: the Poisonous hit is the one that destroys it, whatever health it left.
-    target.instance.lastDamagedBy = source.id;
+    // R42: the Poisonous hit is the one that destroys it, whatever health it left — unless something
+    // had already killed it, in which case this hit landed on a dead unit and kills nothing.
+    if (!killedBefore) target.instance.lastDamagedBy = source.id;
   }
 
   // Step 8: Lifesteal heals the source's controller's hero by the amount dealt. R85: an effect

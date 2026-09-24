@@ -59,6 +59,7 @@ import {
   type Resume,
 } from "./state";
 import {
+  arrivedDuringPlay,
   isTrapWindowEvent,
   offerEventToTraps,
   resumeEventToTraps,
@@ -456,8 +457,11 @@ function runOwedTraps(sink: EngineSink, event: GameEvent, entry: QueuedTrigger):
  * sink that never collected anything (a caller dispatching by hand) has nothing uncollected.
  */
 function eventsAfterDispatched(sink: EngineSink): GameEvent[] {
-  const collected = (sink as SettleSink).dispatched ?? sink.events.length;
-  return [...sink.state.dispatch.map((item) => item.event), ...sink.events.slice(collected)];
+  const upTo = (sink as SettleSink).dispatched ?? sink.events.length;
+  // An event a loop on another sink over the same list has taken is in `state.dispatch` already, or
+  // was dispatched before this one (`collected`).
+  const uncollected = sink.events.slice(upTo).filter((event) => !collected.has(event));
+  return [...sink.state.dispatch.map((item) => item.event), ...uncollected];
 }
 
 /**
@@ -477,6 +481,9 @@ function eventsAfterDispatched(sink: EngineSink): GameEvent[] {
  * victim's Death then steals the Panther (#86).
  */
 export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger[] {
+  // R240, R63: a hit of 0 is a report (an absorbed fatigue draw), not a damage instance, and nothing
+  // — no trap, no trigger — answers it.
+  if (event.type === "damage" && event.amount <= 0) return [];
   const queued: QueuedTrigger[] = [];
   const owed = offerToTraps(sink, event);
   if (owed !== null) queued.push(owed);
@@ -490,7 +497,7 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
     later ??= movesIn(eventsAfterDispatched(sink));
     if (later.moved.has(holder.card.id)) continue;
     // R119: a permanent that arrived on the field while the play resolved does not answer that play.
-    if (event.type === "cardResolved" && (event.arrivedDuring ?? []).includes(holder.card.id)) continue;
+    if (arrivedDuringPlay(event).includes(holder.card.id)) continue;
     const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
     for (const def of defs) {
       queued.push(queueTrigger(sink, { ...holder, controller }, def, event));
@@ -582,7 +589,9 @@ function queuedTriggerDef(holder: TriggerHolder, entry: QueuedTrigger): TriggerD
  * it is finished here, in front of everything. This is what a stage made of several whole effects in
  * a row needs between two of them: R62's delayed effects are each a whole effect (R59), and a trap
  * answering the first responds before the second resolves, while the triggers they wake wait for the
- * stage's own loop (R68). Stops at a prompt, leaving the rest owed in state.
+ * stage's own loop (R68). A cast's §10.5 step 4 is the same kind of point inside the effect that cast
+ * it (R70): Sheepish answers a cast Unit there, before its Cry, and the effect's own loop keeps the
+ * rest. Stops at a prompt, leaving the rest owed in state.
  */
 export function dispatchPending(sink: SettleSink): void {
   for (let pass = 0; pass < SETTLE_PASS_CAP; pass += 1) {
@@ -624,6 +633,16 @@ export function markDispatched(events: readonly GameEvent[]): void {
 }
 
 /**
+ * Events already taken into `state.dispatch`, by object identity. `dispatched` is a position in one
+ * sink's copy of the list, and a loop can run on a sink other than the action's own over the same
+ * array: a cast's §10.5 step-4 window (R70) runs inside an effect, whose context is the only sink it
+ * has (`effects/draw`, #95), and that context has no position of its own. An event is taken into
+ * the frontier once, whichever sink reaches it first. Like `dispatchedElsewhere`, it holds no game
+ * state: the events are the running action's own objects.
+ */
+const collected = new WeakSet<GameEvent>();
+
+/**
  * §10.1: an emitted event joins the frontier — "events still owed to the traps and the trigger
  * queue" — in emission order, with an id and `seq` from `state.nextSeq` (R68's one counter), so the
  * frontier a replay builds is the frontier the live game had.
@@ -634,7 +653,8 @@ function collectEvents(sink: SettleSink): void {
     sink.dispatched = at + 1;
     const event = sink.events[at];
     if (event === undefined) continue;
-    if (dispatchedElsewhere.has(event)) continue;
+    if (dispatchedElsewhere.has(event) || collected.has(event)) continue;
+    collected.add(event);
     const seq = state.nextSeq;
     state.nextSeq += 1;
     state.dispatch.push({ id: `e${seq}`, seq, event });

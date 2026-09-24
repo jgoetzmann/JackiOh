@@ -52,7 +52,7 @@ import { hasExertion } from "./combat";
 import { heroArmorOf } from "./damage";
 import { echoGrantOf } from "./echo";
 import { unitView as unitLayers } from "./layers";
-import { effectiveCost, modifierIsLive } from "./mana";
+import { NEXT_REFRESH_MODIFIER_ID, effectiveCost, modifierIsLive } from "./mana";
 import {
   findInstance,
   type CardInstance,
@@ -63,6 +63,7 @@ import {
   type PromptOption,
 } from "./state";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
+import { returnedAwaitingShuffle } from "./setup";
 import { isReserved, slotsOf } from "./zones";
 
 /** §10.8, §10.10: how many of the most recent events the view carries for animation. */
@@ -120,9 +121,15 @@ type Replacements = {
   replacedBy: ReadonlyMap<string, string>;
   /** The players each replaced card was hidden from where it ceased to exist (`transformed.hiddenFrom`). */
   hiddenFrom: ReadonlyMap<string, readonly PlayerId[]>;
+  /**
+   * R224: the cards a mulligan returned that wait in setup's owed item for their shuffle-back, in no
+   * pile (`setup.returnedAwaitingShuffle`). They are on their way to a library, so nobody reads them.
+   */
+  toLibrary?: ReadonlySet<string>;
 };
 
-function replacementsOf(events: readonly GameEvent[]): Replacements {
+function replacementsOf(events: readonly GameEvent[], state?: GameState): Replacements {
+  const toLibrary = state === undefined ? undefined : new Set(returnedAwaitingShuffle(state));
   const replacedBy = new Map<string, string>();
   const hiddenFrom = new Map<string, readonly PlayerId[]>();
   for (const event of events) {
@@ -136,7 +143,7 @@ function replacementsOf(events: readonly GameEvent[]): Replacements {
       }
     }
   }
-  return { replacedBy, hiddenFrom };
+  return { replacedBy, hiddenFrom, ...(toLibrary === undefined || toLibrary.size === 0 ? {} : { toLibrary }) };
 }
 
 /**
@@ -166,7 +173,8 @@ function mayRead(state: GameState, viewer: PlayerId, instanceId: string, replace
     id = next;
     card = findInstance(state, id);
   }
-  if (card === undefined) return true;
+  // R224: a card the mulligan returned waits for its shuffle-back in no pile, and is a library card.
+  if (card === undefined) return replaced.toLibrary?.has(id) !== true;
   const zone = card.zone;
   if (zone.z === "library") return false;
   if (zone.z === "hand") return zone.player === viewer;
@@ -332,10 +340,17 @@ function modifierLabel(mod: PlayerModifier, echo: number): string {
  * discount on the very turn the discount does nothing.
  */
 function modifierViews(state: GameState, player: PlayerId): ModifierView[] {
-  return state.players[player].mods.map((mod) => {
+  const views = state.players[player].mods.map((mod) => {
     const label = modifierLabel(mod, echoGrantOf(state, player, mod));
     return { id: mod.id, label: modifierIsLive(state, mod) ? label : `${label} (next turn)` };
   });
+  // §6.3 Mana: the next refresh's rider (#21 Hinder, #24 Efficiency Dividend) is a modifier too, one
+  // badge under the id `modifierChanged` names for it, while it is not 0 (R169).
+  const rider = state.players[player].mana.nextTurnMod;
+  if (rider !== 0) {
+    views.push({ id: NEXT_REFRESH_MODIFIER_ID, label: `Next refresh ${rider > 0 ? "+" : "−"}${Math.abs(rider)} mana` });
+  }
+  return views;
 }
 
 // ---------------------------------------------------------------------------
@@ -483,8 +498,13 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return killerHidden ? { ...redacted, killerId: HIDDEN_ID } : redacted;
     }
 
+    // R119's `arrivedDuring` on a play's step-4 pair is the engine's bookkeeping, as on `cardResolved`.
     case "cardPlayed":
-    case "summoned":
+    case "summoned": {
+      const { arrivedDuring: _arrivals, ...shown } = event;
+      return hidden(event.instanceId) ? { ...shown, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : shown;
+    }
+
     case "enteredGraveyard":
     case "exiled":
     case "bounced":
@@ -640,7 +660,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
   const all = state.applied.flatMap((entry) => entry.events);
   const newest = state.applied[state.applied.length - 1]?.events.length ?? 0;
   const window = Math.max(VIEW_EVENT_LIMIT, newest);
-  const replaced = replacementsOf(all);
+  const replaced = replacementsOf(all, state);
   return all
     .slice(Math.max(0, all.length - window))
     .map((event) => redactEvent(state, viewer, event, replaced));

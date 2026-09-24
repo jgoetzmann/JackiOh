@@ -27,9 +27,21 @@
 //    second Sheepish is not offered the play the first turned into a Sheep. R102, R212: a card a
 //    Fuse kept is on the same stay, so a trigger it queued before the Fuse (Fed Fauci's Plague Token
 //    for the Cry that hit it) still resolves under the fused definition's namespaced id.
+//  - Round 9, lens "re-entry and stays". R174: #22 reads its meal on the stay the play chose, so a
+//    crafted Cube + Cube naming one Reborn unit twice remembers it once; and a card the play's own
+//    Stack card buried is not on the field for its Cry (§3.2, R13). §4.5 step 4: the Reborn bodies of
+//    one check return together, each at 1 health once all stand. R102, R77: what a card a Fuse kept
+//    remembered moves with its texts, so the texts fused onto it read none of it.
 
 import type { Selection } from "@jackioh/shared";
-import { createRng, effectiveCost, newInstance, subsystems, type CardInstance } from "@jackioh/engine";
+import {
+  createRng,
+  effectiveCost,
+  newInstance,
+  subsystems,
+  type CardInstance,
+  type EngineSink,
+} from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -654,5 +666,228 @@ describe("R102, R212: a card a Fuse kept is the same card on the same stay", () 
     // "Whenever this takes damage, +1 Plague Token": the hit happened to this card on this stay
     // (R212), and the Fuse neither moved it nor dropped Fauci's text, so the token lands.
     expect(kept.counters.plague ?? 0).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: meals, Reborn bodies and buried picks (R174, R102, §4.5 step 4, §3.2)
+// ---------------------------------------------------------------------------
+
+const MR_VANILLA = "core-008";
+const MIDRANGE_MENACE = "core-019";
+const MROW = "core-086";
+const NETHER = "core-088";
+const UNLICENSED = "core-085";
+
+
+
+/** Craft a Card's and #85's fusions are built directly, as `fused-hooks.test.ts` does (R77). */
+function sinkFor(s: Scenario): EngineSink {
+  return { state: s.state, events: [], rng: createRng(s.state.seed, s.state.rngCursor) };
+}
+
+describe("R174, R41: a Cube's meal is read on the stay the play chose", () => {
+  it("R174 a crafted Cube + Cube that names the same Reborn unit twice eats it once and remembers it once, so its Death copies it twice, not four times (R41, R83)", () => {
+    const s = scenario({
+      seed: "r9-cube-cube-reborn",
+      p1: {
+        mana: 10,
+        hand: [CUBE, CUBE, HIT_JOB, RENO],
+        // A Right-house defender: Reborn and no Death of its own. (A Radiant Saintess's Death would
+        // make the crafted Cube Radiant, and a Radiant Cube fills the board whatever it remembers.)
+        field: [{ def: RIGHT_HOUSE, lane: 1 }],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...LIBRARY] },
+    });
+    const cubes = s.hand("p1").filter((card) => card.defId === CUBE);
+    const crafted = must(subsystems.fuse(sinkFor(s), { ingredients: cubes, toHand: "p1" }), "the crafted card");
+    const defender = must(s.unit("p1", 1), "p1's Right-house defender");
+
+    // The defender is p1's only other permanent, so each Cube's declaration takes it: this is the
+    // one play legalActions offers for the crafted card (R81, R90).
+    const picks: Selection[] = [
+      { pick: "instance", instanceId: defender.id },
+      { pick: "instance", instanceId: defender.id },
+    ];
+    s.play(crafted, { zone: 3, targets: picks });
+
+    // The first Cube's part ate it and Reborn brought it straight back (§4.5 step 4). The second
+    // part's sacrifice fizzles on the body (R174): it died once.
+    expect(s.card(defender).zone.z).toBe("field");
+    expect(s.events.filter((event) => event.type === "destroyed" && event.instanceId === defender.id)).toHaveLength(1);
+    expect(s.card(crafted).radiant).toBe(false);
+
+    // R41: "nothing eaten → Death does nothing", so only the first Cube's Death summons copies.
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: crafted.id }] });
+    const defenders = [1, 2, 3, 4, 5].map((lane) => s.unit("p1", lane)?.defId).filter((id) => id === RIGHT_HOUSE);
+    // Its Reborn body plus the first Cube's 2 copies; the second Cube remembered nothing.
+    expect(defenders).toHaveLength(3);
+  });
+});
+
+describe("§4.5 step 4, R89: the Reborn bodies of one check return together", () => {
+  /**
+   * p1 plays a Felinor Fiender crafted with a Radiant Saintess (7/9, Stack, Reborn, and the Fiender's
+   * layer 2) and a "Miss" Mrow crafted with a Saintess (3/3 Felinor, Reborn) into the two lanes
+   * given, then destroys both with Twisting Nether. Both die in one state check and both come back
+   * through Reborn. Returns the Fiender body's health afterwards.
+   */
+  function fienderAfterReborn(fienderLane: number, mrowLane: number): number {
+    const s = scenario({
+      seed: "r9-reborn-order",
+      p1: {
+        mana: 10,
+        hand: [SAINTESS, FIENDER, SAINTESS, MROW, NETHER, RENO],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [STOCKPILE], library: [...LIBRARY] },
+    });
+    const hand = s.hand("p1");
+    const saints = hand.filter((card) => card.defId === SAINTESS);
+    const fienderIn = must(hand.find((card) => card.defId === FIENDER), "Felinor Fiender in hand");
+    const mrowIn = must(hand.find((card) => card.defId === MROW), "Mrow in hand");
+    const rebornFiender = must(
+      subsystems.fuse(sinkFor(s), { ingredients: [fienderIn, must(saints[0], "a Saintess")], toHand: "p1" }),
+      "Fiender + Saintess",
+    );
+    const rebornMrow = must(
+      subsystems.fuse(sinkFor(s), { ingredients: [mrowIn, must(saints[1], "a Saintess")], toHand: "p1" }),
+      "Mrow + Saintess",
+    );
+    s.play(rebornFiender, { zone: fienderLane });
+    s.play(rebornMrow, { zone: mrowLane });
+    // Layer 2: printed 7/9 plus the crafted Mrow's 3/3 (R116).
+    expect(s.stats(rebornFiender).maxHealth).toBe(9 + 3);
+
+    s.play(NETHER);
+    s.expectInZone(rebornFiender, "field").expectInZone(rebornMrow, "field");
+    expect(s.stats(rebornFiender).maxHealth).toBe(9 + 3);
+    return s.stats(rebornFiender).health;
+  }
+
+  it("§4.5 a Felinor Fiender and the Felinor feeding it that come back through Reborn in one check leave the Fiender at the same health whichever lane is first (R89, R116)", () => {
+    // Mrow first: the Fiender's body is read with Mrow back, 12 max health and 1 left. Fiender first:
+    // it is read with Mrow still in the graveyard, 9 max and 1 left, and Mrow's return then lifts it
+    // to 4. §4.5 step 4 returns every collected Reborn unit in one step, at 1 health.
+    expect(fienderAfterReborn(1, 2)).toBe(fienderAfterReborn(2, 1));
+  });
+});
+
+describe("§3.2, R13, R174: a card the play's own Stack buried is not on the field for its Cry", () => {
+  /**
+   * p1 crafts a Felinor Fiender (Stack) with `partner`, whose Cry chooses one of p1's units, and
+   * plays it onto lane 1, where Mr. Vanilla stands, choosing Mr. Vanilla. Step 4 puts the crafted
+   * card on top of the pile, so by step 5 Mr. Vanilla is dormant under it.
+   */
+  function buryOwnPick(partner: string, seed: string): { s: Scenario; crafted: CardInstance; vanilla: CardInstance } {
+    const s = scenario({
+      seed,
+      p1: { mana: 10, hand: [FIENDER, partner, RENO], field: [{ def: MR_VANILLA, lane: 1 }], library: [...LIBRARY] },
+      p2: { hand: [STOCKPILE], library: [...LIBRARY] },
+    });
+    const hand = s.hand("p1");
+    const fiender = must(hand.find((card) => card.defId === FIENDER), "Felinor Fiender in hand");
+    const other = must(hand.find((card) => card.defId === partner), "the partner in hand");
+    const crafted = must(subsystems.fuse(sinkFor(s), { ingredients: [fiender, other], toHand: "p1" }), "the crafted card");
+    const vanilla = must(s.unit("p1", 1), "Mr. Vanilla");
+    s.play(crafted, { zone: 1, targets: [{ pick: "instance", instanceId: vanilla.id }] });
+    return { s, crafted, vanilla };
+  }
+
+  it("R174 a crafted Fiender + Prejudiced Postdoc played onto its chosen Human copies nothing once that Human is buried (§3.2, R13)", () => {
+    const { s, crafted, vanilla } = buryOwnPick(POSTDOC, "r9-buried-postdoc");
+    // Step 4 buried Mr. Vanilla under the crafted card: it is dormant, not on the field (R13).
+    expect(s.unit("p1", 1)?.id).toBe(crafted.id);
+    s.expectInZone(vanilla, "field");
+    // "Choose a Human unit on the field; summon a Vanilla copy": the chosen unit is no longer on the
+    // field, so the copy fizzles, as #68's damage does on a buried pick. The engine summons one.
+    expect([2, 3, 4, 5].map((lane) => s.unit("p1", lane)?.defId ?? null)).toEqual([null, null, null, null]);
+  });
+
+  it("R174 a crafted Fiender + Carnivorous Cube played onto its chosen meal does not eat the card buried beneath it (§3.2, R13, R41)", () => {
+    const { s, crafted, vanilla } = buryOwnPick(CUBE, "r9-buried-cube");
+    expect(s.unit("p1", 1)?.id).toBe(crafted.id);
+    // The meal is dormant under the crafted card when the Cry resolves, so there is nothing on the
+    // field to tribute and the Cry fizzles (R41). The engine sacrifices it out of the pile.
+    s.expectInZone(vanilla, "field");
+    expect(s.events.some((event) => event.type === "destroyed" && event.instanceId === vanilla.id)).toBe(false);
+  });
+});
+
+describe("R102, R77, R41: a card #85 keeps reads its meals with its own text", () => {
+  /** p1's unit row as def ids, lane 1 to 5. */
+  function unitRow(s: Scenario): (string | null)[] {
+    return [1, 2, 3, 4, 5].map((lane) => s.unit("p1", lane)?.defId ?? null);
+  }
+  function count(row: readonly (string | null)[], defId: string): number {
+    return row.filter((id) => id === defId).length;
+  }
+
+  it("R102 a Cube that ate once and had a played Cube fused onto it copies its one meal twice, not four times (R77, R41)", () => {
+    const s = scenario({
+      seed: "r9-cube-kept-meal",
+      p1: {
+        mana: 10,
+        hand: [CUBE, RENO, HIT_JOB],
+        field: [{ def: TIMMY, lane: 1 }],
+        backrow: [UNLICENSED],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [CUBE, STOCKPILE], backrow: [MANA_WELL], library: [...LIBRARY] },
+    });
+    s.play(CUBE, { targets: [{ pick: "instance", instanceId: must(s.unit("p1", 1), "Tempo Timmy").id }] });
+    const kept = must(s.unit("p1", 2), "p1's Cube");
+
+    // p2's Cube eats p2's Mana Well; after its Cry, #85 fuses it onto p1's Cube, the only unit p1 has
+    // (R61). The kept instance is p1's Cube, and its memory is the Timmy it ate (R77).
+    s.endTurn();
+    s.play(CUBE, { targets: [{ pick: "instance", instanceId: must(s.backrow("p2", 1), "Mana Well").id }] });
+    expect(s.card(kept).defId).toMatch(/core-022\+core-022/);
+
+    s.endTurn();
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: kept.id }] });
+
+    // The kept Cube's text copies its meal twice ("each Death copies its own", R102). The played
+    // Cube's text ate a Mana Well on another instance, never a Timmy. The engine hands the kept
+    // card's one meal to both texts and summons four Timmies.
+    expect(count(unitRow(s), TIMMY)).toBe(2);
+  });
+
+  it("R102 a crafted Cube + Cube that #85 fuses a played Cube onto still copies both of its own meals (R77)", () => {
+    const s = scenario({
+      seed: "r9-crafted-cube-kept",
+      p1: {
+        mana: 10,
+        hand: [CUBE, CUBE, RENO, HIT_JOB],
+        field: [{ def: TIMMY, lane: 1 }, { def: MR_VANILLA, lane: 2 }],
+        backrow: [UNLICENSED],
+        library: [...LIBRARY],
+      },
+      p2: { hand: [CUBE, STOCKPILE], backrow: [MANA_WELL], library: [...LIBRARY] },
+    });
+    const cubes = s.hand("p1").filter((card) => card.defId === CUBE);
+    const crafted = must(subsystems.fuse(sinkFor(s), { ingredients: cubes, toHand: "p1" }), "Cube + Cube");
+    s.play(crafted, {
+      zone: 3,
+      targets: [
+        { pick: "instance", instanceId: must(s.unit("p1", 1), "Tempo Timmy").id },
+        { pick: "instance", instanceId: must(s.unit("p1", 2), "Mr. Vanilla").id },
+      ],
+    });
+    // R102: each Cube remembered its own meal.
+    expect(unitRow(s)).toEqual([null, null, crafted.defId, null, null]);
+
+    s.endTurn();
+    s.play(CUBE, { targets: [{ pick: "instance", instanceId: must(s.backrow("p2", 1), "Mana Well").id }] });
+    s.endTurn();
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: crafted.id }] });
+
+    // The kept card "still reads what it remembered before" (R102): its two Cubes copy a Timmy twice
+    // and a Mr. Vanilla twice. The engine reads its first meal off the played Cube's text and
+    // nothing off its own, so only two Timmies arrive.
+    const row = unitRow(s);
+    expect(count(row, TIMMY)).toBe(2);
+    expect(count(row, MR_VANILLA)).toBe(2);
   });
 });
