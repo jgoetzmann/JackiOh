@@ -532,8 +532,9 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `12-rotation-and-swaps.cy.ts` | Silly Silas, Pocket Chaos board swap | every card testid moves one lane; board swap flips sides |
 | `13-practice-vs-ai.cy.ts` | Anonymous `/practice` against the AI (§9.9), no server; Easy and Hard, seated p2, `?pace=fast` | setup shows with no account; the think indicator shows while the AI mulligans and plays; human turns end with no action error; the browser hash equals the replay of `(seed, decks, handicaps, log)` (R187); concede shows Loss; Hard's AI shows max mana 2 on its first turn (R181); no request reaches `/api` or a WebSocket |
 | `14-landing-and-sign-in.cy.ts` | The landing page and the way in (§9.4, R191–R193), against a built client with every API call stubbed: no server and no auth provider | the landing's CTAs link to `/practice`, `/play` and `/decks`; a code typed or pasted in any form fills the four groups, and an excluded character is refused and named; a rate-limited redemption shows its wait with submit off, never R145's error; an emailed link is scrubbed and signs nothing in; the reset screen refuses a short or mismatched password; every gate panel, the 404 included, offers a way out |
+| `15-audio.cy.ts` | Hotseat with the two `01-aggro` decks and sound on (§10.11, R204); a unit played from hand | no audio context exists before the first gesture, and one click creates exactly one that is not locked; the unit played from hand logs its play voice line; the mute toggle survives a reload and the next play logs nothing; a shipped voice file answers 200 as audio |
 
-**M8 gate.** All fourteen specs green in CI on Chrome and Electron.
+**M8 gate.** All fifteen specs green in CI on Chrome and Electron.
 
 ## 4. Test strategy summary
 
@@ -543,7 +544,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - Rulings: `rulings.test.ts` has one named test per §11 row; the review greps for `R<n>` coverage.
 - Catalog: `catalog.test.ts` diffs `catalog.json` against a fixture transcribed from SPEC §8.
 - Coverage floor: 90% lines in `packages/engine` and `packages/cards`; 100% of card script files have a test file.
-- E2E: the fourteen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
+- E2E: the fifteen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
 
 ## 5. Definition of done
 
