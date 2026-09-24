@@ -7,8 +7,9 @@ import type { PlayerId } from "@jackioh/shared";
 import { CAST_ON_DRAW_CHAIN_CAP, FATIGUE_DAMAGE, HAND_CAP, LIBRARY_CAP } from "./config";
 import { defByIndex } from "./catalog";
 import { dealDamage } from "./damage";
-import { castCard, runHook, type EngineSink } from "./resolve";
-import { flagsOf, scriptOf } from "./scripts";
+import { runStartOfGame } from "./prompts";
+import { castCard, type EngineSink } from "./resolve";
+import { flagsOf } from "./scripts";
 import {
   newInstance,
   type CardInstance,
@@ -44,8 +45,9 @@ import { cardAt, isUnitToken, moveToZone, slotsOf } from "./zones";
  * (see the header of `effects/addToHand.ts`: "Both routes end in `../draw`'s `addToHand`").
  */
 function runArrivalHooks(sink: EngineSink, instance: CardInstance): void {
-  if (scriptOf(instance).startOfGame === undefined) return;
-  runHook(sink, instance, "startOfGame", { controller: instance.owner });
+  // §9.3, R113: the clause is an effect list like any other, so a question in it pauses the rest of
+  // it on `state.work` (`prompts.runStartOfGame`), and a draw loop around it owes its remainder.
+  runStartOfGame(sink, instance, instance.owner);
 }
 
 /** #75: a backrow card that turns an empty-library draw into a Rush Token card. */

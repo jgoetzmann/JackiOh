@@ -18,6 +18,12 @@ export type GameEvent =
        * `cardResolved`'s field says for step 7. Engine bookkeeping: a view never forwards it.
        */
       arrivedDuring?: string[];
+      /**
+       * R174, R212: the field's departures as the play was announced (the engine's exit mark), so a
+       * response the loop hands this event later judges the played card's stay from the moment the
+       * event happened. Engine bookkeeping: a view never forwards it.
+       */
+      exitsFrom?: number;
     }
   /**
    * §10.5 step 7: the card has finished resolving — after its Cry and any Echo repeats, and after a
@@ -52,6 +58,15 @@ export type GameEvent =
        * answer its own play. Engine bookkeeping: a view never forwards it.
        */
       arrivedDuring?: string[];
+      /**
+       * R174, R212: the field's departures as step 7 emitted this (the engine's exit mark). A cast's
+       * `cardResolved` waits for the loop of the effect that cast it (R70), and the rest of that
+       * effect's list, and the state check after it, can take the card off the field and Reborn put
+       * a new body back before the event reaches a response — which judges the card's stay from
+       * here, not from the dispatch, so that body is not "it". Engine bookkeeping: a view never
+       * forwards it.
+       */
+      exitsFrom?: number;
     }
   | {
       type: "summoned";
@@ -62,6 +77,8 @@ export type GameEvent =
       lane: number;
       /** R119: on a played card's step-4 `summoned`, as on its `cardPlayed`. A view never forwards it. */
       arrivedDuring?: string[];
+      /** R174, R212: on a played card's step-4 `summoned`, as on its `cardPlayed`. A view never forwards it. */
+      exitsFrom?: number;
     }
   | { type: "damage"; sourceId: string | null; targetId: string; amount: number; combat: boolean }
   | { type: "healthLost"; player: PlayerId; amount: number }
@@ -86,7 +103,17 @@ export type GameEvent =
   | { type: "addedToHand"; player: PlayerId; instanceId: string; defId: string }
   | { type: "shuffledIn"; player: PlayerId; instanceId: string; defId: string; position: number }
   | { type: "buffed"; instanceId: string; attack: number; health: number }
-  | { type: "keywordGranted"; instanceId: string; keyword: Keyword }
+  | {
+      type: "keywordGranted";
+      instanceId: string;
+      keyword: Keyword;
+      /**
+       * R46: set when the unit loses the keyword instead — the Taunt an Indestructible unit's
+       * knock-down takes for the rest of the turn, which a unit already in Attack Position would
+       * otherwise lose with no event (§10.3, R91). Absent on a grant.
+       */
+      lost?: true;
+    }
   | { type: "counterChanged"; instanceId: string; counter: "plague" | "grade"; value: number }
   /**
    * R177: `hiddenFrom` is set on a change made to a card in a library — both players, who could not

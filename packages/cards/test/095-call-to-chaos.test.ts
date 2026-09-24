@@ -578,3 +578,15 @@ describe("#95.1 Chaos Golem", () => {
     expect(query({ type: "Unit", cost: 4 }).map((def) => def.id)).not.toContain(GOLEM);
   });
 });
+
+describe("#95's printed text (round 10 of the polish-4 edge-case hunt)", () => {
+  it("names the Radiant Rush Tokens it summons, not the 5/5s issue #1 took out (§8.4 #95, §7)", () => {
+    // §8.4 #95's base effect: "summon five Radiant Rush Tokens", and §7: "Call to Chaos is NOT one
+    // of these any more: it summons the token's own Radiant face (6/6) rather than a bespoke 5/5".
+    // The engine does that ("6/10 summons five RADIANT Rush Tokens" above), and the catalog's
+    // printed text — what apps/web's Card and Prompt render for the card — says so too.
+    const text = cardDef(CHAOS).base.text;
+    expect(text).not.toMatch(/5\/5/);
+    expect(text).toMatch(/five Radiant Rush Tokens/);
+  });
+});

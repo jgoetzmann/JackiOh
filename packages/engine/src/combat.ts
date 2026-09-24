@@ -412,7 +412,7 @@ function queueDeclarationTriggers(sink: EngineSink, event: GameEvent, since: rea
     if (holder.isTrap) continue;
     const defs = triggersOnEvent(holder, event.type);
     if (defs.length === 0) continue;
-    later ??= movesIn(since);
+    later ??= movesIn(since, sink.state);
     if (later.moved.has(holder.card.id)) continue;
     const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
     for (const def of defs) queueTrigger(sink, { ...holder, controller }, def, event);

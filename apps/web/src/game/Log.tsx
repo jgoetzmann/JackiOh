@@ -91,7 +91,8 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string {
         ? "A hidden card was buffed"
         : `${name.instance(event.instanceId)} gained +${event.attack}/+${event.health}`;
     case "keywordGranted":
-      return `${name.instance(event.instanceId)} gained ${event.keyword.kind}`;
+      // R46: the same event reports the Taunt an Indestructible unit's knock-down takes.
+      return `${name.instance(event.instanceId)} ${event.lost === true ? "lost" : "gained"} ${event.keyword.kind}`;
     case "counterChanged":
       return `${name.instance(event.instanceId)} ${event.counter} counters: ${event.value}`;
     case "costChanged":

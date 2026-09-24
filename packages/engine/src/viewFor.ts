@@ -33,6 +33,7 @@
 
 import type {
   BackrowView,
+  CardDef,
   CardView,
   GameEvent,
   HeroPowerView,
@@ -51,7 +52,7 @@ import { defOf, findDef } from "./catalog";
 import { hasExertion } from "./combat";
 import { heroArmorOf } from "./damage";
 import { echoGrantOf } from "./echo";
-import { unitView as unitLayers } from "./layers";
+import { statsWithBuffs, unitView as unitLayers } from "./layers";
 import { NEXT_REFRESH_MODIFIER_ID, effectiveCost, modifierIsLive } from "./mana";
 import {
   findInstance,
@@ -198,6 +199,25 @@ function cardView(state: GameState, card: CardInstance): CardView {
 }
 
 /**
+ * R243, §10.8: a card in the viewer's own hand, in full — what it is made of beyond its printed
+ * face as well. A Unit's stats are its face plus the permanent buffs it gained in hand (§10.4
+ * layers 1, 3 and 4: #89 Corpse Eater's meals), since layer 2 and the auras are the field's; attack
+ * floors at 0 as on the field. A #98 Heroic Power names the power it rolled as it arrived (R43,
+ * R151), which its cost alone does not.
+ */
+function handCardView(state: GameState, card: CardInstance): CardView {
+  const view = cardView(state, card);
+  const stats =
+    defOf(state, card.defId).type === "Unit" ? statsWithBuffs(state, card) : null;
+  const power = powerOf(card);
+  return {
+    ...view,
+    ...(stats === null ? {} : { attack: Math.max(0, stats.attack), health: stats.maxHealth }),
+    ...(power === null ? {} : { power: power.name }),
+  };
+}
+
+/**
  * The card that acts in a unit zone: the top of the pile (§3.2). `buried` is how many dormant cards
  * sit under it (R13) — a count, so no buried identity reaches either player.
  */
@@ -218,6 +238,8 @@ function unitViewOf(state: GameState, pile: Pile): UnitView | null {
     counters: { ...top.counters },
     buried: pile.length - 1,
     canAct: canAct(state, top),
+    // R243, §6.3 Vanilla: the text is gone, which the definition the client reads does not say.
+    ...(top.vanilla === true ? { vanilla: true as const } : {}),
   };
 }
 
@@ -382,7 +404,7 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     modifiers: modifierViews(state, player),
     mana: { current: side.mana.current, max: side.mana.max },
     // §10.8: the viewer's own hand in full, the opponent's as a count.
-    hand: player === viewer ? side.hand.map((card) => cardView(state, card)) : { count: side.hand.length },
+    hand: player === viewer ? side.hand.map((card) => handCardView(state, card)) : { count: side.hand.length },
     // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
     libraryCount: side.library.length,
     graveyard: side.graveyard.map((card) => cardView(state, card)),
@@ -482,8 +504,9 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     // not identity fields and never travel redacted; `permanent` is R61's "still in play" answer,
     // which #85 keys on. The face that resolved (`radiant`) is the card's, so it goes with the id.
     case "cardResolved": {
-      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95).
-      const { arrivedDuring: _arrivals, ...shown } = event;
+      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95);
+      // so is the exit mark the event happened at (R174, R212).
+      const { arrivedDuring: _arrivals, exitsFrom: _mark, ...shown } = event;
       if (!hidden(event.instanceId)) return shown;
       const { radiant: _face, ...rest } = shown;
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
@@ -498,10 +521,11 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return killerHidden ? { ...redacted, killerId: HIDDEN_ID } : redacted;
     }
 
-    // R119's `arrivedDuring` on a play's step-4 pair is the engine's bookkeeping, as on `cardResolved`.
+    // R119's `arrivedDuring` and the exit mark on a play's step-4 pair are the engine's bookkeeping,
+    // as on `cardResolved`.
     case "cardPlayed":
     case "summoned": {
-      const { arrivedDuring: _arrivals, ...shown } = event;
+      const { arrivedDuring: _arrivals, exitsFrom: _mark, ...shown } = event;
       return hidden(event.instanceId) ? { ...shown, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : shown;
     }
 
@@ -678,7 +702,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
  * caller passes the number in and it is `null` whenever nobody is counting.
  */
 export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | null = null): PlayerView {
-  return {
+  const view: PlayerView = {
     viewer: playerId,
     turn: state.turn,
     active: state.active,
@@ -690,4 +714,35 @@ export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | 
     result: state.result === null ? null : { winner: state.result.winner, reason: state.result.reason },
     clockMs,
   };
+  const defs = matchDefsIn(state, view);
+  return Object.keys(defs).length === 0 ? view : { ...view, defs };
+}
+
+/**
+ * R243: the match-made definitions (`state.transientDefs`: a Fuse's, a crafted card's — R77, R102,
+ * R179) the finished view names anywhere — a card in a zone, a unit, a prompt option, an event —
+ * copied beside it, since no catalog a client holds has them. The view is read after it is built,
+ * so only an id that survived redaction brings its definition: a card this viewer may not read is
+ * the sentinel by then (R97), and its definition stays in the match.
+ */
+function matchDefsIn(state: GameState, view: PlayerView): Record<string, CardDef> {
+  const defs: Record<string, CardDef> = {};
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      // Own keys only: a label that happens to read "constructor" names no definition.
+      if (!Object.prototype.hasOwnProperty.call(state.transientDefs, value) || value in defs) return;
+      const def = state.transientDefs[value];
+      if (def !== undefined) defs[value] = JSON.parse(JSON.stringify(def)) as CardDef;
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) visit(item);
+    }
+  };
+  visit(view);
+  return defs;
 }

@@ -23,7 +23,7 @@ import { modifierIsLive } from "./mana";
 import { installLastingModifiers, removeModifier } from "./modifiers";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
-import { leftFieldAfter } from "./stays";
+import { exitMark, leftFieldAfter } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -287,5 +287,8 @@ export function landAfterResolution(sink: EngineSink, resolved: ResolvedCard): v
     ...(resolved.arrivedDuring === undefined || resolved.arrivedDuring.length === 0
       ? {}
       : { arrivedDuring: [...resolved.arrivedDuring] }),
+    // R174, R212: the stays step 7 read `permanent` on. A cast's event waits for the loop of the
+    // effect that cast it (R70), so a response judges the card's stay from here, not the dispatch.
+    exitsFrom: exitMark(state),
   });
 }

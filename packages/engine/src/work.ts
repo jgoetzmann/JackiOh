@@ -94,6 +94,8 @@ export type PausedStep = {
    * that say so belong to the action that paused and the tail resumes in a later one.
    */
   summoned?: string[];
+  /** R98: the list's card was in the resolving zone as it began (`EffectContext.selfResolving`). */
+  resolving?: boolean;
 };
 
 /**
@@ -105,7 +107,7 @@ export type PausedStep = {
 export const RUN_MARKS_KEY = "__run";
 
 /** What a continuation carries of the run it continues. All JSON. */
-export type RunMarks = { exitsFrom?: number; summoned?: string[] };
+export type RunMarks = { exitsFrom?: number; summoned?: string[]; resolving?: boolean };
 
 /** The marks a continuation's data carries, or null when it carries none. */
 export function runMarksOf(data: Record<string, unknown>): RunMarks | null {
@@ -117,6 +119,7 @@ export function runMarksOf(data: Record<string, unknown>): RunMarks | null {
     ...(Array.isArray(marks.summoned)
       ? { summoned: marks.summoned.filter((id): id is string => typeof id === "string") }
       : {}),
+    ...(marks.resolving === true ? { resolving: true } : {}),
   };
 }
 
@@ -174,6 +177,7 @@ export function pausedOf(data: Record<string, unknown>): PausedStep | null {
     ...(Array.isArray(step.summoned)
       ? { summoned: step.summoned.filter((id): id is string => typeof id === "string") }
       : {}),
+    ...(step.resolving === true ? { resolving: true } : {}),
   };
 }
 

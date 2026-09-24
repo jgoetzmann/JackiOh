@@ -55,6 +55,7 @@ import {
   closePrompt,
   inOfferedOrder,
   openPrompt,
+  registerPromptAnswerer,
   resumeOf,
   runHookResumable,
   whyAnswerRefused,
@@ -213,13 +214,15 @@ export type PlayRun = {
    */
   placedFrom?: number;
   /**
-   * R119: every card on the field as the play began — at step 1 for a play, as the cast began for a
-   * cast (R70) — by id, with the field's departures then (`standingFrom`). A permanent that arrives
-   * on the field after that, whatever puts it there — a tributed unit's Death at step 2 (#22's
-   * copies, R210), the Cry recruiting it (#98), summoning it (#95) or bringing a body back through
-   * Reborn, a trap answering the play summoning it — does not answer the play, as the played card
-   * itself does not: not its `cardPlayed` and `summoned` at step 4, not step 5's granted Combo (#38)
-   * on the first resolution or an Echo repeat, and not its `cardResolved` at step 7 (`arrivedDuring`).
+   * R119: every card acting on the field as the play began — at step 1 for a play, as the cast began
+   * for a cast (R70) — by id, with the field's departures then (`standingFrom`). A permanent that
+   * arrives on the field after that, whatever puts it there — a tributed unit's Death at step 2
+   * (#22's copies, R210), the Cry recruiting it (#98), summoning it (#95) or bringing a body back
+   * through Reborn, a trap answering the play summoning it — does not answer the play, as the played
+   * card itself does not: not its `cardPlayed` and `summoned` at step 4, not step 5's granted Combo
+   * (#38) on the first resolution or an Echo repeat, and not its `cardResolved` at step 7
+   * (`arrivedDuring`). Nor does a card that lay dormant under a Stack pile as the play began and
+   * resumed as its top while the play resolved: it registered nothing then (§3.2, R153).
    */
   standing?: string[];
   standingFrom?: number;
@@ -232,8 +235,9 @@ export type PlayRun = {
   modsBefore?: string[];
   /**
    * R226, §10.5 step 4, §10.1: the card left its owner's hand before step 4 could move it — a
-   * Tribute's Death at step 2, or an `onPlayHook` at step 3, had it discarded — so it is not played:
-   * no placement, no `cardPlayed`, no resolution. What steps 2 and 3 did stands, and step 8 settles it.
+   * Tribute's Death at step 2, or an `onPlayHook` at step 3, had it discarded — or, for a cast, left
+   * the resolving zone it waits in (R70) — so it is not played: no placement, no `cardPlayed`, no
+   * resolution. What steps 2 and 3 did stands, and step 8 settles it.
    */
   lost?: boolean;
 };
@@ -521,6 +525,9 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
   // (#22's copies of a Sheepish) — does not answer it, which the step-4 pair names, as step 7's does.
   const arrived = arrivedDuring(sink.state, run);
   const arrivals = arrived.length === 0 ? {} : { arrivedDuring: arrived };
+  // R174, R212: the stays the play was announced on, so a response the loop hands the pair later —
+  // behind the traps that answer what step 2 did — judges the played card from here.
+  const exitsFrom = exitMark(sink.state);
   sink.events.push({
     type: "cardPlayed",
     player: run.player,
@@ -530,6 +537,7 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
     ...(card.x === undefined ? {} : { x: card.x }),
     ...(card.embiggened === undefined ? {} : { embiggened: card.embiggened }),
     ...arrivals,
+    exitsFrom,
   });
   if (run.zone !== null) {
     sink.events.push({
@@ -540,6 +548,7 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
       row: run.zone.row,
       lane: run.zone.lane,
       ...(arrived.length === 0 ? {} : { arrivedDuring: [...arrived] }),
+      exitsFrom,
     });
   }
 }
@@ -595,12 +604,19 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   dispatchPending(sink);
 }
 
-/** Every card on the field, both sides, dormant cards under a Stack included (§3.2). */
+/**
+ * Every card acting on the field, both sides: each Stack pile's top and the backrow. A card dormant
+ * under a pile is not on the field for effects and registers nothing (§3.2, R13, R153), so one that
+ * resumes while a play resolves arrives for R119 as a Reborn body does.
+ */
 function fieldCardIds(state: GameState): string[] {
   const out: string[] = [];
   for (const player of PLAYER_IDS) {
     const side = state.players[player];
-    for (const pile of side.units) for (const card of pile ?? []) out.push(card.id);
+    for (const pile of side.units) {
+      const top = pile?.[0];
+      if (top !== undefined) out.push(top.id);
+    }
     for (const card of side.backrow) if (card !== null && card !== undefined) out.push(card.id);
   }
   return out;
@@ -623,8 +639,8 @@ function arrivedDuring(state: GameState, run: PlayRun): string[] {
 }
 
 /**
- * Step 4's placement and announcement, once. False when the card is no longer the hand's to move
- * (`PlayRun.lost`), which ends the play.
+ * Step 4's placement and announcement, once. False when the card is no longer the hand's to move,
+ * or for a cast the resolving zone's (`PlayRun.lost`), which ends the play.
  */
 function placeCard(sink: EngineSink, run: PlayRun): boolean {
   const state = sink.state;
@@ -635,10 +651,14 @@ function placeCard(sink: EngineSink, run: PlayRun): boolean {
   const side = state.players[run.player];
 
   if (run.cast === true) {
-    // R70, §6.3 Cast: a cast card leaves wherever it was — a library for a cast on draw (§2.4), no
-    // pile at all for one an effect made (#95) — and a permanent takes the leftmost empty,
+    // R70, R226: a cast card waits in the resolving zone from the start of its cast
+    // (`castThroughPipeline`), as a played card waits in its owner's hand until step 4. One that has
+    // left it by now — a step-3 `onPlayHook`, or its answer, exiled it — is where that move put it, in
+    // one zone (§10.1), and is not played: pulling it back out of exile would undo a move §6.3 makes
+    // final. Otherwise it leaves the resolving zone, and a permanent takes the leftmost empty,
     // unlocked zone of its row (R64), as a play that names none does. Not `moveToZone`: that resets
     // the instance (R78), and a cast is a play, which does not.
+    if (card.zone.z !== "resolving") return false;
     removeFromAnyZone(state, card);
     const type = defOf(state, card.defId).type;
     run.zone = type === "Spell" ? null : firstFreeZone(state, run.player, type === "Unit" ? "units" : "backrow");
@@ -908,7 +928,8 @@ function labelOf(selection: Selection): string {
  * R81: a card's play choices travel in the `play` action *once*. A repeat therefore asks again, as
  * prompts — §10.6's "an Echo repeat of Glowy Jelly Bean reopens its hand pick" — so each
  * declaration the card made is offered in turn and the answers collect in the repeat record. The
- * prompt carries the run record, so answering it re-enters this pipeline (see `answerPlayPrompt`).
+ * prompt carries the run record, so answering it re-enters this pipeline (`answerPlayPrompt`, which
+ * `prompts.answerPrompt` hands it to).
  *
  * Returns true when every declaration has its answer and the repeat can resolve. A declaration the
  * board cannot satisfy is skipped rather than refused: the effect fizzles (R90, §8's conventions).
@@ -1232,9 +1253,9 @@ function selectionIn(data: Record<string, unknown>): Selection[] | null {
 }
 
 /**
- * `work.ts`'s handler for the `"play"` sequence: the owed pipeline, continued where it stopped.
- * This is also how an answer to a prompt the pipeline opened itself comes back, since `prompts.ts`
- * re-enters a continuation no card script claims through its work handler (R113).
+ * `work.ts`'s handler for the `"play"` sequence: the owed pipeline, continued where it stopped. An
+ * answer to a prompt the pipeline opened itself does not come back this way: it goes to
+ * `answerPlayPrompt`, which `prompts.answerPrompt` hands it to (R122).
  */
 function runOwedPlay(sink: EngineSink, item: WorkItem): void {
   const run = runOf(item.resume);
@@ -1320,11 +1341,12 @@ export function runPlaySteps(sink: EngineSink, player: PlayerId, action: PlayAct
 }
 
 /**
- * Answer a prompt this pipeline opened itself (§10.5 step 6's fresh picks), for a caller that has
- * the sequence in hand rather than going through `prompts.answerPrompt`: validate the answer the
- * same way, close the prompt, file the selection and drive on. `reduce` does not need this — an
- * answer goes to `prompts.answerPrompt`, which re-enters a continuation no card script claims
- * through this module's work handler (R113) — but the pipeline's own tests drive it directly.
+ * Answer a prompt this pipeline opened itself (§10.5 step 6's fresh picks, a cast's choices at step
+ * 4): validate the answer the same way, close the prompt, file the selection and drive on. Such a
+ * prompt names the `"play"` sequence as its hook, which no card script holds, so it is registered
+ * with `prompts.answerPrompt` below: every caller answers through that one entry point, the reducer
+ * and a caller driving the engine directly alike, and none of them drops the selection and the rest
+ * of the play (R122, R113).
  *
  * Returns the refusal, or null.
  */
@@ -1353,3 +1375,5 @@ export function answerPlayPrompt(sink: EngineSink, answer: AnswerInput): string 
   drainWork(sink);
   return null;
 }
+
+registerPromptAnswerer(PLAY_WORK_KIND, answerPlayPrompt);

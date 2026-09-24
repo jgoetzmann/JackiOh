@@ -7,9 +7,20 @@
 //    and it is judged when it resumes on top, with the board's auras reaching it again.
 //  - R175: a token summoned X/X comes back through Reborn with that X/X, its printed face (§7), at
 //    1 health — not as a printed 0/0 that dies again.
+//  - Round 10 (lens "engine invariants"). R212, R119: a card that resumes as its pile's top did not
+//    see what happened while it lay dormant (§3.2, R153), so it answers neither the death that
+//    uncovered it nor the play that was resolving when it resumed.
 
-import type { CardInstance } from "@jackioh/engine";
-import type { Selection } from "@jackioh/shared";
+import {
+  newInstance,
+  placeOnField,
+  registerScripts,
+  registeredScripts,
+  type CardInstance,
+  type Script,
+} from "@jackioh/engine";
+import { damage } from "@jackioh/engine/effects";
+import type { CardDef, GameEvent, Selection } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -140,5 +151,91 @@ describe("R175: a token summoned X/X comes back through Reborn as that X/X", () 
     g.expectStats(bread, { attack: 3, maxHealth: 3, health: 1 });
     // It died once, to Hit Job, not a second time to its own printed 0/0.
     expect(g.events.filter((e) => e.type === "destroyed" && e.instanceId === bread.id)).toHaveLength(1);
+  });
+});
+
+/**
+ * A test-only unit on p1's side: a transient def in the match state and its script in the registry.
+ * Its one trigger deals 1 damage to the enemy hero whenever an event of type `on` is dispatched, so
+ * a firing is a `damage` event whose source is this card. No Core unit watches another card's event
+ * from the field (#32 and #91 watch their own), which is why these cases need one.
+ */
+function placeWatcher(g: Scenario, id: string, lane: number, on: GameEvent["type"]): CardInstance {
+  const script: Script = {
+    triggers: [{ id: `${id}:on-${on}`, on: [on], run: () => [damage({ to: { of: "enemyHero" }, amount: 1 })] }],
+  };
+  const face = { attack: 1, health: 5, keywords: [], text: `On ${on}: deal 1 damage to the enemy hero` };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Unit",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  g.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+  const card = newInstance(g.state, id, "p1", { z: "hand", player: "p1" });
+  if (!placeOnField(g.state, card, { player: "p1", row: "units", lane })) throw new Error("could not place the watcher");
+  card.summonedTurn = 0;
+  return card;
+}
+
+describe("R212, R119: a card that resumes on top of its pile did not see what uncovered it (§3.2, R153)", () => {
+  // Found while teaching the probe's stay shadow §3.2's resume: when the top of a Stack pile leaves,
+  // the card beneath starts acting in that same step with no event of its own, and the resolution
+  // loop then offered it the very event that uncovered it — R212 read the moves the events after it
+  // recorded, and a resume records none (`stays.noteUncovered` keeps it now).
+  it("R212 a card dormant under a Stack does not answer the death that uncovers it (§3.2, R153)", () => {
+    const g = scenario({
+      p1: { hand: [FIENDER, HIT_JOB], mana: 4 },
+      p2: { field: ["core-011"], health: 20 },
+    });
+    // "Whenever a unit dies, deal 1 damage to the enemy hero", in p1's lane 1.
+    const watcher = placeWatcher(g, "fixture:r10-death-watcher", 1, "destroyed");
+    const fiender = g.card(FIENDER);
+
+    // #92 Felinor Fiender has Stack (§6.2): played onto lane 1, it buries the watcher (§3.2, R13).
+    g.play(fiender, { zone: 1 });
+    expect(g.state.players.p1.units[0]?.map((c) => c.id)).toEqual([fiender.id, watcher.id]);
+
+    // #16 Hit Job destroys the Fiender, and the watcher resumes as its pile's top (§3.2). When the
+    // Fiender died the watcher was dormant — "not on the field for effects" (§3.2), registering
+    // nothing (R153) — and R212 answers an event "as the board stood when it happened": it comes
+    // back into play because of that death, as a Reborn body does, and R212 has a Reborn body not
+    // answer the hit that killed its unit. Hearthstone agrees: a minion that enters play because a
+    // minion died does not see that death.
+    g.play(HIT_JOB, { targets: at(fiender) });
+    expect(g.unit("p1", 1)?.id).toBe(watcher.id);
+    const hits = g.lastEvents.filter((e) => e.type === "damage" && e.sourceId === watcher.id);
+    expect(hits, JSON.stringify(g.lastEvents)).toEqual([]);
+    expect(g.state.players.p2.hero.health).toBe(20);
+  });
+
+  it("R119 a card a play uncovers in its Stack pile does not answer that play's cardResolved (§3.2, R153)", () => {
+    const g = scenario({
+      p1: { hand: [FIENDER, HIT_JOB], mana: 4 },
+      p2: { field: ["core-011"], health: 20 },
+    });
+    // "Whenever a card finishes resolving, deal 1 damage to the enemy hero", in p1's lane 1.
+    const watcher = placeWatcher(g, "fixture:r10-resolve-watcher", 1, "cardResolved");
+    const fiender = g.card(FIENDER);
+    g.play(fiender, { zone: 1 });
+    // Step 4 buried the watcher before the Fiender's own play reached step 7, so it answered nothing.
+    expect(g.state.players.p2.hero.health).toBe(20);
+
+    // Hit Job kills the Fiender inside its own resolution, so the watcher resumes before step 7's
+    // `cardResolved`: it lay dormant as the play began and registered nothing then (R153), and R119
+    // counts it with the arrivals the play's `cardResolved` names, as it does a Reborn body.
+    g.play(HIT_JOB, { targets: at(fiender) });
+    expect(g.unit("p1", 1)?.id).toBe(watcher.id);
+    const hits = g.lastEvents.filter((e) => e.type === "damage" && e.sourceId === watcher.id);
+    expect(hits, JSON.stringify(g.lastEvents)).toEqual([]);
+    expect(g.state.players.p2.hero.health).toBe(20);
   });
 });

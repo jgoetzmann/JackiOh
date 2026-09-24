@@ -43,7 +43,7 @@ import { makeContext, type EngineSink } from "./resolve";
 import type { TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { exitMark, leftFieldAfter, type LaterMoves } from "./stays";
+import { eventMark, exitMark, leftFieldAfter, type LaterMoves } from "./stays";
 import { findInstance, type CardInstance, type DeclaredAttack, type GameState, type Resume, type WorkItem } from "./state";
 import { EVENT_KEY, owe, oweUnnumbered, paused as isPaused, registerWorkHandler } from "./work";
 import { slotOf } from "./zones";
@@ -479,11 +479,17 @@ function liveMatch(state: GameState, match: TrapMatch, event: GameEvent): TrapMa
  * before a later one reads the flag: #60 Bear Honeypot's tokens kill it, and it is in its graveyard
  * or back through Reborn by the time the next trap fires. That stay has ended, so the next trap
  * meets a play that is no longer in play: #85 fuses nothing out of a graveyard, and a second #60's
- * tokens do not attack a Reborn body, which is a new arrival (R83). `mark` is the field's departures
- * when the dispatch began (`stays.exitMark`), which a dispatch a prompt split carries to the traps it
- * still owes (`triggers.runOwedTraps`), so the answer that killed the card counts too.
+ * tokens do not attack a Reborn body, which is a new arrival (R83). `dispatchMark` is the field's
+ * departures when the dispatch began (`stays.exitMark`), which a dispatch a prompt split carries to
+ * the traps it still owes (`triggers.runOwedTraps`), so the answer that killed the card counts too —
+ * and a play's event carries the mark it happened at (`stays.eventMark`), so what took the card off
+ * the field between the event and its dispatch counts as well (R212).
  */
-export function standingEvent(sink: EngineSink, event: GameEvent, mark: number): GameEvent | null {
+export function standingEvent(sink: EngineSink, event: GameEvent, dispatchMark: number): GameEvent | null {
+  // R212: the stay is the one the event happened on. A play's events carry the mark they were
+  // emitted at (`stays.eventMark`), which a late dispatch — a cast's `cardResolved` after the rest of
+  // the list that cast it, its sweep and the Reborn that put a body back — must not move forward.
+  const mark = Math.min(dispatchMark, eventMark(event) ?? dispatchMark);
   if (event.type === "cardPlayed" || event.type === "summoned") {
     // The same for step 4's pair (#41 Sheepish's moment, R17): a trap answering the arrival of a card
     // an earlier trap answering it has already taken off the field meets no card in play, and is not

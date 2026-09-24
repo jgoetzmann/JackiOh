@@ -28,7 +28,8 @@ import { unitHas } from "../layers";
 import { printedCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
-import { lazyPart, runHook } from "../resolve";
+import { runStartOfGame } from "../prompts";
+import { lazyPart } from "../resolve";
 import type { AuraHook, Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
 import {
   INGREDIENTS_KEY,
@@ -696,7 +697,7 @@ export function fuse(sink: EngineSink, args: FuseArgs): CardInstance | null {
     // with it, and the kept instance's memory is the target's (R77), so without the roll the card
     // would carry "Once per turn, spend X" and no power for as long as it stood. A card that already
     // has its power keeps it (`heroPower.ensurePower`). A crafted card rolls as it reaches the hand.
-    runHook(sink, result, "startOfGame", { controller: result.controller });
+    runStartOfGame(sink, result, result.controller);
   } else if (toHand !== undefined) {
     result = craftInHand(sink, def, toHand, ingredients);
   } else {

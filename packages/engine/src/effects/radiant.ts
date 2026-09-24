@@ -87,16 +87,12 @@ function fieldCardsOf(ctx: EffectContext, player: PlayerId): CardInstance[] {
 }
 
 /**
- * The cards of the named zones in hand order, library top down and lane order, so a draw over them
- * depends only on (seed, cursor). A random pick narrows it to the non-Radiant cards (R60); a
- * per-card roll (#42) takes every one (`radiantChance`).
+ * Every card of the named zones, Radiant ones included, in hand order, library top down and lane
+ * order, so a draw over them depends only on (seed, cursor). A random pick narrows it to the
+ * non-Radiant cards group by group (R60, R242); a per-card roll (#42) takes every one
+ * (`radiantChance`).
  */
-function poolOf(
-  ctx: EffectContext,
-  player: PlayerId,
-  zones: readonly RadiantZone[],
-  options: { radiantToo?: boolean } = {},
-): CardInstance[] {
+function poolOf(ctx: EffectContext, player: PlayerId, zones: readonly RadiantZone[]): CardInstance[] {
   const side = ctx.state.players[player];
   const seen = new Set<string>();
   const pool: CardInstance[] = [];
@@ -104,7 +100,7 @@ function poolOf(
     const cards =
       zone === "hand" ? side.hand : zone === "library" ? side.library : fieldCardsOf(ctx, player);
     for (const card of cards) {
-      if ((card.radiant && options.radiantToo !== true) || seen.has(card.id)) continue;
+      if (seen.has(card.id)) continue;
       seen.add(card.id);
       pool.push(card);
     }
@@ -127,7 +123,7 @@ export function setRadiant(args: RadiantTarget = {}): Effect {
 /**
  * A random "becomes Radiant" (#23, #27, #28, #93 grade B): `count` different cards drawn uniformly
  * from the non-Radiant cards of the named zones, all of them when fewer exist, and nothing at all
- * when none are left (R60).
+ * when none are left (R60) — split by who may read each card when the zones mix them (R242).
  */
 export function setRadiantRandom(args: {
   zones: RadiantZone | RadiantZone[];
@@ -140,49 +136,68 @@ export function setRadiantRandom(args: {
       const player = playerOf(ctx, args.player ?? "self");
       const zones = Array.isArray(args.zones) ? args.zones : [args.zones];
       const count = Math.max(0, Math.trunc(args.count ?? 1));
-      // The zones' cards in their own order, read before anything changes: the order the events go
-      // out in (R177, below).
-      const everyCard = poolOf(ctx, player, zones, { radiantToo: true });
-      const pool = poolOf(ctx, player, zones);
-      const picked = new Set((pool.length === 0 ? [] : ctx.rng.shuffle(pool).slice(0, count)).map((card) => card.id));
-      const cued = new Set(cuesFor(ctx, everyCard, count - picked.size, picked).map((card) => card.id));
-      // R177: the picks and the cues go out together, in the zones' own order — hand order, the
-      // library top down, lane order — never the shuffle's with the cues after it: the cues stand for
-      // picks R60 could not make, and trailing the real ones they said so, since a hidden card's cue
-      // before a public pick could only have been a pick of a base-face card.
-      for (const card of everyCard) {
-        if (picked.has(card.id) || cued.has(card.id)) makeRadiant(ctx, card);
+      // The zones' cards in their own order, read before anything changes, split by who reads them.
+      const everyCard = poolOf(ctx, player, zones);
+      const groups = READERS.map((reader) => everyCard.filter((card) => readersOf(ctx, card) === reader));
+      // R242: a public card's face is public, so only its non-Radiant cards are slots; a hidden
+      // card is a slot whatever its face, since whether it is Radiant is what the reader may not see.
+      const slots = groups.map((cards, at) => (READERS[at] === "everyone" ? cards.filter((card) => !card.radiant) : cards));
+      const quotas = splitPicks(ctx, slots.map((cards) => cards.length), count);
+
+      const chosen = new Set<string>();
+      groups.forEach((cards, at) => {
+        const quota = quotas[at] ?? 0;
+        if (quota <= 0) return;
+        // R60 within the group: its non-Radiant cards, uniformly; R129: nothing drawn when none is left.
+        const fresh = cards.filter((card) => !card.radiant);
+        const picks = fresh.length === 0 ? [] : ctx.rng.shuffle(fresh).slice(0, quota);
+        for (const card of picks) chosen.add(card.id);
+        // R177: the picks the group could not make are cued on its Radiant cards, in its own order,
+        // so a hidden group's cues always number its share of the pick.
+        for (const card of cards.filter((held) => held.radiant).slice(0, quota - picks.length)) chosen.add(card.id);
+      });
+      // R242: the events go out group by group — the public cards', the owner's hidden cards', then
+      // the library's — each in the zones' own order (hand order, lane order, the library top down).
+      // In the zones' order a pick's place beside a public pick would say which zone it was in, and
+      // so which hidden card was base-face: the hand's comes before a unit's, a face-down trap's after.
+      for (const cards of groups) {
+        for (const card of cards) if (chosen.has(card.id)) makeRadiant(ctx, card);
       }
     },
   };
 }
 
 /**
- * R177 over a random pick: R60 picks among the non-Radiant cards only, so when a hidden hand or
- * library holds fewer of them than the pick wants, fewer cards change — and a cue for the changed
- * cards alone would tell the other seat how many of the hidden ones were Radiant already (none at all
- * for an all-Radiant hand under #27). So the picks R60 could not make are cued on the zones' Radiant
- * cards, as a Make Radiant on a card that was already Radiant is (R177), until the cues number what
- * the pick wanted or the zones run out — and the zones' sizes are public. No card changes and no
- * random number is drawn for them (R129). A public card's face is public either way, so only cards
- * hidden from someone are cued.
- *
- * The cards nobody reads come first — the library's, in its order (§3) — and then the ones only one
- * player reads, a hand's or a face-down trap's, in the zones' order: the owner reads their own hand,
- * so a cue landing there that a pick of a base-face library card would have landed in the library
- * would tell the owner how many of their library cards were base-face (§9.1, §10.8).
+ * R242: who may read a card of a random pick's pool where it sits — everyone (a unit, a face-up
+ * backrow card), only the player whose side it is on (their hand, their face-down trap: §9.1, R33),
+ * or nobody (a library, §3). The groups are listed in the order their events go out.
  */
-function cuesFor(
-  ctx: EffectContext,
-  everyCard: readonly CardInstance[],
-  missing: number,
-  picked: ReadonlySet<string>,
-): CardInstance[] {
-  if (missing <= 0) return [];
-  const candidates = everyCard.filter((card) => !picked.has(card.id) && card.radiant && hiddenFromSomeone(ctx, card));
-  const unreadByAll = candidates.filter((card) => card.zone.z === "library");
-  const readByOne = candidates.filter((card) => card.zone.z !== "library");
-  return [...unreadByAll, ...readByOne].slice(0, missing);
+const READERS = ["everyone", "owner", "nobody"] as const;
+
+type Readers = (typeof READERS)[number];
+
+function readersOf(ctx: EffectContext, card: CardInstance): Readers {
+  if (card.zone.z === "library") return "nobody";
+  return hiddenFromSomeone(ctx, card) ? "owner" : "everyone";
+}
+
+/**
+ * R242: how many of `count` picks each reader group takes — a uniform draw of `count` different
+ * slots among all of them, which is how a uniform pick of `count` cards over the whole pool falls,
+ * except that a hidden card is a slot whatever its face. So the chance that a public card is picked,
+ * and how many picks land among each player's unread cards, hang on the groups' sizes alone, which
+ * both players can count: never on a face a player may not read (§9.1). When every slot is taken, or
+ * the pool is one group only, there is nothing random to decide and nothing is drawn (R129) — which
+ * leaves a single group's pick exactly R60's.
+ */
+function splitPicks(ctx: EffectContext, sizes: readonly number[], count: number): number[] {
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  const groups = sizes.filter((size) => size > 0).length;
+  if (total <= count || groups <= 1) return sizes.map((size) => Math.min(size, count));
+  const slots = sizes.flatMap((size, at) => Array.from({ length: size }, () => at));
+  const quotas = sizes.map(() => 0);
+  for (const at of ctx.rng.shuffle(slots).slice(0, count)) quotas[at] = (quotas[at] ?? 0) + 1;
+  return quotas;
 }
 
 /** §6.1's Lucky X keeps "the best"; for a chance roll that is a success beating a failure (R32). */
@@ -230,7 +245,7 @@ export function radiantChance(args: {
       const lucky = Math.max(0, Math.trunc(args.lucky ?? 0));
 
       // The pool is a snapshot taken before any roll, so every card gets exactly its own rolls.
-      for (const card of poolOf(ctx, player, zones, { radiantToo: true })) {
+      for (const card of poolOf(ctx, player, zones)) {
         const roll = (): boolean => ctx.rng.chance(args.chance);
         if (lucky === 0 ? roll() : ctx.rng.lucky(lucky, roll, keepSuccess)) makeRadiant(ctx, card);
       }

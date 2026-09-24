@@ -4,7 +4,9 @@
 // Three rulings drive the whole card:
 //   R67  the Fib index is printed cost + `costMod` + 1 (radiant + 2). Player discounts and the cost
 //        actually paid are ignored, so the index reads `printedCost` + `costMod` and never
-//        `effectiveCost` (R65 is the calculation this deliberately does NOT use).
+//        `effectiveCost` (R65 is the calculation this deliberately does NOT use). That cost still
+//        floors at 0 as every cost does (§2.3), so #95's "costs 2 less" on a 1-cost Equation leaves
+//        cost 0 and Fib(1), not a negative cost and Fib(0).
 //   R25  Fib = 0,1,1,2,3,5,8,13,21,34,55,89 and the index clamps at 11, which is what `fib` in
 //        engine/src/config.ts already does — nothing here re-derives Fibonacci.
 //   R78  `costMod` persists in every zone, so each return leaves the +1 on this instance for good
@@ -23,11 +25,14 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-031");
 
-/** R67: printed cost + `costMod` + 1, radiant + 2. Discounts and the cost paid are ignored. */
+/**
+ * R67: printed cost + `costMod`, floored at 0 as every cost is (§2.3, §6.3 Cost), then + 1, radiant
+ * + 2. Discounts and the cost paid are ignored.
+ */
 function fibIndex(ctx: EffectContext): number {
   const self = ctx.self;
   if (self === null) return 0;
-  return printedCost(ctx.state, self) + self.costMod + (ctx.radiant ? 2 : 1);
+  return Math.max(0, printedCost(ctx.state, self) + self.costMod) + (ctx.radiant ? 2 : 1);
 }
 
 /** R25: `fib` clamps the index at 11, so the damage tops out at 89. */

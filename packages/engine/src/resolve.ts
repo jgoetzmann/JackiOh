@@ -30,6 +30,8 @@ export function makeContext(sink: EngineSink, self: CardInstance | null, options
     eventsFrom: sink.events.length,
     // R174: the stay every card on the field has as this script begins.
     exitsFrom: exitMark(sink.state),
+    // R98: a run that began in the resolving zone is the resolving card's while it stays there.
+    ...(self?.zone.z === "resolving" ? { selfResolving: true } : {}),
     controller: options.controller ?? self?.controller ?? sink.state.active,
     self,
     radiant: self?.radiant ?? false,
@@ -85,9 +87,10 @@ function hookOf(script: Script, name: HookName): Hook | undefined {
  * Run one of a card's hooks. `cry` is also a spell's on-resolve hook (§10.9).
  *
  * This is the *non-resumable* runner: the whole effect list is applied here and now, so it is only
- * ever right on a path where no effect can open a prompt — an arrival hook (`startOfGame`), or a
- * caller that has already established there is nothing to ask. Any path whose effects may ask
- * something uses `prompts.runHookResumable` (a trigger, a play's or a cast's Cry, an activate).
+ * ever right on a path where no effect can open a prompt — a caller that has already established
+ * there is nothing to ask. Any path whose effects may ask something uses `prompts.runHookResumable`
+ * (a trigger, a play's or a cast's Cry, an activate), and a start-of-game clause, which may return a
+ * Choose like any other list (§10.9), runs through `prompts.runStartOfGame` (R151, R113).
  */
 export function runHook(
   sink: EngineSink,

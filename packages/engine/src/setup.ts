@@ -5,11 +5,11 @@ import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
 import { OPENING_DRAW } from "./config";
 import { draw } from "./draw";
-import { runHook, type EngineSink } from "./resolve";
+import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
-import { closePrompt } from "./prompts";
-import { newInstance, type CardInstance, type GameState, type PendingChoice, type WorkItem } from "./state";
-import { startTurn } from "./turn";
+import { closePrompt, runStartOfGame } from "./prompts";
+import { findInstance, newInstance, type CardInstance, type GameState, type PendingChoice, type WorkItem } from "./state";
+import { clearReturnFlags, startTurn } from "./turn";
 import { owe, paused, registerWorkHandler } from "./work";
 import { moveToZone } from "./zones";
 
@@ -70,6 +70,8 @@ export const SETUP_WORK = "@setup";
 const DEAL_STEP = "deal";
 const QUICKDRAW_STEP = "quickdraw";
 const MULLIGAN_STEP = "mulligan";
+/** §2.1 step 4: the start-of-game clauses from a card on, then turn 1. */
+const START_OF_GAME_STEP = "startOfGame";
 
 /**
  * Shuffle both libraries with the match rng, move Quickdraw cards into the opening hand and draw
@@ -193,7 +195,8 @@ function finishMulligan(sink: EngineSink, player: PlayerId, returned: readonly C
 type OwedSetup =
   | { step: typeof DEAL_STEP; seat: number }
   | { step: typeof QUICKDRAW_STEP; seat: number }
-  | { step: typeof MULLIGAN_STEP; player: PlayerId; returned: CardInstance[] };
+  | { step: typeof MULLIGAN_STEP; player: PlayerId; returned: CardInstance[] }
+  | { step: typeof START_OF_GAME_STEP; ids: string[] };
 
 /**
  * R224, §9.1: the cards a mulligan returned that wait, in the owed item, for their shuffle-back while
@@ -223,7 +226,7 @@ function oweSetup(sink: EngineSink, owed: OwedSetup): void {
 function runOwedSetup(sink: EngineSink, item: WorkItem): void {
   const raw: unknown = item.resume.data.owed;
   if (raw === null || typeof raw !== "object") return;
-  const owed = raw as Partial<{ step: string; seat: number; player: PlayerId; returned: CardInstance[] }>;
+  const owed = raw as Partial<{ step: string; seat: number; player: PlayerId; returned: CardInstance[]; ids: unknown[] }>;
   if (owed.step === DEAL_STEP && typeof owed.seat === "number") {
     dealFrom(sink, owed.seat);
     return;
@@ -236,6 +239,11 @@ function runOwedSetup(sink: EngineSink, item: WorkItem): void {
   }
   if (owed.step === MULLIGAN_STEP && (owed.player === "p1" || owed.player === "p2")) {
     finishMulligan(sink, owed.player, Array.isArray(owed.returned) ? owed.returned : []);
+    return;
+  }
+  if (owed.step === START_OF_GAME_STEP) {
+    const ids = Array.isArray(owed.ids) ? owed.ids.filter((id): id is string => typeof id === "string") : [];
+    startOfGameFrom(sink, ids);
   }
 }
 
@@ -243,12 +251,36 @@ registerWorkHandler(SETUP_WORK, runOwedSetup);
 
 /** Start-of-game effects, then player 1 takes the first turn and draws (§2.1, R10). */
 export function finishSetup(sink: EngineSink): void {
-  for (const player of PLAYER_IDS) {
+  const cards = PLAYER_IDS.flatMap((player) => {
     const side = sink.state.players[player];
-    for (const card of [...side.hand, ...side.library]) {
-      runHook(sink, card, "startOfGame", { controller: player });
+    return [...side.hand, ...side.library].map((card) => card.id);
+  });
+  startOfGameFrom(sink, cards);
+}
+
+/**
+ * §2.1 step 4 over the cards from `ids` on, then turn 1. A clause that asks pauses it (§9.3,
+ * `prompts.runStartOfGame`): the clauses after it and the first turn are owed behind its tail
+ * (`START_OF_GAME_STEP`, R113, R117), so turn 1 never begins with a question of setup's still open.
+ *
+ * Setup is turn 0, which is no player's turn (§2.1): a Spell cast during it — by the opening deal
+ * or a mulligan's replacement draw (§2.4, R70) — was played on no turn of its controller's, so the
+ * return §10.5 step 7 flagged it for is over before turn 1, as a turn's cleanup ends it (R155).
+ * `startTurn` empties the turn logs that cleanup reads, so setup clears it first.
+ */
+function startOfGameFrom(sink: EngineSink, ids: readonly string[]): void {
+  for (let at = 0; at < ids.length; at += 1) {
+    const card = findInstance(sink.state, ids[at] ?? "");
+    if (card === undefined) continue;
+    const zone = card.zone;
+    const player = zone.z === "hand" || zone.z === "library" ? zone.player : card.owner;
+    runStartOfGame(sink, card, player);
+    if (paused(sink)) {
+      if (sink.state.result === null) oweSetup(sink, { step: START_OF_GAME_STEP, ids: ids.slice(at + 1) });
+      return;
     }
   }
+  clearReturnFlags(sink.state);
   startTurn(sink, PLAYER_IDS[0] as PlayerId);
 }
 

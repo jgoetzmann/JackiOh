@@ -43,11 +43,20 @@
 // board resumes over that set, so #94 draws every 2-cost card it began with (R66, R113); a cast's
 // step 4 is a window, so Sheepish answers a cast Unit before its Cry (R70, R17); and a cast makes its
 // choices before it is placed, so a cast Unit is not offered itself (R70, R90).
+//
+// Round 10 (lens L7) added six: a Spell its own list returned to its hand before it asked resumes
+// with no self (R98); a sacrifice whose Death asks leaves the check to the end of the whole list
+// (R59, §4.5); a start-of-game clause that asks as its card arrives waits for the answer (R151,
+// R113); a cast card a step-3 hook's answer exiled stays in exile (R226, R70); the answered step's
+// delayed effect watching the Reborn body it picked is scheduled (R174); and the engine's own
+// `answerPrompt`, handed an Echo repeat's fresh pick, finishes the repeat (R122).
 
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, Keyword, PlayerId, Row, TargetDecl } from "@jackioh/shared";
 import {
+  RESUME_HOOK,
   activeUnitsOf,
+  answerPrompt,
   createRng,
   newInstance,
   placeOnField,
@@ -62,19 +71,25 @@ import {
   type Script,
 } from "@jackioh/engine";
 import {
+  addToHand,
   bounce,
   buff,
   chooseFromHand,
   chooseMode,
   chooseTarget,
+  chosenOptions,
   damage,
   damageAll,
   delay,
   destroy,
   discard,
+  draw,
+  exile,
   forcedAttacks,
+  heal,
   rotate,
   sacrifice,
+  setCostMod,
   setRadiant,
   steal,
   summon,
@@ -1913,5 +1928,224 @@ describe("R70, §10.3: a cast's step-4 window inside an effect offers each event
     // Two plays — Stockpile and the cast Unit (R70) — so two hits, not three.
     expect(g.events.filter((event) => event.type === "cardPlayed").map((event) => (event.type === "cardPlayed" ? event.instanceId : ""))).toContain(cod.id);
     g.expectHealth("p2", 28);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 10 (lens L7)
+// ---------------------------------------------------------------------------------------------
+
+describe("R98: a card that left the resolving zone before its question is answered", () => {
+  it("R98 a Spell its own list returned to its hand before it asked resumes with no self (§10.6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-homing-spell", "Spell", {
+      // "Return this to your hand. Choose one: …" — then the answered step says "this costs 2 more".
+      cry: () => [
+        addToHand({ instance: { of: "self" } }),
+        chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" }),
+      ],
+      resume: { picked: () => [setCostMod({ target: { of: "self" }, amount: 2 })] },
+    });
+    const spell = inHand(s, "edge-r10-homing-spell", "p1");
+
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    // The Spell has left the resolving zone: it is back in its owner's hand.
+    s.expectInZone(spell, "hand");
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+
+    // R98: "A card that has left the resolving zone before its own prompt is answered resumes with
+    // no self" — so the answered step's "this" names nothing, and the card in hand is untouched.
+    expect(s.card(spell).costMod).toBe(0);
+  });
+});
+
+describe("R59: a sacrifice whose Death asks, inside a list", () => {
+  /** A Spell: "deal 5 to the 1/5; sacrifice the other unit; restore 5 health to the 1/5". */
+  function setUp(askingDeath: boolean): { s: Scenario; plain: CardInstance; spell: CardInstance } {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(
+      s,
+      "edge-r10-dying",
+      "Unit",
+      askingDeath
+        ? { death: () => [chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" })], resume: { picked: () => [] } }
+        : {},
+    );
+    fixture(s, "edge-r10-plain", "Unit", {}, { attack: 1, health: 5 });
+    const dying = placeFixture(s, "edge-r10-dying", "p1", "units", 1);
+    const plain = placeFixture(s, "edge-r10-plain", "p1", "units", 2);
+    fixture(s, "edge-r10-sac-spell", "Spell", {
+      cry: () => [
+        damage({ to: { of: "instance", instanceId: plain.id }, amount: 5 }),
+        sacrifice({ target: { of: "instance", instanceId: dying.id } }),
+        heal({ target: { of: "instance", instanceId: plain.id }, amount: 5 }),
+      ],
+    });
+    const spell = inHand(s, "edge-r10-sac-spell", "p1");
+    return { s, plain, spell };
+  }
+
+  it("R59 the state check waits for the whole Cry after a sacrificed unit's Death asked, so the heal saves the unit (§4.5, R113)", () => {
+    // Control: with a Death that asks nothing, the check runs after the whole Cry and the 1/5 lives.
+    const control = setUp(false);
+    control.s.play(control.spell);
+    control.s.expectInZone(control.plain, "field");
+
+    const { s, plain, spell } = setUp(true);
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+
+    // §4.5 and R59: the check runs after "a card's whole Cry, spell, trap or triggered script",
+    // never between the effects of one. The Death's question splits the list across two actions
+    // (R113), which changes nothing: the heal lands before the check, as it does without a question.
+    s.expectInZone(plain, "field");
+    expect(unitView(s.state, s.card(plain)).health).toBe(5);
+  });
+});
+
+describe("R151, R113: a start-of-game clause that asks, run as its card arrives in a hand", () => {
+  it("R151 the rest of an arriving card's start-of-game list waits for the answer to its question (R113, §9.3)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    // "Start of game: choose one; then deal 3 damage to the enemy hero." R151 runs it when the card
+    // arrives in a hand, as it does for #98's roll.
+    fixture(s, "edge-r10-asks-at-start", "Unit", {
+      startOfGame: () => [
+        chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" }),
+        damage({ to: { of: "enemyHero" }, amount: 3 }),
+      ],
+      resume: { picked: () => [] },
+    });
+    fixture(s, "edge-r10-gift", "Spell", { cry: () => [addToHand({ defId: "edge-r10-asks-at-start" })] });
+    const spell = inHand(s, "edge-r10-gift", "p1");
+    const before = s.state.players.p2.hero.health;
+
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    // §9.3, R113: a choice is state, and the effects after it wait for the answer.
+    expect(s.state.players.p2.hero.health).toBe(before);
+
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+    expect(s.state.players.p2.hero.health).toBe(before - 3);
+  });
+});
+
+describe("R226, R70: a cast card an onPlayHook's answer moved before step 4", () => {
+  it("R226 a cast-on-draw card the step-3 hook's answer exiled stays in exile and is not placed (R70, §10.5)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-cod", "Unit", { staticFlags: { castOnDraw: true } }, { attack: 3, health: 3 });
+    const cod = newInstance(s.state, "edge-r10-cod", "p1", { z: "library", player: "p1" });
+    s.state.players.p1.library.unshift(cod);
+    // A permanent whose onPlayHook (§10.5 step 3, R153) asks about the cast card, and exiles it on "exile".
+    fixture(s, "edge-r10-hook", "Unit", {
+      onPlayHook: (ctx) =>
+        ctx.data.playedId === cod.id ? [chooseMode({ options: ["exile it", "keep it"], step: "picked" })] : [],
+      resume: {
+        picked: (ctx) =>
+          chosenOptions(ctx)[0] === "exile it" ? [exile({ target: { of: "instance", instanceId: cod.id } })] : [],
+      },
+    });
+    placeFixture(s, "edge-r10-hook", "p1", "units", 1);
+    fixture(s, "edge-r10-draw-one", "Spell", { cry: () => [draw({ count: 1 })] });
+    const spell = inHand(s, "edge-r10-draw-one", "p1");
+
+    s.play(spell);
+    // The draw cast the Unit (§2.4, R70), and its step 3 is asking.
+    expect(s.state.pending?.kind).toBe("mode");
+    s.answer("exile it");
+    expect(s.state.pending).toBeNull();
+
+    // R226's rule for a card taken away before §10.5 step 4 can place it: it stays where that move put
+    // it and is not played. Exile is a pile nothing takes a card back out of (§6.3).
+    s.expectInZone(cod, "exile");
+    expect(s.events.some((event) => event.type === "cardPlayed" && event.instanceId === cod.id)).toBe(false);
+  });
+});
+
+describe("R174: a card picked at a prompt, watched by a delayed effect the answered step schedules", () => {
+  it("R174 the answered step's delayed effect watching the Reborn body it just picked is scheduled (R76, §10.6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-reborn", "Unit", {}, { attack: 1, health: 3 });
+    const reborn = placeFixture(s, "edge-r10-reborn", "p1", "units", 1);
+    reborn.grantedKeywords.push({ kind: "Reborn" });
+    // "Sacrifice your Reborn unit. Choose a friendly unit: at the start of your next turn, give it +2/+2."
+    fixture(s, "edge-r10-watcher", "Spell", {
+      cry: () => [
+        sacrifice({ target: { of: "instance", instanceId: reborn.id } }),
+        chooseTarget({ step: "picked", scope: { side: "ally", of: ["unit"] } }),
+      ],
+      resume: {
+        picked: (ctx) => {
+          const pick = ctx.targets[0];
+          if (pick === undefined || pick.pick !== "instance") return [];
+          return [
+            delay({
+              at: { phase: "start", player: "self" },
+              step: "later",
+              hook: RESUME_HOOK,
+              data: { id: pick.instanceId },
+              watch: pick.instanceId,
+            }),
+          ];
+        },
+        later: (ctx) => {
+          const id = ctx.data.id;
+          return typeof id === "string" ? [buff({ target: { of: "instance", instanceId: id }, attack: 2, health: 2 })] : [];
+        },
+      },
+    });
+    const spell = inHand(s, "edge-r10-watcher", "p1");
+
+    s.play(spell);
+    // The sacrifice's Reborn put the body back before the list asked, so the prompt offers it.
+    expect(s.state.pending?.kind).toBe("target");
+    s.expectInZone(reborn, "field");
+    s.answer([{ pick: "instance", instanceId: reborn.id }]);
+    expect(s.state.pending).toBeNull();
+
+    // R174: "A card picked at a prompt, though, is picked on the stay the prompt offered it on …
+    // and the answered step's effect lands on it" — a delayed effect aimed at it by id included.
+    expect(s.state.delayed.filter((effect) => effect.watch === reborn.id)).toHaveLength(1);
+  });
+});
+
+describe("R122, R113: the engine's answer, called directly, on the prompt an Echo repeat opened", () => {
+  it("R122 answerPrompt on an Echo repeat's fresh pick finishes the repeat and lands the Spell, as the answer action does (R113, §10.5 step 6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    // "Deal 1 damage to a target. Echo 1": the repeat asks its target again (R81, §10.6).
+    fixture(s, "edge-r10-echo-ping", "Spell", {
+      targets: [{ kind: "target", min: 1, max: 1, filter: { side: "any", of: ["unit", "hero"] } }],
+      staticFlags: { echo: 1 },
+      cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+    });
+    const spell = inHand(s, "edge-r10-echo-ping", "p1");
+    const before = s.state.players.p2.hero.health;
+
+    s.play(spell, { targets: [{ pick: "hero", player: "p2" }] });
+    const pending = must(s.state.pending, "the repeat's fresh pick");
+    expect(pending.kind).toBe("target");
+    expect(s.state.players.p2.hero.health).toBe(before - 1);
+
+    // A caller driving the engine directly answers through the engine's own `answerPrompt` (R122:
+    // "which matters for any caller driving the engine directly rather than through the reducer").
+    const state = s.state;
+    const refused = answerPrompt(sinkFor(s), {
+      playerId: pending.playerId,
+      choiceId: pending.id,
+      selection: [{ pick: "hero", player: "p2" }],
+    });
+    expect(refused).toBeNull();
+
+    // R122: the answer re-enters what the prompt interrupted and drains what is owed — the repeat
+    // resolves and the Spell reaches its graveyard, rather than stopping short of it (R113: a
+    // sequence is never dropped in silence).
+    expect(state.pending).toBeNull();
+    expect(state.players.p2.hero.health).toBe(before - 2);
+    expect(state.players.p1.resolving.map((card) => card.id)).not.toContain(spell.id);
+    expect(state.players.p1.graveyard.map((card) => card.id)).toContain(spell.id);
   });
 });

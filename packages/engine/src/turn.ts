@@ -369,7 +369,7 @@ registerWorkHandler(START_OF_TURN_WORK, runOwedStartOfTurn);
  * about. Leaving it set would make the card return from the graveyard on every later turn it
  * happened to be in one, including after it was merely discarded or milled (R153).
  */
-function clearReturnFlags(state: GameState): void {
+export function clearReturnFlags(state: GameState): void {
   // The cards played this turn are exactly the ones step 7 could have flagged: it writes the flag on
   // the card it just landed, and step 4 logged that same card on its player's turn log. Both logs:
   // a Spell cast on the other player's turn (a cast on draw, R70) is flagged too, and §6.2 makes an

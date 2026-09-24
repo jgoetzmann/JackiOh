@@ -170,6 +170,8 @@ const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
 const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
 /** R240 and R241's proofs: the hunt's ninth round, continued at the user's request. */
 const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
+/** R242 and R243's proofs: the hunt's tenth round. */
+const CARDS_VANILLA_AND_POSITIONS_TEST = "../../cards/test/vanilla-and-positions.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1702,6 +1704,18 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // the other player's turn, exiles nothing at the end of its caster's next turn.
   it("R241 arms no end-of-turn clause a card makes on the other player's turn", () => {
     provenIn(241, CARDS_TURN_STAGES_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R242 …": whether #28 passes over p1's public unit, and the
+  // order its events go out in, give p2 the same view whatever the faces of p1's hidden cards.
+  it("R242 splits a random Make Radiant between the cards each player may read by the groups' sizes", () => {
+    provenIn(242, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R243 …" (a Corpse Eater's meals and a Heroic Power's power
+  // in hand, a crafted card's definition) and vanilla-and-positions.test.ts "R243 …" (a Vanilla copy).
+  it("R243 puts in the view what a card is made of beyond its printed face", () => {
+    provenIn(243, CARDS_HIDDEN_INFORMATION_TEST, CARDS_VANILLA_AND_POSITIONS_TEST);
   });
 });
 

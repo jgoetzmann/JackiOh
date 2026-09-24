@@ -16,6 +16,13 @@
 // draw's cast asks, read as public, so the deal's events named it to the other seat (R224); and #28's
 // cues trailed its real picks and landed on the owner's own hand first, so their order told the
 // other seat, and their place told the owner, which hidden faces were base-face (R177).
+//
+// Round 10 found two more in #28, and three things the view left out. R60's pick over the
+// non-Radiant cards alone made the chance that #28 passed over p1's public unit hang on how many of
+// p1's hidden cards were base-face, and its picks in the zones' order put a face-down trap's after
+// the public unit's and a hand card's before it (R242). And a card's own owner could not read what
+// it is made of beyond its printed face: a Corpse Eater's meals in hand, a Heroic Power's rolled
+// power, a crafted card's definition (R243).
 
 import type {
   Action,
@@ -30,6 +37,7 @@ import type {
 import {
   beginGame,
   createGame,
+  createRng,
   defOf,
   effectiveCost,
   legalActions,
@@ -43,6 +51,8 @@ import {
   registerScripts,
   registeredScripts,
   type Script,
+  type CardInstance,
+  type EngineSink,
 } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
@@ -946,11 +956,12 @@ describe("R177: where a random Make Radiant over hidden zones landed", () => {
 
   /**
    * The same pick over "field" (§8 #28): p1's lane-2 Sheepish is face-down, so only p1 reads it
-   * (R33), and it is Radiant already or not. With this seed the base-face trap is one of the picks.
+   * (R33), and it is Radiant already or not. With this seed the base-face trap is one of the picks
+   * (R242 draws the owner's hidden cards' share of the pick by the groups' sizes alone).
    */
   function trapGame(trapRadiant: boolean): Scenario {
     const s = scenario({
-      seed: "r8-l10-knockoff-trap-0",
+      seed: "r8-l10-knockoff-trap-5",
       p1: {
         hand: [KNOCKOFF, STOCKPILE],
         backrow: [{ def: SHEEPISH, lane: 2, radiant: trapRadiant }],
@@ -972,8 +983,9 @@ describe("R177: where a random Make Radiant over hidden zones landed", () => {
       expect(must(s.backrow("p1", 2), "p1's trap").radiant).toBe(true);
     }
 
-    // R60 picks only non-Radiant cards, so a cue whose zone names the face-down trap's lane tells p2
-    // that the trap was base-face: the face R33 keeps from p2 (R177).
+    // Which of p1's hidden cards the owner's share of the pick lands on hangs on their faces (R60
+    // picks the non-Radiant ones, R242), so a cue whose zone named the face-down trap's lane would
+    // tell p2 the trap was base-face, the face R33 keeps from p2: the view says only whose it was.
     indistinguishable("p2", plain, radiant);
   });
 });
@@ -1193,7 +1205,8 @@ describe("R177, R60: #28's cues keep the hidden faces hidden", () => {
     const inB = orders(true);
     // Sanity: both worlds show p2 the same outcome, the unit and one hidden cue.
     for (const order of [...inA, ...inB]) expect(JSON.parse(order).slice().sort()).toEqual([HIDDEN_ID, "unit"]);
-    // A cue that always trails the public pick says "the hand was all Radiant" whenever it leads.
+    // A cue that always trailed the public pick said "the hand was all Radiant" whenever a pick led;
+    // R242 sends the public card's event first and the hand's after it, in both worlds alike.
     const onlyInA = [...inA].filter((order) => !inB.has(order));
     expect(onlyInA, `A ${JSON.stringify([...inA])} B ${JSON.stringify([...inB])}`).toEqual([]);
   });
@@ -1225,5 +1238,161 @@ describe("R177, R60: #28's cues keep the hidden faces hidden", () => {
         .sort();
     expect(worldA).toHaveLength(2);
     expect(shape(worldB), `A ${JSON.stringify(worldA)}\nB ${JSON.stringify(worldB)}`).toEqual(shape(worldA));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 10: a random pick over public and hidden cards (R242), and what the view carries (R243)
+// ---------------------------------------------------------------------------
+
+const TEMPO_TIMMY = "core-011";
+
+describe("R242: #28's pick over public and hidden cards", () => {
+  /**
+   * p1 plays #28 with one card left in hand and two in the library, all base-face in world A and all
+   * Radiant in world B, and one public unit on the field. Neither the hand nor the library is p2's to
+   * read (§9.1).
+   */
+  function oddsGame(seed: string, hiddenRadiant: boolean): Scenario {
+    const s = scenario({
+      seed,
+      p1: {
+        mana: 2,
+        hand: [KNOCKOFF, { def: HIT_JOB, radiant: hiddenRadiant }],
+        library: [
+          { def: SEVEN_SEVEN, radiant: hiddenRadiant },
+          { def: SEVEN_SEVEN, radiant: hiddenRadiant },
+        ],
+        field: [TEMPO_TIMMY],
+      },
+      p2: { hand: [HIT_JOB], library: [HIT_JOB] },
+    });
+    s.play(KNOCKOFF);
+    return s;
+  }
+
+  /** What p2 can see #28 did: whether p1's public unit turned Radiant, and the cues' shape. */
+  function outcome(s: Scenario): string {
+    const unit = must(s.view("p2").opponent.units[0], "p1's unit");
+    const cues = eventsOf(s.view("p2"), "radiantSet").map((event) =>
+      event.instanceId === HIDDEN_ID ? `hidden@${event.zone.z}` : "unit",
+    );
+    return JSON.stringify({ unitRadiant: unit.radiant, cues });
+  }
+
+  it("R242 #28 picking p1's public unit or not does not tell p2 whether p1's hidden cards were Radiant (§9.1, R60, R177)", () => {
+    const seeds = Array.from({ length: 24 }, (_, at) => `r10-l10-knockoff-odds-${at}`);
+    const worldA = new Set(seeds.map((seed) => outcome(oddsGame(seed, false))));
+    const worldB = new Set(seeds.map((seed) => outcome(oddsGame(seed, true))));
+    // R177's cues make an all-Radiant hidden pile look like a pile the pick changed: every outcome p2
+    // can see in the base-face world must be one the all-Radiant world can produce too. Drawn from
+    // the non-Radiant cards alone, the two picks always took the public unit when every hidden card
+    // was Radiant, so a game where it was passed over told p2 that p1 held a base-face hidden card.
+    const onlyInA = [...worldA].filter((seen) => !worldB.has(seen));
+    expect(onlyInA, `A ${JSON.stringify([...worldA])}\nB ${JSON.stringify([...worldB])}`).toEqual([]);
+    // And the pick is still random: some seeds pass the public unit over.
+    expect([...worldA].some((seen) => JSON.parse(seen).unitRadiant === false)).toBe(true);
+  });
+
+  /**
+   * p1 holds a Hit Job and has Sheepish face-down in backrow lane 2 and Tempo Timmy in unit lane 1,
+   * public. Exactly one of the two hidden cards is base-face: the Hit Job in world A, the trap in
+   * world B. #28's two picks take that card and the unit in both worlds, so both end with the same
+   * faces everywhere.
+   */
+  function orderGame(trapBase: boolean): Scenario {
+    const s = scenario({
+      seed: "r10-l10-knockoff-order",
+      p1: {
+        mana: 2,
+        hand: [KNOCKOFF, { def: HIT_JOB, radiant: trapBase }],
+        field: [TEMPO_TIMMY],
+        backrow: [{ def: SHEEPISH, lane: 2, radiant: !trapBase }],
+        library: [],
+      },
+      p2: { hand: [HIT_JOB], library: [HIT_JOB] },
+    });
+    s.play(KNOCKOFF);
+    return s;
+  }
+
+  it("R242 #28's event order does not tell p2 whether its hidden pick was p1's hand card or p1's face-down trap (§9.1, §10.8, R33, R177)", () => {
+    const handPick = orderGame(false);
+    const trapPick = orderGame(true);
+    for (const s of [handPick, trapPick]) {
+      expect(must(s.unit("p1", 1), "Timmy").radiant).toBe(true);
+      expect(must(s.backrow("p1", 2), "Sheepish").radiant).toBe(true);
+      expect(must(s.hand("p1")[0], "Hit Job").radiant).toBe(true);
+      expect(s.view("p2").opponent.backrow[1]).toEqual({ faceDown: true });
+    }
+    // Both worlds end with every card Radiant; which hidden card was base-face is the face R33 and
+    // §9.1 keep from p2. In the zones' own order the backrow comes after the unit row, so a hidden
+    // pick after the public unit's could only have been the face-down trap; R242 sends the public
+    // cards' events first and then p1's hidden ones.
+    indistinguishable("p2", handPick, trapPick);
+  });
+});
+
+describe("R243: what the view carries of a card beyond its printed face", () => {
+  function handEntry(view: PlayerView, id: string): Record<string, unknown> {
+    const hand = view.you.hand;
+    if (!Array.isArray(hand)) throw new Error("expected the viewer's own hand in full");
+    return must(hand.find((card) => card.instanceId === id), `${id} in the viewer's hand`) as unknown as Record<string, unknown>;
+  }
+
+  it("R243 a Corpse Eater that fed in its owner's hand shows its owner the stats it now has (§10.4 layer 4, §10.8, BUILD M5-T4 buffed)", () => {
+    const g = scenario({
+      p1: { hand: [CORPSE_EATER, "core-021"], field: [{ def: SEVEN_SEVEN, lane: 1 }], library: [MR_VANILLA, MR_VANILLA] },
+      p2: { hand: ["core-021"], field: [{ def: TEMPO_TIMMY, lane: 1 }], library: [MR_VANILLA] },
+    });
+    const eater = g.card(CORPSE_EATER);
+    // The 7/7's Armor 7 eats Timmy's First Strike 3 whole; its 7 kills the 3/3 Timmy.
+    g.attack(SEVEN_SEVEN, TEMPO_TIMMY);
+    g.expectInZone(TEMPO_TIMMY, "graveyard");
+    // §8 #89: in hand it gains the dead unit's attack and max health, 2/2 + 3/3.
+    expect(g.card(eater).buffs).toEqual({ attack: 3, health: 3 });
+
+    const entry = handEntry(g.view("p1"), eater.id);
+    expect(entry["attack"], "the hand card's attack in p1's view").toBe(5);
+    expect(entry["health"], "the hand card's health in p1's view").toBe(5);
+    // p2 sees a count of p1's hand, as before (§10.8).
+    expect(g.view("p2").opponent.hand).toEqual({ count: 2 });
+  });
+
+  it("R243 a Heroic Power in its owner's hand shows the power it rolled, which its cost alone does not name (R43, R151, §10.8)", () => {
+    const g = scenario({
+      p1: { hand: ["core-021"], library: [HEROIC_POWER, MR_VANILLA, MR_VANILLA] },
+      p2: { hand: ["core-021"], library: [MR_VANILLA] },
+    });
+    // The turn's draw puts the Heroic Power in hand, and R151 rolls its power as it arrives.
+    g.startTurn();
+    const power = must(g.hand("p1").find((card) => card.defId === HEROIC_POWER), "the drawn Heroic Power");
+    const rolled = must(subsystems.powerOf(power), "a rolled power on the drawn Heroic Power");
+    const entry = handEntry(g.view("p1"), power.id);
+    // Four powers cost 1 and two cost 2 (§8 #98), so the cost in the view does not say which it is.
+    expect(entry["cost"]).toBe(rolled.x);
+    expect(entry["power"], "p1's view of the card names its power").toBe(rolled.name);
+  });
+
+  it("R243 a card Craft a Card fused into its owner's hand can be read from the view: its name and summed stats, and still not by the other seat (R77, R179, §10.8, BUILD M5-T4 fused)", () => {
+    const g = scenario({
+      p1: { hand: ["core-092", "core-066", "core-021"], library: [MR_VANILLA, MR_VANILLA] },
+      p2: { hand: ["core-021"], library: [MR_VANILLA] },
+    });
+    const ingredients: CardInstance[] = [g.card("core-092"), g.card("core-066")];
+    const sink: EngineSink = { state: g.state, events: [], rng: createRng(g.state.seed, g.state.rngCursor) };
+    const crafted = must(subsystems.fuse(sink, { ingredients, toHand: "p1" }), "the crafted card");
+    const def = must(g.state.transientDefs[crafted.defId], "the fused definition in match state");
+    expect(def.name).toBe("Felinor Fiender + The Rock");
+    expect([def.base.attack, def.base.health]).toEqual([15, 17]);
+
+    // The definition exists only in match state (R179): no catalog a client holds has it, so the
+    // view is the only place its owner can read what they crafted.
+    const own = g.view("p1");
+    expect(own.defs?.[crafted.defId]?.name).toBe(def.name);
+    expect(handEntry(own, crafted.id)["attack"]).toBe(15);
+    // It is still a hidden hand card for the other seat (§10.8): nothing names it there.
+    expect(JSON.stringify(g.view("p2"))).not.toContain(def.name);
+    expect(g.view("p2").defs?.[crafted.defId]).toBeUndefined();
   });
 });

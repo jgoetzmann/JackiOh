@@ -1,6 +1,6 @@
 // What a player is allowed to see (SPEC §10.8). The client renders this and nothing else.
 
-import type { CardType, Keyword, PlayerId, PromptKind, Row } from "./catalog-types";
+import type { CardDef, CardType, Keyword, PlayerId, PromptKind, Row } from "./catalog-types";
 import type { GameEvent, GameOverReason } from "./events";
 
 export type CardView = {
@@ -9,6 +9,19 @@ export type CardView = {
   radiant: boolean;
   /** Cost as it stands now (§6.3 Cost, R65); "X" cards show 0 until X is chosen. */
   cost: number;
+  /**
+   * R243: a Unit card's stats in its owner's hand, as they stand: its printed face (the radiant one
+   * when it is Radiant, a fused card's summed one) plus the permanent buffs it has gained there
+   * (§10.4 layers 1, 3 and 4 — #89 Corpse Eater feeds in hand). Set on the viewer's own hand cards
+   * only; a unit on the field reads its layers off `UnitView`.
+   */
+  attack?: number;
+  health?: number;
+  /**
+   * R243, R43, R151: the power a #98 Heroic Power in its owner's hand rolled as it arrived, by name.
+   * Its X is the card's cost, which does not name it: four of the seven powers cost the same.
+   */
+  power?: string;
 };
 
 export type UnitView = CardView & {
@@ -24,6 +37,11 @@ export type UnitView = CardView & {
   /** Cards under this one in a Stack pile are face-down and dormant (§3.2). */
   buried: number;
   canAct: boolean;
+  /**
+   * R243, §6.3 Vanilla, R115: the unit's text is gone — its printed keywords and every script, the
+   * ones its definition still names included — so a client shows none of it. Absent otherwise.
+   */
+  vanilla?: true;
 };
 
 /**
@@ -155,4 +173,11 @@ export type PlayerView = {
   result: { winner: PlayerId | "draw"; reason: GameOverReason } | null;
   /** Milliseconds left on the turn clock, when the server is running one (R79). */
   clockMs: number | null;
+  /**
+   * R243: the definitions of the match-made cards this view names — a Fuse's (R77), a crafted
+   * card's (R102, R179) — by id. They exist only in the match, so no catalog a client holds has
+   * them, and a card the view shows could not otherwise be read. Only a card the viewer may read
+   * brings its definition: a hidden one's id is already the sentinel (R97). Absent when none.
+   */
+  defs?: Record<string, CardDef>;
 };

@@ -50,7 +50,7 @@ import { makeContext } from "./resolve";
 import type { Script, TriggerDef } from "./script";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
-import { exitMark, movesIn, type LaterMoves } from "./stays";
+import { eventMark, exitMark, movesIn, uncoveredBy, type LaterMoves } from "./stays";
 import {
   findInstance,
   type CardInstance,
@@ -67,7 +67,7 @@ import {
   type ImmediateDispatch,
   type TrapControllers,
 } from "./traps";
-import { drainWork } from "./work";
+import { RUN_MARKS_KEY, cardData, drainWork, runMarksOf, type RunMarks } from "./work";
 import { activeUnitsOf, cardAt, slotsOf } from "./zones";
 
 /** The zones a card can hold a trigger from (§10.3). */
@@ -307,7 +307,16 @@ function owedMarkOf(state: GameState, entry: QueuedTrigger): number {
   return typeof mark === "number" ? mark : exitMark(state);
 }
 
-/** Append one of a card's triggers to the queue, behind everything already waiting (R68). */
+/**
+ * Append one of a card's triggers to the queue, behind everything already waiting (R68).
+ *
+ * R174, R212: the entry carries the stays its event happened on — the mark a play's event was
+ * emitted at (`stays.eventMark`), or the field's departures now, as it is dispatched — and the
+ * trigger runs with that mark whenever it pops (`runQueuedTrigger`). A trigger aimed at the card its
+ * event names, by the id it reads off the event, is aimed at that card's stay: an earlier trigger
+ * on the same event that killed it, and the check between the two that let Reborn put a body back
+ * (R59), leave the later one nothing to land on (R83).
+ */
 export function queueTrigger(
   sink: EngineSink,
   holder: TriggerHolder,
@@ -315,6 +324,7 @@ export function queueTrigger(
   event: GameEvent,
 ): QueuedTrigger {
   const { id, seq } = nextEntryId(sink.state, holder.zone === "hand");
+  const marks: RunMarks = { exitsFrom: eventMark(event) ?? exitMark(sink.state) };
   const entry: QueuedTrigger = {
     id,
     seq,
@@ -326,7 +336,7 @@ export function queueTrigger(
       step: TRIGGER_STEP,
       radiant: holder.card.radiant,
       instanceId: holder.card.id,
-      data: { event, zone: holder.zone, controller: holder.controller },
+      data: { event, zone: holder.zone, controller: holder.controller, [RUN_MARKS_KEY]: marks },
     },
   };
   sink.state.triggerQueue.push(entry);
@@ -427,7 +437,7 @@ function owedToTraps(sink: EngineSink, event: GameEvent, run: ImmediateDispatch)
 function offerToTraps(sink: EngineSink, event: GameEvent): QueuedTrigger | null {
   if (isTrapWindowEvent(event)) return null;
   // R212: the board the event happened on, read off the events owed behind it.
-  const run = offerEventToTraps(sink, event, () => movesIn(eventsAfterDispatched(sink)));
+  const run = offerEventToTraps(sink, event, () => movesIn(eventsAfterDispatched(sink), sink.state));
   if (sink.state.result !== null) return null;
   if (sink.state.pending === null) return null;
   return owedToTraps(sink, event, run);
@@ -489,13 +499,18 @@ export function dispatchEvent(sink: EngineSink, event: GameEvent): QueuedTrigger
   if (owed !== null) queued.push(owed);
 
   let later: LaterMoves | null = null;
+  let uncovered: readonly string[] | null = null;
   for (const holder of cardsInTriggerOrder(sink.state)) {
     // §10.3: the traps have already had this event; queueing them too would fire them twice.
     if (holder.isTrap) continue;
     const defs = triggersOnEvent(holder, event.type);
     if (defs.length === 0) continue;
-    later ??= movesIn(eventsAfterDispatched(sink));
+    later ??= movesIn(eventsAfterDispatched(sink), sink.state);
     if (later.moved.has(holder.card.id)) continue;
+    // §3.2, R153: nor does the card the event's own removal uncovered in its Stack pile — dormant
+    // when it happened, it resumed because of it, as a Reborn body returns because of a death.
+    uncovered ??= uncoveredBy(sink.state, event);
+    if (uncovered.includes(holder.card.id)) continue;
     // R119: a permanent that arrived on the field while the play resolved does not answer that play.
     if (arrivedDuringPlay(event).includes(holder.card.id)) continue;
     const controller = later.controllerBefore.get(holder.card.id) ?? holder.controller;
@@ -550,8 +565,11 @@ export function runQueuedTrigger(sink: EngineSink, entry: QueuedTrigger): void {
   // which is what its entry captured — a change of control since does not hand the answer over.
   const queuedFor: unknown = entry.resume.data.controller;
   const controller = PLAYER_IDS.find((player) => player === queuedFor) ?? holder.controller;
+  // R174, R212: the stays the event happened on, which the entry captured as it was queued.
+  const marks = runMarksOf(entry.resume.data);
   const ctx = {
-    ...makeContext(sink, card, { controller, data: entry.resume.data }),
+    ...makeContext(sink, card, { controller, data: cardData(entry.resume.data) }),
+    ...(marks?.exitsFrom === undefined ? {} : { exitsFrom: marks.exitsFrom }),
     event,
   };
   // Resumable, so a prompt inside the list stops the list there instead of being stepped over. The

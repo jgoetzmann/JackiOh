@@ -47,6 +47,14 @@ export type EffectContext = {
    * `work.RunMarks`). Absent for a run that has not paused.
    */
   summoned?: readonly string[];
+  /**
+   * R98: the card running the script sat in the resolving zone as the run began (§10.5 step 4) — a
+   * Spell resolving, or a permanent that found no zone. The run is that card's while it stays there,
+   * so a continuation re-entered once the card has left it — the Spell's own list put it back in its
+   * owner's hand before it asked — resumes with no self (`prompts.runResume`). Carried across a pause
+   * with the run's other marks (`work.RunMarks`, `work.PausedStep`). Absent for any other card.
+   */
+  selfResolving?: boolean;
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */

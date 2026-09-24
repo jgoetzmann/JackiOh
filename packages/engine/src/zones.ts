@@ -6,7 +6,7 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { BACKROW_ZONES, UNIT_ZONES } from "./config";
 import { defOf } from "./catalog";
 import type { CardInstance, GameState, Pile, PlayerState } from "./state";
-import { noteFieldExit } from "./stays";
+import { noteFieldExit, noteUncovered } from "./stays";
 
 export type ZoneSlot = { player: PlayerId; row: Row; lane: number };
 
@@ -168,7 +168,10 @@ export function replaceInZone(state: GameState, old: CardInstance, replacement: 
   return true;
 }
 
-/** Take a card off the field; the card beneath a Stack resumes acting (§3.2). */
+/**
+ * Take a card off the field; the card beneath a Stack resumes acting (§3.2), which is noted against
+ * the card that left (`stays.noteUncovered`, R212): no event reports a resume.
+ */
 export function removeFromField(state: GameState, instance: CardInstance): boolean {
   for (const player of PLAYER_IDS) {
     const side = state.players[player];
@@ -179,6 +182,7 @@ export function removeFromField(state: GameState, instance: CardInstance): boole
       if (at >= 0) {
         const rest = pile.filter((card) => card.id !== instance.id);
         side.units[i] = rest.length === 0 ? null : rest;
+        noteUncovered(state, instance.id, at === 0 ? rest[0]?.id : undefined);
         return true;
       }
     }

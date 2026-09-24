@@ -10,6 +10,10 @@
 // Round 9, lens "keywords and layers": §6.1's keywords are a set, so a keyword two sources give — a
 // printed one an aura grants again, a Taunt unit's own Taunt in Defense Position — is listed once in
 // the view (§10.4, §10.8), Armor apart, which sums across its sources.
+//
+// Round 10 (lenses "engine invariants" and "keywords and layers"): the Taunt R46's knock-down takes
+// from a unit already in Attack Position went with no event (§10.3), and a unit's view did not say
+// its text was gone, so a client rendering it showed a Vanilla copy's scripted text (R243).
 
 import type { Selection } from "@jackioh/shared";
 import { legalActions, type CardInstance } from "@jackioh/engine";
@@ -153,6 +157,57 @@ describe("R46 and R91: the knock-down reports a switch only when there is one", 
     expect(g.card(rock).position).toBe("ATK");
     expect(g.lastEvents).toContainEqual({ type: "positionSwitched", instanceId: rock.id, position: "ATK" });
   });
+
+  // Found by the probe's silent-change check (a top unit's view changed in an action whose events
+  // name neither it nor anything on the board around it), on every seed range and deck mode it ran:
+  // #55 radiant Lava Golem and #56 radiant Jilliax, both Indestructible Taunt units, lost Taunt to
+  // R46 with nothing in the action's stream saying so.
+  it("R46 an Indestructible Taunt unit in Attack Position that shrugs off a destroy loses its Taunt with an event naming it (§10.3, R91)", () => {
+    const g = scenario({
+      p1: { hand: [HIT_JOB, "core-010"], mana: 4 },
+      // #56 radiant Jilliax: Charge, Taunt, Lifesteal, Indestructible (§8.3 row 56), in Attack Position.
+      p2: { field: [{ def: "core-056", radiant: true, position: "ATK" }], hand: ["core-010"] },
+    });
+    const jilliax = g.card("core-056");
+    expect(g.stats(jilliax).keywords.map((k) => k.kind)).toContain("Taunt");
+    expect(g.view("p1").opponent.units[0]?.keywords.map((k) => k.kind)).toContain("Taunt");
+
+    // #16 Hit Job: "Destroy target unit". R46: an Indestructible unit that would be destroyed
+    // switches to Attack Position (it already is in it) and loses Taunt this turn.
+    g.play(HIT_JOB, { targets: at(jilliax) });
+
+    // Still standing, and without Taunt for the rest of this turn: a change both seats' views show
+    // (`UnitView.keywords`, §10.8), and one that changes which of p2's units p1 may attack (§4.2 step 3).
+    g.expectInZone(jilliax, "field");
+    expect(g.stats(jilliax).keywords.map((k) => k.kind)).not.toContain("Taunt");
+    expect(g.view("p1").opponent.units[0]?.keywords.map((k) => k.kind)).not.toContain("Taunt");
+    // §10.3: "every visible state change emits an event". There is no switch to report (R91), so the
+    // report is the Taunt it lost — the grant event with `lost` set, no new event type.
+    expect(g.lastEvents.filter((e) => e.type === "positionSwitched")).toEqual([]);
+    expect(g.lastEvents).toContainEqual({
+      type: "keywordGranted",
+      instanceId: jilliax.id,
+      keyword: { kind: "Taunt" },
+      lost: true,
+    });
+    expect(g.view("p2").events).toContainEqual({
+      type: "keywordGranted",
+      instanceId: jilliax.id,
+      keyword: { kind: "Taunt" },
+      lost: true,
+    });
+  });
+
+  it("R46 a unit with no Taunt to lose reports none: The Rock in Attack Position is knocked down in silence (R91)", () => {
+    const g = scenario({
+      p1: { hand: [HIT_JOB, HINDER], library: LIBRARY },
+      p2: { field: [{ def: ROCK, lane: 1, position: "ATK" }], library: LIBRARY },
+    });
+    const rock = g.card(ROCK);
+    expect(g.stats(rock).keywords.map((k) => k.kind)).not.toContain("Taunt");
+    g.play(HIT_JOB, { targets: at(rock) });
+    expect(g.lastEvents.filter((e) => e.type === "keywordGranted")).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -189,5 +244,36 @@ describe("A unit's keywords are a set (§6.1, §10.4, §10.8)", () => {
     expect(kindsIn(1).sort()).toEqual(["First Strike", "Rush"]);
     // Right-house defender prints Taunt and Defense Position grants it: one Taunt among its keywords.
     expect(kindsIn(2).sort()).toEqual(["Divine Shield", "First Strike", "Reborn", "Rush", "Taunt"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 10: a Vanilla unit's view says its text is gone (R243)
+// ---------------------------------------------------------------------------
+
+describe("R243: a Vanilla unit's view says its text is gone (§6.3 Vanilla, R115, §10.8)", () => {
+  it("R243 a Vanilla copy of Fed Fauci is marked Vanilla in both seats' views, and the original is not", () => {
+    const g = scenario({
+      p1: { hand: [POSTDOC, HINDER], field: [{ def: FAUCI, lane: 1 }], library: LIBRARY },
+      p2: { hand: [HINDER], library: LIBRARY },
+    });
+    const fauci = g.card(FAUCI);
+    g.play(POSTDOC, { zone: 2, targets: at(fauci) });
+    const copy = unitAt(g, "p1", 3);
+    expect(copy.defId).toBe(FAUCI);
+    expect(copy.vanilla).toBe(true);
+
+    for (const viewer of ["p1", "p2"] as const) {
+      const view = g.view(viewer);
+      const side = viewer === "p1" ? view.you : view.opponent;
+      const original = side.units[0];
+      const vanillaCopy = side.units[2];
+      // Same definition, same printed keywords (Rush) on the original and none on the copy — but
+      // Fauci's scripted text (the Plague Token trigger, the start-of-turn mana) is text too, and
+      // only the view can tell a client the copy has none of it.
+      expect(vanillaCopy?.defId).toBe(original?.defId);
+      expect(vanillaCopy?.vanilla, `${viewer}'s view marks the copy Vanilla`).toBe(true);
+      expect(original?.vanilla).toBeUndefined();
+    }
   });
 });

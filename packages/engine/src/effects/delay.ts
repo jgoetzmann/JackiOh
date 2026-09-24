@@ -20,7 +20,7 @@ import { scheduleDelayed } from "../modifiers";
 import { SELF_KEY, resumeSelf } from "../prompts";
 import { RUN_MARKS_KEY } from "../work";
 import type { Effect, EffectContext } from "../script";
-import type { DelayedEffect } from "../state";
+import { isTurnOf, type DelayedEffect } from "../state";
 import { playerOf, standsSinceScriptBegan, type PlayerSpec } from "./targets";
 
 /**
@@ -94,7 +94,10 @@ export function delay(args: {
   };
 }
 
-/** R241: an end-of-turn clause of the controller's own, made while the other player's turn runs. */
+/**
+ * R241: an end-of-turn clause of the controller's own, made on a turn that is not the controller's —
+ * the other player's, or setup's, which is no player's turn though `active` names p1 there (§2.1).
+ */
 function endsOtherPlayersTurn(ctx: EffectContext, at: DelayAt): boolean {
-  return at.phase === "end" && playerOf(ctx, at.player) === ctx.controller && ctx.state.active !== ctx.controller;
+  return at.phase === "end" && playerOf(ctx, at.player) === ctx.controller && !isTurnOf(ctx.state, ctx.controller);
 }

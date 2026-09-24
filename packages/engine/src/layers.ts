@@ -176,8 +176,9 @@ export function unitView(state: GameState, instance: CardInstance): UnitView {
  * of `unitView` (§10.4 layer 5) — so it is applied once, by the reader that knows which number the
  * rule floors, rather than baked into a reading that has more than one reader.
  *
- * The only other readers are the tests and `query.ts`'s re-export; R89's death snapshot reads
- * `unitView` (`stateCheck.ts`), which floors its own attack, so nothing is left unclamped by this.
+ * The only other readers are the tests, `query.ts`'s re-export and `viewFor`'s hand cards (R243),
+ * which floor the attack they show; R89's death snapshot reads `unitView` (`stateCheck.ts`), which
+ * floors its own attack, so nothing is left unclamped by this.
  */
 export function statsWithBuffs(state: GameState, instance: CardInstance): { attack: number; maxHealth: number } {
   const printed = faceOf(state, instance);

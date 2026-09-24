@@ -20,7 +20,8 @@
 //                      (R113): the answer action finishes it, exactly as it finishes a Cry.
 //   switchPosition   → `combat.switchPosition` (§4.1, R20, R49)
 //   activatePower    → `subsystems/heroPower.activatePower`, listed by `whyCannotActivate` (R43)
-//   answer           → `prompts.answerPrompt`, or the play pipeline for a prompt it opened itself
+//   answer           → `prompts.answerPrompt`, which hands a prompt the play pipeline opened itself
+//                      to that pipeline's answerer (R122)
 //   mulligan, draws, concede, endTurn, the turn cap → `setup.ts` and `turn.ts` (§2.1, §2.2, §2.5)
 //
 // After the action the resolution loop of §10.3 runs (`triggers.settle`): it dispatches the events
@@ -32,7 +33,7 @@ import { NON_ACTIVE_ACTION_TYPES, PROMPT_OPEN_ACTION_TYPES, opponentOf } from "@
 import { attackTargets, declareAttack, hasExertion, switchPosition, type AttackTarget } from "./combat";
 import { NONCE_HISTORY, TIMEOUT_ANSWER_CAP, TURN_CAP_PLAYER_TURNS } from "./config";
 import { endGame } from "./gameOver";
-import { answerPlayPrompt, isPlayResume, runPlaySteps } from "./playSteps";
+import { runPlaySteps } from "./playSteps";
 import { playActionsFor } from "./playChoices";
 import { answerPrompt, promptAnswers } from "./prompts";
 import { createRng, type Rng } from "./rng";
@@ -123,13 +124,11 @@ function applyAction(sink: EngineSink, action: Action): string | null {
       // R43: the power lives on the instance and `heroPower.ts` owns every part of using it —
       // the cost is the power's X, and using it is that turn's use.
       return activatePower(sink, action.playerId, action);
-    case "answer": {
+    case "answer":
       // §10.6: a card's continuation is re-entered through its script; a prompt an engine sequence
-      // opened for itself (an Echo repeat's fresh pick, §10.5 step 6) is answered by that sequence.
-      const pending = state.pending;
-      if (pending !== null && isPlayResume(pending.resume)) return answerPlayPrompt(sink, action);
+      // opened for itself (an Echo repeat's fresh pick, §10.5 step 6) goes to that sequence's
+      // answerer, which `answerPrompt` looks up (R122).
       return answerPrompt(sink, action);
-    }
     case "offerDraw": {
       if (!canOfferDraw(state, action.playerId)) return "you cannot offer a draw right now";
       offerDraw(sink, action.playerId);
