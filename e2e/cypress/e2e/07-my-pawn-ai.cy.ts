@@ -305,7 +305,7 @@ describe("BUILD M8 07 — My Pawn cancels the lethal swing and an AI plays out t
             // client is still draining that queue here. The one action §10.7's policy is certain
             // to take is the end of the turn, and BUILD M5-T4 animates it on the `end-turn`
             // control, so that is the row awaited. `cy.expectAnimating` is not used for it
-            // because its `timeouts.animation` budget is one animation's worth and a whole AI
+            // because its `timeouts.animation` budget is one action's burst and a whole AI
             // turn's queue can be longer than that; `timeouts.view` is the honest budget.
             cy.get(ANIMATING).should("exist");
             cy.get(animating("turnEnded"), { timeout: timeouts.view }).should("exist");
