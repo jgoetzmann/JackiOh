@@ -23,22 +23,13 @@
 // draws it once — `setRadiant`-style de-duplication is not needed because the two picks are
 // compared by instance before the second draw is emitted.
 //
-// !! BLOCKED — MISSING VERB (reported with this card) !!
-// No effect in `engine/src/effects` moves an EXISTING library card into a hand: `draw` takes the
-// top card, `addToHand` creates a FRESH card of a definition, and `bounce`, which does move an
-// existing card through `draw.addToHand`, takes only a `TargetSpec` and so cannot name an instance
-// a hook computed. The engine needs
-//     drawFromLibrary({ instanceId?: string; defId?: string; player?: PlayerSpec }): Effect
-// (remove the named card from the library, push `drawn`, bump `state.counters.drawn`, then
-// `draw.addToHand` for the hand cap (R4) and the cast-on-draw path (R58)) — #94 Genn's Greed needs
-// the same verb for "draw every 2-cost card from your library" (R66). Until it lands this card uses
-// `addToHand({ defId })`, which is right about WHICH card reaches the hand and wrong about the rest:
-// the library card is not removed, no `drawn` event fires, `counters.drawn` does not move and a
-// cast-on-draw card is not cast. The radiant flag is carried across by hand so R74 at least holds.
+// The draw is §6.3's Draw of a card the script named, `drawFromLibrary` (#94 Genn's Greed uses it
+// too): the library card itself leaves the library as a draw — a `drawn` event, R55's counter, the
+// hand cap (R4) and the cast-on-draw path (§2.4, R58) — rather than a fresh copy landing in hand.
 
 import type { CardInstance, Effect, EffectContext, Script } from "@jackioh/engine";
 import { effectiveCost, zoneCards } from "@jackioh/engine";
-import { addToHand, chosenOptions } from "@jackioh/engine/effects";
+import { chosenOptions, drawFromLibrary } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-030");
@@ -68,21 +59,9 @@ function extreme(ctx: EffectContext, want: typeof HIGHEST | typeof LOWEST): Card
   return best;
 }
 
-/**
- * The draw of one named library card. See the BLOCKED note above: this is `addToHand` standing in
- * for the missing `drawFromLibrary`, carrying the radiant flag (R74) and `costOverride` (R78, which
- * keeps both in every zone) so the card that arrives is as close to the library card as the verbs
- * allow. `costMod` cannot be carried: `addToHand` has no argument for it.
- */
+/** §6.3 Draw of one named library card (R24), or nothing for an empty library. */
 function drawNamed(card: CardInstance | null): Effect[] {
-  if (card === null) return [];
-  return [
-    addToHand({
-      defId: card.defId,
-      radiant: card.radiant,
-      ...(card.costOverride === undefined ? {} : { costOverride: card.costOverride }),
-    }),
-  ];
+  return card === null ? [] : [drawFromLibrary({ instanceId: card.id })];
 }
 
 export const base: Script = {

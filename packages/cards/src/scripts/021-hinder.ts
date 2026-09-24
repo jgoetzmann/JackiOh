@@ -5,9 +5,9 @@
 // `drawOne` (engine/src/draw.ts) casts it, repeats the draw and stops at CAST_ON_DRAW_CHAIN_CAP
 // (R58), while `castCard` makes the cast free and counts it as a card played (R40, R70).
 //
-// The floor is not this card's either: `nextTurnMana` moves `mana.nextTurnMod`, and §2.3's
-// `maxManaFor` floors `min(turnsStarted, MAX_MANA) + permMod + nextTurnMod` at 0, after which
-// `refreshMana` clears the one-shot modifier. So a −2 against a 1-mana refresh is 0, not −1.
+// The floor is not this card's either: `nextTurnMana` moves `mana.nextTurnMod`, and `refreshMana`
+// fills current mana to §2.3's max plus that one-shot rider, floored at 0, then clears it. So a −2
+// against a 1-mana refresh is 0, not −1, and max mana itself is untouched (§2.3).
 
 import type { Script } from "@jackioh/engine";
 import { nextTurnMana } from "@jackioh/engine/effects";

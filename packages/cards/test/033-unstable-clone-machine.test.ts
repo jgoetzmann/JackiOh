@@ -5,10 +5,12 @@
 // R57: a copy shuffled into a library is a fresh instance carrying only the radiant flag (and
 // `statsOverride`, which `shuffleInto` cannot carry yet — reported as an engine gap).
 // R80: `LIBRARY_CAP` is 60 and a copy that would overflow is never created.
+// R119 (hunt round 8): a Clone Machine a play's own resolution put onto the field (#98's Recruit)
+// starts counting from the next play, as the played Clone Machine itself does.
 
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
-import type { CardInstance } from "@jackioh/engine";
+import { subsystems, type CardInstance } from "@jackioh/engine";
 
 /** The copies of one def sitting in a library. */
 function copiesIn(cards: CardInstance[], defId: string): CardInstance[] {
@@ -179,5 +181,32 @@ describe("#33 Unstable Clone Machine — radiant", () => {
     s.play("31", { targets: [{ pick: "hero", player: "p2" }] });
 
     expect(s.pile("p1", "library")).toHaveLength(60);
+  });
+});
+
+describe("R119: a permanent does not answer the play that put it onto the field", () => {
+  it("R119 a Clone Machine a played Heroic Power's Recruit put on the field does not answer that play", () => {
+    const s = scenario({
+      seed: "edge-r8-hp-clone",
+      p1: { hand: ["core-098", "core-008"], library: ["core-033", "core-008", "core-008", "core-008"], mana: 8 },
+      p2: { hand: ["core-008"], library: ["core-008", "core-008", "core-008", "core-008", "core-008", "core-008"] },
+    });
+    // R43: the power lives on the instance; "(3) Recruit a permanent".
+    const hp = s.hand("p1")[0];
+    if (hp === undefined) throw new Error("expected the Heroic Power in hand");
+    hp.memory[subsystems.POWER_KEY] = "recruit";
+
+    s.play(hp);
+
+    // Playing it activated the power once (R43): the Recruit put the Clone Machine on p1's backrow
+    // while the Heroic Power's play was resolving.
+    const backrow = [1, 2, 3, 4, 5].flatMap((lane) => {
+      const card = s.backrow("p1", lane);
+      return card === null ? [] : [card.defId];
+    });
+    expect(backrow).toContain("core-033");
+    // R119: "does not fire on the play that put it onto the field: it starts counting from the next
+    // play". No copies of the Heroic Power are shuffled in.
+    expect(copiesIn(s.pile("p1", "library"), "core-098")).toHaveLength(0);
   });
 });

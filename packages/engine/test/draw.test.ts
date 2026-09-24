@@ -1,7 +1,10 @@
-import type { GameEvent } from "@jackioh/shared";
+import type { CardDef, GameEvent } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
+import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { CAST_ON_DRAW_CHAIN_CAP, HAND_CAP, HERO_HEALTH, LIBRARY_CAP } from "../src/config";
 import { draw, drawOne, shuffleIntoLibrary } from "../src/draw";
+import { draw as drawEffect } from "../src/effects/draw";
+import { registerScripts, registeredScripts } from "../src/scripts";
 import { newInstance, type GameState } from "../src/state";
 import { eventsOfType, newGame, put, setLibrary, sinkFor, slot } from "./fixtures/harness";
 import { antiOneshot, cnVirus, hinder, infiniteReserves } from "./fixtures/scripts";
@@ -87,6 +90,36 @@ describe("draw (M1-T7)", () => {
 
     expect(eventsOfType(events, "cardPlayed")).toHaveLength(CAST_ON_DRAW_CHAIN_CAP);
     expect(state.players.p1.hand.map((c) => c.defId)).toEqual([cnVirus.id]);
+  });
+
+  it("R217 counts the casts of a draw a cast makes into the chain that cast it, so the cap bounds them all", () => {
+    // A cast-on-draw Spell whose own text draws 1, the shape /fullsend's Combo draw gives any cast
+    // (R70): every draw it makes lands on another one, nested inside the cast that made it.
+    const drawer: CardDef = {
+      id: "fx-drawing-cast",
+      index: "fx-drawing-cast",
+      name: "Drawing cast (fixture)",
+      set: "Core",
+      type: "Spell",
+      tags: [],
+      rarity: "Common",
+      token: false,
+      cost: 0,
+      base: { keywords: [], text: "" },
+      radiant: { keywords: [], text: "" },
+    };
+    const state = newGame();
+    registerCatalog({ ...registeredCatalog(), [drawer.id]: drawer });
+    const script = { staticFlags: { castOnDraw: true }, cry: () => [drawEffect({ count: 1 })] };
+    registerScripts({ ...registeredScripts(), [drawer.id]: { base: script, radiant: script } });
+    const { events } = drawFrom(state, Array.from({ length: 40 }, () => drawer.id));
+
+    // One draw set all of it off, so it is one chain: 20 casts, however deeply they nested, and the
+    // cast-on-draw card each open draw then met went to the hand uncast (R58).
+    expect(eventsOfType(events, "cardPlayed")).toHaveLength(CAST_ON_DRAW_CHAIN_CAP);
+    expect(state.players.p1.hand.every((card) => card.defId === drawer.id)).toBe(true);
+    // The draw that began the chain closed it (R217).
+    expect(state.castChain).toBeUndefined();
   });
 
   it("Infinite Reserves turns an empty-library draw into a Rush Token card with no fatigue (#75)", () => {

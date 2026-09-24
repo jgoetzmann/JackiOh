@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jackioh/ai": "workspace:*",
     "@jackioh/cards": "workspace:*",
     "@jackioh/engine": "workspace:*",
     "@jackioh/shared": "workspace:*",

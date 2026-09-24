@@ -403,7 +403,7 @@ describe("Fuse: the instance the result keeps (R77, M3-T7)", () => {
     expect(unitView(state, result)).toMatchObject({ attack: 7, maxHealth: 5 });
   });
 
-  it("R77 leaves every other field of the kept instance unchanged, statsOverride and the Vanilla flag included", () => {
+  it("R77 leaves every other field of the kept instance unchanged, the Vanilla flag included, and sums its statsOverride into the fused face", () => {
     const state = game("fuse-other-fields");
     const target = put(state, ingredientA.id, slot("p1", "units", 1));
     const food = put(state, ingredientB.id, slot("p1", "units", 2));
@@ -419,7 +419,12 @@ describe("Fuse: the instance the result keeps (R77, M3-T7)", () => {
 
     const result = must(fuse(sinkFor(state), { ingredients: [target, food], target }), "a fusion");
 
-    expect(result.statsOverride).toEqual({ attack: 7, health: 7 });
+    // §7, R175: the token's X/X is its printed face, so the fusion sums it (7/7 + 1/1) into the
+    // fused definition, and the override leaves the instance rather than hiding that sum.
+    expect(result.statsOverride).toBeUndefined();
+    const fusedDef = state.transientDefs[result.defId];
+    expect(fusedDef?.base).toMatchObject({ attack: 8, health: 8 });
+    expect(fusedDef?.radiant).toMatchObject({ attack: 12, health: 9 });
     expect(result.vanilla).toBe(true);
     expect(result.costMod).toBe(2);
     expect(result.costOverride).toBe(1);
@@ -430,9 +435,9 @@ describe("Fuse: the instance the result keeps (R77, M3-T7)", () => {
     expect(result.owner).toBe("p1");
     expect(result.controller).toBe("p1");
 
-    // The override still wins over the fused printed stats (§10.4 layer 1), and Vanilla still
-    // clears the fused printed keywords while the granted ones stay.
-    expect(unitView(state, result)).toMatchObject({ attack: 7, maxHealth: 7, keywords: [] });
+    // Layer 1 reads the fused face, and Vanilla still clears the fused printed keywords while the
+    // granted ones stay.
+    expect(unitView(state, result)).toMatchObject({ attack: 8, maxHealth: 8, keywords: [] });
   });
 
   it("R77 the other ingredients cease to exist, without a Death trigger and without counting as destroyed", () => {

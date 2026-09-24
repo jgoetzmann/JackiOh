@@ -15,7 +15,8 @@
 // `packages/shared/src/actions.ts`.
 //
 // Fixtures are prefixed `tb-` and indexed above 1550 so they cannot collide (BUILD §0). The Sheep
-// carries index `T-sheep`, which is what `playChoices.ts`'s `SHEEP_TOKEN_INDEX` reads.
+// carries index `T-sheep` and the `tributeWorth` flag its script declares, which is what
+// `playChoices.tributeValueOf` reads.
 
 import type { Action, ActionInput, CardDef, PlayerId } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
@@ -23,7 +24,9 @@ import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { HERO_HEALTH } from "../src/config";
 import { damage, sacrifice } from "../src/effects";
 import {
+  RADIANT_SHEEP_TRIBUTE_VALUE,
   SHEEP_TOKEN_INDEX,
+  SHEEP_TRIBUTE_VALUE,
   legalTributeSets,
   legalTributeUnits,
   tributeCostOf,
@@ -72,9 +75,9 @@ function unit(name: string, attack = 3, health = 3, extra: Partial<CardDef> = {}
 }
 
 /**
- * §7's Sheep Token, the one unit "worth 2 Tributes while on the field" (§3.2). Its `index` is
- * `T-sheep`, which is how the engine recognises it; being a unit token it also ceases to exist when
- * it leaves the field rather than reaching a graveyard (R11).
+ * §7's Sheep Token, the one unit "worth 2 Tributes while on the field" (§3.2): its script's
+ * `tributeWorth` flag says so (see SCRIPTS); being a unit token it also ceases to exist when it
+ * leaves the field rather than reaching a graveyard (R11).
  */
 const sheep = unit("sheep", 1, 1, {
   index: SHEEP_TOKEN_INDEX,
@@ -111,6 +114,8 @@ function both(script: Script): CardScripts {
 const lavaGolemFlags = { tribute: 3, tributeEnemies: true } as StaticFlags;
 
 const SCRIPTS: Record<string, CardScripts> = {
+  // §3.2, §7: the Sheep's worth is its face's text, the static flag its script declares.
+  [sheep.id]: { base: { staticFlags: { tributeWorth: SHEEP_TRIBUTE_VALUE } }, radiant: { staticFlags: { tributeWorth: RADIANT_SHEEP_TRIBUTE_VALUE } } },
   [tributeOne.id]: both({ staticFlags: { tribute: 1 } }),
   [tributeTwo.id]: both({ staticFlags: { tribute: 2 } }),
   [lavaGolem.id]: both({ staticFlags: lavaGolemFlags }),

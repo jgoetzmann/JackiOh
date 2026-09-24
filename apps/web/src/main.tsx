@@ -73,6 +73,7 @@ const InviteRoute = lazy(() => import("./routes/invite.tsx"));
 const DecksRoute = lazy(() => import("./routes/decks.tsx"));
 const PlayRoute = lazy(() => import("./routes/play.tsx"));
 const MatchRoute = lazy(() => import("./routes/match.tsx"));
+const PracticeRoute = lazy(() => import("./routes/practice.tsx"));
 
 const DEV_ONLY = import.meta.env.MODE !== "production";
 
@@ -379,6 +380,8 @@ export function App(): ReactElement {
         </Gated>
       );
     }
+
+    if (path === paths.practice) return <PracticeRoute />;
 
     const matchId = matchIdOf(path);
     if (matchId !== null) {

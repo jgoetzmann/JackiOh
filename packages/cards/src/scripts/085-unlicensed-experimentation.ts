@@ -96,13 +96,21 @@ function playedPermanent(ctx: EffectContext, event: ResolvedEvent): CardInstance
 /**
  * "a permanent of yours of that type" (§8), which R61 narrows twice: the firing trap is "neither
  * matched nor fused onto", and R13 leaves a card dormant under a Stack off the field.
+ *
+ * And never the played card itself. "Fuse IT onto a permanent of yours" names two different cards,
+ * yet the played one can already stand on this trap's side when the trap fires: #52 Silly Silas
+ * played into its controller's lane 5 and rotated right crosses to this side (§3.1), so a scan of
+ * "yours" meets him. Counted, he made "one you control" true for a trap with nothing else to fuse
+ * onto, and picked, he was fused onto himself, which `fuse` refuses — the trap was spent for
+ * nothing although another permanent of the type was there (R61 spends it only with no legal
+ * target). Left out of both, the trap stays armed when he is the only match (R99).
  */
-function matchingPermanents(ctx: EffectContext, type: CardType): CardInstance[] {
+function matchingPermanents(ctx: EffectContext, type: CardType, played: CardInstance): CardInstance[] {
   const wanted = typeKey(type);
   return (["units", "backrow"] as const).flatMap((row) =>
     slotsOf(ctx.controller, row).flatMap((ref) => {
       const card = cardAt(ctx.state, ref);
-      if (card === null || card.id === ctx.self?.id) return [];
+      if (card === null || card.id === ctx.self?.id || card.id === played.id) return [];
       return typeKey(defOf(ctx.state, card.defId).type) === wanted ? [card] : [];
     }),
   );
@@ -120,7 +128,7 @@ function experimentation(onAll: boolean): TrapTrigger {
       if (played === null) return false;
       // §8: "whose type matches one you control". R61 counts an Immutable permanent of yours here,
       // so the trap fires and is consumed even though nothing can be fused onto it.
-      return matchingPermanents(ctx, defOf(ctx.state, played.defId).type).length > 0;
+      return matchingPermanents(ctx, defOf(ctx.state, played.defId).type, played).length > 0;
     },
     run: (ctx) => {
       const event = ctx.event;
@@ -129,7 +137,7 @@ function experimentation(onAll: boolean): TrapTrigger {
       if (played === null) return [];
 
       // R23: "Immutable permanents are never chosen" as the Fuse target.
-      const targetIds = matchingPermanents(ctx, defOf(ctx.state, played.defId).type)
+      const targetIds = matchingPermanents(ctx, defOf(ctx.state, played.defId).type, played)
         .filter((card) => !unitHas(ctx.state, card, "Immutable"))
         .map((card) => card.id);
 

@@ -386,3 +386,28 @@ describe("#94 Genn's Greed — radiant keeps the draw and the exile", () => {
     expect(after.library).toContain(X_COST);
   });
 });
+
+describe("#94 Genn's Greed — which cards are odd-cost is decided once (R66, R135)", () => {
+  it("R135 exiling one card does not flip Ceaseless Void's parity halfway through the clause (R66, R55)", () => {
+    // Found by the polish-4 edge-case hunt, round 7 (lens "card by card"). Genn's Greed and a
+    // Ceaseless Void in hand; one odd-cost card on top of the library, which the exile clause meets
+    // before the hand (R135: library, then hand, then graveyard).
+    const s = scenario({
+      seed: "r7-card-genn-void",
+      p1: { field: ["core-008"], hand: [GREED, "core-100"], library: ["core-005"] },
+      p2: { hand: ["core-005"], library: ["core-016"], field: ["core-008"] },
+    });
+    const c = s.state.counters;
+    const before = c.drawn + c.played + c.destroyed + c.exiled;
+    // The play counts itself before its Cry runs (§10.5 step 4), and nothing here costs 2, so no
+    // draw moves the counters before the exile clause reads the Void's cost (R55).
+    const voidCostAtClause = 100 - (before + 1);
+    s.play(GREED);
+    const voidCard = [...s.pile("p1", "hand"), ...s.pile("p1", "exile")].find((card) => card.defId === "core-100");
+    expect(voidCard).toBeDefined();
+    // The Stockpile (cost 1) is odd and goes; the Void goes exactly when its cost as the clause
+    // resolves is odd (R66), not when it is odd after the Stockpile's exile has moved R55's counter.
+    s.expectInZone("core-005", "exile");
+    expect(voidCard?.zone.z === "exile").toBe(voidCostAtClause % 2 === 1);
+  });
+});

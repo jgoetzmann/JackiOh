@@ -73,14 +73,17 @@ function match(ctx: EffectContext & { event: GameEvent }, anyCost: boolean): Res
  * "summon 2 Rush Tokens" / "fill your board with Rush Tokens"; then "if it was a Unit, they attack
  * it". A played Spell, Field Spell, Trap or Field Trap leaves the tokens standing and attacks
  * nothing. The Unit test reads the def rather than the board, so a played unit that died during its
- * own resolution still counts as a Unit and the forced-attack run simply finds it gone (R53).
+ * own resolution still counts as a Unit — but "it" is the played card's stay on the field (R174),
+ * so once that has ended the tokens attack nothing: `permanent` says so, including when an earlier
+ * trap answering the same play took the card off the field and Reborn brought a new body back
+ * (`traps.ts` reads the flag again for each trap).
  */
 function tokensAndAttack(ctx: EffectContext, played: ResolvedPlay, fill: boolean): Effect[] {
   const tokens: Effect[] = fill
     ? [fillBoard({ defId: RUSH_TOKEN })]
     : [summon({ defId: RUSH_TOKEN }), summon({ defId: RUSH_TOKEN })];
 
-  if (defOf(ctx.state, played.defId).type !== "Unit") return tokens;
+  if (defOf(ctx.state, played.defId).type !== "Unit" || !played.permanent) return tokens;
   return [
     ...tokens,
     forcedAttacks({

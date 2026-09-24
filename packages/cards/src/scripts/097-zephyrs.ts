@@ -52,11 +52,15 @@ const OFFERED = 3;
 /** The two faces differ only in which face the scorer ranks and which face reaches the hand. */
 function zephyrs(radiant: boolean): Script {
   return {
-    cry: (ctx) => [
+    cry: () => [
       discoverFromCatalog({
         step: PICKED,
-        // R29: the scorer's top three, by id, for the state as it stands right now.
-        query: { defId: subsystems.topThree(ctx.state, ctx.controller, { radiant }).map((scored) => scored.def.id) },
+        // R29: the scorer's top three, by id, for the state as the Discover meets it. A function, so
+        // the ranking is made when the Discover applies, and not again when the hook is rebuilt to
+        // resume "exile this" after the answer (§10.7's dry run plays every candidate).
+        query: (at) => ({
+          defId: subsystems.topThree(at.state, at.controller, { radiant }).map((scored) => scored.def.id),
+        }),
         count: OFFERED,
         prompt: radiant ? "Discover a perfect Radiant card" : "Discover the perfect card",
       }),

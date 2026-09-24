@@ -72,14 +72,15 @@ describe("swap (§6.3, R73, M3-T1)", () => {
     expect(events).toEqual([{ type: "swapped", what: "health" }]);
   });
 
-  it("R73 swaps board contents lane by lane in both rows, with control moving and nothing resetting", () => {
+  it("R73 swaps board contents lane by lane in both rows, with control moving and nothing left behind", () => {
     const state = game();
     const mine = put(state, plain.id, slot("p1", "units", 2));
     mine.damage = 1;
     mine.buffs = { attack: 3, health: 4 };
     mine.counters = { plague: 2 };
     mine.position = "DEF";
-    mine.summonedTurn = state.turn;
+    mine.summonedTurn = state.turn - 1;
+    mine.exertion = { attacked: true, switched: false };
     const myBack = put(state, trap.id, slot("p1", "backrow", 4));
     const theirs = put(state, plain.id, slot("p2", "units", 5));
     const theirBack = put(state, trap.id, slot("p2", "backrow", 1));
@@ -104,7 +105,10 @@ describe("swap (§6.3, R73, M3-T1)", () => {
     expect(mine.buffs).toEqual({ attack: 3, health: 4 });
     expect(mine.counters).toEqual({ plague: 2 });
     expect(mine.position).toBe("DEF");
+    // R171: summoning sickness does not come along. Changing sides is an entry on this turn, with a
+    // fresh exertion for the new controller.
     expect(mine.summonedTurn).toBe(3);
+    expect(mine.exertion).toEqual({ attacked: false, switched: false });
 
     // §10.3: one `swapped`, then a `controlChanged` per card — no new event type is needed.
     expect(new Set(events.map((event) => event.type))).toEqual(new Set(["swapped", "controlChanged"]));

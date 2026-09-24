@@ -29,8 +29,13 @@ export const def = cardDef("core-065-1");
 
 /**
  * −2 attack to the controller's units in the unit row. `sparesOwnKind` is the whole of the radiant
- * text: "your NON-Spikey-Pillow units", i.e. every unit whose definition is not this one's —
- * including this Pillow itself, so a radiant Pillow keeps whatever attack it has been given.
+ * text: "your NON-Spikey-Pillow units", i.e. every unit that is not a Spikey Pillow — this Pillow
+ * itself included, so a radiant Pillow keeps whatever attack it has been given.
+ *
+ * A Spikey Pillow is the card this file defines, so the test is against `def.id` and never
+ * `self.defId`: a Pillow #85 fused with another card carries this text in full (R102) but is a
+ * transient definition named "A + Spikey Pillow", and its aura still spares every Spikey Pillow its
+ * controller has while draining the fused card itself, which is not one.
  */
 function attackDrainAura(sparesOwnKind: boolean): AuraHook {
   return ({ self }) => [
@@ -39,7 +44,7 @@ function attackDrainAura(sparesOwnKind: boolean): AuraHook {
         unit.controller === self.controller &&
         unit.zone.z === "field" &&
         unit.zone.row === "units" &&
-        !(sparesOwnKind && unit.defId === self.defId),
+        !(sparesOwnKind && unit.defId === def.id),
       mod: { attack: -2 },
     },
   ];

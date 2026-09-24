@@ -161,6 +161,13 @@ export type TargetDecl = {
   filter?: TargetFilter;
   /** For Tribute: how many tributes the play costs (Sheep Tokens count 2, §6.3). */
   amount?: number;
+  /**
+   * The modes this declaration belongs to, when it belongs to some only: the play asks for it only
+   * when one of its chosen modes is listed here, and takes nothing for it otherwise (R90). #24
+   * Efficiency Dividend's target is its damage and heal modes' — "deal X damage to a target; heal a
+   * target 2X" — and its mana mode names none (§8 Conventions).
+   */
+  forModes?: string[];
 };
 
 export type ModeDecl = {

@@ -537,10 +537,11 @@ describe("delayed effects (§10.1, R62, R68)", () => {
     expect(dueDelayed(state, "end", "p1")).toEqual([]);
     expect(state.players.p1.mods).toEqual([]);
 
-    // §2.3: the refresh reads it once, into that turn's max, and clears it.
+    // §2.3: the refresh reads it once, into that turn's current mana — temporary mana, which "adds to
+    // current mana" while max stays min(turns, 4) — and clears it.
     state = endTurns(state, 2);
     expect(state.players.p1.turnsStarted).toBe(2);
-    expect(state.players.p1.mana).toMatchObject({ max: 4, current: 4, nextTurnMod: 0 });
+    expect(state.players.p1.mana).toMatchObject({ max: 2, current: 4, nextTurnMod: 0 });
 
     // And it is one-shot: the turn after is the ordinary refresh again.
     state = endTurns(state, 2);
