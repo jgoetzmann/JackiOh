@@ -13,6 +13,7 @@
  */
 
 import { loadStore } from "../../src/index.ts";
+import { DEFAULT_TRUSTED_PROXY_HOPS } from "../../src/config.ts";
 import type { ServerEnv } from "../../src/env.ts";
 
 const databaseUrl = process.env["DATABASE_URL"];
@@ -33,6 +34,7 @@ const env: ServerEnv = {
   NODE_ENV: "test",
   E2E: false,
   CATALOG_VERSION: "core-1",
+  TRUSTED_PROXY_HOPS: DEFAULT_TRUSTED_PROXY_HOPS,
 };
 
 // Before `src/db/store.ts` existed this threw `StoreUnavailableError`, and the server could only

@@ -782,6 +782,29 @@ describe("an empty legal array offers nothing", () => {
     const stale: Interaction = { stage: "attacking", attackerId: "u1", candidates: [] };
     expect(highlightFor(view, [], stale).legal.size).toBe(0);
   });
+
+  it("R211 drops a selection in flight when only concede is left, and keeps concede live", () => {
+    // With the other seat's prompt open, `legalActions` offers this seat concede and nothing else.
+    const view = seatedView();
+    const legal: ActionBody[] = [{ type: "concede" }];
+    const attacking: Interaction = {
+      stage: "attacking",
+      attackerId: "u1",
+      candidates: [{ type: "attack", attackerId: "u1", targetId: "e1" }],
+    };
+    const playing: Interaction = {
+      stage: "playing",
+      instanceId: "h1",
+      candidates: [playZone("h1", 3)],
+      picked: {},
+    };
+
+    for (const stale of [attacking, playing]) {
+      const { legal: lit, selected } = highlightFor(view, legal, stale);
+      expect([...lit]).toEqual([testid.concede]);
+      expect(selected.size).toBe(0);
+    }
+  });
 });
 
 describe("a selection keeps the rest of the board's affordances", () => {

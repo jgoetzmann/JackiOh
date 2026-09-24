@@ -1,4 +1,4 @@
-// `window.__jackiohAudio`: a read-only window onto the audio engine for Cypress (spec 14), outside
+// `window.__jackiohAudio`: a read-only window onto the audio engine for Cypress (spec 15), outside
 // production builds only, like `window.__jackioh`. It reports what the engine accepted, never what
 // the speakers did, because a headless browser has no output device.
 

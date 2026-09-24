@@ -25,7 +25,8 @@ describe("#38 Quickstriker", () => {
 
   it("has no radiant script either: the radiant face IS the base face", () => {
     expect(radiant).toBe(base);
-    expect(base.triggers?.map((trigger) => trigger.on)).toEqual([["cardPlayed"]]);
+    // §10.5 step 5 resolves it for every play and cast, off this flag (R70).
+    expect(base.staticFlags).toEqual({ quickstriker: true });
   });
 
   it("base deals 0 on the first play, 1 on the second and 2 on the third (Combo X)", () => {
@@ -81,7 +82,7 @@ describe("#38 Quickstriker", () => {
       p2: { hand: [SPARE], library: [SPARE] },
     });
 
-    // Quickstriker stays in hand: `triggers` are registered from the field alone (§10.3).
+    // Quickstriker stays in hand: §10.5 step 5 reads the permanents on the field alone.
     s.play(RAPID_REPLENISH).play(TEMPO_TIMMY);
 
     s.expectHealth("p2", HERO);
@@ -96,9 +97,9 @@ describe("#38 Quickstriker", () => {
       p2: { hand: [SPARE], library: [SPARE] },
     });
 
-    // §10.5 step 4 places the card, counts the play and emits `cardPlayed` before it settles, so
-    // Quickstriker is already a registered watcher when its OWN play is dispatched. R119: it does
-    // not fire on that event, so this second play of the turn deals 0 rather than 1.
+    // §10.5 step 4 places the card and counts the play before step 5 resolves the granted Combos,
+    // so Quickstriker is already on the field for its OWN play. R119: it does not answer its own
+    // arrival, so this second play of the turn deals 0 rather than 1.
     s.play(RAPID_REPLENISH).play(QUICKSTRIKER).expectHealth("p2", HERO);
 
     // The arrival still COUNTS as a card played earlier, so the next play deals 2 (R119 excludes
@@ -106,7 +107,7 @@ describe("#38 Quickstriker", () => {
     s.play(TEMPO_TIMMY).expectHealth("p2", HERO - 2);
   });
 
-  it("R119 holds for the radiant face too: it is the same trigger, so the same arrival is silent", () => {
+  it("R119 holds for the radiant face too: it is the same flag, so the same arrival is silent", () => {
     const s = scenario({
       p1: {
         hand: [RAPID_REPLENISH, { def: QUICKSTRIKER, radiant: true }, TEMPO_TIMMY],

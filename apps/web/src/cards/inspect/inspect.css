@@ -1,0 +1,491 @@
+/* Inspect overlays: the hover preview, the touch sheet and the deck builder's detail view
+   (docs/polish/6-cards.md, Surface C). Only .inspect-* rules and the --z-inspect-* tokens live
+   here. The z-order sits above the prompt scrim (40) and the animation layers (<= 50). */
+
+:root {
+  --z-inspect-hover: 60;
+  --z-inspect-modal: 70;
+}
+
+/* ---- Hover preview --------------------------------------------------------------------------- */
+
+.inspect-hover {
+  position: fixed;
+  z-index: var(--z-inspect-hover);
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px; /* PREVIEW_GLOSSARY_GAP_PX */
+  max-width: calc(100vw - 16px);
+  animation: inspect-pop 120ms ease-out;
+}
+
+.inspect-hover[data-side="left"] {
+  flex-direction: row-reverse;
+}
+
+/* Risen over a card in a row, the glossary hangs by the preview's foot, next to the card itself. */
+.inspect-hover[data-side="above"] {
+  align-items: flex-end;
+}
+
+.inspect-face {
+  position: relative;
+  flex: none;
+  aspect-ratio: 5 / 7;
+  max-height: 80vh; /* PREVIEW_MAX_VIEWPORT_SHARE */
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.6));
+}
+
+.inspect-hover .inspect-glossary {
+  width: 240px; /* PREVIEW_GLOSSARY_WIDTH_PX */
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+/* ---- Glossary -------------------------------------------------------------------------------- */
+
+.inspect-glossary {
+  flex: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  background: rgba(11, 13, 19, 0.94);
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  color: var(--text, #e8eaf2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.inspect-glossary-entry + .inspect-glossary-entry {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.inspect-glossary-label {
+  color: var(--radiant, #ffd24a);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.inspect-glossary-rule {
+  color: var(--text-dim, #9aa1b8);
+}
+
+/* ---- Modal layers (sheet and detail) ---------------------------------------------------------- */
+
+.inspect-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-inspect-modal);
+}
+
+.inspect-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 10, 0.68);
+  -webkit-tap-highlight-color: transparent;
+  animation: inspect-fade 140ms ease-out;
+}
+
+.inspect-close {
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 999px;
+  background: var(--bg-sunken, #0b0d13);
+  color: var(--text, #e8eaf2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inspect-close:hover {
+  border-color: var(--text-dim, #9aa1b8);
+}
+
+.inspect-close:focus-visible {
+  outline: 2px solid var(--selected, #f0c04a);
+  outline-offset: 2px;
+}
+
+/* ---- Touch sheet ----------------------------------------------------------------------------- */
+
+.inspect-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  background: var(--bg-raised, #1a1d28);
+  border-top: 1px solid var(--line-bright, #454d66);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
+  color: var(--text, #e8eaf2);
+  animation: inspect-rise 180ms ease-out;
+}
+
+.inspect-grip {
+  display: block;
+  flex: none;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-bright, #454d66);
+}
+
+.inspect-sheet-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.inspect-face--sheet {
+  height: min(380px, 56vh);
+  height: min(380px, 56dvh);
+}
+
+.inspect-sheet .inspect-glossary {
+  flex: 1 1 220px;
+  max-width: 420px;
+  box-shadow: none;
+}
+
+/* ---- Detail view ----------------------------------------------------------------------------- */
+
+/* A column that never outgrows the screen: the body scrolls inside it, and the actions row is
+   pinned at its foot. */
+.inspect-detail {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(680px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: hidden;
+  padding: 16px;
+  background: var(--bg-raised, #1a1d28);
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+  color: var(--text, #e8eaf2);
+  transform: translate(-50%, -50%);
+  animation: inspect-fade 160ms ease-out;
+}
+
+.inspect-detail-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Both faces side by side at every width, including a 390 px phone. */
+.inspect-detail-faces {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inspect-detail-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+/* As wide as its half of the dialog allows, up to 290 px, and never taller than the screen leaves
+   room for: 150 px covers the dialog's margin and padding, the caption under the face and the
+   pinned actions row. */
+.inspect-face--detail {
+  width: 100%;
+  max-width: min(290px, calc((100vh - 150px) * 5 / 7));
+  max-width: min(290px, calc((100dvh - 150px) * 5 / 7));
+  max-height: none;
+}
+
+/* Everything but the faces. */
+.inspect-detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.inspect-detail-caption {
+  color: var(--text-dim, #9aa1b8);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inspect-detail-face--radiant .inspect-detail-caption {
+  color: var(--radiant, #ffd24a);
+}
+
+.inspect-meta {
+  margin: 0;
+  color: var(--text-dim, #9aa1b8);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* The rules at reading size: hidden where the printed faces are big enough to read, shown on
+   narrow screens and for the longest cards (data-long). */
+.inspect-rules {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #e3d2ac 35%, var(--line-bright, #454d66));
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(246 236 212 / 0.08), rgb(246 236 212 / 0.03));
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.inspect-rules[data-long="true"] {
+  display: flex;
+}
+
+.inspect-rules-line {
+  margin: 0;
+}
+
+.inspect-rules-label {
+  display: inline-block;
+  min-width: 4.6em;
+  margin-right: 6px;
+  color: var(--text-dim, #9aa1b8);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inspect-rules-line--radiant {
+  padding-top: 6px;
+  border-top: 1px solid rgb(255 210 74 / 0.25);
+}
+
+.inspect-rules-line--radiant .inspect-rules-label {
+  color: var(--radiant, #ffd24a);
+}
+
+/* What the radiant cell adds or restates, gold as under the face's gold rule. */
+.inspect-rules-changed {
+  color: #ffe08a;
+}
+
+.inspect-rules .cf-term {
+  color: #fff;
+  font-weight: 750;
+}
+
+.inspect-detail .inspect-glossary {
+  box-shadow: none;
+}
+
+.inspect-detail-meta {
+  font-size: 13px;
+}
+
+.inspect-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #2c3245);
+}
+
+@media (max-width: 560px) {
+  .inspect-rules {
+    display: flex;
+  }
+}
+
+/* A wide screen that is not tall: a 1280x720 or 1366x768 desktop, a tablet on its side, a phone on
+   its side. Stacked, the faces alone filled a 720 px screen and pushed Add and Close 300 px below
+   it; here the faces stand on the left at the height the screen allows (290 px wide on a desktop,
+   about 170 on a phone), and the meta line, the rules at reading size and the glossary read down
+   the right, over the pinned actions row. */
+@media (min-width: 900px) and (max-height: 900px), (min-width: 640px) and (max-height: 560px) {
+  .inspect-detail {
+    width: min(960px, calc(100vw - 16px));
+  }
+
+  .inspect-detail-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .inspect-detail-faces {
+    flex: none;
+    grid-template-columns: repeat(2, auto);
+  }
+
+  .inspect-face--detail {
+    width: min(290px, calc((100vh - 150px) * 5 / 7));
+    width: min(290px, calc((100dvh - 150px) * 5 / 7));
+    max-width: none;
+  }
+
+  .inspect-detail-info {
+    flex: 1 1 0;
+    min-width: 220px;
+  }
+
+  .inspect-meta {
+    text-align: left;
+  }
+
+  .inspect-rules {
+    display: flex;
+  }
+}
+
+@media (max-height: 560px) and (min-width: 640px) {
+  /* The touch sheet the same way: stacked, the card shrank to 56% of the screen's height to leave
+     Close a row of its own. Here the card takes the sheet's full height, and the glossary and
+     Close stand beside it. */
+  .inspect-sheet {
+    display: grid;
+    grid-template-columns: auto minmax(0, 420px);
+    grid-template-rows: auto auto 1fr;
+    justify-content: center;
+    align-items: start;
+    gap: 12px 16px;
+  }
+
+  .inspect-grip {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+
+  .inspect-sheet-body {
+    display: contents;
+  }
+
+  .inspect-face--sheet {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    height: min(380px, calc(92vh - 44px));
+    height: min(380px, calc(92dvh - 44px));
+  }
+
+  .inspect-sheet .inspect-glossary {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: none;
+  }
+
+  .inspect-sheet .inspect-close {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: start;
+  }
+}
+
+/* A phone has no room beside the enlarged card for the glossary, and a hover there is rare anyway
+   (touch opens the sheet), so the preview shows the card alone rather than spilling off-screen. */
+@media (max-width: 600px) {
+  .inspect-hover .inspect-glossary {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .inspect-detail {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .inspect-detail-faces {
+    gap: 8px;
+  }
+
+  .inspect-actions {
+    justify-content: stretch;
+  }
+
+  .inspect-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---- Motion ---------------------------------------------------------------------------------- */
+
+@keyframes inspect-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes inspect-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes inspect-rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspect-hover,
+  .inspect-scrim,
+  .inspect-sheet,
+  .inspect-detail {
+    animation: none;
+  }
+}

@@ -1,0 +1,115 @@
+/* The sign-in, sign-up, forgot-password and reset screens (`routes/login.tsx`,
+   `routes/reset-password.tsx`).
+
+   SCOPED. Every rule sits under `.auth-screen`, which only those two screens render, and the tokens
+   are defined there rather than on `:root`: `index.css` belongs to no task, and the shared `.panel`,
+   `.notice`, `.form-card` and `.link-button` rules it holds are reused here. Their tavern look
+   (colours, the framed board, the gold button) is `tavern.css`'s, under `.tavern`, which these
+   screens also carry; this file keeps only the layout and states that are the forms' own. */
+
+.auth-screen {
+  --auth-error: var(--opponent);
+  --auth-dim: var(--text-dim);
+  --auth-gap: 10px;
+}
+
+/* 16px at least: iOS Safari zooms the whole page into any focused field smaller than that, and the
+   shell's 15px would do it on every tap of Email or Password (the code field does the same). */
+.auth-screen .form-card input {
+  font-size: max(16px, 1em);
+}
+
+/* The account this browser is already signed in as, above a sign-in that would replace it. */
+.auth-screen .auth-signed-in {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* A field's own problem, under the field it belongs to. Colour AND text, never colour alone. */
+.auth-screen .auth-field-error {
+  margin: 2px 0 0;
+  color: color-mix(in srgb, var(--auth-error) 55%, var(--text));
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.auth-screen .form-card input[aria-invalid="true"] {
+  border-color: var(--auth-error);
+}
+
+.auth-screen .form-card input[aria-invalid="true"]:focus {
+  border-color: color-mix(in srgb, var(--auth-error) 70%, white);
+}
+
+.auth-screen .auth-hint {
+  margin: 0;
+  color: var(--auth-dim);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auth-screen .auth-hint strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The secondary ways on and out: forgot, the mode toggle, back to sign in. They wrap rather than
+   overflow at 360 px. */
+.auth-screen .auth-links,
+.auth-screen .auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+}
+
+.auth-screen .auth-link-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--auth-gap);
+}
+
+.auth-screen .auth-resend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.auth-screen .auth-cooldown {
+  color: var(--auth-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.auth-screen .link-button:disabled {
+  color: var(--auth-dim);
+  text-decoration: none;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.auth-screen .form-card button[type="submit"]:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-screen .auth-no-link {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-screen .auth-no-link .button-primary {
+  border-radius: 8px;
+  padding: 9px 16px;
+}
+
+/* Touch targets: the link-style buttons are text, so give them room to be pressed on a phone. */
+@media (pointer: coarse) {
+  .auth-screen .link-button,
+  .auth-screen .affix-button {
+    min-height: 44px;
+  }
+}

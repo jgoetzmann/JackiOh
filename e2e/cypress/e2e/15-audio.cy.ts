@@ -1,4 +1,4 @@
-// Polish task 2 (docs/polish/2-sound.md) `14-audio.cy.ts` — behaviours B38 and B39, on a real
+// Polish task 2 (docs/polish/2-sound.md) `15-audio.cy.ts` — behaviours B38 and B39, on a real
 // hotseat board in Chrome.
 //
 //   B38  On /dev/hotseat, before any gesture `__jackiohAudio.contextsCreated()` is 0. After one
@@ -27,14 +27,14 @@
 //   pnpm build:e2e
 //   pnpm --dir apps/web exec vite preview --port 5172 --strictPort
 //   E2E_BASE_URL=http://localhost:5172 pnpm --dir e2e exec cypress run --browser chrome \
-//     --spec cypress/e2e/14-audio.cy.ts
+//     --spec cypress/e2e/15-audio.cy.ts
 
 import { seedFor } from "../../support/config.ts";
 import { BOARD, LEGAL, cardId, handCardId, ts, zoneId } from "../../support/testids.ts";
 import type { GameStateLike, Lane, PlayerId } from "../../support/types.ts";
 
 /** Every spec sets a seed (BUILD M8). */
-const SEED = seedFor("14-audio");
+const SEED = seedFor("15-audio");
 const DECK_A = "01-aggro-a";
 const DECK_B = "01-aggro-b";
 

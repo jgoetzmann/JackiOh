@@ -19,7 +19,11 @@
  * `onCall` is the fault-injection seam: a test throws from it to fail one method mid-transaction.
  */
 
-import { createInMemoryRedeem, type RedemptionSettings } from "../../src/api/e2e-store";
+import {
+  createInMemoryRedeem,
+  createTransactionQueue,
+  type RedemptionSettings,
+} from "../../src/api/e2e-store";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -91,7 +95,7 @@ export type MemoryStoreOptions = {
 
 export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore {
   const tables = emptyTables();
-  let depth = 0;
+  const transactions = createTransactionQueue();
   let nextProfile = 1;
 
   const store = {
@@ -121,22 +125,22 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
     return clone(profile);
   };
 
+  // One transaction at a time, a nested one joining its parent (`createTransactionQueue`).
   store.tx = async <T>(fn: (t: Store) => Promise<T>): Promise<T> => {
-    if (depth > 0) return fn(store);
-    const snapshot = clone(tables);
-    depth += 1;
-    try {
-      return await fn(store);
-    } catch (error) {
-      for (const key of Object.keys(snapshot) as (keyof Tables)[]) {
-        // Restore in place: callers hold a reference to `tables`.
-        (tables[key] as unknown[]).length = 0;
-        (tables[key] as unknown[]).push(...(clone(snapshot[key]) as unknown[]));
+    if (transactions.active()) return fn(store);
+    return transactions.run(async () => {
+      const snapshot = clone(tables);
+      try {
+        return await fn(store);
+      } catch (error) {
+        for (const key of Object.keys(snapshot) as (keyof Tables)[]) {
+          // Restore in place: callers hold a reference to `tables`.
+          (tables[key] as unknown[]).length = 0;
+          (tables[key] as unknown[]).push(...(clone(snapshot[key]) as unknown[]));
+        }
+        throw error;
       }
-      throw error;
-    } finally {
-      depth -= 1;
-    }
+    });
   };
 
   // §9.4's six steps, shared with `src/api/e2e-store.ts`. `call` is charged for the transaction
@@ -233,6 +237,11 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
     countAttemptsByProfile: async (profileId, since) => {
       call("codes.countAttemptsByProfile");
       return tables.attempts.filter((a) => a.profileId === profileId && a.at >= since).length;
+    },
+    oldestAttemptAtByProfile: async (profileId, since) => {
+      call("codes.oldestAttemptAtByProfile");
+      const times = tables.attempts.filter((a) => a.profileId === profileId && a.at >= since).map((a) => a.at);
+      return times.length === 0 ? null : Math.min(...times);
     },
     countAttemptsByIp: async (ipHash, since) => {
       call("codes.countAttemptsByIp");

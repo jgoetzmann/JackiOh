@@ -496,7 +496,7 @@ describe("prompts (§10.6, M3-T3)", () => {
     expect(promptAnswers(mulligan)).toEqual([]);
   });
 
-  it("M3-T3 legalActions lists every option of the open prompt and offers the other player nothing", () => {
+  it("R211 legalActions lists every option of the open prompt, and concede for both seats besides (M3-T3)", () => {
     const state = board("legal-actions");
     const sink = sinkFor(state);
     const pending = must(
@@ -510,14 +510,15 @@ describe("prompts (§10.6, M3-T3)", () => {
       "the mode prompt",
     );
 
-    // §10.7: "with a prompt open `legalActions` offers only that prompt's answers", which is what
+    // §10.7: with a prompt open the policy draws from that prompt's answers alone, which is what
     // BUILD M3-T3's "legalActions lists every option" and R44's uniform answering both rest on.
-    // DISCREPANCY: src/reduce.ts's `legalActions` returns [] for every kind but `mulligan`
-    // ("Other prompt kinds arrive with M3-T3, which enumerates their answers here"). The list
-    // `promptAnswers` builds is right; the reducer has yet to hand it over.
-    expect(legalActions(state, "p1")).toEqual(promptAnswers(pending));
-    expect(legalActions(state, "p1")).toHaveLength(pending.options.length);
-    expect(legalActions(state, "p2")).toEqual([]);
+    // R211: `reduce` accepts a concede from either seat while the prompt is open, so both are
+    // offered it too — and the policy never takes it (R84).
+    expect(legalActions(state, "p1")).toEqual([...promptAnswers(pending), { type: "concede" }]);
+    expect(legalActions(state, "p1").filter((action) => action.type === "answer")).toHaveLength(
+      pending.options.length,
+    );
+    expect(legalActions(state, "p2")).toEqual([{ type: "concede" }]);
   });
 
   it("§10.8 the opponent's view shows pendingFor and none of the options", () => {

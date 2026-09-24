@@ -17,10 +17,11 @@
 // than reaching back through `ctx.self`.
 
 import { scheduleDelayed } from "../modifiers";
-import { resumeSelf } from "../prompts";
+import { SELF_KEY, resumeSelf } from "../prompts";
+import { RUN_MARKS_KEY } from "../work";
 import type { Effect } from "../script";
 import type { DelayedEffect } from "../state";
-import { playerOf, type PlayerSpec } from "./targets";
+import { playerOf, standsSinceScriptBegan, type PlayerSpec } from "./targets";
 
 /**
  * The `Script` key a delayed continuation lands on unless the card names another. `script.ts`
@@ -53,21 +54,35 @@ export function delay(args: {
   hook?: string;
   /** What the continuation carries across the boundary — the only place it may keep anything. */
   data?: Record<string, unknown>;
+  /**
+   * R174: the card on the field this effect is aimed at, if any. The effect is forgotten the moment
+   * that card leaves the field, so it never lands on a card that left and came back (#50).
+   */
+  watch?: string;
 }): Effect {
   return {
     kind: "delay",
     apply(ctx): void {
+      // R174, R76: an effect aimed at a card on the field is aimed at that stay. A target an earlier
+      // effect of the same list has already taken off the field — a fused card's other part bounced
+      // it (#52) or sacrificed it (#22) — has no stay left to watch, so the delayed effect fizzles
+      // now rather than waiting for whatever later stands under the same id (R78, R83).
+      if (args.watch !== undefined && !standsSinceScriptBegan(ctx, args.watch)) return;
       // `resumeSelf` is the one builder for the def id, the face and the instance id, so a delay
       // and a prompt store the same shape; only the hook differs, and only when a card says so.
-      const resume = {
-        ...resumeSelf(ctx, args.step, args.data ?? {}),
-        hook: args.hook ?? DELAYED_HOOK,
-      };
+      const built = resumeSelf(ctx, args.step, args.data ?? {});
+      // R127: a delayed effect re-enters as whatever is left of its card then, so a Death hook's
+      // snapshot (R89) is not carried past the hook that read it.
+      // Nor does it carry the run it was made in (`work.RUN_MARKS_KEY`): it resolves at its own R62
+      // point as a run of its own, and a card it watches is watched through `watch` (R174).
+      const { [SELF_KEY]: _snapshot, [RUN_MARKS_KEY]: _run, ...data } = built.data;
+      const resume = { ...built, data, hook: args.hook ?? DELAYED_HOOK };
       scheduleDelayed(
         ctx,
         ctx.controller,
         { phase: args.at.phase, player: playerOf(ctx, args.at.player) },
         resume,
+        args.watch,
       );
     },
   };

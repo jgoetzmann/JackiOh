@@ -21,9 +21,11 @@
 // data", never a closure), which is why the id is read back out of `ctx.data` defensively: `data`
 // is a `Record<string, unknown>` that survived JSON, so it is narrowed, never cast.
 //
-// R76's two fizzles are `effects/steal.ts`'s own no-ops, and deliberately not re-checked here: a
-// target that has left the field has no slot (`slotOf` is null) and a target already under this
-// player's control is refused by `takeControl`. R15 places the one that does land: the same lane on
+// R76's fizzles are the engine's, and deliberately not re-checked here: a target that has left the
+// field has no slot (`slotOf` is null), one dormant under a Stack pile is not the top of it (R13),
+// and one already under this player's control is refused, all by `effects/steal.ts`'s
+// `takeControl`; and a target that left the field and came back — bounced and replayed, or a Reborn
+// body — has had this entry dropped as it left, because the delay `watch`es it (R174). R15 places the one that does land: the same lane on
 // this side if free, else the first free zone of that row, and it stays with the opponent when the
 // row is full.
 //
@@ -88,6 +90,9 @@ const kpopFanatic: Script = {
         step: STEAL_STEP,
         hook: RESUME_HOOK,
         data: { [TARGET_KEY]: targetId },
+        // R174: a target that leaves the field before the steal fires is gone for good, even if the
+        // same card is back by then (bounced and replayed, or a Reborn body) — R76's fizzle.
+        watch: targetId,
       }),
     ];
   },

@@ -5,11 +5,21 @@
 // a single destroy are collected by the one state check that follows the whole effect (R59).
 
 import type { Effect } from "../script";
-import { runHook } from "../resolve";
 import type { CardInstance } from "../state";
-import { unitView } from "../layers";
-import { moveToZone } from "../zones";
+import { sacrificeNow } from "../stateCheck";
 import { adjacentTo, cardsInScope, instanceOf, type BoardScope, type TargetSpec } from "./targets";
+
+/**
+ * The mark every destroy leaves (§6.3, §4.5 step 1). A destroy is not a damage instance, so no
+ * unit's hit can be the lethal one any more: R42's "a death whose lethal damage instance came from
+ * this unit" and R89's `killerId` read `lastDamagedBy`, and a hit that landed earlier and did not
+ * kill must not be credited with a death this effect caused. Poisonous marks inside the damage
+ * instance itself (`damage.ts` step 7) and so keeps its source.
+ */
+function markDestroyed(card: CardInstance): void {
+  card.markedDestroyed = true;
+  delete card.lastDamagedBy;
+}
 
 /**
  * §6.3 Destroy: mark the card and stop. §4.5 step 1 collects it at the next state check, moves it
@@ -22,7 +32,7 @@ export function destroy(args: { target: TargetSpec }): Effect {
     apply(ctx): void {
       const card = instanceOf(ctx, args.target);
       if (card === null || card.zone.z !== "field") return;
-      card.markedDestroyed = true;
+      markDestroyed(card);
     },
   };
 }
@@ -45,7 +55,7 @@ export function destroyAll(args: BoardScope = {}): Effect {
   return {
     kind: "destroyAll",
     apply(ctx): void {
-      for (const card of cardsInScope(ctx, args)) card.markedDestroyed = true;
+      for (const card of cardsInScope(ctx, args)) markDestroyed(card);
     },
   };
 }
@@ -63,17 +73,19 @@ export function destroyAdjacentTo(args: { target: TargetSpec } & BoardScope): Ef
     kind: "destroyAdjacentTo",
     apply(ctx): void {
       const { target, ...scope } = args;
-      for (const card of adjacentTo(ctx, target, scope)) card.markedDestroyed = true;
+      for (const card of adjacentTo(ctx, target, scope)) markDestroyed(card);
     },
   };
 }
 
 /**
  * §6.3 Sacrifice: your own card goes from the field to the graveyard at once, bypassing
- * Indestructible, and it counts as a death — the destroyed counter (R55), the `destroyed` event and
- * the Death trigger, which reads the card as it was just before it left (R78). A unit token
- * vanishes instead of entering a graveyard (R11). Tribute may aim it at an enemy unit (#55), which
- * `allowEnemy` says.
+ * Indestructible, and it counts as a death — the destroyed counter (R55), the `destroyed` event,
+ * the Death trigger, which reads the card as it was just before it left (R78), and §6.1's Reborn,
+ * which brings a sacrificed Reborn unit back to its zone at 1 health as it would any other first
+ * death. That is §4.5's pass for one card, so it is `stateCheck.sacrificeNow` rather than a copy of
+ * it. A unit token vanishes instead of entering a graveyard (R11). Tribute may aim it at an enemy
+ * unit (#55), which `allowEnemy` says.
  */
 export function sacrifice(args: { target: TargetSpec; allowEnemy?: boolean }): Effect {
   return {
@@ -82,31 +94,7 @@ export function sacrifice(args: { target: TargetSpec; allowEnemy?: boolean }): E
       const card = instanceOf(ctx, args.target);
       if (card === null || card.zone.z !== "field") return;
       if (card.controller !== ctx.controller && args.allowEnemy !== true) return;
-
-      const lastKnown = JSON.parse(JSON.stringify(card)) as CardInstance;
-      ctx.state.counters.destroyed += 1;
-      const view = unitView(ctx.state, card);
-      ctx.events.push({
-        type: "destroyed",
-        instanceId: card.id,
-        defId: card.defId,
-        owner: card.owner,
-        attack: view.attack,
-        maxHealth: view.maxHealth,
-        killerId: card.lastDamagedBy ?? null,
-      });
-
-      const moved = moveToZone(ctx.state, card, "graveyard");
-      if (moved === "moved") {
-        ctx.events.push({
-          type: "enteredGraveyard",
-          instanceId: card.id,
-          defId: card.defId,
-          owner: card.owner,
-        });
-      }
-
-      runHook(ctx, lastKnown, "death");
+      sacrificeNow(ctx, card);
     },
   };
 }

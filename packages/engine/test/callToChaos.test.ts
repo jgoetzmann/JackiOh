@@ -224,8 +224,14 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
     run(sink, makeHandRadiant());
 
     expect(state.players.p1.hand.every((card) => card.radiant)).toBe(true);
-    // §6.3: the flag is set once, so only the two non-Radiant cards emit the event.
-    expect(eventsOfType(events, "radiantSet").map((event) => event.instanceId)).toEqual([first.id, second.id]);
+    // §6.3: the flag is set once and never unset; the cue goes out for all three, because a hand
+    // card is hidden from the opponent and a cue only for the changed ones would give away its face
+    // (R177, R97).
+    expect(eventsOfType(events, "radiantSet").map((event) => event.instanceId)).toEqual([
+      first.id,
+      second.id,
+      third.id,
+    ]);
     expect(enemy?.radiant).toBe(false);
   });
 
@@ -348,7 +354,9 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
     expect(cast?.defId).toBe(chaos.id);
     // R28: only Core exists, so a Radiant #95 still casts the *base* card.
     expect(cast?.radiant).toBe(false);
-    expect(chaosChainOf(cast ?? null)).toBe(1);
+    // R215: it was the chain's first cast while it resolved, and it has landed (R87) as the printed
+    // card again, carrying no link of that chain into whatever brings it back.
+    expect(chaosChainOf(cast ?? null)).toBe(0);
   });
 
   it("R28 the base form rolls exactly one of the ten effects, and all ten are reachable", () => {
@@ -404,7 +412,14 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
 
   it("R28 caps the recursion at CALL_TO_CHAOS_CHAIN_CAP casts", () => {
     // Every cast copy recurses again, which is the worst case the cap has to stop.
-    const state = game("chaos-chain", { chaosCry: () => [castRandomCallToChaos()] });
+    // Each cast reports the link it is as its own script runs; a test builder, not a card file.
+    const depths: number[] = [];
+    const state = game("chaos-chain", {
+      chaosCry: (ctx) => {
+        depths.push(chaosChainOf(ctx.self));
+        return [castRandomCallToChaos()];
+      },
+    });
     const events: GameEvent[] = [];
     const sink = sinkFor(state, events);
     const played = chaosCard(state); // the card the player played: chain 0
@@ -415,10 +430,10 @@ describe("Call to Chaos (§8 #95, R28, M3-T7)", () => {
     expect(state.counters.played).toBe(CALL_TO_CHAOS_CHAIN_CAP);
     expect(state.players.p1.graveyard).toHaveLength(CALL_TO_CHAOS_CHAIN_CAP);
 
-    // A cast Spell reaches the graveyard once its script has finished (§10.5 step 7), so the
-    // deepest link of the chain lands first and the one the player's card cast lands last.
-    const depths = state.players.p1.graveyard.map((card) => chaosChainOf(card));
-    expect(depths).toEqual(Array.from({ length: CALL_TO_CHAOS_CHAIN_CAP }, (_, i) => CALL_TO_CHAOS_CHAIN_CAP - i));
+    // The player's card cast link 1, which cast link 2, and so on to the cap.
+    expect(depths).toEqual(Array.from({ length: CALL_TO_CHAOS_CHAIN_CAP }, (_, i) => i + 1));
+    // R215: each landed in the graveyard (§10.5 step 7, R87) as the printed card again.
+    expect(state.players.p1.graveyard.every((card) => chaosChainOf(card) === 0)).toBe(true);
     expect(Math.max(...depths)).toBe(CALL_TO_CHAOS_CHAIN_CAP);
     expect(chaosChainCapReached(CALL_TO_CHAOS_CHAIN_CAP)).toBe(true);
     expect(chaosChainCapReached(CALL_TO_CHAOS_CHAIN_CAP - 1)).toBe(false);

@@ -14,6 +14,7 @@
     "gen:voice": "node scripts/gen-voice.mjs"
   },
   "dependencies": {
+    "@jackioh/ai": "workspace:*",
     "@jackioh/cards": "workspace:*",
     "@jackioh/engine": "workspace:*",
     "@jackioh/shared": "workspace:*",

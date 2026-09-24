@@ -99,6 +99,7 @@ missing or malformed value rather than failing later at the first request.
 | `PUBLIC_ORIGINS` | no | Allowed browser origins, for CORS and the WebSocket `Origin` check |
 | `NODE_ENV` | no | `development` \| `test` \| `production` |
 | `E2E` | no | BUILD M8's test-server mode. Must be false in production |
+| `TRUSTED_PROXY_HOPS` | no | R190: how many `X-Forwarded-For` entries, counted from the right, the deployment's own proxies append; the per-IP limits (§9.4 step 3, R157) key on that entry. `0` to `5`, default `0` (the header is ignored, and a request is keyed on the socket's peer address). Behind Render set it: `render.yaml` starts at `1`, then calibrate it from the `api.forwarded_for` log (docs/architecture.md §10, step 8). Without it, every request behind a proxy is keyed on the proxy's address |
 
 The client's half of the contract is `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
 `VITE_SERVER_HTTP_URL`, `VITE_SERVER_WS_URL` and `VITE_CATALOG_VERSION`. `PUBLIC_ENV_VARS` and

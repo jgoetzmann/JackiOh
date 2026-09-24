@@ -1,5 +1,6 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R170, in order.
+// name. One `it("R<n> …")` per §11 row, in ascending order: the same ids, in the same order, as
+// SPEC §11's table, gaps included (`pnpm rulings:coverage` compares the two).
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -136,6 +137,43 @@ const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
 const CARDS_FULLSEND_TEST = "../../cards/test/078-fullsend.test.ts";
 /** R169's client-side proof: the animation table's targets, checked against a rendered DOM. */
 const WEB_ANIMATION_TARGETS_TEST = "../../../apps/web/src/game/animation-targets.test.tsx";
+/** R171's and R172's card-side proofs: the six control-change cards and the stolen Reborn bodies. */
+const CARDS_CONTROL_CHANGE_TEST = "../../cards/test/control-change.test.ts";
+/** R173 to R179's proofs: the polish-4 edge-case hunt, one file per topic (docs/polish/4-edge-cases.md). */
+const CARDS_FORCED_ATTACKS_TEST = "../../cards/test/forced-attacks.test.ts";
+const CARDS_RE_ENTRY_TEST = "../../cards/test/re-entry.test.ts";
+const CARDS_COMBAT_WINDOWS_TEST = "../../cards/test/combat-windows.test.ts";
+const CARDS_HIDDEN_INFORMATION_TEST = "../../cards/test/hidden-information.test.ts";
+const CARDS_ECHO_AND_EXILE_TEST = "../../cards/test/echo-and-exile.test.ts";
+const CARDS_FUSE_REGISTRY_TEST = "../../cards/test/fuse-registry.test.ts";
+/** R209 to R211's proofs: the hunt's second round (docs/polish/4-edge-cases.md). */
+const CARDS_LASTING_EFFECTS_TEST = "../../cards/test/lasting-effects.test.ts";
+const CARDS_PLAYS_AND_CASTS_TEST = "../../cards/test/plays-and-casts.test.ts";
+const CARDS_PLAY_CHOICES_TEST = "../../cards/test/play-choices.test.ts";
+/** R212 to R214's proofs, and the round's proofs of older rows: the hunt's third round. */
+const CARDS_TRIGGER_STAYS_TEST = "../../cards/test/trigger-stays.test.ts";
+const CARDS_RESOLVING_FACE_TEST = "../../cards/test/resolving-face.test.ts";
+const CARDS_AFTER_RESOLUTION_TEST = "../../cards/test/after-resolution.test.ts";
+const CARDS_STACKS_AND_REBORN_TEST = "../../cards/test/stacks-and-reborn.test.ts";
+const CARDS_HAND_RETURNS_TEST = "../../cards/test/hand-returns.test.ts";
+const CARDS_TRIBUTES_TEST = "../../cards/test/tributes.test.ts";
+/** R215 and R216's proofs: the hunt's fourth round, past its three-round cap. */
+const CARDS_GAME_OVER_TEST = "../../cards/test/game-over.test.ts";
+/** R217 to R219's proofs: the hunt's fifth round. */
+const CARDS_CALL_TO_ARMS_TEST = "../../cards/test/069-call-to-arms.test.ts";
+const CARDS_CORPSE_EATER_TEST = "../../cards/test/089-corpse-eater.test.ts";
+/** R220 to R223's proofs: the hunt's sixth round. */
+const CARDS_TURN_CLOCK_TEST = "../../cards/test/turn-clock-and-legality.test.ts";
+const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
+/** R224's proofs: the hunt's seventh round. */
+const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
+/** R225 and R226's proofs: the hunt's eighth round, where it was halted. */
+const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
+/** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
+const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
+const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
+const AI_DECIDE_TEST = "../../ai/test/decide.test.ts";
+const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
 /** R203's and R204's proofs (SPEC §10.11): the client's sound cue table, and the director that plays it. */
 const WEB_AUDIO_CUES_TEST = "../../../apps/web/src/audio/cues.test.ts";
 const WEB_AUDIO_DIRECTOR_TEST = "../../../apps/web/src/audio/director.test.ts";
@@ -155,7 +193,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
@@ -179,10 +217,12 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by rulings-a.test.ts "R4 caps the hand at 10 and burns an extra draw to the graveyard";
-  // callToChaos.test.ts "R4 a full hand burns what the draw and the added cards cannot fit".
+  // callToChaos.test.ts "R4 a full hand burns what the draw and the added cards cannot fit";
+  // effects-cost.test.ts and the cards package's hand-returns.test.ts "R4 …" (a burned card keeps
+  // its cost: #31's +1 and #37r's 1 less are the price of a return it never made).
   it("R4 caps the hand at 10 and burns the overflow to the graveyard", () => {
     expect(config.HAND_CAP).toBe(10);
-    provenIn(4, "rulings-a.test.ts", "callToChaos.test.ts");
+    provenIn(4, "rulings-a.test.ts", "callToChaos.test.ts", "effects-cost.test.ts", CARDS_HAND_RETURNS_TEST);
   });
 
   // Proved by rulings-a.test.ts "R5 does not restrict attacks by lane: any unit may attack any enemy unit or
@@ -244,9 +284,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R13 keeps a card under a Stack off the field: it neither acts nor can be
   // targeted"; combat-validation.test.ts "R13 refuses an attack by a card dormant under a Stack (§3.2)",
   // "R13 refuses a dormant card under a Stack as a target too (§3.2)"; effects-radiant.test.ts "R13 offers
-  // only the top of a Stack pile, never the dormant card beneath".
+  // only the top of a Stack pile, never the dormant card beneath"; the cards package's
+  // stacks-and-reborn.test.ts "R13 …" (§4.5's check never collects a dormant card).
   it("R13 keeps a card dormant under a Stack off the field", () => {
-    provenIn(13, "rulings-a.test.ts", "combat-validation.test.ts", "effects-radiant.test.ts");
+    provenIn(13, "rulings-a.test.ts", "combat-validation.test.ts", "effects-radiant.test.ts", CARDS_STACKS_AND_REBORN_TEST);
   });
 
   // M4 owns #52 Silly Silas itself; the rotation subsystem is the machinery its script calls.
@@ -420,9 +461,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // M4 owns #83 Transmogulate and its pool: its card test proves the ruling on the real script.
   // Proved by rulings-a.test.ts "R35 replaces a board card in place with its own type, and the replaced card
   // ceases to exist"; effects-transform.test.ts "R35 the replaced card ceases to exist: no graveyard, no
-  // exile and no Death", "R35 replaces a hand card and keeps a library card at its index".
+  // exile and no Death", "R35 replaces a hand card and keeps a library card at its index"; the cards
+  // package's hidden-information.test.ts "R35 …" (an Immutable library card is replaced too).
   it("R35 replaces a board card in place with its own type, and the replaced card ceases to exist", () => {
-    provenIn(35, "rulings-a.test.ts", "effects-transform.test.ts");
+    provenIn(35, "rulings-a.test.ts", "effects-transform.test.ts", CARDS_HIDDEN_INFORMATION_TEST);
   });
 
   // Proved by rulings-a.test.ts "R36 lets only the active player offer a draw, once a turn, and a decline
@@ -607,10 +649,11 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
 
   // Proved by rulings-b.test.ts "R60 picks different cards among the non-Radiant ones, all of them when fewer
   // exist, and none when none are left"; effects-radiant.test.ts "R60 chooses only among non-Radiant
-  // cards", "R60 does nothing when no non-Radiant card is left", and 1 more; comboIndex.test.ts "R60 grade
-  // D makes 2 different random hand cards cost 1 less", "R60 grade B picks only among non-Radiant hand
-  // cards, and does nothing when none are left".
-  it("R60 picks different cards, all of them when fewer exist, and nothing when none are left", () => {
+  // cards", "R60 changes no card and draws nothing when no non-Radiant card is left, though the hidden
+  // hand is cued", and 1 more; comboIndex.test.ts "R60 grade D makes 2 different random hand cards cost
+  // 1 less", "R60 grade B picks only among non-Radiant hand cards, and changes none when none are left,
+  // though it cues the hand". The cues are R177's: a pick over a hidden zone is cued whatever it changed.
+  it("R60 picks different cards, all of them when fewer exist, and changes none when none are left", () => {
     provenIn(60, "rulings-b.test.ts", "effects-radiant.test.ts", "comboIndex.test.ts");
   });
 
@@ -670,9 +713,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-b.test.ts "R68 orders triggers active side first, units by lane, then backrow, hand and
   // graveyard, delayed by creation"; turn.test.ts "R68 resolves two end-of-turn triggers on one side in
   // lane order"; statecheck.test.ts "R68: one effect kills six units in one check and fires six Death
-  // triggers, active side first, then lane order".
+  // triggers, active side first, then lane order"; the cards package's tributes.test.ts "R68 …" (a
+  // Tribute's Deaths in lane order, whatever order the play lists them in).
   it("R68 orders triggers by side, then lane, then hand and graveyard, and delayed effects by creation", () => {
-    provenIn(68, "rulings-b.test.ts", "turn.test.ts", "statecheck.test.ts");
+    provenIn(68, "rulings-b.test.ts", "turn.test.ts", "statecheck.test.ts", CARDS_TRIBUTES_TEST);
   });
 
   // Proved by rulings-b.test.ts "R69 collects an Indestructible unit whose max health falls to 0, and leaves
@@ -1080,9 +1124,11 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by 033-unstable-clone-machine.test.ts "R119 a permanent does not answer its own arrival:
-  // it starts counting from the next play".
+  // it starts counting from the next play" and "R119 a Clone Machine a played Heroic Power's Recruit
+  // put on the field does not answer that play", and hidden-information.test.ts "R119 …", which pins
+  // that `cardResolved.arrivedDuring` reaches neither seat's view.
   it("R119 keeps a permanent from answering the play that put it on the field", () => {
-    provenIn(119, "../../cards/test/033-unstable-clone-machine.test.ts");
+    provenIn(119, "../../cards/test/033-unstable-clone-machine.test.ts", CARDS_HIDDEN_INFORMATION_TEST);
   });
 
   // Proved by 041-sheepish.test.ts "R120 an Also clause stands on its own: an Immutable target
@@ -1152,7 +1198,9 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by rulings-c.test.ts "R129 has a fizzling effect draw no randomness, which is why a
-  // whole-hand discard is its own verb".
+  // whole-hand discard is its own verb". What counts as nothing to do over hidden cards is R177's,
+  // proved by hidden-information.test.ts "R177 #42 rolls every remaining library card …" and "R177
+  // #23's cue does not tell p2 whether p1's hidden hand was already all Radiant …".
   it("R129 has a fizzling effect draw no randomness, so rngCursor never depends on the board", () => {
     provenIn(129, "rulings-c.test.ts");
   });
@@ -1356,9 +1404,10 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-c.test.ts "R155 flags a Spell that asks to return as step 7 lands it in the
   // graveyard, and clears it that turn", "R155 makes the flag alone the graveyard's gate, so this
   // turn's play log is not enough"; trigger-zones.test.ts "R155 the flag, not the turn log, is what
-  // lets a graveyard spell answer its return".
+  // lets a graveyard spell answer its return"; the cards package's hand-returns.test.ts "R155 …" (the
+  // flag is cleared as the card leaves the graveyard).
   it("R155 sets the return-to-hand flag at step 7 and clears it at the end of that turn", () => {
-    provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts");
+    provenIn(155, "rulings-c.test.ts", "trigger-zones.test.ts", CARDS_HAND_RETURNS_TEST);
   });
 
   // Proved by death-pause.test.ts "R156 owes step 3 in full rather than firing a Death hook into an
@@ -1481,6 +1530,224 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(170, SERVER_CODES_TEST);
   });
 
+  // Proved by control-change.test.ts's "R171 …" tests (every verb, Rush and Charge, the fresh
+  // exertion, same-side moves, Stack piles, the round trip, the opponent's turn),
+  // control-change.property.test.ts (fast-check), and the cards package's control-change.test.ts
+  // with #36 radiant, #49, #50, #52, #86 and #87.
+  it("R171 makes a change of control an entry: summoning sick, with a fresh exertion", () => {
+    provenIn(171, "control-change.test.ts", "control-change.property.test.ts", CARDS_CONTROL_CHANGE_TEST);
+  });
+
+  // Proved by control-change.test.ts "R172 …" (a fixture Reborn unit) and the cards package's
+  // control-change.test.ts with #81 Radiant Saintess and radiant #3 Right-house defender.
+  it("R172 has a stolen unit die as its controller's: Death for that player, Reborn on that side", () => {
+    provenIn(172, "control-change.test.ts", CARDS_CONTROL_CHANGE_TEST);
+  });
+
+  // Proved by forced-attacks.test.ts's "R173 …" tests: #86 stealing #9 mid-run, and radiant #60's
+  // tokens against a #52 Silly Silas that crossed onto their side.
+  it("R173 makes a forced attack on an enemy only: a target on the attacker's own side is passed over", () => {
+    provenIn(173, CARDS_FORCED_ATTACKS_TEST);
+  });
+
+  // Proved by re-entry.test.ts's "R174 …" tests (#50's steal after a Stack, a bounce and replay, a
+  // Reborn), forced-attacks.test.ts's (a run against a Reborn body), after-resolution.test.ts's (a
+  // trap answering a play an earlier trap took off the field) and tributes.test.ts's (a target the
+  // play's own Tribute sacrificed).
+  it("R174 makes a card that left the field and came back a new arrival for the effects aimed at it", () => {
+    provenIn(174, CARDS_RE_ENTRY_TEST, CARDS_FORCED_ATTACKS_TEST, CARDS_AFTER_RESOLUTION_TEST, CARDS_TRIBUTES_TEST);
+  });
+
+  // Proved by re-entry.test.ts's "R175 …" tests: a Rush Token given Reborn, and a Reborn Fiender
+  // fused by #85 that died on top of its pile; stacks-and-reborn.test.ts's: a Bread Token's X/X.
+  it("R175 has Reborn bring back a unit token, and return a unit onto the pile it died on top of", () => {
+    provenIn(175, CARDS_RE_ENTRY_TEST, CARDS_STACKS_AND_REBORN_TEST);
+  });
+
+  // Proved by combat-windows.test.ts's "R176 …" tests: First Strike first, and Cleave's Trample.
+  it("R176 has My Pawn's projection follow the combat: First Strike first, every Cleave hit counted", () => {
+    provenIn(176, CARDS_COMBAT_WINDOWS_TEST);
+  });
+
+  // Proved by hidden-information.test.ts's "R177 …" tests: a face-down prompt option, Transmogulate's
+  // replacements (kept hidden after their replacement goes public), cost changes and buffs in a
+  // hidden hand or a library, and a modifier id no hidden card numbered. The row's known limit, a
+  // face-down trap named in `legalActions` by an id seen while it was public, is pinned by an
+  // expected failure in turn-clock-and-legality.test.ts.
+  it("R177 hides what R97 did not name: face-down prompt options, replaced hidden cards, hidden costs", () => {
+    provenIn(177, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by echo-and-exile.test.ts's "R178 …" tests: True Strike and Pocket Chaos with Twinspell.
+  it("R178 makes a Spell's 'exile this' its landing, and takes Twinspell's grant as the Spell is played", () => {
+    provenIn(178, CARDS_ECHO_AND_EXILE_TEST);
+  });
+
+  // Proved by the cards package's fuse-registry.test.ts "R179 …" (two matches, one process, one
+  // fusion slot, with #85) and by this package's fuse-registry.test.ts "R179 …" (the scripts rebuilt
+  // from the id alone after a JSON round trip or a wholesale re-registration, and a fusion of a
+  // fusion's parenthesised id read back one way).
+  it("R179 names a fused definition's ingredients in its id, so matches in one process never share one", () => {
+    provenIn(179, CARDS_FUSE_REGISTRY_TEST, "fuse-registry.test.ts");
+  });
+
+  // R180 to R184 are the practice handicap (§9.9), proved by handicap.test.ts against createGame,
+  // beginGame, reduce and fold directly. R180's numbers are §9.9's table, so they are asserted here
+  // against `config.ts` as the "decide" rows' are.
+  it("R180 gives each seat an optional handicap, stores none equal to a human's, and folds it", () => {
+    expect(config.HUMAN_HANDICAP).toEqual({
+      deckSize: config.DECK_SIZE,
+      manaBonus: 0,
+      manaCap: config.MAX_MANA,
+      extraOpeningCards: 0,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.DIFFICULTIES).toEqual(["easy", "medium", "hard"]);
+    expect(config.AI_DIFFICULTY.easy).toEqual(config.HUMAN_HANDICAP);
+    expect(config.AI_DIFFICULTY.medium).toEqual({
+      deckSize: 25,
+      manaBonus: 1,
+      manaCap: 5,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.AI_DIFFICULTY.hard).toEqual({
+      deckSize: 30,
+      manaBonus: 1,
+      manaCap: 7,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 1,
+    });
+    provenIn(180, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R181 …": Medium refreshes to 2 on its first turn and 5 from its
+  // fourth, Hard to 7 from its sixth, Hinder and next-turn gains still apply on top.
+  it("R181 caps a handicapped seat's max mana at min(turns + bonus, cap), modifiers on top", () => {
+    provenIn(181, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R182 …": the mulligan sees 5 cards for a Medium or Hard p2 and 4
+  // for p1, and a Quickdraw card replaces one of those draws.
+  it("R182 adds a handicap's extra opening cards to §2.1's table entry", () => {
+    provenIn(182, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R183 …": two `drawn` events, fatigue N then N + 1, and a
+  // cast-on-draw prompt in the first draw owing the second to `state.work`.
+  it("R183 makes a handicap's extra draws separate §2.4 draws, each with its own chain and fatigue", () => {
+    expect(config.DRAWS_PER_TURN).toBe(1);
+    provenIn(183, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R184 …": a 30-card Hard p2 deck is accepted, and a wrong size,
+  // a duplicate or a Token is refused naming the seat.
+  it("R184 holds a handicapped seat's deck to its handicap's deck size and §2.6's other rules", () => {
+    provenIn(184, "handicap.test.ts");
+  });
+
+  // Proved by packages/ai observe.test.ts "R185 …": redact hashes identically across hidden-card
+  // differences, determinize loses nothing the seat can see, and decide does not move.
+  it("R185 lets the AI decide only from what its seat may know, simulating on determinizations", () => {
+    provenIn(185, AI_OBSERVE_TEST);
+  });
+
+  // Proved by packages/ai shadowBan.test.ts "R186 …": every entry is a real card with a sweep flag,
+  // and no AI deck is dealt one.
+  it("R186 keeps the AI's shadow ban to its own deck-building, each entry with a sweep reason", () => {
+    provenIn(186, AI_SHADOW_BAN_TEST);
+  });
+
+  // Proved by apps/web practice/core.test.ts "R187 …": a practice game folds from
+  // `(seed, decks, handicaps, log)` to the worker's hash at every difficulty.
+  it("R187 runs practice in the browser's worker, recording nothing and replaying exactly", () => {
+    provenIn(187, WEB_PRACTICE_CORE_TEST);
+  });
+
+  // Proved by packages/ai decide.test.ts "R188 …": an unanswered offer is declined at once, and no
+  // match log holds a concede, an offer or an accepting answer from the AI.
+  it("R188 has the AI decline every draw offer at once and never concede or offer one", () => {
+    provenIn(188, AI_DECIDE_TEST);
+  });
+
+  // R190 to R194 are sign-in and invite-code rulings (polish task 5, docs/polish/5-sign-in.md). Like
+  // R157 to R170 their proofs live outside the engine, in the server, the shared package and the web
+  // client, so each index row names the files and asserts each still carries a test named after it.
+  const SERVER_CLIENT_ADDRESS_TEST = "../../../apps/server/test/api/client-address.test.ts";
+  const SERVER_CODE_INPUT_PARITY_TEST = "../../../apps/server/test/api/code-input-parity.test.ts";
+  const SERVER_REDEEM_FEEDBACK_TEST = "../../../apps/server/test/api/redeem-feedback.test.ts";
+  const SHARED_CODES_TEST = "../../shared/test/codes.test.ts";
+  const WEB_CODE_FIELD_TEST = "../../../apps/web/src/auth/CodeField.test.tsx";
+  const WEB_AUTH_FLOWS_TEST = "../../../apps/web/src/net/auth-flows.test.ts";
+  const WEB_REDIRECT_TEST = "../../../apps/web/src/auth/redirect.test.ts";
+  const WEB_LOGIN_FLOWS_TEST = "../../../apps/web/src/routes/login-flows.test.tsx";
+  const WEB_GATE_REFRESH_TEST = "../../../apps/web/src/net/gate-refresh.test.tsx";
+  const WEB_GATE_SESSION_CHANGES_TEST = "../../../apps/web/src/net/gate-session-changes.test.tsx";
+  const WEB_INVITE_FEEDBACK_TEST = "../../../apps/web/src/routes/invite-feedback.test.tsx";
+  const WEB_RESET_PASSWORD_TEST = "../../../apps/web/src/routes/reset-password.test.tsx";
+  const WEB_SHELL_GATE_TEST = "../../../apps/web/src/routes/shell-gate.test.tsx";
+
+  // Proved by client-address.test.ts's "R190 …" rows: `clientAddress` takes the rightmost trusted
+  // hop and never CF-Connecting-IP or X-Real-IP, requests with different leftmost entries share one
+  // per-IP bucket, too few entries fall back to the peer address, the default trusts no hop,
+  // `loadEnv` bounds TRUSTED_PROXY_HOPS, an IPv6 client is keyed by its /56, and `api.forwarded_for`
+  // reports the fewest entries seen, never an address.
+  it("R190 keys a per-IP limit on the rightmost trusted X-Forwarded-For hop, then the peer", () => {
+    provenIn(190, SERVER_CLIENT_ADDRESS_TEST);
+  });
+
+  // Proved by the shared table in codes.test.ts (the reading itself), code-input-parity.test.ts
+  // (the server redeems every row the table calls canonical and answers R145's identical error for
+  // the rest) and CodeField.test.tsx (the field refuses an excluded character instead of dropping it).
+  it("R191 reads a typed or pasted code one way on both sides, never dropping or mapping a character", () => {
+    provenIn(191, SHARED_CODES_TEST, SERVER_CODE_INPUT_PARITY_TEST, WEB_CODE_FIELD_TEST);
+  });
+
+  // Proved by redeem-feedback.test.ts (§9.4 steps 2 and 3 and R109's limit answer 429 with
+  // `Retry-After` and `details.retryAfterMs`, next to the unchanged `invalid_code` bytes, and the
+  // status says when an account's tries come back), auth-flows.test.ts (a provider 429 is a rate
+  // limit, and resend and recover stay neutral for every answer that could name an account),
+  // login-flows.test.tsx (the per-address interval, a sign-up's included) and
+  // invite-feedback.test.tsx (the screen shows each wait and lifts by itself when it runs out).
+  it("R192 reports a rate limit as a rate limit, with its wait, never as the identical error", () => {
+    provenIn(192, SERVER_REDEEM_FEEDBACK_TEST, WEB_AUTH_FLOWS_TEST, WEB_LOGIN_FLOWS_TEST, WEB_INVITE_FEEDBACK_TEST);
+  });
+
+  // Proved by redirect.test.ts (a link is parsed once and scrubbed, error text is never read, a held
+  // recovery session lives in this tab's memory and sessionStorage, never localStorage, and one
+  // abandoned after its access token expired is renewed, then revoked), login-flows.test.tsx (no
+  // confirmation link signs this browser in, not even for the sign-up it started; a link is renewed
+  // before it is checked, so the refresh token in its URL is spent; a recovery link is held at once
+  // for a reset this browser asked for, and otherwise only once the player types the address it was
+  // sent to; nothing from a link is shown or filled into a form; and a link's session that is not
+  // kept is revoked), reset-password.test.tsx (the reset screen says when it replaces another
+  // account's session, asks before its exits spend the link, and abandons it when left) and
+  // shell-gate.test.tsx (a link on any path is scrubbed and handed to /login).
+  it("R193 reads an emailed auth link once, scrubs it, and never signs this browser in from a confirmation", () => {
+    provenIn(193, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST, WEB_RESET_PASSWORD_TEST, WEB_SHELL_GATE_TEST);
+  });
+
+  // Proved by gate-refresh.test.tsx (renewal near expiry and on a 401, and the expired sign-in
+  // screen), gate-session-changes.test.tsx (a renewal the device outlived, and a renewal of the same
+  // session, here or in another tab, keeps an open match socket), auth-flows.test.ts (single-flight
+  // refresh, and revocation on sign-out, an expired session renewed first), invite-feedback.test.tsx
+  // (a redemption refused as unauthorised is renewed and sent again), reset-password.test.tsx (a
+  // recovery session that runs out while the form is open is renewed before the new password is
+  // sent) and the server's auth.test.ts (the API honours a token only while the provider still has
+  // its session, remembering a live answer for AUTH_SESSION_LIVE_CACHE_SECONDS, and an unreachable
+  // provider signs nobody out).
+  it("R194 renews a session once near expiry or on a 401, revokes it on sign-out, and the API honours only a live one", () => {
+    provenIn(
+      194,
+      WEB_GATE_REFRESH_TEST,
+      WEB_GATE_SESSION_CHANGES_TEST,
+      WEB_AUTH_FLOWS_TEST,
+      WEB_INVITE_FEEDBACK_TEST,
+      WEB_RESET_PASSWORD_TEST,
+      SERVER_AUTH_TEST,
+    );
+  });
+
   // R203 and R204 are client rulings (SPEC §10.11): the engine makes neither, and the proofs live in
   // `apps/web/src/audio`, where the cue table and the director are. Neither changes a rule.
 
@@ -1502,6 +1769,117 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // `transformed` and `fused` never speak, and death and trap lines outrank play and cast lines.
   it("R204 speaks a play line on cardPlayed, a death line on destroyed, and a trap's line when it fires", () => {
     provenIn(204, WEB_AUDIO_CUES_TEST);
+  });
+
+  // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,
+  // destroyed, and stolen and made Radiant by #49.
+  it("R209 has a permanent's lasting effect last while it is on the field, and follow its face", () => {
+    provenIn(209, CARDS_LASTING_EFFECTS_TEST);
+  });
+
+  // Proved by plays-and-casts.test.ts's "R210 …" tests: The Rock tributing a Reborn unit, and a
+  // radiant Right-house defender whose Death summons into the row The Rock is going to.
+  it("R210 holds the zone a play names while its Tribute is paid", () => {
+    provenIn(210, CARDS_PLAYS_AND_CASTS_TEST);
+  });
+
+  // Proved by prompts.test.ts and reduce.test.ts "R211 …" (a fixture prompt, the mulligan) and the
+  // cards package's play-choices.test.ts with #51 KY's Private Tutor's prompt.
+  it("R211 offers concede to both seats while a prompt is open, which the policy never takes", () => {
+    provenIn(211, "prompts.test.ts", "reduce.test.ts", CARDS_PLAY_CHOICES_TEST);
+  });
+
+  // Proved by stays.test.ts "R212 …" (the event stream's reading) and the cards package's
+  // trigger-stays.test.ts "R212 …": #91 and #32 on a Reborn body, #89 drawn after a death, and #32
+  // drawing for the player who controlled it at the kill that #86's Death then stole it from.
+  it("R212 offers an event to the cards as they stood when it happened", () => {
+    provenIn(212, "stays.test.ts", CARDS_TRIGGER_STAYS_TEST);
+  });
+
+  // Proved by resolving-face.test.ts "R213 …": a Gifted Program stolen after firing, one bounced and
+  // replayed, and a cheap card played before one arrived.
+  it("R213 counts Gifted Program's first cheap card over its controller's plays that turn", () => {
+    provenIn(213, CARDS_RESOLVING_FACE_TEST);
+  });
+
+  // Proved by resolving-face.test.ts "R214 …": #87 radiant's skip, #48 radiant's enemy-only switch
+  // and a crafted Bigot + Twisted Sorcerer, each made Radiant by #64 as it is played.
+  it("R214 reads a play's targets and modes against the face it will resolve with", () => {
+    provenIn(214, CARDS_RESOLVING_FACE_TEST);
+  });
+
+  // Proved by hand-returns.test.ts "R215 …": a Corpse Eater that fed in hand, discarded and brought
+  // back by Reminisce, and a crafted card a full hand burns.
+  it("R215 resets a hand or library card that reaches a graveyard or exile, and keeps a hand's price in the hand", () => {
+    provenIn(215, CARDS_HAND_RETURNS_TEST);
+  });
+
+  // Proved by game-over.test.ts "R216 …": Stockpile's heal after the cast that killed its hero, and
+  // My Pawn's consumption after the AI turn that ended the game. The fuzz monitor's I5 checks it in
+  // every random game.
+  it("R216 resolves nothing after the check that ends the game", () => {
+    provenIn(216, CARDS_GAME_OVER_TEST);
+  });
+
+  // Proved by draw.test.ts "R217 …" (a fixture cast whose script draws, capped as one chain) and the
+  // cards package's plays-and-casts.test.ts "R217 …": CN-Virus cast under /fullsend's Combo draw.
+  it("R217 has a draw a cast-on-draw cast makes continue that cast's chain", () => {
+    provenIn(217, "draw.test.ts", CARDS_PLAYS_AND_CASTS_TEST);
+  });
+
+  // Proved by 069-call-to-arms.test.ts "R218 …": a Rush Token card #33 shuffled in is passed over.
+  it("R218 has a Recruit pass over a unit-token card in the library", () => {
+    provenIn(218, CARDS_CALL_TO_ARMS_TEST);
+  });
+
+  // Proved by 089-corpse-eater.test.ts "R219 …": a unit #46 starved below 0 max health feeds nothing.
+  it("R219 never lets a gained stat be a loss", () => {
+    provenIn(219, CARDS_CORPSE_EATER_TEST);
+  });
+
+  // Proved by combat-windows.test.ts "R220 …": fixture traps in §4.2 step 4's window that destroy,
+  // steal or move the attacker or its target, or swap the boards, with and without a question
+  // first, and a My Pawn after a trap that destroyed the attacker.
+  it("R220 resolves a declared attack only while it stands as it was declared", () => {
+    provenIn(220, CARDS_COMBAT_WINDOWS_TEST);
+  });
+
+  // Proved by turn-clock-and-legality.test.ts "R221 …": #80 Zao Gao's two discards listed the other
+  // way round leave the graveyard an offered answer leaves.
+  it("R221 takes an answer's picks in the order the prompt offered them", () => {
+    provenIn(221, CARDS_TURN_CLOCK_TEST);
+  });
+
+  // Proved by 097-zephyrs.test.ts and hidden-information.test.ts "R222 …": the offer is the same
+  // whichever face-down trap the opponent holds and whatever the order of the caster's library.
+  it("R222 plays Zephyrs' dry run on what its player may read", () => {
+    provenIn(222, CARDS_ZEPHYRS_TEST, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R223 …": two games through createGame whose decks differ
+  // only in a card that never shows.
+  it("R223 numbers a deck's cards in an order that says nothing about the deck", () => {
+    provenIn(223, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by setup-and-mulligan.test.ts "R224 …": a cast-on-draw card the opening draw or a
+  // mulligan's replacement draws reach asks its caster, and setup opens no mulligan over the
+  // question; the mulligan's answer names its prompt.
+  it("R224 has setup wait for a cast's question before it goes on", () => {
+    provenIn(224, CARDS_SETUP_TEST);
+  });
+
+  // Proved by setup-and-mulligan.test.ts "R225 …": two games whose decks differ only in whether one
+  // seat holds a Quickdraw card give the other seat the same view — #100's price after the
+  // mulligans, the deal's events, and the counts while setup waits on a cast's question.
+  it("R225 deals a Quickdraw card as the last of the opening draws it replaces, counted as a draw", () => {
+    provenIn(225, CARDS_SETUP_TEST);
+  });
+
+  // Proved by paused-sequences.test.ts "R226 …": a Tribute whose Death asks its controller to discard
+  // a card, answered with the card being played, leaves that card in the graveyard alone.
+  it("R226 plays no card that left its owner's hand before §10.5 step 4", () => {
+    provenIn(226, CARDS_PAUSED_SEQUENCES_TEST);
   });
 });
 

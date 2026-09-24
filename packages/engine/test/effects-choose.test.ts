@@ -223,19 +223,20 @@ describe("the choose effects (§6.3, §10.6, M3-T1)", () => {
     const ctx = ctxFor(state, self);
     run(ctx, [effect]);
     expect(state.pending).toMatchObject({ kind: "target", prompt: "Choose a target", min: 1, max: 1 });
-    // Each option is labelled with the card's name, or the side whose hero it is.
+    // Each option is labelled with the card's name, or the side whose hero it is, and keyed by what
+    // it selects, so two cards of one name are still two keys (§10.6: the key is what is sent back).
     expect(state.pending?.options).toEqual([
       {
-        key: `instance:${taunter.name}`,
+        key: `instance:${enemy.id}`,
         label: taunter.name,
         selection: { pick: "instance", instanceId: enemy.id },
       },
       {
-        key: `instance:${fieldCard.name}`,
+        key: `instance:${enemyBackrow.id}`,
         label: fieldCard.name,
         selection: { pick: "instance", instanceId: enemyBackrow.id },
       },
-      { key: "hero:p2's hero", label: "p2's hero", selection: { pick: "hero", player: "p2" } },
+      { key: "hero:p2", label: "p2's hero", selection: { pick: "hero", player: "p2" } },
     ]);
 
     // An empty scope opens no prompt and emits nothing: the effect fizzles and the card resolves.

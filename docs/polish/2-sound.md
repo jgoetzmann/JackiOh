@@ -904,8 +904,8 @@ Trap → `trap`. That gives 43 units × 2 + 66 × 1 = **152 files**.
 35. **B35**: The 152 expected files exist under `apps/web/public/audio/voice/`, each has `ftyp` at byte 4 and brand `M4A ` at byte 8, the manifest lists exactly those keys with each file's byte size and its recomputed `voiceHash`, the directory holds nothing else, and every file's MP4 header (`moov`/`mvhd`, priming frames included) puts it within `VOICE_FILE_MAX_MS` (voice-assets.test.ts).
 36. **B36**: The voice set fits the budget: Σ ceil(bytes/4096) × 4096 ≤ `VOICE_BUDGET_BYTES` (voice-assets.test.ts).
 37. **B37**: `node apps/web/scripts/gen-voice.mjs --check` exits 0 on the committed tree. Run with `--root` on a temp copy whose `core-004` play line was edited, it exits 1 and prints a line starting `core-004-play` (voice-assets.test.ts).
-38. **B38**: In Cypress Chrome on `/dev/hotseat`, before any gesture `__jackiohAudio.contextsCreated()` is 0. After one click on the board it is 1 and `state()` is neither `"locked"` nor `"unsupported"`, and playing a unit from hand through the UI appends a `voice` log entry with that defId and `line: "play"` (14-audio.cy.ts).
-39. **B39**: In Cypress Chrome, after clicking `audio-toggle` and reloading, the toggle is `aria-pressed="true"` and playing a card appends nothing to the log, and `GET /audio/voice/core-004-play.m4a` answers 200 with an `audio/*` content type (14-audio.cy.ts).
+38. **B38**: In Cypress Chrome on `/dev/hotseat`, before any gesture `__jackiohAudio.contextsCreated()` is 0. After one click on the board it is 1 and `state()` is neither `"locked"` nor `"unsupported"`, and playing a unit from hand through the UI appends a `voice` log entry with that defId and `line: "play"` (15-audio.cy.ts).
+39. **B39**: In Cypress Chrome, after clicking `audio-toggle` and reloading, the toggle is `aria-pressed="true"` and playing a card appends nothing to the log, and `GET /audio/voice/core-004-play.m4a` answers 200 with an `audio/*` content type (15-audio.cy.ts).
 40. **B40**: SPEC §11 carries R203 and R204, `packages/engine/test/rulings.test.ts` indexes both in order and proves them in `apps/web/src/audio/cues.test.ts` (and, for R203, `director.test.ts`), and `pnpm rulings:coverage` exits 0 (the existing index test and script, and spec-rows.test.ts).
 
 B41 to B45 were added at the cull, when these parts of the Surface turned out to have no test citing them.
@@ -986,11 +986,11 @@ charged to the burst, and that holds for a slow phone as much as for Cypress.
   `new OfflineAudioContext(1, 44100 × (durationMs/1000 + 0.25), 44100)`. Run it with
   `E2E_COMPONENT_PORT=5282 pnpm --dir e2e exec cypress run --component --browser chrome --spec cypress/component/audio-recipes.cy.tsx`.
   Also rerun `board-layout.cy.tsx`, since the fixed toggle is new chrome on `Game`.
-- **Cypress e2e spec** (new) `e2e/cypress/e2e/14-audio.cy.ts` proves B38 and B39. It keeps BUILD M8's
+- **Cypress e2e spec** (new) `e2e/cypress/e2e/15-audio.cy.ts` proves B38 and B39. It keeps BUILD M8's
   house rules: a set seed, no fixed waits, selectors via `ts()`. It declares its own local type for
   `window.__jackiohAudio`, because `e2e/` does not import `apps/`. Run it with `pnpm build:e2e`, then
   `pnpm --dir apps/web exec vite preview --port 5172 --strictPort`, then
-  `E2E_BASE_URL=http://localhost:5172 pnpm --dir e2e exec cypress run --browser chrome --spec cypress/e2e/14-audio.cy.ts`.
+  `E2E_BASE_URL=http://localhost:5172 pnpm --dir e2e exec cypress run --browser chrome --spec cypress/e2e/15-audio.cy.ts`.
   Kill the preview server afterwards. No server is needed.
 - **The branch gate** is reference.md's line, plus the component run and spec 01 (a full hotseat game,
   to prove sound never blocks the board).
@@ -1056,7 +1056,7 @@ below), and no slice creates anything under `apps/web/src/audio/test/` or any `*
     `it("R204 …", () => provenIn(204, WEB_AUDIO_CUES_TEST))`, each with a comment naming the proofs.
   - `apps/web/README.md`: the Layout block gains `audio/` and `scripts/gen-voice.mjs`, plus one
     paragraph on regenerating voices.
-  - `e2e/README.md`: one line each for `14-audio.cy.ts` and `audio-recipes.cy.tsx`.
+  - `e2e/README.md`: one line each for `15-audio.cy.ts` and `audio-recipes.cy.tsx`.
 - **Behaviours:** B40.
 - **Shared-file edits:** exactly those. Rows go in numeric position; see Risks for the merge with
   the other tasks' rows.
@@ -1072,7 +1072,7 @@ below), and no slice creates anything under `apps/web/src/audio/test/` or any `*
 - **Tester B (content and browser).**
   - Behaviours: B15, B16 and B33–B39.
   - New files: `apps/web/src/audio/voice-lines.test.ts`, `apps/web/src/audio/voice-assets.test.ts`,
-    `e2e/cypress/component/audio-recipes.cy.tsx` and `e2e/cypress/e2e/14-audio.cy.ts`.
+    `e2e/cypress/component/audio-recipes.cy.tsx` and `e2e/cypress/e2e/15-audio.cy.ts`.
 
 ## SPEC changes
 

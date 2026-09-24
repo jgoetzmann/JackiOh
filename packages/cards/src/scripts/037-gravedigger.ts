@@ -32,8 +32,10 @@
 //   - `setCostMod({ amount: -1 })` is R65's "costs 1 less": it adds to the instance's `costMod`,
 //     which R78 keeps in every zone, so the discount survives the card's next trip to the
 //     graveyard. `cost.ts` names this card as the reason that verb exists.
-// The order is bounce-then-discount only so the `costChanged` event reports the card as it now
-// stands, in hand; R78 makes either order identical.
+// The order is bounce-then-discount so the discount is the price of a card that reached the hand:
+// `inHandOnly` skips it for a pick a full hand burned straight back to the graveyard (§2.4, R4),
+// which would otherwise keep a discount for a return it never made (R78). The `costChanged` event
+// then reports the card as it now stands, in hand.
 
 import type { Script } from "@jackioh/engine";
 import {
@@ -61,7 +63,8 @@ export const radiant: Script = {
   resume: {
     [PICKED]: () => [
       bounce({ target: { of: "chosen" } }),
-      setCostMod({ target: { of: "chosen" }, amount: DISCOUNT }),
+      // R4: "it costs 1 less" is its price in the hand, so a pick a full hand burns keeps its cost.
+      setCostMod({ target: { of: "chosen" }, amount: DISCOUNT, inHandOnly: true }),
     ],
   },
 };

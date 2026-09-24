@@ -324,6 +324,7 @@ and `rulings:coverage` compare sets in order, and neither requires the numbers t
 | 1 animations | R200–R202 |
 | 2 sound | R203–R205 |
 | 6 cards | R206–R208 |
+| overflow (any task that fills its range) | R209 and up, first come; the integration merge renumbers any collision |
 
 ### SPEC sections
 

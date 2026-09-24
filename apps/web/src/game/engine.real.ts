@@ -1,5 +1,9 @@
-// The real `EnginePort`, and the ONLY file in `apps/web` that imports `@jackioh/engine` or
-// `@jackioh/cards`. `engine.ts` reaches it through one code-split dynamic import.
+// The real `EnginePort`, and the only file on the page's side of `apps/web` that imports
+// `@jackioh/engine` or `@jackioh/cards`. `engine.ts` reaches it through one code-split dynamic
+// import. The one other engine entry is practice's: `src/practice/core.ts` imports the engine, the
+// cards and `@jackioh/ai`, and it is loaded only by the practice Web Worker
+// (`src/practice/practice.worker.ts`, its own bundle) and by the in-thread host jsdom tests use
+// (SPEC §9.9, R187). The page never imports it.
 //
 // Nothing here decides a rule. It registers the catalog, then renames engine functions onto the
 // port; the `as` casts only strip the opaque `EngineState` brand that keeps the rest of the client

@@ -6,7 +6,8 @@
 // top card on top (§3.2, R13); `controller` changing only across the centre line while `owner`
 // never does (R12); a Locked or Reborn-reserved destination bouncing the card to its OWNER's hand
 // (R14, R88, with R4's hand cap and R11's vanishing token on the way); and #52's radiant face
-// replacing crossing with that same bounce at `costOverride` 0 in either direction.
+// replacing an outbound crossing — a card leaving the rotating player's side for the opponent's —
+// with that same bounce at `costOverride` 0, while a card crossing onto that side still crosses.
 //
 // None of that is here, and the ring walk in particular is never rewritten: the subsystem's
 // `ringOrder`/`ringNeighbor` are the topology, and a second walk would be a second topology. This
