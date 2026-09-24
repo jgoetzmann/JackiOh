@@ -16,13 +16,13 @@ import {
   VOICE_DELAY_MS,
   VOICE_PRIORITY,
 } from "./constants.ts";
-import { createSoundDirector, eventsAfterOverlap, sameOccurrence, type SoundDirector } from "./director.ts";
+import { createSoundDirector, type SoundDirector } from "./director.ts";
 import { createAudioEngine } from "./engine.ts";
 import { resetAudioSettingsForTests, writeAudioSettings } from "./settings.ts";
 import { FakeClock, FakeFetch, fakeContextFactory, fakeSpeech, settle } from "./test/fakeAudio.ts";
 import { answerPrompts, devDeck, handDefId, playOf, realGame, type RealGame } from "./test/realGame.ts";
 import type { AudioEngine, SfxId, SfxParams, SoundSink, VoiceLineKind, VoiceLineTable } from "./types.ts";
-import { newEventsSince, planEntries, type AnimationEntry } from "../game/animations.ts";
+import { newEventsSince, planEntries, sameOccurrence, type AnimationEntry } from "../game/animations.ts";
 import { baseView, emptySide, unit, withEvents } from "../test/fixtures.ts";
 
 /* --------------------------------------------------------------------------------------------- *
@@ -569,11 +569,25 @@ describe("B22 the mana baseline", () => {
  * B55: a window R97 has un-redacted is not new
  * --------------------------------------------------------------------------------------------- */
 
-/** Every entry the Game would enqueue for `next` (task 1's exact matcher), started in order, then idle. */
+/** Every entry the Game would enqueue for `next` (the runner's `newEventsSince`), started in order, then idle. */
 function playLikeGame(director: SoundDirector, prev: PlayerView, next: PlayerView): void {
   director.onView(next);
   for (const entry of planEntries(newEventsSince(prev.events, next.events), prev, false)) director.onEntryStart(entry);
   director.onIdle();
+}
+
+/** A runner handed `next`'s whole window, as Game's exact matcher once did after an R97 rewrite. */
+function replayWholeWindow(director: SoundDirector, prev: PlayerView, next: PlayerView): void {
+  director.onView(next);
+  for (const entry of planEntries(next.events, prev, false)) director.onEntryStart(entry);
+  director.onIdle();
+}
+
+/** Whether R97 rewrote an event the two windows share: its copies differ byte for byte. */
+function rewritesWindow(before: PlayerView, after: PlayerView, produced: number): boolean {
+  const shared = Math.min(before.events.length, after.events.length - produced);
+  const tail = before.events.slice(before.events.length - shared);
+  return tail.some((event, i) => JSON.stringify(event) !== JSON.stringify(after.events[i]));
 }
 
 describe("B55 an event the last window carried is old news, even once R97 names its card", () => {
@@ -597,11 +611,10 @@ describe("B55 an event the last window carried is old news, even once R97 names 
   it("B55 the overlap survives an un-redacted draw, so only the new action's events are owed", () => {
     const old = [turn2(), mana("p2", 5), hiddenDraw];
     const fresh = [played("core-004", "c26", "p2"), summoned("core-004", "c26", "p2")];
-    expect(eventsAfterOverlap(old, [again(turn2()), again(mana("p2", 5)), namedDraw, ...fresh])).toEqual(fresh);
-    expect(newEventsSince(old, [again(turn2()), again(mana("p2", 5)), namedDraw, ...fresh]), "task 1's exact matcher replays it all").toHaveLength(5);
+    expect(newEventsSince(old, [again(turn2()), again(mana("p2", 5)), namedDraw, ...fresh])).toEqual(fresh);
   });
 
-  it("B55 when the runner replays the whole window, only the new action sounds", () => {
+  it("B55 should the runner replay the whole window, only the new action sounds", () => {
     const { sink, director } = rig();
     const first = firstView();
     const view1 = withEvents(first, [turn2(), mana("p2", 5), hiddenDraw]);
@@ -610,7 +623,7 @@ describe("B55 an event the last window carried is old news, even once R97 names 
     const before = sink.sent.length;
 
     const view2 = withEvents(view1, [again(turn2()), again(mana("p2", 5)), namedDraw, played("core-004", "c26", "p2")]);
-    playLikeGame(director, view1, view2);
+    replayWholeWindow(director, view1, view2);
 
     expect(sent(sink).slice(before)).toEqual(["sfx:play@0", `voice:core-004/play@${String(VOICE_DELAY_MS)}`]);
   });
@@ -619,7 +632,10 @@ describe("B55 an event the last window carried is old news, even once R97 names 
     const found = drawThenPlay();
     expect(found, "a seed where p2 plays the card it drew, un-redacting its draw in p1's window").not.toBeNull();
     const { before, after, produced } = must(found ?? undefined, "the scenario");
-    expect(newEventsSince(before.events, after.events).length, "task 1's exact matcher replays the window").toBeGreaterThan(produced);
+    expect(rewritesWindow(before, after, produced), "R97 named the drawn card in the window the two views share").toBe(true);
+    expect(newEventsSince(before.events, after.events), "the runner is handed the play alone").toEqual(
+      after.events.slice(after.events.length - produced),
+    );
 
     const heard = rig();
     heard.director.onView(before);
@@ -661,7 +677,7 @@ function drawThenPlay(): { before: PlayerView; after: PlayerView; produced: numb
         if (play !== undefined) {
           const produced = game.act("p2", play).length;
           const after = game.view("p1");
-          if (newEventsSince(before.events, after.events).length > produced) return { before, after, produced };
+          if (rewritesWindow(before, after, produced)) return { before, after, produced };
           break;
         }
       }
