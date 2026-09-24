@@ -47,6 +47,14 @@ export const PRACTICE_PACING: PracticePacing = {
  */
 export const PRACTICE_VOICE_HOLD_MAX_MS = 4000;
 
+/**
+ * The longest the opponent's-play showcase may hold the AI back (routes/practice.tsx
+ * `useShowcaseHold`): one card is held up for about a second (SHOWCASE_HOLD_MS, divided by the
+ * effects speed), and a step that plays several cards queues at most SHOWCASE_QUEUE_MAX of them. A
+ * mark that is never cleared must not stop the game.
+ */
+export const PRACTICE_SHOWCASE_HOLD_MAX_MS = 4000;
+
 /** `prefers-reduced-motion`: nothing is animating, so there is nothing to wait for. */
 export const PRACTICE_PACING_REDUCED: PracticePacing = { firstActionMs: 150, actionGapMs: 150, promptAnswerMs: 100 };
 

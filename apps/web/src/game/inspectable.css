@@ -1,0 +1,84 @@
+/* What can be looked into without playing: a graveyard or an exile pile (Board.tsx `Pile`) and a
+   log line that names a card (Log.tsx). Hover opens a preview with a mouse, and a click, a tap, a
+   long-press or Enter opens a sheet; this file only says so on screen. Imported after board.css. */
+
+.pile--browsable {
+  position: relative;
+  cursor: pointer;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.pile--browsable:hover {
+  border-color: var(--line-bright);
+  background: rgb(255 255 255 / 6%);
+}
+
+.pile--browsable:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
+}
+
+/* A finger gets a 44 px target round the small pill (B29); the pill itself keeps its size. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .pile--browsable::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* A line about a card is a button that reads as the line it is. A dotted underline says it opens
+   the card, as a glossary term's does. `.log .log-card` outranks index.css's `.app-shell button`
+   padding, hover and press. */
+.log .log-card {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 3px;
+  cursor: help;
+  transition: none;
+}
+
+.log .log-card:hover:not(:disabled) {
+  border-color: transparent;
+  background: rgb(255 255 255 / 7%);
+  color: var(--text);
+}
+
+.log .log-card:active:not(:disabled) {
+  transform: none;
+}
+
+.log .log-card:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 1px;
+}
+
+/* A finger gets a 44 px row (B29). Only where the pointer is coarse: the lines are a dense list, and
+   a narrow window with a mouse keeps the log it had. */
+@media (pointer: coarse) {
+  .log .log-card {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pile--browsable {
+    transition: none;
+  }
+}

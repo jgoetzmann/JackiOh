@@ -222,7 +222,7 @@ jobs:
             done
           done
 
-      - name: the sixteen specs
+      - name: the seventeen specs
         env:
           E2E: "1"
         run: pnpm --dir e2e exec cypress run --browser ${{ matrix.browser }}

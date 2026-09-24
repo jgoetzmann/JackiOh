@@ -537,8 +537,9 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `14-landing-and-sign-in.cy.ts` | The landing page and the way in (§9.4, R191–R193), against a built client with every API call stubbed: no server and no auth provider | the landing's CTAs link to `/practice`, `/play` and `/decks`; a code typed or pasted in any form fills the four groups, and an excluded character is refused and named; a rate-limited redemption shows its wait with submit off, never R145's error; an emailed link is scrubbed and signs nothing in; the reset screen refuses a short or mismatched password; every gate panel, the 404 included, offers a way out |
 | `15-audio.cy.ts` | Hotseat with the two `01-aggro` decks and sound on (§10.11, R204); a unit played from hand | no audio context exists before the first gesture, and one click creates exactly one that is not locked; the unit played from hand logs its play voice line; the mute toggle survives a reload and the next play logs nothing; a shipped voice file answers 200 as audio |
 | `16-drag-to-play.cy.ts` | Spec 04's seeded hotseat game (§10.8, R195), played with pointer drags; drag to play on by default | a glowing hand card dragged onto a glowing zone is played; a unit dragged onto the enemy hero attacks it; a drag released outside the board cancels and the card stays in hand; with drag to play turned off in the settings panel, still off after a reload, click-click plays a card |
+| `17-card-showcase-and-hovers.cy.ts` | Spec 01's and spec 03's seeded hotseat games and an Easy `/practice` game at normal pacing (§10.8, §10.10, R97, R202, R227); no server | the opponent's played card is held up for about a second, click-through, and never the viewer's own; a trap set face down is held up as a back that names nothing; a log line naming a card opens its face on hover and in a sheet on a click; a graveyard shows its count and cards newest first on hover and every card in a dialog on a click, on both seats, and the library is not browsable; the AI takes no step while its played card is held up |
 
-**M8 gate.** All sixteen specs green in CI on Chrome and Electron.
+**M8 gate.** All seventeen specs green in CI on Chrome and Electron.
 
 ## 4. Test strategy summary
 
@@ -548,7 +549,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - Rulings: `rulings.test.ts` has one named test per §11 row; the review greps for `R<n>` coverage.
 - Catalog: `catalog.test.ts` diffs `catalog.json` against a fixture transcribed from SPEC §8.
 - Coverage floor: 90% lines in `packages/engine` and `packages/cards`; 100% of card script files have a test file.
-- E2E: the sixteen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
+- E2E: the seventeen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
 
 ## 5. Definition of done
 

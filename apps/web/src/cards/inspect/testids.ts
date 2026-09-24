@@ -11,3 +11,12 @@ export const INSPECT_FACE = "inspect-face";
 export const INSPECT_FACE_BASE = "inspect-face-base";
 export const INSPECT_FACE_RADIANT = "inspect-face-radiant";
 export const INSPECT_GLOSSARY = "inspect-glossary";
+
+// A list of cards (a graveyard or an exile pile): the hover preview, the sheet, and inside them.
+export const INSPECT_LIST_HOVER = "inspect-list-hover";
+export const INSPECT_LIST_SHEET = "inspect-list-sheet";
+export const INSPECT_LIST_COUNT = "inspect-list-count";
+export const INSPECT_LIST_CARD = "inspect-list-card";
+export const INSPECT_LIST_MORE = "inspect-list-more";
+export const INSPECT_LIST_DETAIL = "inspect-list-detail";
+export const INSPECT_LIST_BACK = "inspect-list-back";

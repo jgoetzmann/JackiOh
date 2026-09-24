@@ -38,6 +38,8 @@ export type { ArtManifest, ArtShape } from "./art/index.ts";
 // Slice C: inspect.
 export {
   CardDetail,
+  CardListPreview,
+  CardListSheet,
   closeInspect,
   INSPECT_CLOSE,
   INSPECT_DETAIL,
@@ -46,11 +48,27 @@ export {
   INSPECT_FACE_RADIANT,
   INSPECT_GLOSSARY,
   INSPECT_HOVER,
+  INSPECT_LIST_BACK,
+  INSPECT_LIST_CARD,
+  INSPECT_LIST_COUNT,
+  INSPECT_LIST_DETAIL,
+  INSPECT_LIST_HOVER,
+  INSPECT_LIST_MORE,
+  INSPECT_LIST_SHEET,
   INSPECT_SCRIM,
   INSPECT_SHEET,
   useInspectTrigger,
 } from "./inspect/index.ts";
-export type { CardDetailProps, InspectBindings, InspectOptions, InspectSubject } from "./inspect/index.ts";
+export type {
+  CardDetailProps,
+  CardListEntry,
+  CardListProps,
+  InspectBindings,
+  InspectOptions,
+  InspectOverlayState,
+  InspectRenderSubject,
+  InspectSubject,
+} from "./inspect/index.ts";
 
 // Slice C: card settings, which task 7's panel mounts at integration.
 export {

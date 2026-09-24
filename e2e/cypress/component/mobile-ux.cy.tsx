@@ -309,6 +309,33 @@ describe("B29 touch targets are at least 44x44 px on phones and tablets", () => 
         });
     });
 
+    it(`B29 a graveyard or exile pile that holds cards takes a tap across a 44 px band at ${where}`, () => {
+      cy.viewport(viewport.width, viewport.height);
+      mountGame(fullBoardView());
+
+      // The pill stays small; its ::after is the finger's target (game/inspectable.css).
+      cy.get(`${BOARD} [data-browsable="true"]`)
+        .should("have.length", 3)
+        .each(($pile) => {
+          cy.wrap($pile, { log: false }).should(($element) => {
+            const pile = $element[0] as HTMLElement;
+            const box = rectOf(pile);
+            const doc = pile.ownerDocument;
+            const reach = TOUCH_PX / 2 - 2;
+            for (const [x, y] of [
+              [box.left + box.width / 2, box.top + box.height / 2 - reach],
+              [box.left + box.width / 2, box.top + box.height / 2 + reach],
+            ] as const) {
+              const hit = doc.elementFromPoint(x, y);
+              expect(
+                hit !== null && (hit === pile || pile.contains(hit)),
+                `a tap at (${Math.round(x)}, ${Math.round(y)}) reaches ${$pile.attr("data-testid") ?? "a pile"}`,
+              ).to.eq(true);
+            }
+          });
+        });
+    });
+
     it(`B29 every one of the 20 zones measures at least 44x44 at ${where}`, () => {
       cy.viewport(viewport.width, viewport.height);
       mountGame(fullBoardView());

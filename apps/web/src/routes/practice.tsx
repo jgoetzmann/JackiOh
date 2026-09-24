@@ -45,6 +45,7 @@ import {
   PRACTICE_SEED_BYTES,
   PRACTICE_SEED_MAX_LENGTH,
   PRACTICE_SETUP_KEY,
+  PRACTICE_SHOWCASE_HOLD_MAX_MS,
   PRACTICE_VOICE_HOLD_MAX_MS,
   type PracticePacing,
 } from "../practice/config.ts";
@@ -321,46 +322,65 @@ function useBoardBusy(root: HTMLElement | null, controller: PracticeController |
 }
 
 /**
- * Hold the AI's next step while a voice line plays (SPEC §9.9: AI turns are paced so animations
- * and voice lines play). The contract with the audio layer is one attribute: an element anywhere
- * in the page carries `data-speaking` while a line plays and drops it when the line ends, as the
- * board does with `data-animating`. A line that never clears its mark holds the AI for at most
- * PRACTICE_VOICE_HOLD_MAX_MS, so a stuck mark can slow a turn but never stop the game.
+ * Hold the AI's next step while an element anywhere in the page carries `attribute`, for at most
+ * `maxMs` per mark (SPEC §9.9: AI turns are paced so the player can follow them). The contract with
+ * the layer that marks is one attribute, as the board's is with `data-animating`: it is set while
+ * the thing plays and dropped when it ends. A mark that is never cleared holds the AI for at most
+ * `maxMs`, so a stuck mark can slow a turn but never stop the game; it is ignored from then on
+ * until the page drops it.
  */
-function useVoiceHold(controller: PracticeController | null): void {
+function useMarkHold(controller: PracticeController | null, reason: string, attribute: string, maxMs: number): void {
   useEffect(() => {
     if (controller === null || typeof MutationObserver !== "function") return;
     const root = document.documentElement;
+    const selector = `[${attribute}]`;
     let cap: ReturnType<typeof setTimeout> | null = null;
-    /** The cap ran out on this mark; it is ignored until the page stops speaking. */
+    /** The cap ran out on this mark; it is ignored until the page drops it. */
     let expired = false;
     const release = (): void => {
       if (cap !== null) clearTimeout(cap);
       cap = null;
-      controller.setHold("voice", false);
+      controller.setHold(reason, false);
     };
     const report = (): void => {
-      const speaking = root.matches("[data-speaking]") || root.querySelector("[data-speaking]") !== null;
-      if (!speaking) {
+      const marked = root.matches(selector) || root.querySelector(selector) !== null;
+      if (!marked) {
         expired = false;
         release();
         return;
       }
       if (expired || cap !== null) return;
-      controller.setHold("voice", true);
+      controller.setHold(reason, true);
       cap = setTimeout(() => {
         expired = true;
         release();
-      }, PRACTICE_VOICE_HOLD_MAX_MS);
+      }, maxMs);
     };
     const observer = new MutationObserver(report);
-    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-speaking"] });
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: [attribute] });
     report();
     return () => {
       observer.disconnect();
       release();
     };
-  }, [controller]);
+  }, [controller, reason, attribute, maxMs]);
+}
+
+/**
+ * Hold the AI's next step while a voice line plays. The audio layer marks an element
+ * `data-speaking` while a line plays and drops it when the line ends (polish task 2).
+ */
+function useVoiceHold(controller: PracticeController | null): void {
+  useMarkHold(controller, "voice", "data-speaking", PRACTICE_VOICE_HOLD_MAX_MS);
+}
+
+/**
+ * Hold the AI's next step while its last card is held up (game/showcase/CardShowcase.tsx marks the
+ * showcase `data-showcase` for as long as it is up), so the AI never plays its next card over the
+ * one the player is reading.
+ */
+function useShowcaseHold(controller: PracticeController | null): void {
+  useMarkHold(controller, "showcase", "data-showcase", PRACTICE_SHOWCASE_HOLD_MAX_MS);
 }
 
 const noSubscribe = (): (() => void) => () => {};
@@ -450,8 +470,11 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   const [boardRoot, setBoardRoot] = useState<HTMLDivElement | null>(null);
   useBoardBusy(boardRoot, controller);
   // `?pace=fast` is e2e pacing: a headless browser plays every voice line, and holding the AI for
-  // each would only slow the spec. A player's game always waits for the line.
-  useVoiceHold(DEV_ONLY && params.pace === "fast" ? null : controller);
+  // each would only slow the spec. A player's game always waits for the line, and for the card the
+  // AI has just played to be read.
+  const held = DEV_ONLY && params.pace === "fast" ? null : controller;
+  useVoiceHold(held);
+  useShowcaseHold(held);
 
   // The dev handle for spec 13: the debug snapshot (seed, decks, handicaps, log, state, hash) for
   // the replay check, and the live view. Never in a production build.
