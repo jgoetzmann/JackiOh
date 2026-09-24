@@ -360,9 +360,11 @@ Cypress.Commands.add("seedGame", (options: SeedGameOptions) => {
  * THE ANSWER NAMES THE CARDS KEPT, NOT THE CARDS RETURNED. The engine's prompt is "Choose the
  * cards to keep; the rest are returned and redrawn" with `min: 0` and one option per hand card
  * (`packages/engine/src/setup.ts`), and `answerMulligan` returns every card *not* in `keep`. So
- * keeping everything means selecting every option and then confirming: submitting with nothing
+ * keeping everything means every option selected when Confirm is pressed: submitting with nothing
  * toggled sends `keep: []`, which mulligans the entire hand — the opposite of this command's name,
- * and a silent change to the opening hand of every spec that seeds a game.
+ * and a silent change to the opening hand of every spec that seeds a game. The picker opens with
+ * every card kept (Prompt.tsx), so this normally clicks Confirm alone; it still selects any card
+ * that is not, so it holds whatever the picker's default.
  */
 Cypress.Commands.add("keepMulligans", () => {
   // WAIT FOR THE CLIENT TO HAVE A VIEW BEFORE ASKING WHETHER A PICKER IS OPEN.

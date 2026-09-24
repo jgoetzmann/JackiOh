@@ -119,6 +119,43 @@
   transform: translateY(-4px);
 }
 
+/* A mulligan says on each card what Confirm will do to it (Prompt.tsx CardOption): a stamp across
+   the foot of the art window, clear of the cost gem and the stats, so the option keeps the box the
+   face fills. A card going back dims. */
+.prompt-card[data-verdict] {
+  position: relative;
+}
+
+.prompt-card-verdict {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.prompt-card[data-verdict="keep"] .prompt-card-verdict {
+  background: color-mix(in srgb, var(--legal) 85%, #000);
+  color: #04130a;
+}
+
+.prompt-card[data-verdict="redraw"] .prompt-card-verdict {
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+
+.prompt-card[data-verdict="redraw"] .cf-option {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
 /* Confirm is the one primary action: filled, in the selection's ice blue. */
 .prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]) {
   border-color: #7dd3fc;

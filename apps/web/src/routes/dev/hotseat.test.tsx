@@ -283,6 +283,18 @@ describe("the route starts one game from the URL", () => {
  * the seat
  * ------------------------------------------------------------------------------------------- */
 
+describe("a way back (integration: every screen has one)", () => {
+  it("the hotseat bar's Back goes to the landing page", async () => {
+    const fake = makeEngine();
+    setEnginePort(fake.port);
+    window.history.replaceState(null, "", "/dev/hotseat?seed=42");
+    await mount();
+
+    fireEvent.click(screen.getByTestId("nav-back"));
+    expect(window.location.pathname).toBe("/");
+  });
+});
+
 describe("the seat", () => {
   it("hands the device over on the button, and re-renders viewFor for the other player", async () => {
     const fake = makeEngine();

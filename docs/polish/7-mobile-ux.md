@@ -1100,3 +1100,18 @@ No other section changes. §10.10 belongs to task 1.
 - **Hidden information.** A future hook could read a zone its controller can't see. R195 forbids
   that in words, but only review enforces it. The Core hooks read hero health, library counts,
   plays this turn and a grade, all of which the controller may see.
+
+## Integration note: what the panel mounts
+
+`SETTINGS_SLOTS` mounts task 1's effects speed and intensity and task 6's animated foil under
+Visuals (`settings/controls.tsx`), and task 2's `AudioControls` under Audio, whose checkboxes the
+panel draws as its switches. Each slot carries a `reset`, so "Reset to defaults" resets every store
+the panel shows. Two settings stay one switch each: task 6's store has a `hoverPreviews` too, and its
+enlarged preview now opens only while this panel's "Hover previews" is on as well; task 1's store
+has a `motion`, and `reducedMotionNow` (and the effects layer, and practice's pacing) read this
+panel's "Reduce motion" beside it. index.css keys animations.css's reduced-motion block on
+`data-reduce-motion`, so the setting stops CSS motion on every screen, and `main.tsx` reads the store
+at boot so the attribute is there from the first paint. Engine prompts no longer offer Cancel (it did
+nothing); the mulligan opens with every card kept, shows each card's live cost, and stamps each
+option Keep or Redraw; the waiting modal says "Your opponent is choosing." rather than a seat id;
+and a list picker names a card's place ("Enemy unit, lane 2") rather than its instance id.

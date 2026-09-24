@@ -23,6 +23,8 @@ import { EngineUnavailableError, loadEnginePort } from "../../game/engine.ts";
 import type { EnginePort, EngineState } from "../../game/engine.ts";
 import { createHotseat, otherSeat } from "../../game/hotseat.ts";
 import type { DispatchResult, HotseatSession } from "../../game/hotseat.ts";
+import { navigate, paths } from "../../net/navigate.ts";
+import { navTestid } from "../nav.tsx";
 
 /** BUILD M5-T3: the dev handle exists only outside a production build. */
 const DEV_ONLY = import.meta.env.MODE !== "production";
@@ -300,6 +302,10 @@ function Hotseat({
   return (
     <div className="app-shell app-shell--wide">
       <header className="hotseat-bar">
+        {/* A way out, as every other screen has (nav.tsx); the board's own gear holds the settings. */}
+        <button type="button" className="link-button" data-testid={navTestid.back} onClick={() => navigate(paths.landing)}>
+          ← Back
+        </button>
         <span>
           seed <code>{session.seed}</code> · seat <code>{session.seat}</code> · turn {view.turn} ·
           active <code>{view.active}</code>

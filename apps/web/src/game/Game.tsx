@@ -288,7 +288,10 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         legal={legal}
         onAction={dispatch}
         onInteraction={setInteraction}
-        onCancel={() => setInteraction(IDLE)}
+        // Cancel backs out of a play still being built (R81). An engine prompt has paused the game
+        // and must be answered, so it offers none: the button would do nothing (the mulligan, a
+        // Discover, a trigger's choice).
+        onCancel={shown.pending === null ? () => setInteraction(IDLE) : undefined}
       />
       <DragLayer view={shown} legal={legal} interaction={interaction} onInteraction={setInteraction} onAction={onAction} />
 

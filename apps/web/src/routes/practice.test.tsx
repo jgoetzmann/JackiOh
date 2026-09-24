@@ -11,7 +11,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 import { opponentOf } from "@jackioh/shared";
-import type { CardDefs, PlayerId } from "@jackioh/shared";
+import type { ActionBody, CardDefs, PlayerId } from "@jackioh/shared";
+
+import { setAudioEngineForTests } from "../audio/engine.ts";
+import type { AudioEngine } from "../audio/types.ts";
+import { __resetSettingsForTests, writeSettings } from "../settings/store.ts";
+import { INSPECT_HOVER, closeInspect } from "../cards/index.ts";
+import { HOVER_DELAY_MS } from "../cards/inspect/constants.ts";
+import { FX_LETHAL_LEAD_MAX_MS, FX_RESULT_MS } from "../fx/constants.ts";
+import { resetFxSettingsForTests, setFxSettings } from "../fx/settings.ts";
 
 import type { LoadoutResponse } from "../net/api.ts";
 import type { Account } from "../net/gate.ts";
@@ -621,6 +629,29 @@ describe("the setup previews the chosen deck", () => {
       // FAKE_DEFS: an id's last digit is its cost.
       const expectedAtTwo = preset.cards.filter((id) => id.endsWith("2")).length;
       expect(bars["2"]).toBe(expectedAtTwo);
+    }
+  });
+
+  // Integration: task 6's hover preview on task 3's deck list, as the deck builder's list has it.
+  it("resting the pointer on a previewed card shows the whole card", async () => {
+    renderRoute(routeHost());
+    await settle();
+    const preset = PRACTICE_PRESETS[0];
+    if (preset === undefined) throw new Error("no preset");
+    fireEvent.change(screen.getByTestId(T.deck), { target: { value: `preset:${preset.id}` } });
+    const id = preset.cards[0] ?? "";
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerEnter(screen.getByTestId(`practice-deck-card-${id}`), { pointerType: "mouse" });
+      act(() => {
+        vi.advanceTimersByTime(HOVER_DELAY_MS);
+      });
+      expect(screen.getByTestId(INSPECT_HOVER).querySelector(".card-name")).toHaveTextContent(`Card ${id}`);
+    } finally {
+      act(() => {
+        closeInspect();
+      });
+      vi.useRealTimers();
     }
   });
 
@@ -1253,4 +1284,197 @@ describe("Surface: the setup is remembered, and the pacing follows ?pace and red
       }
     });
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Integration (docs/polish/reference.md): practice gets everything the other boards get
+// ---------------------------------------------------------------------------------------------
+
+describe("practice plays on the full board, with sound and settings", () => {
+  afterEach(() => {
+    setAudioEngineForTests(null);
+    __resetSettingsForTests();
+    vi.useRealTimers();
+  });
+
+  /** An audio engine that speaks when told to: the one thing practice needs from it. */
+  function speakingEngine(): { engine: AudioEngine; say(on: boolean): void } {
+    let speaking = false;
+    const listeners = new Set<() => void>();
+    const engine: AudioEngine = {
+      state: () => "running",
+      unlock: () => undefined,
+      preloadVoices: () => undefined,
+      setBusy: () => undefined,
+      log: () => [],
+      clearLog: () => undefined,
+      contextsCreated: () => 1,
+      speaking: () => speaking,
+      subscribeSpeaking: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      dispose: () => undefined,
+      playSfx: () => true,
+      playVoice: () => true,
+    };
+    return {
+      engine,
+      say(on) {
+        speaking = on;
+        for (const listener of [...listeners]) listener();
+      },
+    };
+  }
+
+  it("a line the audio engine is speaking marks the board data-speaking and holds the AI's next step", async () => {
+    const voice = speakingEngine();
+    setAudioEngineForTests(voice.engine);
+    visit("?seed=voice3&difficulty=easy&deck=random&seat=p1");
+    const host = routeHost({ aiToAct: true });
+    const gap = 40;
+    voice.say(true);
+    renderRoute(host, { pacing: { firstActionMs: gap, actionGapMs: gap, promptAnswerMs: gap } });
+    await screen.findByTestId(T.hud);
+    expect(screen.getByTestId("game")).toHaveAttribute("data-speaking", "true");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, gap * 5));
+    });
+    expect(host.requests.filter((body) => body.type === "aiStep"), "no step while the card talks").toEqual([]);
+
+    act(() => {
+      voice.say(false);
+    });
+    expect(screen.getByTestId("game")).not.toHaveAttribute("data-speaking");
+    await waitFor(() => {
+      expect(host.requests).toContainEqual({ type: "aiStep" });
+    });
+  });
+
+  it("?pace=fast (e2e) does not wait for voice lines", async () => {
+    const voice = speakingEngine();
+    setAudioEngineForTests(voice.engine);
+    visit("?seed=voice4&difficulty=easy&deck=random&seat=p1&pace=fast");
+    const host = routeHost({ aiToAct: true });
+    voice.say(true);
+    renderRoute(host, { pacing: undefined });
+    await screen.findByTestId(T.hud);
+    expect(screen.getByTestId("game")).toHaveAttribute("data-speaking", "true");
+    await waitFor(() => {
+      expect(host.requests).toContainEqual({ type: "aiStep" });
+    });
+  });
+
+  it("the settings panel's Reduce motion gives the AI the reduced pacing, as the media query does", async () => {
+    vi.useFakeTimers();
+    writeSettings({ reduceMotion: true });
+    visit("?seed=calm1&difficulty=easy&deck=random&seat=p1");
+    const host = routeHost({ aiToAct: true, holdAiSteps: true });
+    renderRoute(host, { pacing: undefined });
+    await settle();
+    const aiSteps = (): number => host.requests.filter((body) => body.type === "aiStep").length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(PRACTICE_PACING_REDUCED.firstActionMs + 1);
+      await Promise.resolve();
+    });
+    expect(PRACTICE_PACING_REDUCED.firstActionMs).toBeLessThan(PRACTICE_PACING.firstActionMs);
+    expect(aiSteps(), "the reduced gap, not the full one").toBe(1);
+  });
+
+  it("the loading screen has a way back to the setup, so a worker that never answers traps nobody", async () => {
+    visit("?seed=hold9&difficulty=easy&deck=random&seat=p1");
+    renderRoute(routeHost({ start: "hold" }));
+    await screen.findByTestId(T.loading);
+    fireEvent.click(screen.getByTestId("nav-back"));
+    expect(await screen.findByTestId(T.setup)).toBeInTheDocument();
+  });
+
+  async function concedeWith(pacing: PracticePacing): Promise<void> {
+    visit("?seed=over9&difficulty=easy&deck=random&seat=p1");
+    renderRoute(routeHost(), { pacing });
+    await screen.findByTestId(T.hud);
+    fireEvent.click(screen.getByTestId("concede"));
+    await screen.findByTestId(T.outcome);
+  }
+
+  it("the result dialog waits for the board's game-over sequence, and the HUD's outcome opens it at once", async () => {
+    const pacing: PracticePacing = { ...PRACTICE_PACING_FAST, resultDelayMs: 150 };
+    await concedeWith(pacing);
+    expect(screen.queryByTestId(T.result), "Victory or Defeat plays on the board first").toBeNull();
+    expect(await screen.findByTestId(T.result)).toBeInTheDocument();
+
+    cleanup();
+    await concedeWith(pacing);
+    expect(screen.queryByTestId(T.result)).toBeNull();
+    fireEvent.click(screen.getByTestId(T.outcome));
+    expect(screen.getByTestId(T.result), "the chip does not wait").toBeInTheDocument();
+  });
+
+  it("with the effects off there is no sequence to wait for, so the dialog opens at once", async () => {
+    setFxSettings({ intensity: "off" });
+    try {
+      await concedeWith({ ...PRACTICE_PACING_FAST, resultDelayMs: 60_000 });
+      expect(screen.getByTestId(T.result)).toBeInTheDocument();
+    } finally {
+      resetFxSettingsForTests();
+    }
+  });
+
+  it("the player's pacing waits out task 1's killing blow and result sequence", () => {
+    expect(PRACTICE_PACING.resultDelayMs).toBe(FX_LETHAL_LEAD_MAX_MS + FX_RESULT_MS);
+    expect(PRACTICE_PACING_FAST.resultDelayMs ?? 0).toBe(0);
+    expect(PRACTICE_PACING_REDUCED.resultDelayMs ?? 0).toBe(0);
+  });
+
+  it("the board is the one hotseat and online play show: faces, both glows, drag, effects, sound and the gear", async () => {
+    visit("?seed=board1&difficulty=easy&deck=random&seat=p1");
+    // The worker's view carries the engine's R195 flag on a hand card, and its legal list a play of it.
+    const view = baseView({
+      viewer: "p1",
+      turn: 3,
+      active: "p1",
+      phase: "main",
+      you: emptySide("p1", {
+        hand: [{ instanceId: "h1", defId: "core-053", radiant: false, cost: 2, conditionActive: true }],
+      }),
+      opponent: emptySide("p2", { hand: { count: 4 } }),
+    });
+    const snapshot: PracticeSnapshot = {
+      view,
+      legal: [{ type: "play", instanceId: "h1" } as ActionBody, { type: "endTurn" }],
+      aiToAct: false,
+      error: null,
+    };
+    const host: PracticeHost = {
+      request(body) {
+        if (body.type === "start") {
+          return Promise.resolve({ id: 1, type: "started", snapshot, defs: FAKE_DEFS, aiSeat: "p2" });
+        }
+        return Promise.resolve({ id: 2, type: "snapshot", snapshot });
+      },
+      dispose: () => undefined,
+    };
+    render(
+      <PracticeRoute
+        hostFactory={() => host}
+        pacing={PRACTICE_PACING_FAST}
+        account={ANONYMOUS}
+        loadLoadout={vi.fn(() => Promise.reject(new Error("no loadout")))}
+      />,
+    );
+    await screen.findByTestId(T.hud);
+
+    const handCard = screen.getByTestId("hand-card-h1");
+    expect(handCard.querySelector(".cf"), "task 6's card face").not.toBeNull();
+    expect(handCard, "task 7's yellow glow, from the worker's view").toHaveAttribute("data-condition-active", "true");
+    expect(handCard, "task 7's green glow, from the worker's legal list").toHaveAttribute("data-glow", "ready");
+    expect(screen.getByTestId("board"), "task 7's drag to play").toHaveAttribute("data-drag", "on");
+    expect(screen.getByTestId("fx-layer"), "task 1's effects").toHaveAttribute("data-fx", "on");
+    expect(screen.getByTestId("audio-toggle"), "task 2's sound").toBeInTheDocument();
+    expect(screen.getByTestId("settings-open-game"), "task 7's settings").toBeInTheDocument();
+  });
 });

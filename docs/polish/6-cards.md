@@ -1294,3 +1294,13 @@ since §10.10 is task 1's and this task adds no event animation.
   plus the inspect trigger (a minimal edit, flagged in the PR), and cards.css's
   `.app-shell .prompt-card:has(> .cf-option)` only drops index.css's button padding so the face
   fills the box. If task 7's bottom-sheet pickers resize `.prompt-card`, the face follows it.
+
+## Integration note: the settings and the mulligan
+
+Task 7's panel mounts the animated-foil switch (`settings/controls.tsx`, with this module's own
+label and description). Its "Hover previews" switch is the player's one handle on hovering: the
+enlarged preview opens only while both it and `CardSettings.hoverPreviews` allow it
+(`useInspectTrigger.tsx`), and `Card.tsx`'s native tooltip returns when either is off, so the panel
+mounts no second "Hover previews". A prompt's card option now draws its face with the view's live
+cost (`liveCost`), reads its cost out in its accessible name, and on a mulligan carries a Keep or
+Redraw stamp across the foot of the art window.

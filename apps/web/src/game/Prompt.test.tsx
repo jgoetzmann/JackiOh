@@ -142,13 +142,14 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
 
     expect(kindOfModal()).toBe("mulligan");
 
-    // A toggle alone sends nothing: the mulligan always waits for the confirm.
+    // Every card opens kept (R9 names the cards kept), so a toggle marks one to go back. A toggle
+    // alone sends nothing: the mulligan always waits for the confirm.
     fireEvent.click(screen.getByTestId("prompt-option-h2"));
     expect(onAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("prompt-submit"));
 
-    expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h2"] });
+    expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h1"] });
   });
 
   it("hand shows the viewer's cards and answers with the instance", () => {
@@ -429,15 +430,14 @@ describe("min and max gate the confirm, and both came from the view", () => {
     render(<Prompt view={view} onAction={onAction} />);
     const confirm = screen.getByTestId("prompt-submit");
 
-    fireEvent.click(confirm);
-    expect(onAction).not.toHaveBeenCalled();
-
+    // Both cards open kept, so two of two holds at once; marking one to go back drops below min.
+    expect(confirm).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(screen.getByTestId("prompt-option-h1"));
     expect(confirm).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(confirm);
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("prompt-option-h2"));
+    fireEvent.click(screen.getByTestId("prompt-option-h1"));
     expect(confirm).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(confirm);
     expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h1", "h2"] });

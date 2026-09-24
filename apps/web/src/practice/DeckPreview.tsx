@@ -4,10 +4,11 @@
 // is public), so this page still imports no card data of its own. Until it arrives, or when it
 // cannot be read, the preview says so and Start still works: the deck is the same either way.
 
-import type { ReactElement } from "react";
+import { useMemo, type ReactElement } from "react";
 
 import type { CardCost, CardDef, CardDefs } from "@jackioh/shared";
 
+import { faceModel, useInspectTrigger } from "../cards/index.ts";
 import { practiceTestid } from "./testids.ts";
 
 /** The curve's columns, Hearthstone's way: one per cost up to the last, which holds the rest. */
@@ -27,13 +28,13 @@ function columnOf(cost: number | "X"): CurveColumn {
   return CURVE_COLUMNS[Math.max(0, Math.min(cost, last))] ?? "5+";
 }
 
-type PreviewCard = { id: string; name: string; type: string; cost: number | "X" };
+type PreviewCard = { id: string; name: string; type: string; cost: number | "X"; def?: CardDef };
 
 function previewCards(ids: readonly string[], defs: CardDefs): PreviewCard[] {
   const cards = ids.map((id): PreviewCard => {
     const def: CardDef | undefined = defs[id];
     if (def === undefined) return { id, name: id, type: "", cost: 0 };
-    return { id, name: def.name, type: def.type, cost: printedCost(def.cost) };
+    return { id, name: def.name, type: def.type, cost: printedCost(def.cost), def };
   });
   // Cheapest first, X last, then by name: the order a deck list reads in.
   const rank = (cost: number | "X"): number => (cost === "X" ? Number.POSITIVE_INFINITY : cost);
@@ -81,12 +82,7 @@ export function DeckPreview({ title, identity, cards, defs, defsFailed }: DeckPr
         </div>
         <ol className="deck-preview__cards" aria-label={`${title}: ${String(list.length)} cards`}>
           {list.map((card) => (
-            <li key={card.id} className="deck-preview__card" data-testid={practiceTestid.deckCard(card.id)} data-type={card.type}>
-              <span className="deck-preview__cost" aria-label={`Cost ${String(card.cost)}`}>
-                {card.cost}
-              </span>
-              <span className="deck-preview__name">{card.name}</span>
-            </li>
+            <PreviewRow key={card.id} card={card} />
           ))}
         </ol>
       </>
@@ -99,6 +95,32 @@ export function DeckPreview({ title, identity, cards, defs, defsFailed }: DeckPr
       <p className="deck-preview__identity">{identity}</p>
       {body}
     </section>
+  );
+}
+
+/**
+ * One card of the list. Resting the pointer on it shows the whole card and a touch long-press opens
+ * the inspect sheet, as the deck builder's list does (task 6's inspect, docs/polish/6-cards.md), so
+ * a deck can be read before it is played.
+ */
+function PreviewRow({ card }: { card: PreviewCard }): ReactElement {
+  const def = card.def;
+  const face = useMemo(() => (def === undefined ? null : faceModel({ defId: card.id, def, radiant: false })), [card.id, def]);
+  const inspect = useInspectTrigger(face === null ? null : { key: `deck-preview-${card.id}`, face });
+  return (
+    <li
+      className="deck-preview__card"
+      data-testid={practiceTestid.deckCard(card.id)}
+      data-type={card.type}
+      data-rarity={def?.rarity}
+      {...inspect.handlers}
+    >
+      <span className="deck-preview__cost" aria-label={`Cost ${String(card.cost)}`}>
+        {card.cost}
+      </span>
+      <span className="deck-preview__name">{card.name}</span>
+      {inspect.overlay}
+    </li>
   );
 }
 

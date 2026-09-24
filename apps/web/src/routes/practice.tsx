@@ -30,7 +30,8 @@ import { DIFFICULTIES, type Difficulty } from "@jackioh/engine/config";
 import type { ActionBody, CardDefs, PlayerId, PlayerView } from "@jackioh/shared";
 
 import Game from "../game/Game.tsx";
-import { prefersReducedMotion } from "../game/animations.ts";
+import { reducedMotionNow } from "../game/animations.ts";
+import { getFxSettings } from "../fx/settings.ts";
 import { CatalogContext, lookupFromDefs } from "../game/catalog.ts";
 import { getLoadout, type LoadoutResponse } from "../net/api.ts";
 import { useAccount, type Account } from "../net/gate.ts";
@@ -143,7 +144,8 @@ function randomSeat(): PlayerId {
 
 function pacingFor(params: PracticeParams): PracticePacing {
   if (DEV_ONLY && params.pace === "fast") return PRACTICE_PACING_FAST;
-  return prefersReducedMotion() ? PRACTICE_PACING_REDUCED : PRACTICE_PACING;
+  // The media query or either reduce setting: nothing animates, so there is nothing to wait for.
+  return reducedMotionNow() ? PRACTICE_PACING_REDUCED : PRACTICE_PACING;
 }
 
 type StoredSetup = { difficulty?: Difficulty; deck?: string };
@@ -447,7 +449,9 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   // A callback ref held in state, so the watch starts when the board first renders, not before.
   const [boardRoot, setBoardRoot] = useState<HTMLDivElement | null>(null);
   useBoardBusy(boardRoot, controller);
-  useVoiceHold(controller);
+  // `?pace=fast` is e2e pacing: a headless browser plays every voice line, and holding the AI for
+  // each would only slow the spec. A player's game always waits for the line.
+  useVoiceHold(DEV_ONLY && params.pace === "fast" ? null : controller);
 
   // The dev handle for spec 13: the debug snapshot (seed, decks, handicaps, log, state, hash) for
   // the replay check, and the live view. Never in a production build.
@@ -529,12 +533,36 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
 
   /** The game whose result dialog the player closed to read the final board; null shows it. */
   const [resultClosedFor, setResultClosedFor] = useState<PracticeStartConfig | null>(null);
+  /**
+   * The game whose result dialog may open: the board plays its own game-over sequence first (task
+   * 1's killing blow and Victory or Defeat), and the dialog waits for it rather than covering it.
+   * With no effects to watch (reduced motion, effects off, e2e pacing) it opens at once.
+   */
+  const [resultReadyFor, setResultReadyFor] = useState<PracticeStartConfig | null>(null);
+  // This game's own end: a Play again renders once with the old controller's finished state.
+  const finished = state.config === game && state.snapshot?.view.result != null;
+  useEffect(() => {
+    if (!finished || game === null) return;
+    const effectsOff = reducedMotionNow() || getFxSettings().intensity === "off";
+    const delay = effectsOff ? 0 : (pace.current.resultDelayMs ?? 0);
+    if (delay <= 0) {
+      setResultReadyFor(game);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setResultReadyFor(game);
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [finished, game]);
   const onViewBoard = useCallback(() => {
     setResultClosedFor(game);
   }, [game]);
   const onShowResult = useCallback(() => {
     setResultClosedFor(null);
-  }, []);
+    setResultReadyFor(game);
+  }, [game]);
 
   const onAction = useCallback(
     (body: ActionBody) => {
@@ -590,6 +618,9 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   if (controller === null || snapshot === null || config === null || state.phase === "idle" || state.phase === "starting") {
     return (
       <Shell variant="lobby">
+        {/* A worker that never answers must not trap the page: back to the setup, which has its own
+            way out (integration: every screen has a way back). */}
+        <BackLink onPress={onNewGame} />
         <div className="practice-stage">
           <div className="practice-shuffle" aria-hidden="true">
             <span />
@@ -683,7 +714,7 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
           onLeave={leaveAskedFor.to === "menu" ? onMenu : onNewGame}
         />
       ) : null}
-      {result === null || resultClosedFor === game ? null : (
+      {result === null || resultClosedFor === game || resultReadyFor !== game ? null : (
         <PracticeResult
           result={result}
           viewer={snapshot.view.viewer}
