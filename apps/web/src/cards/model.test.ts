@@ -266,6 +266,20 @@ describe("B7: a Radiant face reads its cell by SPEC §8's rule", () => {
     expect(face("core-093", true).text.base).toBe(def("core-093").base.text);
   });
 
+  it("B7 a cell that is only a number changes only that number: the clause restated with it, never a stray number (core-028, core-044, core-047, core-053)", () => {
+    // Integration QA: radiant Reno printed "set it to 30", a gold rule, and then just "60".
+    expect(face("core-053", true).text).toEqual({ base: "", radiant: "Cry: if your hero is below 60, set it to 60" });
+    expect(face("core-044", true).text).toEqual({ base: "", radiant: "Deal 9 damage to a target, ignoring Armor; exile this" });
+    expect(face("core-047", true).text).toEqual({ base: "", radiant: "Heal a target 50" });
+    expect(face("core-028", true).text).toEqual({
+      base: "",
+      radiant: "5 random cards among your library, hand and field become Radiant",
+    });
+    for (const id of ["core-028", "core-044", "core-047", "core-053"]) {
+      expect(face(id, true).text.radiant, id).not.toMatch(/^\d+$/);
+    }
+  });
+
   it("B7 'Same' alone prints the base text once (core-012), and a re-spelled token line prints once (core-t-rush)", () => {
     expect(face("core-012", true).text).toEqual({ base: "Cry: summon a copy of this unit", radiant: null });
     expect(face("core-t-rush", true).text).toEqual({ base: "Rush", radiant: null });

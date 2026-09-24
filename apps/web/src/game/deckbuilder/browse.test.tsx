@@ -387,14 +387,20 @@ describe("the pool grid (B30)", () => {
 
   it("B30 deckbuilder.css declares nothing sticky or fixed that takes the pointer, so Cypress can reach every target", () => {
     const css = readFileSync(join(HERE, "deckbuilder.css"), "utf8");
-    expect(css).not.toMatch(/position\s*:\s*sticky/);
-    // The one fixed element is the status toast, and it is blind to the pointer, so
-    // elementFromPoint (what Cypress asks before a click) never returns it.
     const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const rules = [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
       selector: (match[1] ?? "").trim(),
       body: match[2] ?? "",
     }));
+    // The one sticky element is the sidebar of a phone on its side (a short screen with two
+    // columns): it sticks in its own grid column, so it never lies over a pool card Cypress
+    // scrolls to the top of the viewport. The page's other layouts have nothing sticky at all.
+    const sticky = rules.filter((rule) => /position\s*:\s*sticky/.test(rule.body));
+    expect(sticky.map((rule) => rule.selector)).toEqual([".db-sidebar"]);
+    const landscape = /@media \(min-width: 761px\) and \(max-height: 500px\) \{([\s\S]*?)\n\}/.exec(bare)?.[1] ?? "";
+    expect(landscape).toMatch(/\.db-sidebar\s*\{[^}]*position\s*:\s*sticky/);
+    // The one fixed element is the status toast, and it is blind to the pointer, so
+    // elementFromPoint (what Cypress asks before a click) never returns it.
     const fixed = rules.filter((rule) => /position\s*:\s*fixed/.test(rule.body));
     expect(fixed.map((rule) => rule.selector)).toEqual([".db-deck-status"]);
     for (const rule of fixed) expect(rule.body).toMatch(/pointer-events\s*:\s*none/);

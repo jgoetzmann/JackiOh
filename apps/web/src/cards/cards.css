@@ -585,6 +585,7 @@
 /* ----------------------------------------------------------------------------- rules box --- */
 
 .cf .card-text {
+  --cf-text-h: 31.5cqh;
   position: absolute;
   z-index: 1;
   top: 55.5cqh;
@@ -593,7 +594,7 @@
   display: flex;
   flex-direction: column;
   justify-content: safe center;
-  height: 31.5cqh;
+  height: var(--cf-text-h);
   margin: 0;
   padding: 1.6cqh 3cqw;
   overflow: hidden;
@@ -642,11 +643,50 @@
   color: inherit;
 }
 
-/* useFitText could not fit it even at FIT_MIN: clamp with an ellipsis rather than spill. */
+/* useFitText could not fit it at its floor (or even at FIT_MIN): clamp with an ellipsis rather than
+   spill, after as many lines as the box holds (`--cf-clamp-lines`, fit.ts). */
 .cf .card-text[data-clamped="true"] {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 14;
+  -webkit-line-clamp: var(--cf-clamp-lines, 14);
+  /* A line clamp only sets an auto height: in a fixed-height box the lines after it still paint.
+     So a clamped box is as tall as its lines, up to the box it had, and its bottom padding becomes
+     a transparent border (the parchment still fills it), because overflow clips at the padding
+     edge and the next line's top would peek through the padding. */
+  height: auto;
+  max-height: var(--cf-text-h);
+  padding-bottom: 0;
+  border-bottom: 1.6cqh solid transparent;
+}
+
+/* The long layout (fit.ts sets `data-long` on a face whose rules would otherwise print under
+   FIT_FLOOR_PX): the art window gives up half its height, the name ribbon and the rarity gem move
+   up after it, and the rules box takes the room, half as tall again. The text starts from full
+   size here, not its length tier's, since the box is sized for it; the fitter shrinks it from there.
+   Hearthstone makes room for its wordiest cards the same way. */
+.cf[data-long="true"] .cf-art-frame {
+  height: 19cqh;
+}
+
+.cf[data-long="true"][data-card-type="Unit"] .cf-art-frame {
+  top: 3.5cqh;
+  left: 27cqw;
+  right: 27cqw;
+  height: 21cqh;
+}
+
+.cf[data-long="true"] .card-name {
+  top: 25cqh;
+}
+
+.cf[data-long="true"] .cf-gem {
+  top: 33.2cqh;
+}
+
+.cf[data-long="true"] .card-text {
+  --cf-text-h: 48.5cqh;
+  top: 38.5cqh;
+  font-size: calc(4.4cqh * var(--cf-fit, 1));
 }
 
 .cf .card-name[data-clamped="true"] {

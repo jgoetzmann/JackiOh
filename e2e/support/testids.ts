@@ -502,6 +502,11 @@ export const DB_DETAIL_ADD = "db-detail-add";
 /** A14: the deck sidebar: tabs, the open deck and the save control. */
 export const DB_SIDEBAR = "db-sidebar";
 
+/** A14: deck `oneBased`'s list toggle: on a phone the open deck's curve and tiles fold behind it. */
+export function deckFoldId(oneBased: number): string {
+  return `deck-fold-${oneBased}`;
+}
+
 /** A14: deck `oneBased`'s mana curve, one `.db-bar[data-bucket][data-count]` per bucket. */
 export function deckCurveId(oneBased: number): string {
   return `deck-curve-${oneBased}`;

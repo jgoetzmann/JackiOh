@@ -5,10 +5,11 @@
 // filters.ts. Chips are real toggle buttons (`aria-pressed`), so a keyboard and a screen reader
 // get the same control a pointer does.
 //
-// On a phone the chip rows fold behind a "Filters" toggle (deckbuilder.css shows the toggle and
-// hides the folded rows only on a narrow or a short screen), so the pool is not pushed a screen
-// and a half down the page. The fold is the one piece of state this component owns: it is
-// layout, not a filter, and the chips stay mounted either way.
+// The cost chips are always on show, as Hearthstone's mana crystals are. The type, tag and rarity
+// rows fold behind a "Filters" toggle wherever they would crowd the pool: a phone, and any screen
+// under about 860 px tall, where they left a 1280x720 desktop one row of cards (deckbuilder.css
+// shows the toggle and hides the folded rows only there). The fold is the one piece of state this
+// component owns: it is layout, not a filter, and the chips stay mounted either way.
 
 import { useId, useState, type ReactElement } from "react";
 
@@ -108,7 +109,8 @@ export default function FilterBar(props: FilterBarProps): ReactElement {
   const nextDir = sort.dir === "asc" ? "desc" : "asc";
   const [expanded, setExpanded] = useState(false);
   const chipsId = useId();
-  const active = filter.costs.size + filter.types.size + filter.tags.size + filter.rarities.size;
+  // The toggle counts what it hides: the cost chips are never folded away.
+  const active = filter.types.size + filter.tags.size + filter.rarities.size;
 
   return (
     <div
@@ -214,26 +216,29 @@ export default function FilterBar(props: FilterBarProps): ReactElement {
         </span>
       </div>
 
+      <div className="db-filter-row db-filter-row--cost">
+        <div className="db-chip-group" role="group" aria-label="Cost">
+          <span className="db-group-label" aria-hidden="true">
+            Cost
+          </span>
+          {COST_BUCKETS.map((bucket) => (
+            <Chip
+              key={bucket}
+              testId={filterCostId(bucket)}
+              className="db-chip--cost"
+              pressed={filter.costs.has(bucket)}
+              label={bucket}
+              title={`Cost ${bucket}`}
+              onToggle={() => {
+                setCosts(bucket);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
       <div className="db-filter-chips" id={chipsId}>
         <div className="db-filter-row">
-          <div className="db-chip-group" role="group" aria-label="Cost">
-            <span className="db-group-label" aria-hidden="true">
-              Cost
-            </span>
-            {COST_BUCKETS.map((bucket) => (
-              <Chip
-                key={bucket}
-                testId={filterCostId(bucket)}
-                className="db-chip--cost"
-                pressed={filter.costs.has(bucket)}
-                label={bucket}
-                title={`Cost ${bucket}`}
-                onToggle={() => {
-                  setCosts(bucket);
-                }}
-              />
-            ))}
-          </div>
           <div className="db-chip-group" role="group" aria-label="Type">
             <span className="db-group-label" aria-hidden="true">
               Type
