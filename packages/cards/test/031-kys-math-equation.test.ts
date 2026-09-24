@@ -183,3 +183,31 @@ describe("#31 KY's Math Equation — radiant", () => {
     expect(s.card(equation).radiant).toBe(true);
   });
 });
+
+describe("#31 KY's Math Equation — a cost below 0 (round 10 of the polish-4 edge-case hunt)", () => {
+  it("R67 reads the cost floored at 0: Call to Chaos's -2 on a 1-cost Equation still deals Fib(0 + 1) = 1 (§2.3, §6.3 Cost, R65)", () => {
+    // §8 #31: "Deal Fib(cost+1) damage", with cost = printed + costMod (R67). §2.3 and §6.3's Cost
+    // row floor every cost at 0 — "Cost modifiers stack additively and floor at 0" — so a 1-cost
+    // Equation that #95's "every card in your hand and library costs 2 less" took to costMod -2
+    // costs 0 (the engine's own `effectiveCost` says so), and Fib(0 + 1) is 1, not Fib(-1 + 1) = 0.
+    const s = scenario({
+      p1: { hand: [{ def: "core-031", costMod: -2 }, "core-005"] },
+      p2: { hand: ["core-005"] },
+    });
+    const equation = s.card("core-031");
+    expect(effectiveCost(s.state, equation)).toBe(0);
+
+    s.play(equation, { targets: AT_ENEMY_HERO });
+
+    s.expectHealth("p2", 29);
+  });
+
+  it("R67 radiant: a costMod of -3 on the 1-cost Equation deals Fib(0 + 2) = 1, not Fib(-2 + 2) = 0", () => {
+    const s = scenario({
+      p1: { hand: [{ def: "core-031", costMod: -3, radiant: true }, "core-005"] },
+      p2: { hand: ["core-005"] },
+    });
+    s.play("core-031", { targets: AT_ENEMY_HERO });
+    s.expectHealth("p2", 29);
+  });
+});

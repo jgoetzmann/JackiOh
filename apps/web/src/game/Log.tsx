@@ -157,7 +157,8 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string | nu
         ? "A hidden card was buffed"
         : `${capitalised(name.instance(event.instanceId))} gained +${event.attack}/+${event.health}`;
     case "keywordGranted":
-      return `${capitalised(name.instance(event.instanceId))} gained ${event.keyword.kind}`;
+      // R46: the same event reports the Taunt an Indestructible unit's knock-down takes.
+      return `${capitalised(name.instance(event.instanceId))} ${event.lost === true ? "lost" : "gained"} ${event.keyword.kind}`;
     case "counterChanged":
       return `${capitalised(name.instance(event.instanceId))} ${event.counter} counters: ${event.value}`;
     case "costChanged":

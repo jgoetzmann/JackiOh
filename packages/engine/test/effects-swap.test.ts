@@ -236,6 +236,8 @@ describe("swap (§6.3, R73, M3-T1)", () => {
     expect(top.controller).toBe("p2");
     expect(under.controller).toBe("p2");
     expect(eventsOfType(events, "controlChanged").map((event) => event.instanceId)).toEqual([top.id, under.id]);
+    // Nothing beneath the top resumed, so no Stack note is kept against it (R212, `withPile`).
+    expect(state.fieldExits?.uncovered?.[top.id]).toBeUndefined();
   });
 
   it("R11 a unit token that cannot land ceases to exist instead of reaching a hand", () => {

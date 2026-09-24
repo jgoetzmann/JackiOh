@@ -7,8 +7,9 @@ import type { PlayerId } from "@jackioh/shared";
 import { CAST_ON_DRAW_CHAIN_CAP, FATIGUE_DAMAGE, HAND_CAP, LIBRARY_CAP } from "./config";
 import { defByIndex } from "./catalog";
 import { dealDamage } from "./damage";
-import { castCard, runHook, type EngineSink } from "./resolve";
-import { flagsOf, scriptOf } from "./scripts";
+import { runStartOfGame } from "./prompts";
+import { castCard, type EngineSink } from "./resolve";
+import { flagsOf } from "./scripts";
 import {
   newInstance,
   type CardInstance,
@@ -44,8 +45,9 @@ import { cardAt, isUnitToken, moveToZone, slotsOf } from "./zones";
  * (see the header of `effects/addToHand.ts`: "Both routes end in `../draw`'s `addToHand`").
  */
 function runArrivalHooks(sink: EngineSink, instance: CardInstance): void {
-  if (scriptOf(instance).startOfGame === undefined) return;
-  runHook(sink, instance, "startOfGame", { controller: instance.owner });
+  // §9.3, R113: the clause is an effect list like any other, so a question in it pauses the rest of
+  // it on `state.work` (`prompts.runStartOfGame`), and a draw loop around it owes its remainder.
+  runStartOfGame(sink, instance, instance.owner);
 }
 
 /** #75: a backrow card that turns an empty-library draw into a Rush Token card. */
@@ -380,7 +382,14 @@ export function drawOne(sink: EngineSink, player: PlayerId, link?: ChainLink | n
     // No card is drawn, so no `drawn` event: the damage instance is what happened (§2.4, R3).
     side.fatigueCount += 1;
     const amount = FATIGUE_DAMAGE(side.fatigueCount);
-    dealDamage(sink, { source: null, target: { kind: "hero", player }, amount });
+    const dealt = dealDamage(sink, { source: null, target: { kind: "hero", player }, amount });
+    // R240: a fatigue draw whose hit the hero's Armor takes whole (§4.4 step 2; step 3's cap only
+    // clamps) still happened — the public count moved and the next one deals more (§10.3) — so it is
+    // reported by a hit of 0 from no source, which is a report and no damage instance: nothing
+    // answers it (R63, `triggers.dispatchEvent`).
+    if (dealt <= 0 && sink.state.result === null) {
+      sink.events.push({ type: "damage", sourceId: null, targetId: `hero-${player}`, amount: 0, combat: false });
+    }
     return "fatigue";
   }
 

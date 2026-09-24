@@ -169,6 +169,10 @@ const CARDS_ZEPHYRS_TEST = "../../cards/test/097-zephyrs.test.ts";
 const CARDS_SETUP_TEST = "../../cards/test/setup-and-mulligan.test.ts";
 /** R225 and R226's proofs: the hunt's eighth round, where it was halted. */
 const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
+/** R240 and R241's proofs: the hunt's ninth round, continued at the user's request. */
+const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
+/** R243's proof beside hidden-information.test.ts's, and R46's: the hunt's tenth round. */
+const CARDS_VANILLA_AND_POSITIONS_TEST = "../../cards/test/vanilla-and-positions.test.ts";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
@@ -790,10 +794,11 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
 
   // M4 owns #85 and #99; the fuse subsystem is the machinery their scripts call.
   // Proved by rulings-b.test.ts "R77 fuses the base forms, keeps the target's instance, sums buffs, and
-  // crafts a free non-Radiant hand card".
+  // crafts a free non-Radiant hand card", and by re-entry.test.ts "R77 …": the kept card's memory
+  // is as it was but for the meal its Cube text remembered, moved to that text's place (R102).
   it("R77 fuses into a transient definition whose cost is capped at FUSE_COST_CAP", () => {
     expect(config.FUSE_COST_CAP).toBe(4);
-    provenIn(77, "rulings-b.test.ts");
+    provenIn(77, "rulings-b.test.ts", CARDS_RE_ENTRY_TEST);
   });
 
   // Proved by rulings-b.test.ts "R78 resets an instance as it leaves the field while costMod, costOverride
@@ -1561,10 +1566,18 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
 
   // Proved by re-entry.test.ts's "R174 …" tests (#50's steal after a Stack, a bounce and replay, a
   // Reborn), forced-attacks.test.ts's (a run against a Reborn body), after-resolution.test.ts's (a
-  // trap answering a play an earlier trap took off the field) and tributes.test.ts's (a target the
-  // play's own Tribute sacrificed).
+  // trap answering a play an earlier trap took off the field), tributes.test.ts's (a target the
+  // play's own Tribute sacrificed) and trigger-stays.test.ts's (a queued trigger aims at its event's
+  // card on the stay the event happened on, and at every other card on the stay it has now).
   it("R174 makes a card that left the field and came back a new arrival for the effects aimed at it", () => {
-    provenIn(174, CARDS_RE_ENTRY_TEST, CARDS_FORCED_ATTACKS_TEST, CARDS_AFTER_RESOLUTION_TEST, CARDS_TRIBUTES_TEST);
+    provenIn(
+      174,
+      CARDS_RE_ENTRY_TEST,
+      CARDS_FORCED_ATTACKS_TEST,
+      CARDS_AFTER_RESOLUTION_TEST,
+      CARDS_TRIBUTES_TEST,
+      CARDS_TRIGGER_STAYS_TEST,
+    );
   });
 
   // Proved by re-entry.test.ts's "R175 …" tests: a Rush Token given Reborn, and a Reborn Fiender
@@ -1847,11 +1860,15 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(211, "prompts.test.ts", "reduce.test.ts", CARDS_PLAY_CHOICES_TEST);
   });
 
-  // Proved by stays.test.ts "R212 …" (the event stream's reading) and the cards package's
-  // trigger-stays.test.ts "R212 …": #91 and #32 on a Reborn body, #89 drawn after a death, and #32
-  // drawing for the player who controlled it at the kill that #86's Death then stole it from.
+  // Proved by stays.test.ts "R212 …" (the event stream's reading, and a Stack note's life) and the
+  // cards package's trigger-stays.test.ts "R212 …": #91 and #32 on a Reborn body, #89 drawn after a
+  // death, and #32 drawing for the player who controlled it at the kill that #86's Death then stole
+  // it from; stacks-and-reborn.test.ts "R212 …": a card that resumes under a Stack answers neither
+  // the death that uncovered it nor an event before it, and a later move of the card that left
+  // uncovers nothing; my-pawn.test.ts "R212 …": #89 drawn during My Pawn's AI turn does not feed
+  // on a death from the window before it.
   it("R212 offers an event to the cards as they stood when it happened", () => {
-    provenIn(212, "stays.test.ts", CARDS_TRIGGER_STAYS_TEST);
+    provenIn(212, "stays.test.ts", CARDS_TRIGGER_STAYS_TEST, CARDS_STACKS_AND_REBORN_TEST, "../../cards/test/my-pawn.test.ts");
   });
 
   // Proved by resolving-face.test.ts "R213 …": a Gifted Program stolen after firing, one bounced and
@@ -1945,6 +1962,33 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // "R227 …" tests pin `formerId` on both seats, and effects-summon.test.ts's the Recruit path.
   it("R227 gives a card set face-down a fresh id, so no id seen while it was public names it", () => {
     provenIn(227, CARDS_TURN_CLOCK_TEST);
+  });
+
+  // Proved by turn-stages.test.ts "R240 …": a fatigue draw Going Long's Armor absorbs whole is
+  // reported by one hit of 0 on the hero, which neither a unit's trigger nor a face-down trap that
+  // watches hits on a hero answers; rulings-c.test.ts's R125 case sees the same reports.
+  it("R240 reports a fatigue draw whose whole hit the hero's Armor absorbs", () => {
+    provenIn(240, CARDS_TURN_STAGES_TEST);
+  });
+
+  // Proved by turn-stages.test.ts "R241 …": a Spell carrying #78's end-of-turn exile, cast on draw on
+  // the other player's turn, exiles nothing at the end of its caster's next turn; and by
+  // setup-and-mulligan.test.ts "R241 …": setup is no player's turn, so the end-of-turn clause of a
+  // Spell p1's mulligan casts is not armed for turn 1, though setup names p1 active (p2's never was).
+  it("R241 arms no end-of-turn clause a card makes on the other player's turn", () => {
+    provenIn(241, CARDS_TURN_STAGES_TEST, CARDS_SETUP_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R242 …": whether #28 passes over p1's public unit, and the
+  // order its events go out in, give p2 the same view whatever the faces of p1's hidden cards.
+  it("R242 splits a random Make Radiant between the cards each player may read by the groups' sizes", () => {
+    provenIn(242, CARDS_HIDDEN_INFORMATION_TEST);
+  });
+
+  // Proved by hidden-information.test.ts "R243 …" (a Corpse Eater's meals and a Heroic Power's power
+  // in hand, a crafted card's definition) and vanilla-and-positions.test.ts "R243 …" (a Vanilla copy).
+  it("R243 puts in the view what a card is made of beyond its printed face", () => {
+    provenIn(243, CARDS_HIDDEN_INFORMATION_TEST, CARDS_VANILLA_AND_POSITIONS_TEST);
   });
 });
 

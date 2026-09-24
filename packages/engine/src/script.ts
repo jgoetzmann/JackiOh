@@ -4,6 +4,7 @@
 import type { GameEvent, Keyword, ModeDecl, PlayerId, Selection, TargetDecl } from "@jackioh/shared";
 import type { Rng } from "./rng";
 import type { CardInstance, GameState } from "./state";
+import type { EventStay } from "./stays";
 
 export type EffectContext = {
   state: GameState;
@@ -41,12 +42,29 @@ export type EffectContext = {
    */
   chosenFrom?: number;
   /**
+   * R174, R212: the cards the event a queued trigger answers names, and the field's departures when
+   * that event happened (`stays.eventStayOf`). The loop hands the trigger its event some time
+   * later, so a card the event names is judged from then: a trigger that reads the played unit's id
+   * off its `cardPlayed` does not land on the Reborn body an earlier trigger on the same event made
+   * (R59). Every other card the run aims at is judged from `exitsFrom`, when the run began. Carried
+   * across a pause with the run's other marks. Absent for any run that is not a queued trigger's.
+   */
+  eventStay?: EventStay;
+  /**
    * R136: the units this script's run summoned in the actions before a prompt split it. The window
    * `eventsFrom` opens is the action's own event list, and a list the answer continues resumes in a
    * later action, so what its head summoned is carried here (`work.PausedStep.summoned`,
    * `work.RunMarks`). Absent for a run that has not paused.
    */
   summoned?: readonly string[];
+  /**
+   * R98: the card running the script sat in the resolving zone as the run began (§10.5 step 4) — a
+   * Spell resolving, or a permanent that found no zone. The run is that card's while it stays there,
+   * so a continuation re-entered once the card has left it — the Spell's own list put it back in its
+   * owner's hand before it asked — resumes with no self (`prompts.runResume`). Carried across a pause
+   * with the run's other marks (`work.RunMarks`, `work.PausedStep`). Absent for any other card.
+   */
+  selfResolving?: boolean;
   /** Who is resolving this: the controller of `self`, or the player who cast the card. */
   controller: PlayerId;
   /** The instance whose script is running, when it still exists. */

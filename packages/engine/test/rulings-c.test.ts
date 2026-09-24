@@ -1763,7 +1763,8 @@ describe("SPEC §11 R124–R125: hero Armor (M3 gate)", () => {
     expect(bare.players.p1.fatigueCount).toBe(4);
 
     // Now behind Going Long's Armor 3. Fatigue is an ordinary damage instance on its own hero, so
-    // step 2 applies: draws 1 to 3 are absorbed entirely and emit no damage event (R63's zero rule).
+    // step 2 applies: draws 1 to 3 are absorbed entirely, and R63's zero rule makes each no damage
+    // instance. Each is still a draw that happened, so it is reported by a hit of 0 (R240).
     const armoured = game("r125-armour");
     armoured.players.p1.library = [];
     armoured.players.p1.hero.armor = 3;
@@ -1775,7 +1776,7 @@ describe("SPEC §11 R124–R125: hero Armor (M3 gate)", () => {
       expect(armoured.players.p1.fatigueCount).toBe(n);
       expect(armoured.players.p1.hero.health).toBe(full);
     }
-    expect(eventsOfType(sink.events, "damage")).toEqual([]);
+    expect(hits(sink.events)).toEqual([0, 0, 0].map((amount) => ({ from: "", to: "hero-p1", amount })));
 
     // The escalating Nth-draw damage is what eventually beats the Armor: the 4th draw is 4, so 1
     // gets through, and the 5th lets 2 through.
@@ -1783,10 +1784,7 @@ describe("SPEC §11 R124–R125: hero Armor (M3 gate)", () => {
     expect(armoured.players.p1.hero.health).toBe(full - 1);
     expect(drawOne(sink, "p1")).toBe("fatigue");
     expect(armoured.players.p1.hero.health).toBe(full - 1 - 2);
-    expect(hits(sink.events)).toEqual([
-      { from: "", to: "hero-p1", amount: 1 },
-      { from: "", to: "hero-p1", amount: 2 },
-    ]);
+    expect(hits(sink.events)).toEqual([0, 0, 0, 1, 2].map((amount) => ({ from: "", to: "hero-p1", amount })));
 
     // Step 3's cap rides along too, since it is the same pipeline: a fatigue above the cap is
     // clamped to it.

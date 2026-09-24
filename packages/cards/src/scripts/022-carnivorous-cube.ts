@@ -20,8 +20,8 @@
 // the hook re-checks.
 
 import type { Effect, EffectContext, Script } from "@jackioh/engine";
-import { BACKROW_ZONES, findInstance, recalled } from "@jackioh/engine";
-import { fillBoard, remember, sacrifice, summon } from "@jackioh/engine/effects";
+import { BACKROW_ZONES, recalled } from "@jackioh/engine";
+import { fillBoard, instanceOf, remember, sacrifice, summon } from "@jackioh/engine/effects";
 import type { Row, TargetDecl } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
@@ -66,13 +66,19 @@ const targets: TargetDecl[] = [
   },
 ];
 
-/** Read the named permanent off the play's selection; null when there was nothing legal to eat. */
+/**
+ * Read the named permanent off the play's selection; null when there was nothing legal to eat. The
+ * pick is read as the engine aims every chosen target (`instanceOf`): on the stay the play chose it
+ * on (R174) and acting on the field (§3.2, R13). A crafted Cube + Cube whose two parts name the same
+ * Reborn unit eats it once — the second part finds the Reborn body, a new arrival, and remembers
+ * nothing — and a meal a Stack play buried under the crafted card is no meal (R41).
+ */
 function mealOf(ctx: EffectContext): Eaten | null {
   const selection = ctx.targets[0];
   if (selection === undefined || selection.pick !== "instance") return null;
 
-  const card = findInstance(ctx.state, selection.instanceId);
-  if (card === undefined || card.zone.z !== "field") return null;
+  const card = instanceOf(ctx, { of: "chosen" });
+  if (card === null || card.zone.z !== "field") return null;
   // "One of your other permanents": ally only, and R41's "cannot eat itself".
   if (card.controller !== ctx.controller) return null;
   if (ctx.self !== null && card.id === ctx.self.id) return null;

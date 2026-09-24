@@ -55,6 +55,7 @@ import {
   closePrompt,
   inOfferedOrder,
   openPrompt,
+  registerPromptAnswerer,
   resumeOf,
   runHookResumable,
   whyAnswerRefused,
@@ -76,7 +77,7 @@ import {
 import { playedEarlier } from "./query";
 import { flagsOf } from "./scripts";
 import { sacrificeTogether, stateCheck } from "./stateCheck";
-import { settle } from "./triggers";
+import { dispatchPending, settle } from "./triggers";
 import { triggerHolderFor, triggerHoldersWithHook, type TriggerHolder } from "./triggers";
 import { exitMark, leftFieldAfter } from "./stays";
 import { beginWorkCascade, drainWork, dropWork, paused, pausedOf, pushWork, registerWorkHandler } from "./work";
@@ -170,8 +171,9 @@ export type PlayRun = {
   awaiting: null | "echoTarget" | "echoMode";
   /**
    * R70, R81: a cast's own choices are made. A play carries its targets and modes in the action, and
-   * a cast has none, so step 5 asks the caster for them first, as prompts, into `repeat` (the same
-   * record an Echo repeat's fresh picks fill), and sets this once they are in.
+   * a cast has none, so step 4 asks the caster for them before it places the card (R90: a play's
+   * choices are made with the card still in hand), as prompts, into `repeat` (the same record an
+   * Echo repeat's fresh picks fill), and sets this once they are in.
    */
   castChosen?: boolean;
   /**
@@ -214,18 +216,30 @@ export type PlayRun = {
    */
   placedFrom?: number;
   /**
-   * R119: every card on the field once step 4 had announced the play, by id, with the field's
-   * departures then (`standingFrom`). A permanent that arrives on the field after that, whatever
-   * puts it there — the Cry recruits it (#98), summons it (#95) or brings a body back through Reborn,
-   * or a trap answering the play summons it — does not answer the play's `cardResolved` at step 7
-   * (`arrivedDuring`), as the played card itself does not.
+   * R119: every card acting on the field as the play began — at step 1 for a play, as the cast began
+   * for a cast (R70) — by id, with the field's departures then (`standingFrom`). A permanent that
+   * arrives on the field after that, whatever puts it there — a tributed unit's Death at step 2
+   * (#22's copies, R210), the Cry recruiting it (#98), summoning it (#95) or bringing a body back
+   * through Reborn, a trap answering the play summoning it — does not answer the play, as the played
+   * card itself does not: not its `cardPlayed` and `summoned` at step 4, not step 5's granted Combo
+   * (#38) on the first resolution or an Echo repeat, and not its `cardResolved` at step 7
+   * (`arrivedDuring`). Nor does a card that lay dormant under a Stack pile as the play began and
+   * resumed as its top while the play resolved: it registered nothing then (§3.2, R153).
    */
   standing?: string[];
   standingFrom?: number;
   /**
+   * R119: the playing player's modifiers as the play began, by id. A granted Combo that is a
+   * modifier (#78's `comboDraw`, a `quickstrikerDamage`) answers the play only when it was already
+   * in place then, so one the play itself installed — /fullsend's own rider, met again by the Echo
+   * repeat of the same play (§10.5 step 6) — does not.
+   */
+  modsBefore?: string[];
+  /**
    * R226, §10.5 step 4, §10.1: the card left its owner's hand before step 4 could move it — a
-   * Tribute's Death at step 2, or an `onPlayHook` at step 3, had it discarded — so it is not played:
-   * no placement, no `cardPlayed`, no resolution. What steps 2 and 3 did stands, and step 8 settles it.
+   * Tribute's Death at step 2, or an `onPlayHook` at step 3, had it discarded — or, for a cast, left
+   * the resolving zone it waits in (R70) — so it is not played: no placement, no `cardPlayed`, no
+   * resolution. What steps 2 and 3 did stands, and step 8 settles it.
    */
   lost?: boolean;
 };
@@ -336,7 +350,17 @@ export function validatePlay(
       gifted: giftedMakesRadiant(state, player, cost),
       ...slicesFor(state, player, card, cost, targets, modes),
       exitsFrom: exitMark(state),
+      ...playBegins(state, player),
     },
+  };
+}
+
+/** R119: the board and the player's modifiers as a play or a cast begins, which it answers against. */
+function playBegins(state: GameState, player: PlayerId): Pick<PlayRun, "standing" | "standingFrom" | "modsBefore"> {
+  return {
+    standing: fieldCardIds(state),
+    standingFrom: exitMark(state),
+    modsBefore: state.players[player].mods.map((mod) => mod.id),
   };
 }
 
@@ -500,6 +524,13 @@ function giftedProgramStep(sink: EngineSink, run: PlayRun): void {
 
 function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance, formerId: string | undefined): void {
   const former = formerId === undefined ? {} : { formerId };
+  // R119: what has already arrived on the field during the play — a tributed unit's Death at step 2
+  // (#22's copies of a Sheepish) — does not answer it, which the step-4 pair names, as step 7's does.
+  const arrived = arrivedDuring(sink.state, run);
+  const arrivals = arrived.length === 0 ? {} : { arrivedDuring: arrived };
+  // R174, R212: the stays the play was announced on, so a response the loop hands the pair later —
+  // behind the traps that answer what step 2 did — judges the played card from here.
+  const exitsFrom = exitMark(sink.state);
   sink.events.push({
     type: "cardPlayed",
     player: run.player,
@@ -509,6 +540,8 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance, former
     ...(card.x === undefined ? {} : { x: card.x }),
     ...(card.embiggened === undefined ? {} : { embiggened: card.embiggened }),
     ...former,
+    ...arrivals,
+    exitsFrom,
   });
   if (run.zone !== null) {
     sink.events.push({
@@ -519,6 +552,8 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance, former
       row: run.zone.row,
       lane: run.zone.lane,
       ...former,
+      ...(arrived.length === 0 ? {} : { arrivedDuring: [...arrived] }),
+      exitsFrom,
     });
   }
 }
@@ -541,12 +576,14 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   // trigger killed has died before step 5's Cry counts the board (R118, R113).
   const resumed = run.placed === true;
   if (!resumed) {
+    // R70, R90: a cast makes its choices before step 4 puts it on the field, as a play makes them at
+    // step 1 with the card still in hand — so a cast Unit is never one of its own Cry's options.
+    if (run.cast === true && !castChoicesMade(sink, run, "place")) return;
     run.placed = true;
     if (!placeCard(sink, run)) run.lost = true;
   }
-  // R17's step-4 window for a play from hand. A cast leaves its events to the loop of the effect
-  // that cast it (§2.4's draw, #95), which is running around it (`castThroughPipeline`). The play has
-  // not resolved yet, so the loop holds §4.5's check until something in it has (R118).
+  // R17's step-4 window. The play has not resolved yet, so the loop holds §4.5's check until
+  // something in it has (R118).
   //
   // A trap that asks here pauses the loop with its events still owed — the other traps that answer
   // the play (`triggers.OWED_TO_TRAPS`), the events after the one it answered, the triggers they
@@ -554,15 +591,37 @@ function placeStep(sink: EngineSink, run: PlayRun): void {
   // R118). So the step owes itself, and the answer brings it back to this loop rather than on to
   // step 5: a Sheepish owed the play's `cardPlayed` behind a trap that asked still turns the unit
   // into a Sheep before its Cry (R17).
-  if (run.cast !== true) settle(sink, { holdCheck: !resumed });
+  if (run.cast !== true) {
+    settle(sink, { holdCheck: !resumed });
+    return;
+  }
+  // R70: a cast is a play, so its step 4 is a window too, and a Sheepish answering a cast Unit turns
+  // it into a Sheep before its Cry (R17). A cast runs inside another effect (§2.4's draw, #95), whose
+  // own loop is running around it (`castThroughPipeline`), so the window is the traps' part of that
+  // loop and no more (`triggers.dispatchPending`): every event so far reaches the traps, which fire
+  // at once as responses — an earlier cast of the same chain included — while the other triggers
+  // they wake, and the work owed around the cast, wait for the effect's own loop (R117). A cast
+  // re-entered here after a trap's question meets the check the answer is owed first (R59).
+  if (resumed) {
+    stateCheck(sink);
+    if (paused(sink)) return;
+  }
+  dispatchPending(sink);
 }
 
-/** Every card on the field, both sides, dormant cards under a Stack included (§3.2). */
+/**
+ * Every card acting on the field, both sides: each Stack pile's top and the backrow. A card dormant
+ * under a pile is not on the field for effects and registers nothing (§3.2, R13, R153), so one that
+ * resumes while a play resolves arrives for R119 as a Reborn body does.
+ */
 function fieldCardIds(state: GameState): string[] {
   const out: string[] = [];
   for (const player of PLAYER_IDS) {
     const side = state.players[player];
-    for (const pile of side.units) for (const card of pile ?? []) out.push(card.id);
+    for (const pile of side.units) {
+      const top = pile?.[0];
+      if (top !== undefined) out.push(top.id);
+    }
     for (const card of side.backrow) if (card !== null && card !== undefined) out.push(card.id);
   }
   return out;
@@ -585,8 +644,8 @@ function arrivedDuring(state: GameState, run: PlayRun): string[] {
 }
 
 /**
- * Step 4's placement and announcement, once. False when the card is no longer the hand's to move
- * (`PlayRun.lost`), which ends the play.
+ * Step 4's placement and announcement, once. False when the card is no longer the hand's to move,
+ * or for a cast the resolving zone's (`PlayRun.lost`), which ends the play.
  */
 function placeCard(sink: EngineSink, run: PlayRun): boolean {
   const state = sink.state;
@@ -597,10 +656,14 @@ function placeCard(sink: EngineSink, run: PlayRun): boolean {
   const side = state.players[run.player];
 
   if (run.cast === true) {
-    // R70, §6.3 Cast: a cast card leaves wherever it was — a library for a cast on draw (§2.4), no
-    // pile at all for one an effect made (#95) — and a permanent takes the leftmost empty,
+    // R70, R226: a cast card waits in the resolving zone from the start of its cast
+    // (`castThroughPipeline`), as a played card waits in its owner's hand until step 4. One that has
+    // left it by now — a step-3 `onPlayHook`, or its answer, exiled it — is where that move put it, in
+    // one zone (§10.1), and is not played: pulling it back out of exile would undo a move §6.3 makes
+    // final. Otherwise it leaves the resolving zone, and a permanent takes the leftmost empty,
     // unlocked zone of its row (R64), as a play that names none does. Not `moveToZone`: that resets
     // the instance (R78), and a cast is a play, which does not.
+    if (card.zone.z !== "resolving") return false;
     removeFromAnyZone(state, card);
     const type = defOf(state, card.defId).type;
     run.zone = type === "Spell" ? null : firstFreeZone(state, run.player, type === "Unit" ? "units" : "backrow");
@@ -638,9 +701,11 @@ function placeCard(sink: EngineSink, run: PlayRun): boolean {
     side.resolving.push(card);
   }
 
-  // R119: the board the play was announced on, which step 7 reads its arrivals against.
-  run.standing = fieldCardIds(state);
-  run.standingFrom = exitMark(state);
+  // R119: a run owed from before the marks were kept reads the board the play was announced on.
+  if (run.standing === undefined) {
+    run.standing = fieldCardIds(state);
+    run.standingFrom = exitMark(state);
+  }
 
   side.turnLog.playedIds.push(card.id);
   side.turnLog.cardsPlayed += 1;
@@ -692,14 +757,17 @@ function stillResolving(state: GameState, run: PlayRun): CardInstance | null {
  * How many times #38 Quickstriker's lasting effect (`staticFlags.quickstriker`) is granted from this
  * player's side of the field: once per Quickstriker, and a card fused from two carries both (R102).
  * The played card is never one of them: a permanent does not answer its own arrival (R119), and a
- * Quickstriker being played is on the field by step 5.
+ * Quickstriker being played is on the field by step 5. Nor is one that arrived on the field during
+ * the play (`arrivedDuring`): a copy a tributed Cube's Death summoned at step 2, one #95's first
+ * resolution summoned, met again by the Echo repeat of that same play (R119).
  */
-function quickstrikerGrants(state: GameState, player: PlayerId, played: CardInstance): number {
+function quickstrikerGrants(state: GameState, run: PlayRun, played: CardInstance): number {
+  const arrived = new Set(arrivedDuring(state, run));
   let grants = 0;
   for (const row of ["units", "backrow"] as const) {
-    for (const ref of slotsOf(player, row)) {
+    for (const ref of slotsOf(run.player, row)) {
       const held = cardAt(state, ref);
-      if (held === null || held.id === played.id) continue;
+      if (held === null || held.id === played.id || arrived.has(held.id)) continue;
       const flag = flagsOf(held).quickstriker;
       grants += flag === true ? 1 : typeof flag === "number" ? Math.max(0, Math.trunc(flag)) : 0;
     }
@@ -721,9 +789,10 @@ function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): 
   const amount = playedEarlierThisTurn(state, run);
   if (amount <= 0) return;
   const grants =
-    quickstrikerGrants(state, run.player, card) +
-    state.players[run.player].mods.filter((mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod))
-      .length;
+    quickstrikerGrants(state, run, card) +
+    state.players[run.player].mods.filter(
+      (mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod) && inPlaceBefore(run, mod.id),
+    ).length;
   for (let hit = 0; hit < grants; hit += 1) {
     dealDamage(sink, {
       source: card,
@@ -744,9 +813,20 @@ function comboDrawStep(sink: EngineSink, run: PlayRun): void {
   if (playedEarlierThisTurn(state, run) < 1) return;
   let draws = 0;
   for (const mod of state.players[run.player].mods) {
-    if (mod.kind === "comboDraw" && modifierIsLive(state, mod)) draws += Math.max(0, mod.amount);
+    if (mod.kind === "comboDraw" && modifierIsLive(state, mod) && inPlaceBefore(run, mod.id)) {
+      draws += Math.max(0, mod.amount);
+    }
   }
   if (draws > 0) draw(sink, run.player, draws);
+}
+
+/**
+ * R119: whether a modifier was in place as the play began (`PlayRun.modsBefore`). One the play
+ * installed itself — /fullsend's "Combo: draw 1", which an Echo repeat of the same /fullsend would
+ * otherwise meet — does not answer it.
+ */
+function inPlaceBefore(run: PlayRun, id: string): boolean {
+  return run.modsBefore === undefined || run.modsBefore.includes(id);
 }
 
 /**
@@ -806,12 +886,14 @@ function resolveStep(sink: EngineSink, run: PlayRun): void {
 /**
  * R70: "the caster picks its targets and modes", and R81: a choice made during resolution — a cast's
  * among them — opens a `PendingChoice`. So a cast of a card that declares targets or modes asks its
- * caster for them before its script runs, declaration by declaration, the way an Echo repeat asks
- * for its fresh picks (§10.6) — and for the face step 5 resolves, since step 3 has already made it
- * Radiant if it is going to be (R214). A cast whose caller named its choices (none in Core) keeps
- * them. Returns false while a prompt is waiting.
+ * caster for them, declaration by declaration, the way an Echo repeat asks for its fresh picks
+ * (§10.6) — and for the face step 5 resolves, since step 3 has already made it Radiant if it is
+ * going to be (R214). It asks as step 4 begins, before the card is placed (`placeStep`): a play's
+ * choices are checked at step 1 with the card still in hand (R90), so a cast Unit asked after its
+ * placement was offered as a target of its own Cry, which no play of it ever is. A cast whose caller
+ * named its choices (none in Core) keeps them. Returns false while a prompt is waiting.
  */
-function castChoicesMade(sink: EngineSink, run: PlayRun): boolean {
+function castChoicesMade(sink: EngineSink, run: PlayRun, step: PlayStepName = "resolve"): boolean {
   if (run.castChosen === true) return true;
   const card = stillResolving(sink.state, run);
   if (card === null) return true;
@@ -823,7 +905,7 @@ function castChoicesMade(sink: EngineSink, run: PlayRun): boolean {
     }
     run.repeat = { targets: [], modes: [], declAt: 0, modeAt: 0 };
   }
-  if (!askRepeatChoices(sink, run, card, "resolve")) return false;
+  if (!askRepeatChoices(sink, run, card, step)) return false;
   const chosen = run.repeat;
   run.repeat = null;
   run.castChosen = true;
@@ -860,7 +942,8 @@ function labelOf(selection: Selection): string {
  * R81: a card's play choices travel in the `play` action *once*. A repeat therefore asks again, as
  * prompts — §10.6's "an Echo repeat of Glowy Jelly Bean reopens its hand pick" — so each
  * declaration the card made is offered in turn and the answers collect in the repeat record. The
- * prompt carries the run record, so answering it re-enters this pipeline (see `answerPlayPrompt`).
+ * prompt carries the run record, so answering it re-enters this pipeline (`answerPlayPrompt`, which
+ * `prompts.answerPrompt` hands it to).
  *
  * Returns true when every declaration has its answer and the repeat can resolve. A declaration the
  * board cannot satisfy is skipped rather than refused: the effect fizzles (R90, §8's conventions).
@@ -1184,9 +1267,9 @@ function selectionIn(data: Record<string, unknown>): Selection[] | null {
 }
 
 /**
- * `work.ts`'s handler for the `"play"` sequence: the owed pipeline, continued where it stopped.
- * This is also how an answer to a prompt the pipeline opened itself comes back, since `prompts.ts`
- * re-enters a continuation no card script claims through its work handler (R113).
+ * `work.ts`'s handler for the `"play"` sequence: the owed pipeline, continued where it stopped. An
+ * answer to a prompt the pipeline opened itself does not come back this way: it goes to
+ * `answerPlayPrompt`, which `prompts.answerPrompt` hands it to (R122).
  */
 function runOwedPlay(sink: EngineSink, item: WorkItem): void {
   const run = runOf(item.resume);
@@ -1250,6 +1333,7 @@ function castThroughPipeline(sink: EngineSink, instance: CardInstance, options: 
     awaiting: null,
     cast: true,
     exitsFrom: exitMark(sink.state),
+    ...playBegins(sink.state, player),
   });
 }
 
@@ -1271,11 +1355,12 @@ export function runPlaySteps(sink: EngineSink, player: PlayerId, action: PlayAct
 }
 
 /**
- * Answer a prompt this pipeline opened itself (§10.5 step 6's fresh picks), for a caller that has
- * the sequence in hand rather than going through `prompts.answerPrompt`: validate the answer the
- * same way, close the prompt, file the selection and drive on. `reduce` does not need this — an
- * answer goes to `prompts.answerPrompt`, which re-enters a continuation no card script claims
- * through this module's work handler (R113) — but the pipeline's own tests drive it directly.
+ * Answer a prompt this pipeline opened itself (§10.5 step 6's fresh picks, a cast's choices at step
+ * 4): validate the answer the same way, close the prompt, file the selection and drive on. Such a
+ * prompt names the `"play"` sequence as its hook, which no card script holds, so it is registered
+ * with `prompts.answerPrompt` below: every caller answers through that one entry point, the reducer
+ * and a caller driving the engine directly alike, and none of them drops the selection and the rest
+ * of the play (R122, R113).
  *
  * Returns the refusal, or null.
  */
@@ -1304,3 +1389,5 @@ export function answerPlayPrompt(sink: EngineSink, answer: AnswerInput): string 
   drainWork(sink);
   return null;
 }
+
+registerPromptAnswerer(PLAY_WORK_KIND, answerPlayPrompt);

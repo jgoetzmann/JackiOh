@@ -10,6 +10,12 @@ export const MAX_MANA = 4;
 /** §2 */
 export const HERO_HEALTH = 30;
 
+/**
+ * BUILD M1-T1 (`createGame` yields `turn = 0`): the turn number §2.1's setup runs at. Setup is no
+ * player's turn — p1 takes the first turn after it (§2.1 step 5) — so nothing played during it
+ * belongs to a turn of its controller's (R155, R241).
+ */
+export const SETUP_TURN = 0;
 /** §2.5, R2 (decide): the cap counts player-turns, so 30 means 15 each. */
 export const TURN_CAP_PLAYER_TURNS = 30;
 /** §2.4, R4 (decide): a card drawn or added to a full hand is burned. */

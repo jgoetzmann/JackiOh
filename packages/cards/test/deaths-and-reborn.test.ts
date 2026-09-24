@@ -11,8 +11,22 @@
 //  - Round 6, lens L2. §4.5 step 4, §10.1: Reborn returns a collected unit from the graveyard step 1
 //    moved it to, and from nowhere else, so a Death hook of the same pass that moved it on (a later
 //    set's "exile your graveyard", built here as a fixture) does not leave it in two zones.
+//  - Round 9, lens "combat windows". R42, R89: a unit is killed once, by the first thing that dooms
+//    it before the check collects it, and what lands on it afterwards changes nothing: a destroy after
+//    the lethal hit, a Poisonous hit on a unit already at 0, a hit on a unit a Poisonous hit already
+//    marked. The cards are fixtures (no Core Death deals damage, and no Core Cry both damages and
+//    destroys; #99 crafting #68 with #2 is the Core shape of the first).
 
-import type { CardDef, CardType, GameEvent, PlayerId, Row, Selection } from "@jackioh/shared";
+import type {
+  CardDef,
+  CardType,
+  GameEvent,
+  PlayerId,
+  Row,
+  Selection,
+  Keyword,
+  TargetDecl,
+} from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
 import {
   newInstance,
@@ -23,7 +37,7 @@ import {
   type GameState,
   type Script,
 } from "@jackioh/engine";
-import { exileMatching } from "@jackioh/engine/effects";
+import { exileMatching, damage, destroy } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -317,5 +331,140 @@ describe("§4.5 step 4, §10.1: Reborn never leaves one card in two zones", () =
     const zone = g.card(saintess).zone;
     const where = zone.z === "field" ? `${zone.player}.${zone.row}.${zone.lane}` : `${zone.player}.${zone.z}`;
     expect(pilesHolding(g.state, saintess.id)).toEqual([where]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: a unit already killed is not killed again (R42, R89, §4.4 step 7)
+// ---------------------------------------------------------------------------
+
+/** A fixture unit with a face of its own: a transient def in the match state and its script in the registry. */
+function fixtureUnit(s: Scenario, id: string, script: Script, stats: { attack: number; health: number }, keywords: Keyword[] = []): void {
+  const face = { ...stats, keywords, text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Unit",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+function inHand(s: Scenario, defId: string, player: PlayerId): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  s.state.players[player].hand.push(card);
+  return card;
+}
+
+function placeUnit(s: Scenario, defId: string, player: PlayerId, lane: number): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  if (!placeOnField(s.state, card, { player, row: "units", lane })) throw new Error(`could not place ${defId}`);
+  card.position = "ATK";
+  return card;
+}
+
+function killerOf(s: Scenario, card: CardInstance): string | null | undefined {
+  return s.events.find(
+    (event): event is Extract<GameEvent, { type: "destroyed" }> => event.type === "destroyed" && event.instanceId === card.id,
+  )?.killerId;
+}
+
+const ONE_UNIT: TargetDecl[] = [{ kind: "target", min: 1, max: 1, filter: { side: "any", of: ["unit"] } }];
+
+/**
+ * A board for one Death pass: p1's 3/3 Mr. Vanilla in lane 3, and p1 holding a radiant Hit Job that
+ * destroys p2's lane-1 unit and the lane-2 unit beside it, so both of their Deaths run in that one
+ * pass, lane 1 first (R68), with no state check between them (§4.5 step 3).
+ */
+function deathPassBoard(): { s: Scenario; vanilla: CardInstance } {
+  const s = scenario({
+    p1: { hand: [{ def: HIT_JOB, radiant: true }, RENO], field: [{ def: VANILLA, lane: 3 }], library: [...LIBRARY] },
+    p2: { hand: [RENO], library: [...LIBRARY] },
+  });
+  return { s, vanilla: must(s.unit("p1", 3), "p1's Mr. Vanilla") };
+}
+
+/** "Death: deal `amount` damage to p1's Mr. Vanilla." */
+function hitsVanilla(vanilla: CardInstance, amount: number): Script {
+  return { death: () => [damage({ to: { of: "instance", instanceId: vanilla.id }, amount })] };
+}
+
+describe("R42, R89: a unit already killed is not killed again", () => {
+  it("R42 a destroy that lands after this unit's lethal hit leaves the kill with this unit, so its Prem Panther text draws 2 (R89)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], library: [...LIBRARY] },
+      p2: { field: [{ def: VANILLA, lane: 1 }], hand: [RENO], library: [...LIBRARY] },
+    });
+    // "Cry: deal 5 damage to a target unit; destroy it", carrying #32's "whenever this destroys a
+    // unit, draw 2" — a #99 Craft a Card of #68 and #2 with #32's text, as one card.
+    const panther = must(registeredScripts()[PANTHER], "#32's script");
+    fixtureUnit(
+      s,
+      "edge-r9-maul",
+      {
+        targets: ONE_UNIT,
+        triggers: panther.base.triggers ?? [],
+        cry: () => [damage({ to: { of: "chosen" }, amount: 5 }), destroy({ target: { of: "chosen" } })],
+      },
+      { attack: 2, health: 2 },
+    );
+    const maul = inHand(s, "edge-r9-maul", "p1");
+    const vanilla = must(s.unit("p2", 1), "p2's Mr. Vanilla");
+    const hand = s.hand("p1").length;
+
+    s.play(maul, { targets: [{ pick: "instance", instanceId: vanilla.id }] });
+
+    // The 5 took the 3/3 to -2: that hit was the lethal damage instance, and the destroy that
+    // followed it found a unit already dead (§4.5 step 1 collects it on either count).
+    s.expectInZone(vanilla, "graveyard");
+    expect(killerOf(s, vanilla)).toBe(maul.id);
+    // The maul left the hand and its kill drew 2.
+    expect(s.hand("p1")).toHaveLength(hand - 1 + 2);
+  });
+
+  it("R42 a Poisonous hit on a unit an earlier hit already took to 0 does not take the kill from that hit (R89, §4.4 step 7)", () => {
+    const { s, vanilla } = deathPassBoard();
+    // Two p2 units whose Deaths hit p1's 3/3: lane 1's Death deals 5, then (R68 order) lane 2's,
+    // a Poisonous unit's, deals 1 — both in the one Death pass, with no check between (§4.5 step 3).
+    fixtureUnit(s, "edge-r9-hammer", hitsVanilla(vanilla, 5), { attack: 1, health: 1 });
+    fixtureUnit(s, "edge-r9-sting", hitsVanilla(vanilla, 1), { attack: 1, health: 1 }, [{ kind: "Poisonous" }]);
+    const hammer = placeUnit(s, "edge-r9-hammer", "p2", 1);
+    const sting = placeUnit(s, "edge-r9-sting", "p2", 2);
+
+    // Radiant Hit Job destroys the hammer and the sting beside it.
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: hammer.id }] });
+
+    expect(s.events).toContainEqual(expect.objectContaining({ type: "damage", sourceId: hammer.id, targetId: vanilla.id, amount: 5 }));
+    expect(s.events).toContainEqual(expect.objectContaining({ type: "damage", sourceId: sting.id, targetId: vanilla.id, amount: 1 }));
+    s.expectInZone(vanilla, "graveyard");
+    // The hammer's 5 took it from 3 to -2; the sting hit a unit that was already dead.
+    expect(killerOf(s, vanilla)).toBe(hammer.id);
+  });
+
+  it("R42 a hit that takes a unit a Poisonous hit already marked destroyed to 0 does not take the kill from the Poisonous unit (R89, §4.4 step 7)", () => {
+    const { s, vanilla } = deathPassBoard();
+    // The same pass the other way round: lane 1's Poisonous Death deals 1 (3/3 → 2 health, marked
+    // destroyed), then lane 2's deals 5 to a unit that step 7 has already destroyed.
+    fixtureUnit(s, "edge-r9-sting", hitsVanilla(vanilla, 1), { attack: 1, health: 1 }, [{ kind: "Poisonous" }]);
+    fixtureUnit(s, "edge-r9-hammer", hitsVanilla(vanilla, 5), { attack: 1, health: 1 });
+    const sting = placeUnit(s, "edge-r9-sting", "p2", 1);
+    const hammer = placeUnit(s, "edge-r9-hammer", "p2", 2);
+
+    s.play(HIT_JOB, { targets: [{ pick: "instance", instanceId: sting.id }] });
+
+    expect(s.events).toContainEqual(expect.objectContaining({ type: "damage", sourceId: sting.id, targetId: vanilla.id, amount: 1 }));
+    expect(s.events).toContainEqual(expect.objectContaining({ type: "damage", sourceId: hammer.id, targetId: vanilla.id, amount: 5 }));
+    s.expectInZone(vanilla, "graveyard");
+    // "The Poisonous hit is the one that destroys it, whatever health it left" (damage.ts, R42):
+    // the sting's hit killed it, and the hammer's 5 landed on a unit already destroyed.
+    expect(killerOf(s, vanilla)).toBe(sting.id);
   });
 });

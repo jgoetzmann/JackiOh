@@ -19,6 +19,7 @@ import {
   HERO_HEALTH,
   HUMAN_HANDICAP,
   LIBRARY_CAP,
+  SETUP_TURN,
   UNIT_ZONES,
   type Handicap,
 } from "./config";
@@ -309,8 +310,20 @@ export type GameState = {
   fieldExits?: FieldExits;
 };
 
-/** R174: `count` departures so far; `last` maps a card to the departure that was its latest. */
-export type FieldExits = { count: number; last: Record<string, number> };
+/**
+ * R174: `count` departures so far; `last` maps a card to the departure that was its latest.
+ * `uncovered` (R212, §3.2) maps a card that has left the top of a Stack pile — died, bounced,
+ * exiled, stolen, fused away — to the note of that removal (`stays.noteUncovered`), so the events
+ * reporting its leaving, and every event before them, are not answered by the card it uncovered.
+ */
+export type FieldExits = { count: number; last: Record<string, number>; uncovered?: Record<string, UncoveredNote> };
+
+/**
+ * R212, §3.2: `resumed` is the dormant card that became its pile's top when the card left.
+ * `reported`: the loop has dispatched a report of that removal (`stays.noteReported`). `movedOn`: the
+ * card that left has moved zones again since (`stays.noteMoved`). The note goes once both are true.
+ */
+export type UncoveredNote = { resumed: string; reported?: boolean; movedOn?: boolean };
 
 function emptyRow<T>(size: number): (T | null)[] {
   return Array.from({ length: size }, () => null);
@@ -472,7 +485,7 @@ export function createGame(options: CreateGameOptions): GameState {
   const state: GameState = {
     seed: options.seed,
     rngCursor: 0,
-    turn: 0,
+    turn: SETUP_TURN,
     active: "p1",
     phase: "setup",
     players: { p1: createPlayerState(), p2: createPlayerState() },
@@ -558,6 +571,16 @@ export function activeUnits(side: PlayerState): CardInstance[] {
 
 export function allZonesEmpty(side: PlayerState): boolean {
   return side.units.every((pile) => pile === null) && side.backrow.every((card) => card === null);
+}
+
+/**
+ * §2.1, §2.2: whether it is `player`'s turn. Setup (`SETUP_TURN`) is no player's turn: `active`
+ * names p1 there only as a placeholder until p1 takes the first turn (§2.1 step 5), so a clause a
+ * card makes during setup — a cast on the opening deal or a mulligan's replacement draw (R70) — is
+ * made on no turn of its controller's (R155, R241).
+ */
+export function isTurnOf(state: Pick<GameState, "turn" | "active">, player: PlayerId): boolean {
+  return state.turn !== SETUP_TURN && state.active === player;
 }
 
 export function findInstance(state: GameState, instanceId: string): CardInstance | undefined {

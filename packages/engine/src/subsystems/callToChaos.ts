@@ -175,8 +175,8 @@ export function makeHandRadiant(): Effect {
 }
 
 /**
- * 6. "Summon five 5/5 Rush Tokens": the §7 Rush Token with a `statsOverride`, five separate summons,
- * so a board with fewer free zones simply takes fewer (R64) instead of failing as a whole.
+ * 6. "Summon five Radiant Rush Tokens": the §7 Rush Token's own Radiant face (6/6), five separate
+ * summons, so a board with fewer free zones simply takes fewer (R64) instead of failing as a whole.
  */
 export function summonRushTokens(): Effect {
   return chaosEffect("tokens", () => {
@@ -284,7 +284,7 @@ export const CHAOS_EFFECTS: readonly ChaosEffectDef[] = [
   { name: "draw", label: "Draw your whole library and gain 4 mana", build: drawLibraryAndGainMana },
   { name: "add", label: "Add 3 random cards to hand costing 0", build: addRandomZeroCostCards },
   { name: "radiant", label: "Your hand becomes Radiant", build: makeHandRadiant },
-  { name: "tokens", label: "Summon five 5/5 Rush Tokens", build: summonRushTokens },
+  { name: "tokens", label: "Summon five Radiant Rush Tokens", build: summonRushTokens },
   { name: "discount", label: "Every card in your hand and library costs 2 less", build: discountHandAndLibrary },
   { name: "golem", label: "Summon a Chaos Golem", build: summonChaosGolem },
   { name: "backrow", label: "Summon 5 random Field Spells or Traps into your backrow", build: summonRandomBackrow },

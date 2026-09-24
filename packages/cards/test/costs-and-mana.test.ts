@@ -9,10 +9,14 @@
 //    cost the flat discounts leave, and neither reads what the other has already lowered.
 //  - §2.3: max mana is min(turns, 4) plus persistent modifiers. The next refresh's one-shot rider
 //    (#24's next-turn mana, #21's lower refresh) moves current mana only, as #6 Mana Well's gain does.
+//  - Round 9, lens "keywords and layers". R65 (amended): a player's discounts (#35, #77, #78) are
+//    prices for a play from the hand, so a library or a graveyard card is read at its own cost: #30
+//    Archivist's "highest" and #94 Genn's Greed's parity do not see the turn's discounts.
 
 import { effectiveCost } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
+import type { Selection } from "@jackioh/shared";
 
 const STOCKPILE = "core-005";
 const VANILLA = "core-008";
@@ -134,5 +138,84 @@ describe("§2.3: a one-shot refresh rider moves current mana, not max mana", () 
     expect(hinder.state.active).toBe("p2");
     hinder.expectMana("p2", 3);
     expect(hinder.view("p2").you.mana).toEqual({ current: 3, max: 4 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: a play-time discount is not a library or graveyard card's cost (R65, R48, §8 #35, #77, #78)
+// ---------------------------------------------------------------------------
+
+const RAPID_REPLENISH = "core-010"; // Spell, 0
+const SEVEN_SEVEN = "core-025"; // Unit, 4
+const ARCHIVIST = "core-030";
+const LUNAR_ECLIPSE = "core-035";
+const FULLSEND = "core-078"; // Spell, 4
+const GREED = "core-094";
+
+const AT_P2 = [{ pick: "hero", player: "p2" } as const] satisfies Selection[];
+
+describe("A play-time discount is not a library or graveyard card's cost (§6.3 Cost, R48, R65, §8 #35, #77, #78)", () => {
+  it("R65 Archivist on the Curvature turn draws the 4-cost card as the library's highest, not a 3-cost one nearer the top (R48, R24)", () => {
+    const g = scenario({
+      p1: {
+        hand: [CURVATURE, ARCHIVIST, HINDER],
+        field: [{ def: VANILLA, lane: 1 }],
+        // The turn's draw takes the top Vanilla; Archivist then reads a 3-cost Unit above a 4-cost one.
+        library: [VANILLA, SHREDDER, SEVEN_SEVEN],
+      },
+      p2: { hand: [HINDER, HINDER], field: [{ def: VANILLA, lane: 1 }], library: LIBRARY },
+    });
+    g.play(CURVATURE, { zone: 2 });
+    g.endTurn().endTurn();
+    expect(g.state.active).toBe("p1");
+    expect(g.pile("p1", "library").map((card) => card.defId)).toEqual([SHREDDER, SEVEN_SEVEN]);
+
+    g.play(ARCHIVIST, { zone: 3, modes: ["highest"] });
+
+    // R24: "highest" is the 7/7 at 4. Curvature prices a 4-cost card PLAYED this turn (R48); it does
+    // not make the 7/7 in the library a 3 that ties with Shredder and loses to its place in the pile.
+    expect(g.hand("p1").map((card) => card.defId)).toContain(SEVEN_SEVEN);
+    expect(g.pile("p1", "library").map((card) => card.defId)).toEqual([SHREDDER]);
+  });
+
+  it("R65 Archivist after Lunar Eclipse still reads a library Spell at its own cost: a 4-cost Spell is higher than a 3-cost Unit (§8 #35, R24)", () => {
+    const g = scenario({
+      p1: {
+        hand: [LUNAR_ECLIPSE, ARCHIVIST, HINDER],
+        library: [SHREDDER, FULLSEND],
+      },
+      p2: { hand: [HINDER], library: LIBRARY },
+    });
+    g.play(LUNAR_ECLIPSE, { targets: AT_P2 });
+    g.play(ARCHIVIST, { zone: 1, modes: ["highest"] });
+
+    // "The next Spell you play this turn costs 1 less" is a price for playing /fullsend, not what it
+    // costs lying in the library, so /fullsend at 4 is the highest card there.
+    expect(g.hand("p1").map((card) => card.defId)).toContain(FULLSEND);
+    expect(g.pile("p1", "library").map((card) => card.defId)).toEqual([SHREDDER]);
+  });
+
+  it("R65 Genn's Greed played under /fullsend exiles no even-cost card from the library or the graveyard, /fullsend itself included (§8 #78, #94, R66)", () => {
+    const g = scenario({
+      p1: {
+        hand: [FULLSEND, GREED],
+        // A unit that can still switch keeps §2.5's auto-end from passing the turn mid-test.
+        field: [VANILLA],
+        // /fullsend's granted "Combo: draw 1" takes the 0-cost Spell on top before Genn's text runs;
+        // a 0 reads 0 in the hand whatever the discount, so the hand's parity is not in question.
+        library: [RAPID_REPLENISH, SEVEN_SEVEN],
+      },
+      p2: { hand: [HINDER], field: [VANILLA], library: LIBRARY },
+    });
+    g.play(FULLSEND);
+    g.play(GREED);
+
+    expect(g.hand("p1").map((card) => card.defId)).toEqual([RAPID_REPLENISH]);
+    // "Exile every odd-cost card in your library, hand and GY": the 7/7 costs 4 in the library, and
+    // /fullsend, which step 7 landed in the graveyard, costs 4 there. "This turn your cards cost 1
+    // less" is what they would cost to PLAY this turn; it does not make either of them a 3.
+    expect(g.pile("p1", "exile").map((card) => card.defId)).toEqual([]);
+    expect(g.pile("p1", "library").map((card) => card.defId)).toEqual([SEVEN_SEVEN]);
+    expect(g.pile("p1", "graveyard").map((card) => card.defId)).toContain(FULLSEND);
   });
 });

@@ -8,7 +8,7 @@ import type { DamageTarget } from "../damage";
 import type { EffectContext } from "../script";
 import { findInstance, type CardInstance } from "../state";
 import { exitMark, leftFieldAfter } from "../stays";
-import { adjacent, cardAt, slotOf, slotsOf, type ZoneSlot } from "../zones";
+import { adjacent, cardAt, isBuried, slotOf, slotsOf, type ZoneSlot } from "../zones";
 
 export type TargetSpec =
   /** The unit running the script. */
@@ -58,7 +58,11 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
     // (the play's Cry runs with the mark step 1 checked the choices at). A pick an answer made is
     // chosen as its prompt offered it (`ctx.chosenFrom`, §10.6): a Reborn body the list's own
     // sacrifice put back before it asked is the stay that was picked.
-    if (leftFieldAfter(ctx.state, ctx.chosenFrom ?? ctx.exitsFrom ?? exitMark(ctx.state), instance.id)) return null;
+    if (leftFieldAfter(ctx.state, stayMarkOf(ctx, instance.id), instance.id)) return null;
+    // §3.2, R13, R174: nor is a card on the field for an effect while it lies dormant under a Stack
+    // pile — one the play's own Stack card buried at §10.5 step 4 (a crafted Felinor Fiender played
+    // onto the unit its Cry chose): #61's copy and #22's meal fizzle, as #68's damage does.
+    if (isBuried(ctx.state, instance)) return null;
     return { kind: "unit", instance };
   }
   return null;
@@ -70,12 +74,16 @@ export function resolveTarget(ctx: EffectContext, spec: TargetSpec): DamageTarge
  * effect later in the list is aimed at the card the list named, and a card an earlier effect of the
  * same list took off the field is gone for it wherever it is now, a Reborn body included (R83);
  * naming it by id rather than as "the chosen one" changes nothing, and neither does a prompt that
- * split the list (R113). Null when there is no such card.
+ * split the list (R113). A card the answer to this run's own prompt picked is named on the stay
+ * the prompt offered it on, by id as much as as the chosen card (`stayMarkOf`). Null when there is
+ * no such card.
  */
 export function instanceOnItsStay(ctx: EffectContext, instanceId: string): CardInstance | null {
   const instance = findInstance(ctx.state, instanceId);
   if (instance === undefined) return null;
-  return leftFieldSince(ctx, instance.id) ? null : instance;
+  // §3.2, R13: a card dormant under a Stack pile is not on the field for effects.
+  if (isBuried(ctx.state, instance)) return null;
+  return leftFieldAfter(ctx.state, stayMarkOf(ctx, instance.id), instance.id) ? null : instance;
 }
 
 /**
@@ -94,17 +102,38 @@ export function selfOnItsStay(ctx: EffectContext): CardInstance | null {
 /**
  * R174: whether a card is on the field on the same stay it had when the running script began — on
  * the field now, and not taken off it since. A card an earlier effect of the list bounced,
- * sacrificed or exiled has no stay left, even once it is back.
+ * sacrificed or exiled has no stay left, even once it is back. A card this run's answered prompt
+ * picked is on the stay the prompt offered it on (`stayMarkOf`).
  */
 export function standsSinceScriptBegan(ctx: EffectContext, instanceId: string): boolean {
   const card = findInstance(ctx.state, instanceId);
   if (card === undefined || card.zone.z !== "field") return false;
-  return !leftFieldSince(ctx, instanceId);
+  return !leftFieldAfter(ctx.state, stayMarkOf(ctx, instanceId), instanceId);
 }
 
 /** R174: whether a card has left the field since the running script began (`ctx.exitsFrom`). */
 function leftFieldSince(ctx: EffectContext, instanceId: string): boolean {
   return leftFieldAfter(ctx.state, ctx.exitsFrom ?? exitMark(ctx.state), instanceId);
+}
+
+/**
+ * R174, §10.6: the field's departures a card's stay is judged from. A card the answer to this run's
+ * own prompt picked (`ctx.targets` with `ctx.chosenFrom`) is picked on the stay the prompt offered it
+ * on — a Reborn body the list's own sacrifice put back before it asked — and the answered step is
+ * aimed at that stay however it names the card: as the chosen one, or by the id it read off the
+ * selection, as a delayed effect that watches it (#50's shape), a steal, a Transform or a Make
+ * Radiant by id do. A card the event a queued trigger answers names is judged from when that event
+ * happened (`ctx.eventStay`, R212): the played unit a trigger reads off its `cardPlayed` is not the
+ * Reborn body an earlier trigger on the same play made. Any other card is judged from when the run
+ * began (`ctx.exitsFrom`) — a card a trigger reads off the board as it resolves included.
+ */
+function stayMarkOf(ctx: EffectContext, instanceId: string): number {
+  const picked =
+    ctx.chosenFrom !== undefined &&
+    ctx.targets.some((selection) => selection.pick === "instance" && selection.instanceId === instanceId);
+  if (picked && ctx.chosenFrom !== undefined) return ctx.chosenFrom;
+  if (ctx.eventStay !== undefined && ctx.eventStay.ids.includes(instanceId)) return ctx.eventStay.from;
+  return ctx.exitsFrom ?? exitMark(ctx.state);
 }
 
 /** The instance a `TargetSpec` names, or null when it named a hero or nothing. */

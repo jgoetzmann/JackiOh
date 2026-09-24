@@ -8,8 +8,11 @@
 //  - R178: "exile this" is where §10.5 step 7 sends a Spell, so a self-exiling Spell still takes
 //    Twinspell's Echo and still resolves its repeat; and the Echo is gained as the Spell is played,
 //    so a Spell that moves Twinspell away (#87's board swap) has already taken it.
+//  - Round 9, lens "card by card". R119: an Echo repeat is the same play resolving again, so its
+//    granted Combo parts count neither a Quickstriker the first resolution summoned (#95) nor a
+//    Combo modifier the play itself installed (#78's own "Combo: draw 1").
 
-import type { Selection } from "@jackioh/shared";
+import type { Selection, GameEvent } from "@jackioh/shared";
 import type { CardInstance } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
@@ -120,5 +123,81 @@ describe("R178: a Spell's 'exile this' is its landing, and its Echo is gained as
     g.expectInZone(chaos, "exile");
     expect(g.state.players.p1.mods.filter((mod) => mod.kind === "echoNextSpell")).toHaveLength(0);
     expect(g.state.players.p2.mods.filter((mod) => mod.kind === "echoNextSpell")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: an Echo repeat is the same play (R119, §10.5 step 6)
+// ---------------------------------------------------------------------------
+
+const STOCKPILE = "core-005";
+const MR_VANILLA = "core-008";
+const TEMPO_TIMMY = "core-011";
+const MIDRANGE_MENACE = "core-019";
+const QUICKSTRIKER = "core-038";
+const FULLSEND = "core-078";
+const CALL_TO_CHAOS = "core-095";
+
+const R119_LIBRARY = [MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA, MR_VANILLA];
+
+function ofType<T extends GameEvent["type"]>(events: readonly GameEvent[], type: T): Extract<GameEvent, { type: T }>[] {
+  return events.filter((event): event is Extract<GameEvent, { type: T }> => event.type === type);
+}
+
+
+function quickstrikersOf(s: Scenario, player: "p1" | "p2"): string[] {
+  return s.state.players[player].backrow.flatMap((card) => (card?.defId === QUICKSTRIKER ? [card.id] : []));
+}
+
+describe("R119, §10.5 step 6: an Echo repeat's granted Combo parts do not answer what its own play put in place", () => {
+  it("R119 /fullsend echoed by Twinspell draws nothing from the Combo rider its own first resolution installed (§10.5 step 6)", () => {
+    const s = scenario({
+      // A unit that can still switch keeps §2.5's auto-end from passing the turn once the hand is empty.
+      p1: { hand: [TWINSPELL, FULLSEND], field: [MR_VANILLA], mana: 8, library: [...R119_LIBRARY] },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...R119_LIBRARY] },
+    });
+    // Twinspell is a card played earlier this turn, so every later card meets "Combo" (§6.2).
+    s.play(TWINSPELL);
+    expect(s.state.players.p1.mods.filter((mod) => mod.kind === "comboDraw")).toHaveLength(0);
+
+    s.play(FULLSEND);
+
+    // Twinspell's grant was taken, so /fullsend resolved twice (§10.5 step 6): two "gain 4 mana",
+    // two "Combo: draw 1" riders, and 8 − 2 − 4 + 4 + 4 = 10 mana.
+    s.expectMana("p1", 10);
+    expect(s.state.players.p1.mods.filter((mod) => mod.kind === "comboDraw")).toHaveLength(2);
+    // R119: the rider /fullsend installs does not answer /fullsend's own play. Its first resolution
+    // is counted before the rider exists (step 5's granted parts precede its script), and the repeat
+    // is the same play re-resolving (§6.2 Echo: "the same instance re-resolves"), so it draws
+    // nothing either.
+    expect(ofType(s.lastEvents, "drawn")).toHaveLength(0);
+    expect(s.hand("p1")).toHaveLength(0);
+  });
+
+  it("R119 a Quickstriker Call to Chaos summons in its first resolution deals nothing on the Echo repeat of that same play (§10.5 step 6)", () => {
+    // This seed's Call to Chaos rolls "summon 5 random Field Spells or Traps" first — Quickstriker
+    // among them — and "add 3 random cards to hand costing 0" on the repeat.
+    const s = scenario({
+      seed: "r9-c2c-0",
+      p1: { hand: [TEMPO_TIMMY, TWINSPELL, CALL_TO_CHAOS], mana: 10, library: [...R119_LIBRARY] },
+      p2: { hand: [STOCKPILE], field: [MIDRANGE_MENACE], library: [...R119_LIBRARY] },
+    });
+    s.play(TEMPO_TIMMY, { zone: 1 });
+    s.play(TWINSPELL);
+    expect(quickstrikersOf(s, "p1")).toEqual([]);
+    const call = s.card(CALL_TO_CHAOS);
+
+    s.play(CALL_TO_CHAOS);
+
+    // The setup did what it says: the Echo was taken (Twinspell reached the graveyard, two
+    // resolutions), and a Quickstriker arrived in p1's backrow during this play.
+    expect(s.pile("p1", "graveyard").map((card) => card.defId)).toContain(TWINSPELL);
+    expect(quickstrikersOf(s, "p1")).toHaveLength(1);
+    expect(ofType(s.lastEvents, "addedToHand")).toHaveLength(3);
+    // R119: a permanent #95 summons while the play resolves "starts counting from the next play";
+    // the Echo repeat is not a next play, so the Quickstriker grants it no Combo damage.
+    const hits = ofType(s.lastEvents, "damage").filter((hit) => hit.sourceId === call.id && hit.targetId === "hero-p2");
+    expect(hits).toEqual([]);
+    s.expectHealth("p2", 30);
   });
 });

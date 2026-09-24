@@ -35,6 +35,7 @@
 
 import type {
   BackrowView,
+  CardDef,
   CardView,
   GameEvent,
   HeroPowerView,
@@ -54,8 +55,8 @@ import { hasExertion } from "./combat";
 import { conditionActive } from "./condition";
 import { heroArmorOf } from "./damage";
 import { echoGrantOf } from "./echo";
-import { unitView as unitLayers } from "./layers";
-import { effectiveCost, modifierIsLive } from "./mana";
+import { statsWithBuffs, unitView as unitLayers } from "./layers";
+import { NEXT_REFRESH_MODIFIER_ID, effectiveCost, modifierIsLive } from "./mana";
 import {
   findInstance,
   type CardInstance,
@@ -67,6 +68,7 @@ import {
 } from "./state";
 import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
+import { returnedAwaitingShuffle } from "./setup";
 import { isReserved, slotsOf } from "./zones";
 
 /** §10.8, §10.10: how many of the most recent events the view carries for animation. */
@@ -124,9 +126,15 @@ type Replacements = {
   replacedBy: ReadonlyMap<string, string>;
   /** The players each replaced card was hidden from where it ceased to exist (`transformed.hiddenFrom`). */
   hiddenFrom: ReadonlyMap<string, readonly PlayerId[]>;
+  /**
+   * R224: the cards a mulligan returned that wait in setup's owed item for their shuffle-back, in no
+   * pile (`setup.returnedAwaitingShuffle`). They are on their way to a library, so nobody reads them.
+   */
+  toLibrary?: ReadonlySet<string>;
 };
 
-function replacementsOf(events: readonly GameEvent[]): Replacements {
+function replacementsOf(events: readonly GameEvent[], state?: GameState): Replacements {
+  const toLibrary = state === undefined ? undefined : new Set(returnedAwaitingShuffle(state));
   const replacedBy = new Map<string, string>();
   const hiddenFrom = new Map<string, readonly PlayerId[]>();
   for (const event of events) {
@@ -147,7 +155,7 @@ function replacementsOf(events: readonly GameEvent[]): Replacements {
       replacedBy.set(event.formerId, event.instanceId);
     }
   }
-  return { replacedBy, hiddenFrom };
+  return { replacedBy, hiddenFrom, ...(toLibrary === undefined || toLibrary.size === 0 ? {} : { toLibrary }) };
 }
 
 /**
@@ -177,7 +185,8 @@ function mayRead(state: GameState, viewer: PlayerId, instanceId: string, replace
     id = next;
     card = findInstance(state, id);
   }
-  if (card === undefined) return true;
+  // R224: a card the mulligan returned waits for its shuffle-back in no pile, and is a library card.
+  if (card === undefined) return replaced.toLibrary?.has(id) !== true;
   const zone = card.zone;
   if (zone.z === "library") return false;
   if (zone.z === "hand") return zone.player === viewer;
@@ -197,6 +206,25 @@ function cardView(state: GameState, card: CardInstance): CardView {
     defId: card.defId,
     radiant: card.radiant,
     cost: effectiveCost(state, card),
+  };
+}
+
+/**
+ * R243, §10.8: a card in the viewer's own hand, in full — what it is made of beyond its printed
+ * face as well. A Unit's stats are its face plus the permanent buffs it gained in hand (§10.4
+ * layers 1, 3 and 4: #89 Corpse Eater's meals), since layer 2 and the auras are the field's; attack
+ * floors at 0 as on the field. A #98 Heroic Power names the power it rolled as it arrived (R43,
+ * R151), which its cost alone does not.
+ */
+function handCardView(state: GameState, card: CardInstance): CardView {
+  const view = cardView(state, card);
+  const stats =
+    defOf(state, card.defId).type === "Unit" ? statsWithBuffs(state, card) : null;
+  const power = powerOf(card);
+  return {
+    ...view,
+    ...(stats === null ? {} : { attack: Math.max(0, stats.attack), health: stats.maxHealth }),
+    ...(power === null ? {} : { power: power.name }),
   };
 }
 
@@ -229,6 +257,8 @@ function unitViewOf(state: GameState, pile: Pile, viewer: PlayerId): UnitView | 
     counters: { ...top.counters },
     buried: pile.length - 1,
     canAct: canAct(state, top),
+    // R243, §6.3 Vanilla: the text is gone, which the definition the client reads does not say.
+    ...(top.vanilla === true ? { vanilla: true as const } : {}),
   };
 }
 
@@ -351,10 +381,17 @@ function modifierLabel(mod: PlayerModifier, echo: number): string {
  * discount on the very turn the discount does nothing.
  */
 function modifierViews(state: GameState, player: PlayerId): ModifierView[] {
-  return state.players[player].mods.map((mod) => {
+  const views = state.players[player].mods.map((mod) => {
     const label = modifierLabel(mod, echoGrantOf(state, player, mod));
     return { id: mod.id, label: modifierIsLive(state, mod) ? label : `${label} (next turn)` };
   });
+  // §6.3 Mana: the next refresh's rider (#21 Hinder, #24 Efficiency Dividend) is a modifier too, one
+  // badge under the id `modifierChanged` names for it, while it is not 0 (R169).
+  const rider = state.players[player].mana.nextTurnMod;
+  if (rider !== 0) {
+    views.push({ id: NEXT_REFRESH_MODIFIER_ID, label: `Next refresh ${rider > 0 ? "+" : "−"}${Math.abs(rider)} mana` });
+  }
+  return views;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +425,7 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     // §10.8: the viewer's own hand in full, the opponent's as a count.
     hand:
       player === viewer
-        ? side.hand.map((card) => withCondition(cardView(state, card), conditionActive(state, card, viewer, "hand")))
+        ? side.hand.map((card) => withCondition(handCardView(state, card), conditionActive(state, card, viewer, "hand")))
         : { count: side.hand.length },
     // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
     libraryCount: side.library.length,
@@ -489,8 +526,9 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     // not identity fields and never travel redacted; `permanent` is R61's "still in play" answer,
     // which #85 keys on. The face that resolved (`radiant`) is the card's, so it goes with the id.
     case "cardResolved": {
-      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95).
-      const { arrivedDuring: _arrivals, ...shown } = event;
+      // R119's `arrivedDuring` is the engine's own bookkeeping, and it names face-down traps (#95);
+      // so is the exit mark the event happened at (R174, R212).
+      const { arrivedDuring: _arrivals, exitsFrom: _mark, ...shown } = event;
       if (!hidden(event.instanceId)) return shown;
       const { radiant: _face, ...rest } = shown;
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
@@ -505,13 +543,15 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return killerHidden ? { ...redacted, killerId: HIDDEN_ID } : redacted;
     }
 
-    // R227: `formerId` is the id a card set face-down had, and it goes with the card's identity —
-    // shown to a viewer who may read the card, never to one who may not, or the old id would name
-    // the face-down card after all (R177).
+    // R119's `arrivedDuring` and the exit mark on a play's step-4 pair are the engine's bookkeeping,
+    // as on `cardResolved`. R227: `formerId` is the id a card set face-down had, and it goes with the
+    // card's identity — shown to a viewer who may read the card, never to one who may not, or the old
+    // id would name the face-down card after all (R177).
     case "cardPlayed":
     case "summoned": {
-      if (!hidden(event.instanceId)) return event;
-      const { formerId: _former, ...rest } = event;
+      const { arrivedDuring: _arrivals, exitsFrom: _mark, ...shown } = event;
+      if (!hidden(event.instanceId)) return shown;
+      const { formerId: _former, ...rest } = shown;
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
@@ -670,7 +710,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
   const all = state.applied.flatMap((entry) => entry.events);
   const newest = state.applied[state.applied.length - 1]?.events.length ?? 0;
   const window = Math.max(VIEW_EVENT_LIMIT, newest);
-  const replaced = replacementsOf(all);
+  const replaced = replacementsOf(all, state);
   return all
     .slice(Math.max(0, all.length - window))
     .map((event) => redactEvent(state, viewer, event, replaced));
@@ -689,7 +729,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
  */
 export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | null = null): PlayerView {
   syncFusedScripts(state);
-  return {
+  const view: PlayerView = {
     viewer: playerId,
     turn: state.turn,
     active: state.active,
@@ -701,4 +741,35 @@ export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | 
     result: state.result === null ? null : { winner: state.result.winner, reason: state.result.reason },
     clockMs,
   };
+  const defs = matchDefsIn(state, view);
+  return Object.keys(defs).length === 0 ? view : { ...view, defs };
+}
+
+/**
+ * R243: the match-made definitions (`state.transientDefs`: a Fuse's, a crafted card's — R77, R102,
+ * R179) the finished view names anywhere — a card in a zone, a unit, a prompt option, an event —
+ * copied beside it, since no catalog a client holds has them. The view is read after it is built,
+ * so only an id that survived redaction brings its definition: a card this viewer may not read is
+ * the sentinel by then (R97), and its definition stays in the match.
+ */
+function matchDefsIn(state: GameState, view: PlayerView): Record<string, CardDef> {
+  const defs: Record<string, CardDef> = {};
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      // Own keys only: a label that happens to read "constructor" names no definition.
+      if (!Object.prototype.hasOwnProperty.call(state.transientDefs, value) || value in defs) return;
+      const def = state.transientDefs[value];
+      if (def !== undefined) defs[value] = JSON.parse(JSON.stringify(def)) as CardDef;
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) visit(item);
+    }
+  };
+  visit(view);
+  return defs;
 }

@@ -4,8 +4,9 @@
 // `destroyAll` and `destroyAdjacentTo` are the same mark over a scope (§3.1, §3.2), so a sweep and
 // a single destroy are collected by the one state check that follows the whole effect (R59).
 
+import { alreadyKilled } from "../damage";
 import type { Effect } from "../script";
-import type { CardInstance } from "../state";
+import type { CardInstance, GameState } from "../state";
 import { sacrificeNow } from "../stateCheck";
 import { adjacentTo, cardsInScope, instanceOf, type BoardScope, type TargetSpec } from "./targets";
 
@@ -13,12 +14,15 @@ import { adjacentTo, cardsInScope, instanceOf, type BoardScope, type TargetSpec 
  * The mark every destroy leaves (§6.3, §4.5 step 1). A destroy is not a damage instance, so no
  * unit's hit can be the lethal one any more: R42's "a death whose lethal damage instance came from
  * this unit" and R89's `killerId` read `lastDamagedBy`, and a hit that landed earlier and did not
- * kill must not be credited with a death this effect caused. Poisonous marks inside the damage
- * instance itself (`damage.ts` step 7) and so keeps its source.
+ * kill must not be credited with a death this effect caused. A unit something had already killed
+ * before the destroy landed — a hit took it to 0 or less, a Poisonous hit marked it — was killed by
+ * that, and a destroy on a dead unit changes nothing (`damage.alreadyKilled`, R42). Poisonous marks
+ * inside the damage instance itself (`damage.ts` step 7) and so keeps its source.
  */
-function markDestroyed(card: CardInstance): void {
+function markDestroyed(state: GameState, card: CardInstance): void {
+  const killed = card.zone.z === "field" && card.zone.row === "units" && alreadyKilled(state, card);
   card.markedDestroyed = true;
-  delete card.lastDamagedBy;
+  if (!killed) delete card.lastDamagedBy;
 }
 
 /**
@@ -32,7 +36,7 @@ export function destroy(args: { target: TargetSpec }): Effect {
     apply(ctx): void {
       const card = instanceOf(ctx, args.target);
       if (card === null || card.zone.z !== "field") return;
-      markDestroyed(card);
+      markDestroyed(ctx.state, card);
     },
   };
 }
@@ -55,7 +59,7 @@ export function destroyAll(args: BoardScope = {}): Effect {
   return {
     kind: "destroyAll",
     apply(ctx): void {
-      for (const card of cardsInScope(ctx, args)) markDestroyed(card);
+      for (const card of cardsInScope(ctx, args)) markDestroyed(ctx.state, card);
     },
   };
 }
@@ -73,7 +77,7 @@ export function destroyAdjacentTo(args: { target: TargetSpec } & BoardScope): Ef
     kind: "destroyAdjacentTo",
     apply(ctx): void {
       const { target, ...scope } = args;
-      for (const card of adjacentTo(ctx, target, scope)) markDestroyed(card);
+      for (const card of adjacentTo(ctx, target, scope)) markDestroyed(ctx.state, card);
     },
   };
 }

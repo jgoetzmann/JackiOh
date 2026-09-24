@@ -33,7 +33,7 @@
 import type { ActionBody, PlayerId, PromptKind, Selection } from "@jackioh/shared";
 import { makeContext, type EngineSink } from "./resolve";
 import type { Effect, EffectContext, Hook, Script } from "./script";
-import { scriptsFor } from "./scripts";
+import { scriptOf, scriptsFor } from "./scripts";
 import { findInstance, type CardInstance, type PendingChoice, type PromptOption, type Resume } from "./state";
 import { exitMark } from "./stays";
 import {
@@ -198,6 +198,8 @@ function runMarks(ctx: EffectContext): RunMarks {
   return {
     exitsFrom: ctx.exitsFrom ?? exitMark(ctx.state),
     ...(summoned.length === 0 ? {} : { summoned }),
+    ...(ctx.selfResolving === true ? { resolving: true } : {}),
+    ...(ctx.eventStay === undefined ? {} : { eventStay: ctx.eventStay }),
   };
 }
 
@@ -321,6 +323,30 @@ export function whyAnswerRefused(pending: PendingChoice, answer: AnswerInput): s
 }
 
 /**
+ * How an engine sequence answers a prompt it opened itself: validate, close, file the selection
+ * and go on, returning the refusal or null — the shape of `answerPrompt`.
+ */
+export type PromptAnswerer = (sink: EngineSink, answer: AnswerInput) => string | null;
+
+const answerers = new Map<string, PromptAnswerer>();
+
+/**
+ * R122, R113: a prompt an engine sequence opened for itself — the play pipeline's own questions, an
+ * Echo repeat's fresh picks and a cast's choices (§10.5 steps 4 and 6) — names that sequence as its
+ * `resume.hook`, which no card script holds, so re-entering it as a card's continuation finds
+ * nothing to run: the selection and the rest of the play would be lost. The module that owns the
+ * sequence registers its answerer here at module scope, as it registers its work handler
+ * (`work.registerWorkHandler`), since it sits above this module and the layering forbids calling it
+ * directly. Returns the answerer it replaced.
+ */
+export function registerPromptAnswerer(hook: string, answerer: PromptAnswerer | undefined): PromptAnswerer | undefined {
+  const previous = answerers.get(hook);
+  if (answerer === undefined) answerers.delete(hook);
+  else answerers.set(hook, answerer);
+  return previous;
+}
+
+/**
  * §10.6: "`answer` re-invokes the script with the selection." Validate, close the prompt and
  * re-enter the step its `resume` names with the selection in `ctx.targets`. Returns an error
  * message for the reducer, or null.
@@ -330,10 +356,17 @@ export function whyAnswerRefused(pending: PendingChoice, answer: AnswerInput): s
  * ahead of everything older), so one answer finishes one sequence. Draining stops at the next
  * prompt, which parks its own tail, so the rest keeps waiting in state. The state check and the
  * trigger queue stay with `triggers.settle`, which drains again and finds nothing owed (R59).
+ *
+ * A prompt an engine sequence opened for itself goes to that sequence's answerer
+ * (`registerPromptAnswerer`), so every caller — the reducer, a server or a test driving the engine
+ * directly — answers every prompt through this one entry point (R122).
  */
 export function answerPrompt(sink: EngineSink, answer: AnswerInput): string | null {
   const pending = sink.state.pending;
   if (pending === null) return "no prompt is open";
+
+  const owner = answerers.get(pending.resume.hook);
+  if (owner !== undefined) return owner(sink, answer);
 
   const refused = whyAnswerRefused(pending, answer);
   if (refused !== null) return refused;
@@ -564,10 +597,14 @@ export function runResume(
   // The picks a tail carries were chosen when its list's were; fresh picks, when the answer made them.
   const chosenFrom = options.targets === undefined ? paused?.chosenFrom : options.chosenFrom;
   const summoned = paused?.summoned ?? run?.summoned;
+  // R98: the run began with its card in the resolving zone, and the card is its self only while it
+  // is still there — a Spell its own list returned to a hand before it asked resumes with none.
+  const resolving = paused?.resolving === true || run?.resolving === true;
+  // R174, R212: a queued trigger's continuation still judges its event's cards from the event.
+  const eventStay = paused?.eventStay ?? run?.eventStay;
   const data = cardData(resume.data);
-  const instance =
-    selfSnapshotOf(data) ??
-    (resume.instanceId === undefined ? null : findInstance(sink.state, resume.instanceId) ?? null);
+  const found = resume.instanceId === undefined ? null : findInstance(sink.state, resume.instanceId) ?? null;
+  const instance = selfSnapshotOf(data) ?? (resolving && found?.zone.z !== "resolving" ? null : found);
 
   const hook = hookFor(faceOf(resume.defId, resume.radiant), resume);
   if (hook === undefined) return true;
@@ -587,6 +624,9 @@ export function runResume(
     ...(chosenFrom === undefined ? {} : { chosenFrom }),
     // R136: and it reads the units its head summoned, in whichever action that happened.
     ...(summoned === undefined || summoned.length === 0 ? {} : { summoned }),
+    // R98: and it stays the resolving card's run across a further pause, card or no card.
+    ...(resolving ? { selfResolving: true } : {}),
+    ...(eventStay === undefined ? {} : { eventStay }),
   };
 
   const plan: ResumePlan = { ...resume, data, owner: ctx.controller };
@@ -634,6 +674,22 @@ export function runHookResumable(
       ...(options.modes === undefined ? {} : { modes: options.modes }),
     },
   );
+}
+
+/**
+ * R151, §9.3: a card's start-of-game clause (§6.2, R43), run as the card arrives somewhere it can be
+ * looked at — a hand, a library, the field — and at §2.1's start of the game. It is an effect list
+ * like any other (§10.9), and a Choose is one of the primitives it may return, so it runs the
+ * resumable way: a question in it pauses the effects after it, which are parked on `state.work` and
+ * finished by the answer (R113, R122), rather than applying over the open prompt — and a second
+ * question in the same list is asked in its turn instead of being dropped, since `openPrompt` never
+ * overwrites one that is open. Returns true when the whole clause ran; false when it paused, which a
+ * caller running a sequence of its own (setup, a draw loop) owes its remainder behind.
+ */
+export function runStartOfGame(sink: EngineSink, card: CardInstance, controller: PlayerId): boolean {
+  // A Vanilla card carries no text (§6.3), and a card without the clause has nothing to run.
+  if (scriptOf(card).startOfGame === undefined) return true;
+  return runHookResumable(sink, card, "startOfGame", { controller });
 }
 
 /**

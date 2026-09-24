@@ -22,7 +22,8 @@
 // Round 7 (lens L7) added the cases at the end: a queued trigger's tail after a prompt runs the face
 // its head ran (§5.2, R113); step 3's hooks, the played card's Cry and the traps owed its
 // `cardPlayed` follow the stays they began with, not a Reborn body or a card in a hand (R174, R118);
-// the answer to a cast's own choice finishes the draw chain before the traps answer the cast (R122);
+// the answer to a cast's own choice goes on with the draw chain rather than the loop (R122), and the
+// traps answer the first cast at the next cast's step-4 window (R70, round 9);
 // and a list a prompt split still reads what its head summoned (R136) and the stays it began with,
 // in the step the answer re-enters as much as in its tail (R174).
 //
@@ -36,11 +37,26 @@
 // No Core card opens a prompt from a delayed effect, a cast on draw, a trap's list or a Death hook,
 // so each case builds the prompting continuation out of engine verbs on a fixture card (a transient
 // def, the way a fusion's is held) and uses real cards for everything else.
+//
+// Round 9 (lens L7) added four: a prompt the engine opens for a fused card as a whole (the ping of the
+// one power R43 activates) comes back to one ingredient (R102); a clause over a set it read off the
+// board resumes over that set, so #94 draws every 2-cost card it began with (R66, R113); a cast's
+// step 4 is a window, so Sheepish answers a cast Unit before its Cry (R70, R17); and a cast makes its
+// choices before it is placed, so a cast Unit is not offered itself (R70, R90).
+//
+// Round 10 (lens L7) added six: a Spell its own list returned to its hand before it asked resumes
+// with no self (R98); a sacrifice whose Death asks leaves the check to the end of the whole list
+// (R59, §4.5); a start-of-game clause that asks as its card arrives waits for the answer (R151,
+// R113); a cast card a step-3 hook's answer exiled stays in exile (R226, R70); the answered step's
+// delayed effect watching the Reborn body it picked is scheduled (R174); and the engine's own
+// `answerPrompt`, handed an Echo repeat's fresh pick, finishes the repeat (R122).
 
 import { describe, expect, it } from "vitest";
 import type { CardDef, CardType, Keyword, PlayerId, Row, TargetDecl } from "@jackioh/shared";
 import {
+  RESUME_HOOK,
   activeUnitsOf,
+  answerPrompt,
   createRng,
   newInstance,
   placeOnField,
@@ -55,19 +71,25 @@ import {
   type Script,
 } from "@jackioh/engine";
 import {
+  addToHand,
   bounce,
   buff,
   chooseFromHand,
   chooseMode,
   chooseTarget,
+  chosenOptions,
   damage,
   damageAll,
   delay,
   destroy,
   discard,
+  draw,
+  exile,
   forcedAttacks,
+  heal,
   rotate,
   sacrifice,
+  setCostMod,
   setRadiant,
   steal,
   summon,
@@ -956,8 +978,8 @@ describe("R174, R17: Sheepish owed the play behind a trap that took the unit off
 
 const BEAR_HONEYPOT = "core-060";
 
-describe("R122, §2.4: the answer to a cast's own choice finishes the draw chain before the traps answer the cast", () => {
-  it("R122 the cast-on-draw card under a cast that asked for its target is cast before Bear Honeypot answers the first cast (R113, R70, §2.4)", () => {
+describe("R122, §2.4: the answer to a cast's own choice goes on with the draw chain, not the resolution loop", () => {
+  it("R122 the cast-on-draw card under a cast that asked for its target is drawn and cast before Bear Honeypot answers the first cast (R113, R70, §2.4)", () => {
     const s = scenario({
       p1: { hand: [RENO], library: [RENO, RENO] },
       p2: { backrow: [BEAR_HONEYPOT], hand: [RENO] },
@@ -984,21 +1006,25 @@ describe("R122, §2.4: the answer to a cast's own choice finishes the draw chain
     expect(must(s.state.pending, "the cast's target prompt").playerId).toBe("p1");
     s.answer([{ pick: "hero", player: "p2" }]);
 
-    // §2.4: the draw repeats as soon as the cast has resolved, so the sweep is cast inside the same
-    // draw, and the cast's events reach the traps with the rest of the draw's (a cast leaves them to
-    // the effect that cast it, R70). R122: the answer finishes what the prompt interrupted before
-    // the resolution loop moves. So Bear Honeypot's tokens arrive after the sweep: nothing hits them.
+    // §2.4: the draw repeats as soon as the cast has resolved, so the sweep is drawn and cast inside
+    // the same draw. R122: the answer goes on with what the prompt interrupted, the draw chain, and
+    // not with the resolution loop. The traps meet the first cast's resolution at the sweep's own
+    // step 4, which is a window as a play's is (R70, R17): every event so far reaches the traps
+    // there, before the sweep resolves. So Bear Honeypot's tokens arrive before the sweep's 1
+    // damage to each enemy unit, and it hits them.
     const types = s.lastEvents.map((event) => event.type);
     const sweepDrawn = s.lastEvents.findIndex((event) => event.type === "drawn" && event.instanceId === second.id);
+    const sweepCast = s.lastEvents.findIndex((event) => event.type === "cardPlayed" && event.instanceId === second.id);
     const trapFired = types.indexOf("trapFired");
     expect(sweepDrawn, `events: ${types.join(", ")}`).toBeGreaterThanOrEqual(0);
-    expect(trapFired, `events: ${types.join(", ")}`).toBeGreaterThan(sweepDrawn);
+    expect(sweepCast, `events: ${types.join(", ")}`).toBeGreaterThan(sweepDrawn);
+    expect(trapFired, `events: ${types.join(", ")}`).toBeGreaterThan(sweepCast);
     const tokens = [1, 2, 3, 4, 5].flatMap((lane) => {
       const unit = s.unit("p2", lane);
       return unit !== null && unit.defId === RUSH_TOKEN ? [unit] : [];
     });
     expect(tokens).toHaveLength(2);
-    for (const token of tokens) expect(token.damage).toBe(0);
+    for (const token of tokens) expect(token.damage).toBe(1);
   });
 });
 
@@ -1694,5 +1720,432 @@ describe("R59, §10.5 step 4: a trigger that answered the play and asked is foll
     // the Cry counted a dead unit still on the field: p2 took 1.
     s.expectInZone(timmy, "graveyard");
     s.expectHealth("p2", 30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 9: prompts a fused power opens, lists read off the board, and casts (R102, R66, R70)
+// ---------------------------------------------------------------------------
+
+const EXPERIMENTATION = "core-085";
+
+const GENNS_GREED = "core-094";
+const BIGOT = "core-002"; // Unit, 2
+const SEVEN_SEVEN = "core-025"; // Unit, 4
+
+/** A fixture card: a transient def in the match state and its script in the registry. */
+function fixtureCard(s: Scenario, id: string, type: CardType, script: Script, cost = 0): void {
+  const face = type === "Unit" ? { attack: 2, health: 2, keywords: [], text: id } : { keywords: [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type,
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+/** Put a fresh instance of `defId` into p1's library at `at` (0 is the top). */
+function intoLibrary(s: Scenario, defId: string, at: number): CardInstance {
+  const card = newInstance(s.state, defId, "p1", { z: "library", player: "p1" });
+  s.state.players.p1.library.splice(at, 0, card);
+  return card;
+}
+
+
+describe("R102, R43: a fused Heroic Power's prompted power", () => {
+  it("R102 a Heroic Power fused onto a Heroic Power pings once when its target is picked at the prompt (R43, §10.6)", () => {
+    const g = scenario({
+      p1: { hand: [HEROIC_POWER], library: [RENO, RENO] },
+      p2: {
+        hand: [RENO],
+        library: [RENO, RENO],
+        backrow: [
+          { def: EXPERIMENTATION, lane: 1 },
+          { def: HEROIC_POWER, lane: 2 },
+        ],
+      },
+    });
+    const played = must(
+      g.state.players.p1.hand.find((card) => card.defId === HEROIC_POWER),
+      "p1's Heroic Power",
+    );
+    played.memory[subsystems.POWER_KEY] = "burn";
+    const kept: CardInstance = must(g.backrow("p2", 2), "p2's Heroic Power");
+    kept.memory[subsystems.POWER_KEY] = "ping";
+
+    // p1 plays its Heroic Power (burn, 2 to p2's hero), and p2's #85 fuses it onto p2's own.
+    g.play(played, { zone: 1 });
+    const fused = g.card(kept.id);
+    expect(fused.defId.startsWith("t-")).toBe(true);
+    expect(subsystems.powerOf(fused)?.name).toBe("ping");
+
+    if (g.state.active === "p1") g.endTurn();
+    expect(g.state.active).toBe("p2");
+    expect(g.state.phase).toBe("main");
+    const before = g.state.players.p1.hero.health;
+    // R43: one activation of the card's one power. With no target named, the ping asks (R103).
+    g.activate(fused);
+    expect(g.state.pending?.kind).toBe("target");
+    g.answer([{ pick: "hero", player: "p1" }]);
+
+    // "Deal 1 damage to a target", once — as the same activation with the target named does.
+    const hits = g.lastEvents.filter((event) => event.type === "damage" && event.sourceId === fused.id);
+    expect(hits.map((event) => (event.type === "damage" ? event.amount : 0))).toEqual([1]);
+    expect(g.state.players.p1.hero.health).toBe(before - 1);
+  });
+});
+
+describe("R66, R113: a card's list resumed after a prompt keeps the effects it built", () => {
+  it("R66 Genn's Greed still draws every 2-cost card after one it drew was cast and asked (R113, §8 #94, R135)", () => {
+    const g = scenario({ p1: { hand: [GENNS_GREED], library: [SEVEN_SEVEN, BIGOT, BIGOT, SEVEN_SEVEN] } });
+    // A 2-cost cast-on-draw Spell whose cast asks its caster something (R70, R81).
+    fixtureCard(
+      g,
+      "edge-r9-cod-asks",
+      "Spell",
+      {
+        staticFlags: { castOnDraw: true },
+        cry: () => [chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" })],
+        resume: { picked: () => [] },
+      },
+      2,
+    );
+    // Library, top down: a 4-cost 7/7, the fixture (2), Bigot (2), Bigot (2), a 4-cost 7/7.
+    const cod = intoLibrary(g, "edge-r9-cod-asks", 1);
+    const [top, first, second] = g.state.players.p1.library.filter((card) => card.id !== cod.id);
+    const bigots = g.state.players.p1.library.filter((card) => card.defId === BIGOT);
+    expect(bigots.length).toBe(2);
+    expect(first?.defId).toBe(BIGOT);
+    expect(second?.defId).toBe(BIGOT);
+    expect(top?.defId).toBe(SEVEN_SEVEN);
+
+    // "Draw every 2-cost card from your library": the fixture, then both Bigots. The fixture is
+    // drawn first and cast (§2.4), and its cast asks.
+    g.play(GENNS_GREED);
+    expect(g.state.pending?.kind).toBe("mode");
+    g.answer("a");
+    expect(g.state.pending).toBeNull();
+
+    // Both Bigots were 2-cost cards in the library as the draw clause began, so both are drawn.
+    for (const bigot of bigots) g.expectInZone(bigot, "hand");
+  });
+});
+
+
+describe("R70, R17: a cast Unit and the step-4 trap", () => {
+  it("R70 a cast-on-draw Unit the opponent's Sheepish answers is a Sheep before its Cry resolves (R17, §10.5 step 4)", () => {
+    const g = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO] },
+      p2: { backrow: [{ def: SHEEPISH, lane: 1 }], hand: [RENO], health: 30 },
+    });
+    fixtureCard(
+      g,
+      "edge-r9-cod-unit",
+      "Unit",
+      { staticFlags: { castOnDraw: true }, cry: () => [damage({ to: { of: "enemyHero" }, amount: 5 })] },
+      1,
+    );
+    const cod = intoLibrary(g, "edge-r9-cod-unit", 0);
+
+    g.startTurn();
+    expect(g.events.some((event) => event.type === "trapFired")).toBe(true);
+    // Sheepish answered the cast Unit: a Sheep Token stands where it was.
+    expect(g.unit("p1", 1)?.defId).toBe("core-t-sheep");
+    expect(g.events.some((event) => event.type === "transformed" && event.instanceId === cod.id)).toBe(true);
+    // R17: Sheepish fires at step 4, before the Cry, so the Cry is lost.
+    g.expectHealth("p2", 30);
+  });
+});
+
+describe("R70, R90: a cast Unit's own choices", () => {
+  it("R70 a cast-on-draw Unit asked for its declared target is not offered itself, as a play of it never is (R81, R90)", () => {
+    const g = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO] },
+      p2: { field: [SEVEN_SEVEN], hand: [RENO] },
+    });
+    const enemy = must(g.unit("p2", 1), "p2's 7/7");
+    fixtureCard(
+      g,
+      "edge-r9-cod-unit-targeted",
+      "Unit",
+      {
+        staticFlags: { castOnDraw: true },
+        targets: [{ kind: "target", min: 1, max: 1, filter: { side: "any", of: ["unit"] } }],
+        cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+      },
+      1,
+    );
+    const cod = intoLibrary(g, "edge-r9-cod-unit-targeted", 0);
+
+    g.startTurn();
+    const pending = must(g.state.pending, "the cast's target prompt");
+    expect(pending.playerId).toBe("p1");
+    const offered = pending.options.map((option) =>
+      option.selection.pick === "instance" ? option.selection.instanceId : option.selection.pick,
+    );
+    // A play of this card offers the units on the field as it is played, and never itself.
+    expect(offered).toContain(enemy.id);
+    expect(offered).not.toContain(cod.id);
+  });
+});
+
+describe("R70, §10.3: a cast's step-4 window inside an effect offers each event once", () => {
+  it("R70 a cast's step-4 window inside a Spell's draw does not offer the Spell's own play to the triggers a second time (§10.3)", () => {
+    // The cast runs inside #5 Stockpile's "draw 2", whose context is the only sink its step 4 has.
+    // The play's `cardPlayed` was dispatched by the play's own step 4, before the draw: the cast's
+    // window must not collect it again (§10.3: an event is offered once).
+    const g = scenario({
+      p1: { hand: ["core-005", RENO], field: [{ def: SEVEN_SEVEN, lane: 5 }], library: [RENO, RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO, RENO] },
+    });
+    // p1's unit counts its controller's plays: 1 damage to the enemy hero for each `cardPlayed`.
+    fixtureCard(g, "edge-r9-play-counter", "Unit", {
+      triggers: [
+        {
+          id: "edge-r9-play-counter",
+          on: ["cardPlayed"],
+          when: (ctx) => ctx.event.type === "cardPlayed" && ctx.event.player === ctx.controller,
+          run: () => [damage({ to: { of: "enemyHero" }, amount: 1 })],
+        },
+      ],
+    });
+    placeFixture(g, "edge-r9-play-counter", "p1", "units", 1);
+    // A cast-on-draw Unit with no text on top of the library, so Stockpile's first draw casts it.
+    fixtureCard(g, "edge-r9-cod-plain", "Unit", { staticFlags: { castOnDraw: true } }, 1);
+    const cod = intoLibrary(g, "edge-r9-cod-plain", 0);
+
+    g.play("core-005");
+
+    // Two plays — Stockpile and the cast Unit (R70) — so two hits, not three.
+    expect(g.events.filter((event) => event.type === "cardPlayed").map((event) => (event.type === "cardPlayed" ? event.instanceId : ""))).toContain(cod.id);
+    g.expectHealth("p2", 28);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 10 (lens L7)
+// ---------------------------------------------------------------------------------------------
+
+describe("R98: a card that left the resolving zone before its question is answered", () => {
+  it("R98 a Spell its own list returned to its hand before it asked resumes with no self (§10.6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-homing-spell", "Spell", {
+      // "Return this to your hand. Choose one: …" — then the answered step says "this costs 2 more".
+      cry: () => [
+        addToHand({ instance: { of: "self" } }),
+        chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" }),
+      ],
+      resume: { picked: () => [setCostMod({ target: { of: "self" }, amount: 2 })] },
+    });
+    const spell = inHand(s, "edge-r10-homing-spell", "p1");
+
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    // The Spell has left the resolving zone: it is back in its owner's hand.
+    s.expectInZone(spell, "hand");
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+
+    // R98: "A card that has left the resolving zone before its own prompt is answered resumes with
+    // no self" — so the answered step's "this" names nothing, and the card in hand is untouched.
+    expect(s.card(spell).costMod).toBe(0);
+  });
+});
+
+describe("R59: a sacrifice whose Death asks, inside a list", () => {
+  /** A Spell: "deal 5 to the 1/5; sacrifice the other unit; restore 5 health to the 1/5". */
+  function setUp(askingDeath: boolean): { s: Scenario; plain: CardInstance; spell: CardInstance } {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(
+      s,
+      "edge-r10-dying",
+      "Unit",
+      askingDeath
+        ? { death: () => [chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" })], resume: { picked: () => [] } }
+        : {},
+    );
+    fixture(s, "edge-r10-plain", "Unit", {}, { attack: 1, health: 5 });
+    const dying = placeFixture(s, "edge-r10-dying", "p1", "units", 1);
+    const plain = placeFixture(s, "edge-r10-plain", "p1", "units", 2);
+    fixture(s, "edge-r10-sac-spell", "Spell", {
+      cry: () => [
+        damage({ to: { of: "instance", instanceId: plain.id }, amount: 5 }),
+        sacrifice({ target: { of: "instance", instanceId: dying.id } }),
+        heal({ target: { of: "instance", instanceId: plain.id }, amount: 5 }),
+      ],
+    });
+    const spell = inHand(s, "edge-r10-sac-spell", "p1");
+    return { s, plain, spell };
+  }
+
+  it("R59 the state check waits for the whole Cry after a sacrificed unit's Death asked, so the heal saves the unit (§4.5, R113)", () => {
+    // Control: with a Death that asks nothing, the check runs after the whole Cry and the 1/5 lives.
+    const control = setUp(false);
+    control.s.play(control.spell);
+    control.s.expectInZone(control.plain, "field");
+
+    const { s, plain, spell } = setUp(true);
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+
+    // §4.5 and R59: the check runs after "a card's whole Cry, spell, trap or triggered script",
+    // never between the effects of one. The Death's question splits the list across two actions
+    // (R113), which changes nothing: the heal lands before the check, as it does without a question.
+    s.expectInZone(plain, "field");
+    expect(unitView(s.state, s.card(plain)).health).toBe(5);
+  });
+});
+
+describe("R151, R113: a start-of-game clause that asks, run as its card arrives in a hand", () => {
+  it("R151 the rest of an arriving card's start-of-game list waits for the answer to its question (R113, §9.3)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    // "Start of game: choose one; then deal 3 damage to the enemy hero." R151 runs it when the card
+    // arrives in a hand, as it does for #98's roll.
+    fixture(s, "edge-r10-asks-at-start", "Unit", {
+      startOfGame: () => [
+        chooseMode({ options: ["a", "b"], step: "picked", prompt: "pick one" }),
+        damage({ to: { of: "enemyHero" }, amount: 3 }),
+      ],
+      resume: { picked: () => [] },
+    });
+    fixture(s, "edge-r10-gift", "Spell", { cry: () => [addToHand({ defId: "edge-r10-asks-at-start" })] });
+    const spell = inHand(s, "edge-r10-gift", "p1");
+    const before = s.state.players.p2.hero.health;
+
+    s.play(spell);
+    expect(s.state.pending?.kind).toBe("mode");
+    // §9.3, R113: a choice is state, and the effects after it wait for the answer.
+    expect(s.state.players.p2.hero.health).toBe(before);
+
+    s.answer("a");
+    expect(s.state.pending).toBeNull();
+    expect(s.state.players.p2.hero.health).toBe(before - 3);
+  });
+});
+
+describe("R226, R70: a cast card an onPlayHook's answer moved before step 4", () => {
+  it("R226 a cast-on-draw card the step-3 hook's answer exiled stays in exile and is not placed (R70, §10.5)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-cod", "Unit", { staticFlags: { castOnDraw: true } }, { attack: 3, health: 3 });
+    const cod = newInstance(s.state, "edge-r10-cod", "p1", { z: "library", player: "p1" });
+    s.state.players.p1.library.unshift(cod);
+    // A permanent whose onPlayHook (§10.5 step 3, R153) asks about the cast card, and exiles it on "exile".
+    fixture(s, "edge-r10-hook", "Unit", {
+      onPlayHook: (ctx) =>
+        ctx.data.playedId === cod.id ? [chooseMode({ options: ["exile it", "keep it"], step: "picked" })] : [],
+      resume: {
+        picked: (ctx) =>
+          chosenOptions(ctx)[0] === "exile it" ? [exile({ target: { of: "instance", instanceId: cod.id } })] : [],
+      },
+    });
+    placeFixture(s, "edge-r10-hook", "p1", "units", 1);
+    fixture(s, "edge-r10-draw-one", "Spell", { cry: () => [draw({ count: 1 })] });
+    const spell = inHand(s, "edge-r10-draw-one", "p1");
+
+    s.play(spell);
+    // The draw cast the Unit (§2.4, R70), and its step 3 is asking.
+    expect(s.state.pending?.kind).toBe("mode");
+    s.answer("exile it");
+    expect(s.state.pending).toBeNull();
+
+    // R226's rule for a card taken away before §10.5 step 4 can place it: it stays where that move put
+    // it and is not played. Exile is a pile nothing takes a card back out of (§6.3).
+    s.expectInZone(cod, "exile");
+    expect(s.events.some((event) => event.type === "cardPlayed" && event.instanceId === cod.id)).toBe(false);
+  });
+});
+
+describe("R174: a card picked at a prompt, watched by a delayed effect the answered step schedules", () => {
+  it("R174 the answered step's delayed effect watching the Reborn body it just picked is scheduled (R76, §10.6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    fixture(s, "edge-r10-reborn", "Unit", {}, { attack: 1, health: 3 });
+    const reborn = placeFixture(s, "edge-r10-reborn", "p1", "units", 1);
+    reborn.grantedKeywords.push({ kind: "Reborn" });
+    // "Sacrifice your Reborn unit. Choose a friendly unit: at the start of your next turn, give it +2/+2."
+    fixture(s, "edge-r10-watcher", "Spell", {
+      cry: () => [
+        sacrifice({ target: { of: "instance", instanceId: reborn.id } }),
+        chooseTarget({ step: "picked", scope: { side: "ally", of: ["unit"] } }),
+      ],
+      resume: {
+        picked: (ctx) => {
+          const pick = ctx.targets[0];
+          if (pick === undefined || pick.pick !== "instance") return [];
+          return [
+            delay({
+              at: { phase: "start", player: "self" },
+              step: "later",
+              hook: RESUME_HOOK,
+              data: { id: pick.instanceId },
+              watch: pick.instanceId,
+            }),
+          ];
+        },
+        later: (ctx) => {
+          const id = ctx.data.id;
+          return typeof id === "string" ? [buff({ target: { of: "instance", instanceId: id }, attack: 2, health: 2 })] : [];
+        },
+      },
+    });
+    const spell = inHand(s, "edge-r10-watcher", "p1");
+
+    s.play(spell);
+    // The sacrifice's Reborn put the body back before the list asked, so the prompt offers it.
+    expect(s.state.pending?.kind).toBe("target");
+    s.expectInZone(reborn, "field");
+    s.answer([{ pick: "instance", instanceId: reborn.id }]);
+    expect(s.state.pending).toBeNull();
+
+    // R174: "A card picked at a prompt, though, is picked on the stay the prompt offered it on …
+    // and the answered step's effect lands on it" — a delayed effect aimed at it by id included.
+    expect(s.state.delayed.filter((effect) => effect.watch === reborn.id)).toHaveLength(1);
+  });
+});
+
+describe("R122, R113: the engine's answer, called directly, on the prompt an Echo repeat opened", () => {
+  it("R122 answerPrompt on an Echo repeat's fresh pick finishes the repeat and lands the Spell, as the answer action does (R113, §10.5 step 6)", () => {
+    const s = scenario({ p1: { hand: [RENO] }, p2: { hand: [RENO] } });
+    // "Deal 1 damage to a target. Echo 1": the repeat asks its target again (R81, §10.6).
+    fixture(s, "edge-r10-echo-ping", "Spell", {
+      targets: [{ kind: "target", min: 1, max: 1, filter: { side: "any", of: ["unit", "hero"] } }],
+      staticFlags: { echo: 1 },
+      cry: () => [damage({ to: { of: "chosen" }, amount: 1 })],
+    });
+    const spell = inHand(s, "edge-r10-echo-ping", "p1");
+    const before = s.state.players.p2.hero.health;
+
+    s.play(spell, { targets: [{ pick: "hero", player: "p2" }] });
+    const pending = must(s.state.pending, "the repeat's fresh pick");
+    expect(pending.kind).toBe("target");
+    expect(s.state.players.p2.hero.health).toBe(before - 1);
+
+    // A caller driving the engine directly answers through the engine's own `answerPrompt` (R122:
+    // "which matters for any caller driving the engine directly rather than through the reducer").
+    const state = s.state;
+    const refused = answerPrompt(sinkFor(s), {
+      playerId: pending.playerId,
+      choiceId: pending.id,
+      selection: [{ pick: "hero", player: "p2" }],
+    });
+    expect(refused).toBeNull();
+
+    // R122: the answer re-enters what the prompt interrupted and drains what is owed — the repeat
+    // resolves and the Spell reaches its graveyard, rather than stopping short of it (R113: a
+    // sequence is never dropped in silence).
+    expect(state.pending).toBeNull();
+    expect(state.players.p2.hero.health).toBe(before - 2);
+    expect(state.players.p1.resolving.map((card) => card.id)).not.toContain(spell.id);
+    expect(state.players.p1.graveyard.map((card) => card.id)).toContain(spell.id);
   });
 });

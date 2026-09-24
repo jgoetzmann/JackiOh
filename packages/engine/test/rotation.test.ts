@@ -345,6 +345,8 @@ describe("rotation (R14, M3-T7)", () => {
     expect(top.controller).toBe("p2");
     expect(under.controller).toBe("p2");
     expect(result.crossed).toEqual([top.id, under.id]);
+    // Nothing beneath the top resumed, so no Stack note is kept against it (R212, `withPile`).
+    expect(state.fieldExits?.uncovered?.[top.id]).toBeUndefined();
   });
 
   it("R11 a unit token bounced by a Locked destination ceases to exist", () => {

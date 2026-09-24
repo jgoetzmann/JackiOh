@@ -16,10 +16,21 @@
 // — answers for the player who held it then, and a trap that arrived since does not answer it. No
 // Core effect steals or summons a trap between an event and its dispatch, so the effect that does is
 // a fixture (a transient def and its script in the registry, as combat-windows.test.ts builds them).
+//
+// Round 10 (lens "re-entry and stays") carried R174's stays to the moment an event happened: a
+// response the loop hands an event later — a cast's `cardResolved`, which waits for the rest of the
+// list that cast it (R70), or a trigger queued behind one that killed the event's card (R59) — is
+// aimed at the stay the card had then, not a Reborn body that has come back since (R83). No Core
+// card casts a Unit, and none has a non-trap trigger aimed at its event's card, so those are fixtures.
+//
+// The review of round 10 narrowed that to the cards the event names: every other card a queued
+// trigger reads off the board as it resolves is on the stay it has then, a Reborn body an earlier
+// trigger on the same event made included (R174).
 
-import type { CardDef, CardType, GameEvent, PlayerId, Selection } from "@jackioh/shared";
+import type { CardDef, CardType, GameEvent, Keyword, PlayerId, Selection } from "@jackioh/shared";
 import { opponentOf } from "@jackioh/shared";
 import {
+  activeUnitsOf,
   cardAt,
   newInstance,
   placeOnField,
@@ -29,7 +40,7 @@ import {
   type EffectContext,
   type Script,
 } from "@jackioh/engine";
-import { draw, steal, summon } from "@jackioh/engine/effects";
+import { buff, buffAllUnits, damage, destroy, destroyAll, draw, forEachCard, steal, summon } from "@jackioh/engine/effects";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
 
@@ -380,4 +391,213 @@ describe("R212 for traps: a trap answers an event as the board stood when it hap
     expect(unitsOf(s, "p2").filter((unit) => unit.defId === RUSH_TOKEN)).toHaveLength(0);
     expect(s.backrow("p2", honeypot.lane)?.id).toBe(honeypot.instanceId);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Round 10: a response meets the stay its event's card had when the event happened (R174, R212)
+// ---------------------------------------------------------------------------
+
+const RIGHT_HOUSE = "core-003";
+
+/** A fixture Unit: a transient def with stats and keywords, and its script in the registry. */
+function unitFixture(
+  s: Scenario,
+  id: string,
+  script: Script,
+  opts: { attack?: number; health?: number; keywords?: Keyword[]; cost?: number } = {},
+): void {
+  const face = { attack: opts.attack ?? 2, health: opts.health ?? 2, keywords: opts.keywords ?? [], text: id };
+  const def: CardDef = {
+    id,
+    index: id,
+    name: id,
+    set: "Core",
+    type: "Unit",
+    tags: [],
+    rarity: "Common",
+    token: false,
+    cost: opts.cost ?? 0,
+    base: { ...face },
+    radiant: { ...face },
+  };
+  s.state.transientDefs[id] = def;
+  registerScripts({ ...registeredScripts(), [id]: { base: script, radiant: script } });
+}
+
+function unitOnField(s: Scenario, defId: string, player: PlayerId, lane: number): CardInstance {
+  const card = newInstance(s.state, defId, player, { z: "hand", player });
+  if (!placeOnField(s.state, card, { player, row: "units", lane })) throw new Error(`could not place ${defId}`);
+  return card;
+}
+
+describe("R174, R212: a late-dispatched cardResolved meets the played card's stay", () => {
+  it("R174 Bear Honeypot's tokens do not attack the Reborn body of a cast Unit that died before its cardResolved was dispatched (R61, R70, R83)", () => {
+    const s = scenario({
+      p1: { hand: [RENO], library: [RENO, RENO, RENO] },
+      p2: { backrow: [{ def: HONEYPOT, lane: 1 }], hand: [RENO], library: [RENO, RENO] },
+    });
+    // A cast-on-draw Unit with Reborn, and a 2-cost Spell whose list draws and then destroys every unit.
+    unitFixture(s, "edge-r10-cast-reborn-unit", { staticFlags: { castOnDraw: true } }, {
+      keywords: [{ kind: "Reborn" }],
+      cost: 1,
+    });
+    fixture(s, "edge-r10-draw-then-sweep", "Spell", { cry: () => [draw({ count: 1 }), destroyAll({ side: "any" })] }, 2);
+    const cast = newInstance(s.state, "edge-r10-cast-reborn-unit", "p1", { z: "library", player: "p1" });
+    s.state.players.p1.library.unshift(cast);
+    const spell = inHand(s, "edge-r10-draw-then-sweep", "p1");
+
+    s.play(spell);
+
+    // The draw cast the Unit (a play, R70, cost paid 0), whose step 7 emitted `cardResolved` with the
+    // Unit in play; then the Spell's own sweep destroyed it, and Reborn brought a new body back (§4.5
+    // step 4, R83) before the Spell's loop dispatched that `cardResolved` to the traps.
+    const resolvedAt = s.events.findIndex((e) => e.type === "cardResolved" && e.instanceId === cast.id);
+    const diedAt = s.events.findIndex((e) => e.type === "destroyed" && e.instanceId === cast.id);
+    expect(resolvedAt).toBeGreaterThanOrEqual(0);
+    expect(diedAt).toBeGreaterThan(resolvedAt);
+    // Bear Honeypot answers the cast (cost paid 0), but "it" is the stay the cast put on the field,
+    // which has ended: the tokens attack nothing, and the Reborn body stands at 1 health.
+    expect(s.events.some((e) => e.type === "trapFired")).toBe(true);
+    expect(
+      s.events.some((e) => e.type === "attackDeclared" && e.targetId === cast.id),
+      "no forced attack on the Reborn body",
+    ).toBe(false);
+    s.expectInZone(cast, "field");
+  });
+});
+
+describe("R174: a queued trigger aimed at the card its event names meets that card's stay", () => {
+  it("R174 a trigger naming the played unit by its event's id does not buff its Reborn body after an earlier trigger on the same play killed it (R83, R59)", () => {
+    const s = scenario({
+      p1: { hand: [RIGHT_HOUSE, RENO], library: [RENO, RENO] },
+      p2: { hand: [RENO], library: [RENO] },
+    });
+    const opponentsPlay = (ctx: { controller: PlayerId; event: GameEvent }): string | null => {
+      const e = ctx.event;
+      if (e.type !== "cardPlayed" || e.player === ctx.controller) return null;
+      return e.instanceId;
+    };
+    // Two of p2's units answer p1's plays, in lane order (R68): the first destroys the played unit,
+    // the second gives it +5 attack. Both name it by the id the `cardPlayed` event carries.
+    unitFixture(s, "edge-r10-slayer", {
+      triggers: [
+        {
+          id: "slay",
+          on: ["cardPlayed"],
+          run: (ctx) => {
+            const id = opponentsPlay(ctx);
+            return id === null ? [] : [destroy({ target: { of: "instance", instanceId: id } })];
+          },
+        },
+      ],
+    });
+    unitFixture(s, "edge-r10-marker", {
+      triggers: [
+        {
+          id: "mark",
+          on: ["cardPlayed"],
+          run: (ctx) => {
+            const id = opponentsPlay(ctx);
+            return id === null ? [] : [buff({ target: { of: "instance", instanceId: id }, attack: 5 })];
+          },
+        },
+      ],
+    });
+    unitOnField(s, "edge-r10-slayer", "p2", 1);
+    unitOnField(s, "edge-r10-marker", "p2", 2);
+    const played = s.card(RIGHT_HOUSE);
+
+    s.play(played);
+
+    // The first trigger destroyed it, the check after that trigger collected it (R59), and Reborn
+    // brought a new body back into its zone (§4.5 step 4): a new arrival, which nobody played (R83).
+    expect(s.events.some((e) => e.type === "destroyed" && e.instanceId === played.id)).toBe(true);
+    s.expectInZone(played, "field");
+    expect(s.card(played).rebornSpent).toBe(true);
+    // The second trigger was aimed at the unit p1 played; that stay is over, so the buff fizzles.
+    expect(s.events.some((e) => e.type === "buffed" && e.instanceId === played.id)).toBe(false);
+    expect(s.stats(played).attack).toBe(1);
+  });
+});
+
+describe("R174: only the card a queued trigger's event names is judged from when the event happened", () => {
+  // Review of round 10: a queued trigger ran with its event's mark for every card it aimed at, so a
+  // card it read off the board while it resolved — a Reborn body an earlier trigger on the same
+  // event made — was judged as if the run had begun before that body arrived, and a buff by id
+  // missed it where the same buff over the board reached it. R174's row takes the event's stay for
+  // the card the event names alone.
+  const HIT_JOB = "core-016";
+
+  /** "Whenever an enemy unit dies, …": p1's fixture units answer p2's unit dying. */
+  const enemyDied = (ctx: { controller: PlayerId; event: GameEvent }): boolean =>
+    ctx.event.type === "destroyed" && ctx.event.owner !== ctx.controller;
+
+  function board(s: Scenario, perUnit: "byId" | "overTheBoard"): { reborn: CardInstance; victim: CardInstance } {
+    // A 1/1 with Reborn and nothing else (a Right-house defender's Divine Shield would take the hit).
+    unitFixture(s, "edge-r11-reborn", {}, { attack: 1, health: 1, keywords: [{ kind: "Reborn" }] });
+    const reborn = unitOnField(s, "edge-r11-reborn", "p1", 3);
+    unitFixture(
+      s,
+      "edge-r11-striker",
+      {
+        triggers: [
+          {
+            id: "strike",
+            on: ["destroyed"],
+            run: (ctx) =>
+              enemyDied(ctx) ? [damage({ to: { of: "instance", instanceId: reborn.id }, amount: 5 })] : [],
+          },
+        ],
+      },
+      { attack: 1, health: 5 },
+    );
+    unitFixture(
+      s,
+      `edge-r11-rally-${perUnit}`,
+      {
+        triggers: [
+          {
+            id: "rally",
+            on: ["destroyed"],
+            run: (ctx) => {
+              if (!enemyDied(ctx)) return [];
+              if (perUnit === "overTheBoard") return [buffAllUnits({ side: "self", attack: 1 })];
+              return [
+                forEachCard({
+                  cards: (c) => activeUnitsOf(c.state, c.controller),
+                  each: (id) => buff({ target: { of: "instance", instanceId: id }, attack: 1 }),
+                }),
+              ];
+            },
+          },
+        ],
+      },
+      { attack: 1, health: 5 },
+    );
+    unitOnField(s, "edge-r11-striker", "p1", 1);
+    unitOnField(s, `edge-r11-rally-${perUnit}`, "p1", 2);
+    const victim = must(s.unit("p2", 1), "p2's unit");
+    return { reborn, victim };
+  }
+
+  for (const perUnit of ["overTheBoard", "byId"] as const) {
+    it(`R174 a trigger that buffs each of its side's units ${perUnit === "byId" ? "by id" : "over the board"} reaches the Reborn body an earlier trigger on the same death made (R59, R83)`, () => {
+      const s = scenario({
+        p1: { hand: [HIT_JOB], mana: 4, library: [...LIBRARY] },
+        p2: { field: [VANILLA], library: [...LIBRARY] },
+      });
+      const { reborn, victim } = board(s, perUnit);
+
+      s.play(HIT_JOB, { targets: at(victim) });
+
+      // The striker answered the death first (lane 1, R68) and killed the 1/1; the check after it
+      // brought a Reborn body back (§4.5 step 4, R59). The rally, queued on the same death, reads
+      // p1's units as it resolves, the body among them, and each one is aimed at the stay it stands
+      // on now: the event named none of them.
+      expect(died(s, reborn)).toBe(true);
+      s.expectInZone(reborn, "field");
+      expect(s.events.filter((e) => e.type === "buffed" && e.instanceId === reborn.id)).toHaveLength(1);
+      expect(s.stats(reborn).attack).toBe(2);
+    });
+  }
 });

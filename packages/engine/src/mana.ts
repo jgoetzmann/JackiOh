@@ -20,6 +20,13 @@ export function maxManaFor(side: PlayerState): number {
 }
 
 /**
+ * R169: the id the next refresh's rider (`mana.nextTurnMod`, §6.3 Mana: "'next turn' mana is stored
+ * as a modifier for the next refresh") travels under — one badge per player, which `modifierChanged`
+ * names as it appears, changes and is spent, and which the view lists while the rider is not 0.
+ */
+export const NEXT_REFRESH_MODIFIER_ID = "nextTurnMana";
+
+/**
  * Start of turn: refresh to max, moved by the one-shot rider (§6.3 Mana: "'next turn' mana is stored
  * as a modifier for the next refresh"), which is then cleared. The rider changes what the refresh
  * gives, not max mana: #24 Efficiency Dividend's next-turn mana is temporary mana on §2.3's list and
@@ -79,6 +86,14 @@ export function modifierIsLive(state: GameState, mod: PlayerModifier): boolean {
  * R65: start from costOverride or the printed cost, add the instance's costMod, add the player's
  * discounts, then Professor Curvature if the result is 4, and floor at 0. An X-cost card costs
  * exactly X and ignores modifiers, unless an override makes it free.
+ *
+ * The player's discounts and Curvature are prices for a play — §6.3's Cost is "what a card costs to
+ * play now", #35's is "the next Spell you play", #78's "this turn your cards cost 1 less", and R48
+ * reads Curvature "at play time" — so they reach a card in its controller's hand, where a play takes
+ * it from (§10.5 step 1), and no other. A card in a library or a graveyard is read at its own cost,
+ * its `costOverride` or printed cost with its `costMod`: #30 Archivist's "highest" (R24), #94's
+ * 2-cost draw and odd-cost exile (R66), a Recruit's filter — as Hearthstone's hand discounts never
+ * reach the deck or the graveyard (R65).
  */
 export function effectiveCost(state: GameState, instance: CardInstance): number {
   const side = state.players[instance.controller];
@@ -90,6 +105,8 @@ export function effectiveCost(state: GameState, instance: CardInstance): number 
   }
 
   let cost = (override ?? printedCost(state, instance)) + instance.costMod;
+  // R65: a player's discounts price a play, and a play takes a card from its hand.
+  if (instance.zone.z !== "hand") return Math.max(0, cost);
   const type = defOf(state, instance.defId).type;
 
   for (const mod of side.mods) {

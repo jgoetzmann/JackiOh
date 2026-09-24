@@ -71,7 +71,9 @@ export type PlayChoices = {
 
 // R90's enumeration bound is `MAX_CHOICE_COMBINATIONS` in `config.ts` (BUILD §2): "Choose 2 or 3"
 // on a full board is 165 combinations, and the client only needs enough of them to offer every
-// picker, so every enumeration below stops at the cap rather than growing with the board.
+// picker, so the target and mode enumerations below stop at the cap rather than growing with the
+// board — and a cut drops combinations, never a pick (`crossProduct`, `interleaved`). A Tribute's
+// paying sets are the exception: they are the play's price, listed whole (`legalTributeSets`).
 
 /** §7: the Sheep Token, which is "worth 2 Tributes while on the field" (§3.2, §6.3). */
 export const SHEEP_TOKEN_INDEX = "T-sheep";
@@ -307,6 +309,14 @@ function tributeTotal(state: GameState, units: readonly CardInstance[]): number 
 /**
  * Every set of units that pays the Tribute exactly: enough to meet the cost, and minimal, so no unit
  * in the set could be dropped and still pay it. The Sheep Token's 2 is why a set may overshoot.
+ *
+ * R90: every one of them, with no cut. The Tribute is what the play costs, and a set left off the
+ * list is a price the player can never pay: the client builds a play only out of the plays
+ * `legalActions` lists (CLAUDE.md rule 7), and the §10.7 policy draws from the same list. Cut at
+ * `MAX_CHOICE_COMBINATIONS` with the player's own units first, a Lava Golem beside four of its own
+ * units and five enemy ones was never offered #55's defining play, three enemy units (R101). The
+ * count is the board's to bound: at most ten units stand, so Core's largest Tribute, #55's 3, has at
+ * most 120 minimal sets.
  */
 export function legalTributeSets(state: GameState, player: PlayerId, card: CardInstance): string[][] {
   const need = tributeCostOf(card);
@@ -317,7 +327,6 @@ export function legalTributeSets(state: GameState, player: PlayerId, card: CardI
   const chosen: CardInstance[] = [];
 
   const walk = (from: number): void => {
-    if (out.length >= MAX_CHOICE_COMBINATIONS) return;
     const paid = tributeTotal(state, chosen);
     if (paid >= need) {
       if (isMinimalTribute(state, chosen, need)) out.push(chosen.map((unit) => unit.id));
@@ -329,7 +338,6 @@ export function legalTributeSets(state: GameState, player: PlayerId, card: CardI
       chosen.push(unit);
       walk(at + 1);
       chosen.pop();
-      if (out.length >= MAX_CHOICE_COMBINATIONS) return;
     }
   };
 
@@ -649,18 +657,66 @@ function subsetsFor(options: readonly Selection[], decl: TargetDecl, isLast: boo
   return out;
 }
 
+/**
+ * The cross of several lists, the first varying slowest, bounded by `cap` (R90). When the whole cross
+ * fits under the bound it is all of it, in that order. When it does not, the bound drops
+ * combinations and never a pick: the combinations kept first offer every item of every list — one
+ * per place in the longest list, each list taking its items in turn — and the rest follow in order
+ * up to the bound. Cut in order alone, the first list's later items were in no combination at all:
+ * a crafted Twisted Sorcerer + Kpop Fanatic crossed over eleven and eight picks never offered the
+ * Sorcerer's 4 damage at the enemy hero (R81, R102), and the client, which builds a play only out of
+ * the plays `legalActions` lists (CLAUDE.md rule 7), could not make it.
+ */
 function crossProduct<T>(lists: readonly T[][], cap: number): T[][] {
-  let out: T[][] = [[]];
-  for (const list of lists) {
-    const next: T[][] = [];
-    for (const prefix of out) {
-      for (const item of list) {
-        next.push([...prefix, item]);
-        if (next.length >= cap) break;
-      }
-      if (next.length >= cap) break;
+  if (lists.some((list) => list.length === 0)) return [];
+  const total = lists.reduce((product, list) => product * list.length, 1);
+  const out: T[][] = [];
+  const kept = new Set<string>();
+  const keep = (indices: readonly number[]): void => {
+    const key = indices.join(",");
+    if (kept.has(key) || out.length >= cap) return;
+    kept.add(key);
+    out.push(indices.map((index, at) => (lists[at] as T[])[index] as T));
+  };
+  if (total > cap) {
+    const width = Math.max(0, ...lists.map((list) => list.length));
+    for (let place = 0; place < width; place += 1) keep(lists.map((list) => place % list.length));
+  }
+  // The rest in order: an odometer whose last wheel turns fastest.
+  const wheel = lists.map(() => 0);
+  for (;;) {
+    if (out.length >= cap) break;
+    keep(wheel);
+    let at = wheel.length - 1;
+    for (; at >= 0; at -= 1) {
+      const length = (lists[at] as T[]).length;
+      wheel[at] = ((wheel[at] as number) + 1) % length;
+      if (wheel[at] !== 0) break;
     }
-    out = next;
+    if (at < 0) break;
+  }
+  return out;
+}
+
+/**
+ * R90: several groups of answers kept under one bound — the target combinations of each mode choice
+ * a `forModes` card offers — all of them when they fit, and otherwise taken a round at a time, one
+ * from each group in turn, so every mode choice keeps answers of its own.
+ */
+function interleaved<T>(groups: readonly T[][], cap: number): T[] {
+  const total = groups.reduce((sum, group) => sum + group.length, 0);
+  if (total <= cap) return groups.flat();
+  const out: T[] = [];
+  for (let round = 0; out.length < cap; round += 1) {
+    let any = false;
+    for (const group of groups) {
+      const item = group[round];
+      if (item === undefined) continue;
+      any = true;
+      out.push(item);
+      if (out.length >= cap) break;
+    }
+    if (!any) break;
   }
   return out;
 }
@@ -691,31 +747,29 @@ export function playChoiceCombinations(
     MAX_CHOICE_COMBINATIONS,
   );
 
-  const out: PlayChoices[] = [];
   if (targetsFollowModes(targetDecls)) {
     // The target declarations a play answers depend on its modes (`forModes`), so each mode choice
-    // is enumerated with the targets it asks for.
-    for (const modes of modeDecls.length === 0 ? [[]] : modeCombos) {
+    // is enumerated with the targets it asks for — and each keeps answers under the bound (R90).
+    const groups = (modeDecls.length === 0 ? [[]] : modeCombos).map((modes): PlayChoices[] => {
       const active = activeTargetDecls(targetDecls, modes);
-      for (const targets of active.length === 0 ? [undefined] : targetCombosFor(active)) {
-        out.push({ ...(targets === undefined ? {} : { targets }), ...(modeDecls.length === 0 ? {} : { modes }) });
-        if (out.length >= MAX_CHOICE_COMBINATIONS) return out;
-      }
-    }
-    return out;
+      return (active.length === 0 ? [undefined] : targetCombosFor(active)).map((targets) => ({
+        ...(targets === undefined ? {} : { targets }),
+        ...(modeDecls.length === 0 ? {} : { modes }),
+      }));
+    });
+    return interleaved(groups, MAX_CHOICE_COMBINATIONS);
   }
 
   const targetCombos = targetCombosFor(targetDecls);
   const targetAnswers: (Selection[] | undefined)[] = targetDecls.length === 0 ? [undefined] : targetCombos;
   const modeAnswers: (string[] | undefined)[] = modeDecls.length === 0 ? [undefined] : modeCombos;
 
-  for (const targets of targetAnswers) {
-    for (const modes of modeAnswers) {
-      out.push({ ...(targets === undefined ? {} : { targets }), ...(modes === undefined ? {} : { modes }) });
-      if (out.length >= MAX_CHOICE_COMBINATIONS) return out;
-    }
-  }
-  return out;
+  return crossProduct<Selection[] | string[] | undefined>([targetAnswers, modeAnswers], MAX_CHOICE_COMBINATIONS).map(
+    ([targets, modes]) => ({
+      ...(targets === undefined ? {} : { targets: targets as Selection[] }),
+      ...(modes === undefined ? {} : { modes: modes as string[] }),
+    }),
+  );
 }
 
 /**

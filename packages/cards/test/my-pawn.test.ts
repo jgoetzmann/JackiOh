@@ -16,6 +16,8 @@
 //    resolves on that turn. R44, §8 #96: a question of the locked-out player's that opens outside the
 //    AI's playout is the AI's to answer. R152: a My Pawn fused onto a My Pawn hands over one turn —
 //    its second half finds no turn of the attacker's left to hand over.
+//  - The review of round 10. R212: the AI turn My Pawn hands over happened after the window's
+//    earlier events, though the loop dispatched it first, so a card it drew does not answer them.
 
 import {
   newInstance,
@@ -332,3 +334,54 @@ describe("R152: the AI turn's lockout ends with the turn it was set for", () => 
     expect(s.state.players.p1.aiTurn).toBe(false);
   });
 });
+
+describe("R212: My Pawn's AI turn happened after the window it was handed over in", () => {
+  const CORPSE_EATER = "core-089";
+
+  it("R212 a Corpse Eater drawn during My Pawn's AI turn does not feed on a death a trap dealt earlier in the same window (§8 #89, R44)", () => {
+    // p1's Sorcerer swings for lethal. In the window, p2's lane-1 trap destroys p1's Mr. Vanilla,
+    // and then My Pawn cancels the swing and hands the rest of p1's turn to the AI (R44), which ends
+    // it: p2's turn starts inside this one action, and p2 draws Corpse Eater. The loop hands the
+    // window's death to the triggers only after the window, AI turn included (§10.3) — but the Eater
+    // reached the hand after that death, and R212 has "a #89 Corpse Eater drawn after a death not
+    // feed on it".
+    const s = scenario({
+      seed: "edge-r11-pawn-eater",
+      p1: { field: [SORCERER, { def: MR_VANILLA, lane: 2 }], library: [GIGA, GIGA, GIGA] },
+      p2: {
+        health: 5,
+        backrow: [{ def: MY_PAWN, lane: 2, faceUp: false }],
+        library: [CORPSE_EATER, GIGA, GIGA],
+      },
+    });
+    const victim = must(s.unit("p1", 2));
+    fixture(s, "edge-r11-sniper", "Trap", {
+      triggers: [
+        {
+          id: "edge-r11-sniper-fires",
+          on: ["attackDeclared"],
+          when: (ctx) => ctx.event.type === "attackDeclared" && !ctx.event.forced,
+          run: () => [destroy({ target: { of: "instance", instanceId: victim.id } })],
+        },
+      ],
+    });
+    const sniper = placeFixture(s, "edge-r11-sniper", "p2", "backrow", 1);
+    sniper.faceUp = false;
+
+    s.attack(SORCERER, "hero");
+
+    expect(s.events.some((e) => e.type === "destroyed" && e.instanceId === victim.id)).toBe(true);
+    expect(s.events.filter((e) => e.type === "trapFired").length).toBe(2);
+    const eater = s.card(CORPSE_EATER);
+    s.expectInZone(eater, "hand");
+    const diedAt = s.events.findIndex((e) => e.type === "destroyed" && e.instanceId === victim.id);
+    const drawnAt = s.events.findIndex((e) => e.type === "drawn" && e.instanceId === eater.id);
+    expect(drawnAt).toBeGreaterThan(diedAt);
+    expect(s.events.filter((e) => e.type === "buffed" && e.instanceId === eater.id)).toEqual([]);
+  });
+});
+
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("setup: expected a value");
+  return value;
+}

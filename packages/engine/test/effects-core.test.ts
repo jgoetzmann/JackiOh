@@ -49,6 +49,7 @@ import { damage as damageEffect } from "../src/effects";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
 import type { CardInstance, GameState } from "../src/state";
+import { REMEMBERED_KEY } from "../src/work";
 import { moveToZone } from "../src/zones";
 import { antiOneshot, stockpile } from "./fixtures/scripts";
 import { plain, spikeyPillow, taunter } from "./fixtures/combat";
@@ -605,7 +606,9 @@ describe("§10.1 memory: what a card remembers (R43, M3-T1)", () => {
       controller: "p1",
       self,
     });
-    expect(self.memory).toEqual({ meal: "eaten", grade: 2 });
+    // Beside them, the keys the card's texts remembered under, which a Fuse that keeps the card
+    // moves with those texts (R102, `work.REMEMBERED_KEY`).
+    expect(self.memory).toEqual({ meal: "eaten", grade: 2, [REMEMBERED_KEY]: ["meal", "grade"] });
 
     // With no card running there is nowhere to remember anything.
     expect(run(state, remember({ key: "meal", value: 1 }), { controller: "p1" })).toEqual([]);

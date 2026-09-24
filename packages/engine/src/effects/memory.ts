@@ -7,10 +7,11 @@
 //
 // R102: on a fused card each ingredient remembers under its own key (`work.partMemoryKey`), so two
 // Carnivorous Cubes crafted into one card remember two meals, and each Death copies its own; a card
-// reads back through `query.recalled`, which applies the same key.
+// reads back through `query.recalled`, which applies the same key. A card a Fuse keeps moves what its
+// texts remembered to the path they run at in the new fusion (`work.rerootRemembered`, R77).
 
 import type { Effect } from "../script";
-import { partMemoryKey } from "../work";
+import { rememberOn } from "../work";
 import { selfOnItsStay } from "./targets";
 
 export function remember(args: { key: string; value: unknown }): Effect {
@@ -19,7 +20,7 @@ export function remember(args: { key: string; value: unknown }): Effect {
     apply(ctx): void {
       const self = selfOnItsStay(ctx);
       if (self === null) return;
-      self.memory[partMemoryKey(ctx.data, args.key)] = args.value;
+      rememberOn(self.memory, ctx.data, args.key, args.value);
     },
   };
 }
@@ -31,7 +32,7 @@ export function rememberRandom(args: { key: string; options: readonly unknown[] 
     apply(ctx): void {
       const self = selfOnItsStay(ctx);
       if (self === null || args.options.length === 0) return;
-      self.memory[partMemoryKey(ctx.data, args.key)] = ctx.rng.pick(args.options);
+      rememberOn(self.memory, ctx.data, args.key, ctx.rng.pick(args.options));
     },
   };
 }

@@ -9,6 +9,11 @@
 //  - Round 8 (lens L10). R225: a Quickdraw card is the last of the opening draws it replaces,
 //    reported and counted as a draw, so #100's price, the deal's events and the counts while setup
 //    waits (R224) do not tell the other seat whether the opening hand holds one.
+//  - Round 10 (lens L8, and L7 for the clause that asks). Setup is turn 0, no player's turn (§2.1):
+//    a Spell a mulligan's replacement draw casts kept its return flag into its caster's first turn
+//    end (R155), and p1's cast armed an end-of-turn clause for turn 1 that p2's did not (R241). A
+//    start-of-game clause that asks at §2.1 step 4 now holds the rest of setup, and turn 1, until
+//    it is answered (R151, R113).
 //
 // No Core cast-on-draw card asks anything, so the asking card is a fixture (a transient def and a
 // registered script, the way paused-sequences.test.ts builds its asking cards).
@@ -17,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import type { Action, ActionBody, ActionInput, CardDef, CardType, PlayerId, PlayerView } from "@jackioh/shared";
 import {
   DECK_SIZE,
+  RESUME_HOOK,
   beginGame,
   createGame,
   newInstance,
@@ -25,10 +31,11 @@ import {
   registerScripts,
   registeredScripts,
   viewFor,
+  wasPlayedThisTurn,
   type GameState,
   type Script,
 } from "@jackioh/engine";
-import { chooseMode, damage } from "@jackioh/engine/effects";
+import { bounce, chooseMode, damage, delay, exileHand } from "@jackioh/engine/effects";
 import { CATALOG } from "../src/index";
 // Importing the harness registers the real catalog and every card script (`registerAll()`); these
 // cases build their games through `createGame`, since a `scenario()` starts past the mulligan.
@@ -347,5 +354,149 @@ describe("R225, R224: a Quickdraw card is dealt as the last opening draw", () =>
     // draws, "instead of" a draw that has not happened yet, the counts would say so; it waits for
     // the last opening draw (R225), so both games count the same.
     sameView(viewFor(withPower, "p2"), viewFor(without, "p2"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 10: setup is no player's turn (§2.1, §2.2, R155, R241), and a clause that asks (R151)
+// ---------------------------------------------------------------------------
+
+/** `player` returns its first opening card, so R9's replacement draw takes the top card (§2.1). */
+function mulliganOne(state: GameState, player: PlayerId): GameState {
+  const hand = state.players[player].hand.map((card) => card.id);
+  return act(state, { type: "mulligan", keep: hand.slice(1), playerId: player }).state;
+}
+
+function keepAll(state: GameState, player: PlayerId): GameState {
+  return act(state, { type: "mulligan", keep: state.players[player].hand.map((card) => card.id), playerId: player }).state;
+}
+
+/** Play the game on, ending each turn at once (R82 may end one first), until `turn` has ended. */
+function endTurnsThrough(state: GameState, turn: number): GameState {
+  let next = state;
+  for (let guard = 0; guard < 10 && next.result === null && next.turn <= turn; guard += 1) {
+    if (next.pending !== null) throw new Error(`unexpected ${next.pending.kind} prompt on turn ${next.turn}`);
+    next = act(next, { type: "endTurn", playerId: next.active }).state;
+  }
+  return next;
+}
+
+/** #23's return, verbatim in shape, on a cast-on-draw Spell: the flag step 7 writes, or a play this turn. */
+const SETUP_BOOMERANG: Script = {
+  staticFlags: { castOnDraw: true },
+  cry: () => [],
+  endOfTurn: (ctx) => {
+    const self = ctx.self;
+    if (self === null) return [];
+    const returns = self.returnToHandAtEndOfTurn === true || wasPlayedThisTurn(ctx.state, self.controller, self);
+    return returns ? [bounce({ target: { of: "self" } })] : [];
+  },
+};
+
+describe("R155, R241: a card setup casts belongs to no turn of its caster's (§2.1, §6.2)", () => {
+  // No Core cast-on-draw card carries an end-of-turn clause, so the card that makes each case
+  // observable is a fixture; the rest of each game is real Core cards.
+  it("R155 a return Spell cast by a mulligan's replacement draw stays in the graveyard at its caster's first turn end, a turn it was not played on", () => {
+    // Once for each seat: p1's first turn end is turn 1's, p2's is turn 2's.
+    for (const seat of ["p1", "p2"] as const) {
+      let state = beginGame(createGame({ seed: `edge-r10-setup-return-${seat}`, decks: [P1_DECK, P2_DECK] })).state;
+      expect(state.pending?.kind).toBe("mulligan");
+      const id = `edge-r10-setup-boomerang-${seat}`;
+      fixture(state, id, "Spell", SETUP_BOOMERANG);
+
+      if (seat === "p2") state = keepAll(state, "p1");
+      const boomerang = newInstance(state, id, seat, { z: "library", player: seat });
+      state.players[seat].library.unshift(boomerang);
+      state = mulliganOne(state, seat);
+      // R9's replacement was cast during setup (§2.4, R70) and landed in its caster's graveyard.
+      expect(state.players[seat].graveyard.some((card) => card.id === boomerang.id)).toBe(true);
+      if (seat === "p1") state = keepAll(state, "p2");
+      expect(state.turn).toBe(1);
+
+      // Through the caster's first turn end.
+      state = endTurnsThrough(state, seat === "p1" ? 1 : 2);
+      expect(state.result).toBeNull();
+
+      // R155: the return belongs to the turn the Spell was played on, and a Spell played outside its
+      // controller's turn "stays in the graveyard rather than coming back at the end of a later turn
+      // it was not played on". Setup is turn 0 and nobody's turn (§2.1, §2.2): the turn-scoped
+      // riders a setup cast makes are already dead on turn 1 (`thisTurn` of turn 0), and its return
+      // is over too.
+      const inHand = state.players[seat].hand.some((card) => card.id === boomerang.id);
+      expect(inHand, `${seat}'s Spell cast during its mulligan came back to hand at the end of its first turn`).toBe(false);
+    }
+  });
+
+  it("R241 an end-of-turn clause armed by a Spell p1's mulligan casts does not exile p1's hand at the end of turn 1", () => {
+    let state = beginGame(createGame({ seed: "edge-r10-setup-exile", decks: [P1_DECK, P2_DECK] })).state;
+    expect(state.pending?.kind).toBe("mulligan");
+
+    // /fullsend's end-of-turn clause, verbatim in shape, on a cast-on-draw Spell.
+    const id = "edge-r10-setup-late-exile";
+    fixture(state, id, "Spell", {
+      staticFlags: { castOnDraw: true },
+      cry: () => [delay({ at: { phase: "end", player: "self" }, step: "exile", hook: RESUME_HOOK })],
+      resume: { exile: () => [exileHand({ player: "self" })] },
+    });
+    const cod = newInstance(state, id, "p1", { z: "library", player: "p1" });
+    state.players.p1.library.unshift(cod);
+
+    state = mulliganOne(state, "p1");
+    expect(state.players.p1.graveyard.some((card) => card.id === cod.id)).toBe(true);
+    // Setup's `active` names p1 only as a placeholder (§2.1): the cast was on no turn of p1's.
+    expect(state.delayed).toEqual([]);
+    state = keepAll(state, "p2");
+    expect(state.turn).toBe(1);
+    const handOnTurnOne = state.players.p1.hand.map((card) => card.id);
+    expect(handOnTurnOne.length).toBeGreaterThan(0);
+
+    state = endTurnsThrough(state, 1);
+    expect(state.turn).toBe(2);
+
+    // R241: an end-of-turn clause is "the end of the turn the card was played on", and one made
+    // outside its controller's turn "has no end of its controller's turn to wait for, so it is not
+    // armed at all". The same card cast by p2's mulligan was never armed, and p1's was not played on
+    // turn 1 either: its hand stays.
+    const exiled = handOnTurnOne.filter((cardId) => state.players.p1.exile.some((card) => card.id === cardId));
+    expect(exiled, "the clause of a Spell p1 cast during setup exiled p1's hand at the end of turn 1").toEqual([]);
+  });
+});
+
+describe("R151, R113: a start-of-game clause that asks at §2.1 step 4", () => {
+  it("R151 a start-of-game clause that asks holds the rest of setup, and turn 1, until it is answered (§2.1, §9.3, R113)", () => {
+    let state = beginGame(createGame({ seed: "edge-r10-setup-start-asks", decks: [P1_DECK, P2_DECK] })).state;
+    // "Start of game: choose one; then deal 3 damage to the enemy hero", at the bottom of p1's
+    // library, where no opening draw reaches it: §2.1 step 4 runs it over the library too (R153).
+    const id = "edge-r10-setup-start-asks";
+    fixture(state, id, "Unit", {
+      startOfGame: () => [
+        chooseMode({ options: ["a", "b"], step: "picked", prompt: "the clause's question" }),
+        damage({ to: { of: "enemyHero" }, amount: 3 }),
+      ],
+      resume: { picked: () => [] },
+    });
+    state.players.p1.library.push(newInstance(state, id, "p1", { z: "library", player: "p1" }));
+
+    state = keepAll(state, "p1");
+    state = keepAll(state, "p2");
+    // §9.3: the question is state, and what comes after it — the rest of the clause and turn 1 —
+    // waits for its answer rather than running over it.
+    const pending = must(state.pending, "the clause's question");
+    expect(pending.kind).toBe("mode");
+    expect(pending.playerId).toBe("p1");
+    expect(state.turn).toBe(0);
+    expect(state.players.p2.hero.health).toBe(30);
+
+    const answered = act(state, { type: "answer", choiceId: pending.id, selection: [{ pick: "mode", option: "a" }], playerId: "p1" });
+    state = answered.state;
+    // R122: the answer finishes the clause, then the setup it held: turn 1 is p1's (§2.1 step 5),
+    // and it begins only after the clause's last effect.
+    expect(state.players.p2.hero.health).toBe(27);
+    expect(state.turn).toBe(1);
+    expect(state.active).toBe("p1");
+    const hitAt = answered.events.findIndex((event) => event.type === "damage" && event.amount === 3);
+    const turnAt = answered.events.findIndex((event) => event.type === "turnStarted");
+    expect(hitAt).toBeGreaterThanOrEqual(0);
+    expect(turnAt).toBeGreaterThan(hitAt);
   });
 });

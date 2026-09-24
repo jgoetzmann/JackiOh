@@ -10,9 +10,8 @@
 import type { CardDef, CardType, PlayerId, Row, Tag } from "@jackioh/shared";
 import { defOf, excludingIndex, query, type CatalogQueryArgs } from "../catalog";
 import { effectiveCost } from "../mana";
-import { runHook } from "../resolve";
+import { runStartOfGame } from "../prompts";
 import type { Effect, EffectContext } from "../script";
-import { scriptOf } from "../scripts";
 import { newInstance, type CardInstance } from "../state";
 import { exitMark } from "../stays";
 import {
@@ -124,9 +123,8 @@ function summonOnto(
   // `draw.ts` rolls on, and would otherwise hold no power and never be offered `activatePower`. The
   // hook keeps a power the card already rolled (`heroPower.ensurePower`), so a card that arrives
   // with its answer takes no rng draw.
-  if (scriptOf(card).startOfGame !== undefined) {
-    runHook(ctx, card, "startOfGame", { controller: card.owner });
-  }
+  // §9.3, R113: resumably, so a question in the clause pauses the rest of it (`runStartOfGame`).
+  runStartOfGame(ctx, card, card.owner);
   return true;
 }
 

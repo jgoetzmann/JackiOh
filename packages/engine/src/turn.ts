@@ -22,7 +22,7 @@ import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { DRAWS_PER_TURN, DRAW_OFFER_BLOCK_TURNS, TURN_CAP_PLAYER_TURNS } from "./config";
 import { draw } from "./draw";
 import { endGame } from "./gameOver";
-import { manaEvent, refreshMana } from "./mana";
+import { NEXT_REFRESH_MODIFIER_ID, manaEvent, refreshMana } from "./mana";
 import { dropDelayed, dueDelayed, expireModifiers } from "./modifiers";
 import { runResume } from "./prompts";
 import type { EngineSink, HookName } from "./resolve";
@@ -227,8 +227,11 @@ export function startTurn(sink: EngineSink, player: PlayerId): void {
   resetExertion(sink, player);
 
   sink.events.push({ type: "turnStarted", player, turn: state.turn });
+  const rider = side.mana.nextTurnMod;
   refreshMana(side);
   sink.events.push(manaEvent(player, side));
+  // R169: the refresh spends the rider (§6.3 Mana), and its badge goes with it.
+  if (rider !== 0) sink.events.push({ type: "modifierChanged", player, modifierId: NEXT_REFRESH_MODIFIER_ID, added: false });
 
   startOfTurnDelayed(sink, player, state.nextSeq);
 }
@@ -379,7 +382,7 @@ registerWorkHandler(START_OF_TURN_WORK, runOwedStartOfTurn);
  * about. Leaving it set would make the card return from the graveyard on every later turn it
  * happened to be in one, including after it was merely discarded or milled (R153).
  */
-function clearReturnFlags(state: GameState): void {
+export function clearReturnFlags(state: GameState): void {
   // The cards played this turn are exactly the ones step 7 could have flagged: it writes the flag on
   // the card it just landed, and step 4 logged that same card on its player's turn log. Both logs:
   // a Spell cast on the other player's turn (a cast on draw, R70) is flagged too, and §6.2 makes an
@@ -588,6 +591,13 @@ function endOfTurnCleanupSettle(sink: EngineSink, player: PlayerId): void {
     oweEndOfTurn(sink, player, END_NEXT_STEP);
     return;
   }
+
+  // R155: a return Spell cast while cleanup's events were answered — a cast on draw a trigger's draw
+  // made — was flagged by §10.5 step 7 after cleanup had cleared the flags. This turn's end-of-turn
+  // triggers are over, so its return is over too, and it is cleared now, while this is still the
+  // turn whose logs name it: `startTurn` empties them, and a flag no cleanup saw came back at the
+  // end of its caster's next turn, one it was not played on.
+  clearReturnFlags(state);
 
   if (state.turn >= TURN_CAP_PLAYER_TURNS) {
     endGame(sink, "draw", "turn-cap");

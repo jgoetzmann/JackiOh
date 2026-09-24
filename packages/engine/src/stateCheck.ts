@@ -101,6 +101,13 @@ function backrowOf(sink: EngineSink, player: PlayerId): CardInstance[] {
  * R46: a marked Indestructible unit switches to Attack Position and loses Taunt for the turn.
  * A backrow card has no position, so an Indestructible Field Spell simply keeps its zone and the
  * mark is dropped with no event.
+ *
+ * §10.3: both halves are reported. The switch is `positionSwitched`, and only when there is one
+ * (R91); the Taunt the knock-down takes — one the unit still has in Attack Position, printed,
+ * granted or from an aura — is a `keywordGranted` with `lost` set, since no event type says a
+ * keyword went and one is not added for this (R46). A unit already in Attack Position has nothing
+ * to switch, so without it the change both views show, and the one that decides what may be
+ * attacked (§4.2 step 3), would go out with no event at all.
  */
 function resolveIndestructibleMarks(sink: EngineSink): void {
   for (const player of PLAYER_IDS) {
@@ -109,12 +116,19 @@ function resolveIndestructibleMarks(sink: EngineSink): void {
       const view = unitView(sink.state, unit);
       if (!hasKeyword(view.keywords, "Indestructible") || view.maxHealth <= 0) continue;
       unit.markedDestroyed = false;
-      unit.tauntSuppressedTurn = sink.state.turn;
-      // R91: a unit already in Attack Position has nothing to switch, so nothing is reported — the
+      // R91: a unit already in Attack Position has nothing to switch, so no switch is reported — the
       // event is §10.10's 90° turn, and a unit that did not move must not be seen to.
-      if (view.position === "ATK") continue;
-      unit.position = "ATK";
-      sink.events.push({ type: "positionSwitched", instanceId: unit.id, position: "ATK" });
+      if (view.position !== "ATK") {
+        unit.position = "ATK";
+        sink.events.push({ type: "positionSwitched", instanceId: unit.id, position: "ATK" });
+      }
+      // The Taunt it has in Attack Position, which the suppression takes (a second knock-down the
+      // same turn finds none left to take).
+      const hadTaunt = hasKeyword(unitView(sink.state, unit).keywords, "Taunt");
+      unit.tauntSuppressedTurn = sink.state.turn;
+      if (hadTaunt) {
+        sink.events.push({ type: "keywordGranted", instanceId: unit.id, keyword: { kind: "Taunt" }, lost: true });
+      }
     }
     for (const card of backrowOf(sink, player)) {
       if (card.markedDestroyed !== true) continue;
@@ -167,6 +181,13 @@ export type DeathPass = {
    */
   reborn: { id: string; at: ZoneSlot; token?: CardInstance; face?: RebornFace }[];
   collected: { id: string; defId: string; owner: PlayerId }[];
+  /**
+   * A Sacrifice's pass (§6.3, `sacrificeNow`, `sacrificeTogether`) rather than the state check's own:
+   * one effect inside the list that made it, so finishing it after a Death hook's question does not
+   * run the check — that is owed after the whole list (§4.5, R59), as it is when nothing asks. Only
+   * the check's own pass goes round again (§4.5 step 5).
+   */
+  sacrificed?: boolean;
 };
 
 /**
@@ -212,6 +233,7 @@ export function owedDeathsOf(resume: Resume): DeathPass | null {
     owed: instancesOf(pass.owed),
     reborn: Array.isArray(pass.reborn) ? pass.reborn : [],
     collected: Array.isArray(pass.collected) ? pass.collected : [],
+    ...(pass.sacrificed === true ? { sacrificed: true } : {}),
   };
 }
 
@@ -259,6 +281,11 @@ function oweDeaths(sink: EngineSink, pass: DeathPass, step: PausedStep | null): 
  * and because it has entered the field again it is summoning sick for the rest of that turn (R83).
  */
 function rebornStep(sink: EngineSink, pass: DeathPass): void {
+  // §4.5 step 4 returns every collected Reborn unit in one step, at 1 health: the bodies are all put
+  // back first, and each one's 1 health is read once they all stand, so a body whose layers read the
+  // others — a Felinor Fiender's layer 2 summing the Felinors that came back with it (R116) — is at 1
+  // whichever lane comes first (R89's "read before any of them moves", from the other side).
+  const back: { copy: CardInstance; entry: (typeof pass.reborn)[number] }[] = [];
   for (const entry of pass.reborn) {
     releaseZone(sink.state, entry.at);
     // R127's shape at the level of a unit: the pass names it by id, so a Death hook that exiled or
@@ -282,16 +309,17 @@ function rebornStep(sink: EngineSink, pass: DeathPass): void {
     // (§3.2), and that card did not enter anything, so the zone is still the one R64 reserved. The
     // body returns on top of the pile, and the card beneath goes dormant again. With no pile the
     // zone is empty, which `stack` never changes: every other card was kept out by the reservation.
-    const back = placeOnField(sink.state, copy, entry.at, { stack: true });
-    if (!back) continue;
-    const view = unitView(sink.state, copy);
-    copy.damage = Math.max(0, view.maxHealth - 1);
+    if (!placeOnField(sink.state, copy, entry.at, { stack: true })) continue;
     copy.rebornSpent = true;
     // R83: it enters the field again now, so it is summoning sick like any fresh summon.
     copy.summonedTurn = sink.state.turn;
     sink.state.players[copy.owner].graveyard = sink.state.players[copy.owner].graveyard.filter(
       (card) => card.id !== copy.id,
     );
+    back.push({ copy, entry });
+  }
+  for (const { copy } of back) copy.damage = Math.max(0, unitView(sink.state, copy).maxHealth - 1);
+  for (const { copy, entry } of back) {
     sink.events.push({
       type: "summoned",
       player: copy.controller,
@@ -410,14 +438,18 @@ function runDeathPass(sink: EngineSink, pass: DeathPass, at: PausedStep | null):
 
 /**
  * `work.ts`'s handler for a parked pass: the same pass, continued where it stopped (R113, R122).
- * Once it is done the check goes round again, because §4.5 step 5 repeats until nothing changes and
- * the pause did not excuse the pass from its repeat.
+ * Once a pass of the check is done the check goes round again, because §4.5 step 5 repeats until
+ * nothing changes and the pause did not excuse the pass from its repeat. A Sacrifice's pass is one
+ * effect of the list that made it, and the check waits for the whole list (§4.5, R59): the rest of
+ * that list is owed behind this item (R113), so a question in the sacrificed unit's Death changes
+ * nothing about when the check runs — a heal later in the same Cry still lands first, and a Tribute
+ * paid at §10.5 step 2 still leaves the check to step 4's loop, which holds it (R118).
  */
 function runOwedDeaths(sink: EngineSink, item: WorkItem): void {
   const pass = owedDeathsOf(item.resume);
   if (pass === null) return;
   if (!runDeathPass(sink, pass, pausedOf(item.resume.data))) return;
-  stateCheck(sink);
+  if (pass.sacrificed !== true) stateCheck(sink);
 }
 
 registerWorkHandler(DEATHS_WORK, runOwedDeaths);
@@ -504,7 +536,7 @@ function collect(sink: EngineSink, dying: readonly CardInstance[], cause: DeathC
  * effect among the list that made it, and nothing about it touches a hero.
  */
 export function sacrificeNow(sink: EngineSink, card: CardInstance): void {
-  runDeathPass(sink, collect(sink, [card], "sacrificed"), null);
+  runDeathPass(sink, { ...collect(sink, [card], "sacrificed"), sacrificed: true }, null);
 }
 
 /**
@@ -529,7 +561,7 @@ export function sacrificeTogether(sink: EngineSink, cards: readonly CardInstance
       ),
     ),
   );
-  runDeathPass(sink, collect(sink, ordered, "sacrificed"), null);
+  runDeathPass(sink, { ...collect(sink, ordered, "sacrificed"), sacrificed: true }, null);
 }
 
 /**
