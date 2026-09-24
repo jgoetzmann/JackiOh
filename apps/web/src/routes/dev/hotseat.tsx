@@ -297,7 +297,18 @@ function Hotseat({
   const next = otherSeat(session.seat);
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
 
-  const game = <Game view={view} legal={legal} onAction={dispatch} error={error} />;
+  // A finished game's ways on (Result.tsx): the same seed and decks again, or back to the start.
+  const resultActions = (
+    <>
+      <button type="button" data-testid="result-play-again" onClick={() => window.location.reload()}>
+        Play again
+      </button>
+      <button type="button" data-testid="result-back" onClick={() => navigate(paths.landing)}>
+        Back
+      </button>
+    </>
+  );
+  const game = <Game view={view} legal={legal} onAction={dispatch} error={error} resultActions={resultActions} />;
 
   return (
     <div className="app-shell app-shell--wide">

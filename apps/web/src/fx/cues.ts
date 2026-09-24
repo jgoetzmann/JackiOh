@@ -120,13 +120,13 @@ const TUNING = {
   counterSparkle: { count: 8, power: 0.7 },
   glintArcane: { count: 8, power: 0.6 },
   radiantGold: { count: 34, power: 1.1 },
-  transformSmoke: { count: 18, power: 0.8 },
+  transformSmoke: { count: 10, power: 0.6 },
   transformArcane: { count: 10, power: 0.9 },
   fuseSmoke: { count: 12, power: 0.7 },
   fuseArcane: { count: 20, power: 1 },
   controlArcane: { count: 18, power: 1 },
   lockDust: { count: 12, power: 0.7 },
-  trapArcane: { count: 40, power: 1.3 },
+  trapArcane: { count: 30, power: 1 },
   lungeDust: { count: 12, power: 0.8 },
   fizzleSmoke: { count: 10, power: 0.7 },
   manaSparkle: { count: 6, power: 0.5 },
@@ -528,8 +528,10 @@ const radiant: Recipe = (event, p) => {
 const smoke: Recipe = (event, p) => {
   if (event.type !== "transformed") return [];
   const at = anchor(p.tgt);
+  // Centred on the unit that changed, and light: an area of big puffs read as smoke drifting over
+  // the neighbouring lanes on a phone (integration QA).
   return [
-    burst(p.env.intensity, "smoke", at, "area", 0, "transformSmoke"),
+    burst(p.env.intensity, "smoke", at, "point", 0, "transformSmoke"),
     burst(p.env.intensity, "arcane", at, "point", 0, "transformArcane"),
   ];
 };
@@ -571,7 +573,8 @@ const trap: Recipe = (event, p) => {
   if (event.type !== "trapFired") return [];
   const at = anchor(p.tgt);
   const delay = frac(FX_TRAP_BURST_AT, p.D);
-  const cues: FxCue[] = [ring(p.D, "arcane", at, 0), burst(p.env.intensity, "arcane", at, "area", delay, "trapArcane")];
+  // A tight arcane ring on the trap's own zone, not motes over the whole area (integration QA).
+  const cues: FxCue[] = [ring(p.D, "arcane", at, 0), burst(p.env.intensity, "arcane", at, "ring", delay, "trapArcane")];
   pushShake(cues, p.env.intensity, FX_TRAP_TRAUMA, delay);
   return cues;
 };

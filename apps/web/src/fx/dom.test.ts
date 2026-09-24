@@ -238,3 +238,33 @@ describe("B39 — a cue without the box it needs mounts nothing", () => {
     expect(root.textContent).toBe("");
   });
 });
+
+describe("a stand-in swells inward from an edge (integration QA: lane 1 on a phone)", () => {
+  // Imported here so the header's contract above stays about mountDomEffect.
+  const view = { width: 390, height: 844 };
+
+  it("keeps the resting origin where the swell has room", async () => {
+    const { holdOrigin } = await import("./dom.ts");
+    expect(holdOrigin({ x: 150, y: 400, width: 66, height: 90 }, 1.3, view)).toEqual({ x: 0.5, y: 0.6 });
+  });
+
+  it("scales from the left edge of a box in lane 1, so nothing crosses the screen's left edge", async () => {
+    const { holdOrigin } = await import("./dom.ts");
+    const land = { x: 8, y: 400, width: 66, height: 90 };
+    const scale = 1.6;
+    const origin = holdOrigin(land, scale, view);
+    expect(origin.x).toBeLessThan(0.5);
+    const left = land.x + origin.x * land.width * (1 - scale);
+    expect(left).toBeGreaterThanOrEqual(0);
+  });
+
+  it("scales from the right for a box at the right edge", async () => {
+    const { holdOrigin } = await import("./dom.ts");
+    const land = { x: 316, y: 400, width: 66, height: 90 };
+    const scale = 1.6;
+    const origin = holdOrigin(land, scale, view);
+    const right = land.x + origin.x * land.width + (1 - origin.x) * land.width * scale;
+    expect(origin.x).toBeGreaterThan(0.5);
+    expect(right).toBeLessThanOrEqual(view.width);
+  });
+});

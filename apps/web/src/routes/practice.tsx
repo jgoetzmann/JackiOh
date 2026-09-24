@@ -636,7 +636,8 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   }
 
   const board = (
-    <Game view={snapshot.view} legal={snapshot.legal} onAction={onAction} error={snapshot.error} />
+    // The result panel is practice's own dialog (PracticeResult), so the board keeps to its chip.
+    <Game view={snapshot.view} legal={snapshot.legal} onAction={onAction} error={snapshot.error} resultForm="chip" />
   );
   const result = snapshot.view.result;
   const outcome = result === null ? null : outcomeOf(result, snapshot.view.viewer);

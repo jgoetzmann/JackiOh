@@ -262,6 +262,23 @@ export function FxLayer({ queue, view, seams }: FxLayerProps): ReactElement {
     releasedFor.current = view;
   }, [view]);
 
+  // The turn banner says its piece until the player acts: the first pointer down anywhere, or a
+  // prompt opening for the viewer, takes it (and its rays) away, so it never sits over the zones a
+  // play is asking about or behind a Discover sheet (integration QA).
+  useEffect(() => {
+    const onDown = (): void => {
+      director.current?.dismissBanner();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, []);
+  const promptForViewer = view.pending !== null && view.pending.forYou;
+  useEffect(() => {
+    if (promptForViewer) director.current?.dismissBanner();
+  }, [promptForViewer]);
+
   // The game-over sequence and the hot-seat hand-over banner run off the shown view, not an entry:
   // `gameOver` is a zero-duration row the runner never plays, and a seat change drains the runner.
   // `undefined` means "no view seen yet", so a mount that is already finished plays nothing.

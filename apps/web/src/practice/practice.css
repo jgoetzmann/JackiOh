@@ -448,14 +448,20 @@
   font-weight: 700;
 }
 
+/* Two columns that fill row by row and scroll down. A multi-column list with a capped height grew
+   columns sideways instead, off the preview's right edge: 14 of 20 cards showed at 1280x720, 7 at
+   390, with no sign the rest existed. One column where two would not fit. */
 .app-shell .deck-preview__cards {
   grid-area: cards;
-  columns: 2 180px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  align-content: start;
   column-gap: 14px;
   max-height: 188px;
   margin: 8px 0 0;
   padding: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 
@@ -1374,6 +1380,37 @@
   }
 }
 
+/* A short desktop (a 1280x720 laptop): the tiers and the deck fill the screen and Start sat on its
+   fold, cut in half. As on a phone, Start leaves the footer panel and rides along the bottom of the
+   viewport, over a halo in the page's colour, while the form scrolls under it. */
+@media (min-width: 721px) and (min-height: 521px) and (max-height: 820px) {
+  .practice-setup__footer {
+    display: contents;
+  }
+
+  .practice-setup__deck {
+    flex: none;
+    max-width: none;
+    padding: 14px 18px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
+  }
+
+  .practice-setup .practice-play {
+    position: sticky;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    z-index: 5;
+    align-self: center;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 55%),
+      inset 0 -3px 0 rgb(0 0 0 / 22%),
+      0 0 0 3px color-mix(in srgb, var(--selected) 18%, transparent),
+      0 12px 30px -10px color-mix(in srgb, var(--selected) 75%, transparent),
+      0 0 0 14px var(--bg);
+  }
+}
+
 /* Landscape phones: the header gives up its flavour lines and the tiers tighten, so the tiers,
    the deck and Start all fit on one screen with nothing floating over them. */
 @media (max-height: 520px) and (min-width: 721px) {
@@ -1485,6 +1522,27 @@
   .practice .practice-hud__new,
   .practice .practice-hud__menu {
     padding: 6px 10px;
+  }
+
+  /* The status slot is what is left between the tier and the buttons, and "AI is thinking…" does
+     not fit it: the pill ran over "Medium" and New game. Here it is the orb alone, and the words
+     stay for a screen reader (the pill is the live region). The slot clips, so nothing in it can
+     ever cover the tier label or a button. */
+  .practice-hud__status {
+    overflow: hidden;
+  }
+
+  .practice-thinking {
+    padding: 4px;
+  }
+
+  .practice-thinking__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -1608,5 +1666,13 @@
   50% {
     outline: 3px solid color-mix(in srgb, var(--opponent) 60%, transparent);
     outline-offset: 2px;
+  }
+}
+
+/* Touch sizing (task 7's 44 px floor): the HUD's outcome chip and the result's "View the board". */
+@media (max-width: 1024px), (pointer: coarse) {
+  .practice .practice-hud__outcome,
+  .app-shell.practice .practice-result__view {
+    min-height: 44px;
   }
 }

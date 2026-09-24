@@ -404,10 +404,20 @@ export default function Board({
         {/* Whose turn, above End turn wherever the controls have a column of their own (board.css
             hides it on a phone held upright, where the shell's banner says it). The banner is the
             live region, so this copy stays out of the accessibility tree. */}
-        <div className="turn-plate" data-side={sideOf(view, view.active)} aria-hidden="true">
+        <div
+          className="turn-plate"
+          data-side={view.result !== null ? "over" : sideOf(view, view.active)}
+          aria-hidden="true"
+        >
           <span className="turn-plate-number">Turn {view.turn}</span>
           <span className="turn-plate-whose">
-            {view.phase === "mulligan" ? "Mulligan" : view.active === view.viewer ? "Your turn" : "Opponent's turn"}
+            {view.result !== null
+              ? "Game over"
+              : view.phase === "mulligan"
+                ? "Mulligan"
+                : view.active === view.viewer
+                  ? "Your turn"
+                  : "Opponent's turn"}
           </span>
         </div>
         <ControlButton
@@ -454,7 +464,7 @@ export default function Board({
         <SettingsButton placement="game" />
       </div>
 
-      <Log view={view} />
+      <Log view={view} revealed={logOpen} />
     </div>
   );
 }

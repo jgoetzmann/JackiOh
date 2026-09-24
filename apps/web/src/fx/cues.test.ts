@@ -1014,11 +1014,12 @@ describe("B16 the recipe table, row by row", () => {
     });
   });
 
-  it("B16 transformed: a smoke burst and an arcane point burst at the card", () => {
+  it("B16 transformed: a smoke point burst and an arcane point burst at the card", () => {
     forDs("transformed", (D) => {
       expectCues(
         plan([{ type: "transformed", instanceId: MINE_3, fromDefId: "core-017", toDefId: "token-sheep", newInstanceId: "c90" }], D),
-        [burst("smoke", cardT(MINE_3), "area", 0), burst("arcane", cardT(MINE_3), "point", 0)],
+        // Centred on the unit (integration QA: an area of puffs drifted over the next lanes).
+        [burst("smoke", cardT(MINE_3), "point", 0), burst("arcane", cardT(MINE_3), "point", 0)],
       );
     });
   });
@@ -1057,12 +1058,12 @@ describe("B16 the recipe table, row by row", () => {
     });
   });
 
-  it("B16 trapFired: an arcane ring, an arcane burst and a punch shake at 0.2 D, on the card the viewer reads", () => {
+  it("B16 trapFired: an arcane ring, an arcane ring burst and a punch shake at 0.2 D, on the card the viewer reads", () => {
     forDs("trapFired", (D) => {
       const b = r(FX_TRAP_BURST_AT * D);
       expectCues(plan([{ type: "trapFired", instanceId: MY_TRAP, defId: "core-084", controller: "p1", row: "backrow", lane: 5 }], D), [
         ring("arcane", cardT(MY_TRAP), 0, D),
-        burst("arcane", cardT(MY_TRAP), "area", b),
+        burst("arcane", cardT(MY_TRAP), "ring", b),
         shake(0.4, b),
       ]);
     });
@@ -1074,7 +1075,7 @@ describe("B16 the recipe table, row by row", () => {
       const zone = zoneT("opponent", "backrow", 4);
       expectCues(plan([{ type: "trapFired", instanceId: "hidden", defId: "hidden", controller: "p2", row: "backrow", lane: 4 }], D), [
         ring("arcane", zone, 0, D),
-        burst("arcane", zone, "area", b),
+        burst("arcane", zone, "ring", b),
         shake(0.4, b),
       ]);
     });

@@ -601,11 +601,11 @@ point. `side(x)` is `sideOf(view, x)`. Fractions such as `FX_SLAM_AT·D` are rou
 | `glint` | `costChanged` | `burst(arcane, tgt, point, 0)` |
 | `glint` | `modifierChanged` | `added`: `burst(arcane, tgt, point, 0)`. Removed: `[]`. |
 | `radiant` | `radiantSet` | `sheen(tgt, 0)`, `burst(gold, tgt, area, FX_RADIANT_BURST_AT·D)`, plus `rays(radiant, tgt, 0)` when tgt is `card-*` |
-| `smoke` | `transformed` | `burst(smoke, tgt, area, 0)`, `burst(arcane, tgt, point, 0)` |
+| `smoke` | `transformed` | `burst(smoke, tgt, point, 0)`, `burst(arcane, tgt, point, 0)` (point, not area: the integration QA saw an area of puffs drift over the next lanes on a phone) |
 | `fuse` | `fused` | Let f = `FX_FUSE_FLIGHT_FRACTION·D`. `burst(smoke, tgt, area, 0)`. For every other located `instanceIds` member o ≠ tgt: `burst(smoke, o, area, 0)` and `projectile(arcane, o → tgt, 0, f)`. Then `burst(arcane, tgt, area, f)`. |
 | `mindControl` | `controlChanged` | Let from = `locateInstance(view, instanceId)` and f = `FX_MIND_CONTROL_FLIGHT_FRACTION·D`. With from: `projectile(arcane, from → tgt, 0, f)`, `burst(arcane, tgt, area, f)`. Without: `burst(arcane, tgt, area, 0)`. |
 | `lock` | `locked` | `ring(dust, tgt, 0)`, `burst(dust, tgt, area, 0)` |
-| `trap` | `trapFired` | Let b = `FX_TRAP_BURST_AT·D`. `ring(arcane, tgt, 0)`, `burst(arcane, tgt, area, b)`, `shake(FX_TRAP_TRAUMA, b)`. tgt is the card when the viewer reads it, else the zone (R154). |
+| `trap` | `trapFired` | Let b = `FX_TRAP_BURST_AT·D`. `ring(arcane, tgt, 0)`, `burst(arcane, tgt, ring, b)` (a tight ring on the trap's zone, not an area of motes: integration QA), `shake(FX_TRAP_TRAUMA, b)`. tgt is the card when the viewer reads it, else the zone (R154). |
 | `lunge` | `attackDeclared` | `burst(dust, tgt at(0.5,1), point, 0)` |
 | `fizzle` | `attackCancelled` | `burst(smoke, tgt, point, 0)` |
 | `mana` | `manaChanged` | Let old = the planning view's `mana.current` for `side(player)`, and n = `min(event.current, old + FX_MANA_MAX_SPARKS) − old`. For i in 0…n−1: `burst(sparkle, {crystal, side(player), index: old+i}, point, min(D, i·min(FX_MANA_STAGGER_MS, floor(D / max(n,1)))))`. n ≤ 0: `[]`. |

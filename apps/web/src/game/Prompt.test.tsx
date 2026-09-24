@@ -270,6 +270,45 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     });
   });
 
+  it("a Choose one names the card asking and says what each option does, answering with the card's own option string", () => {
+    // Integration QA: Pocket Chaos offered three bare buttons, "health", "board" and "library".
+    const onAction = vi.fn();
+    const view = viewWith({
+      you: emptySide("p1", { hand: [card({ instanceId: "h3", defId: "core-087" })] }),
+    });
+    const interaction = playing(
+      ["health", "board", "library"].map((mode): ActionBody => ({ type: "play", instanceId: "h3", modes: [mode] })),
+      "h3",
+    );
+
+    render(<Prompt view={view} interaction={interaction} onAction={onAction} />);
+
+    expect(kindOfModal()).toBe("mode");
+    expect(document.querySelector(".prompt-title-source")).not.toBeNull();
+    expect(document.querySelector(".prompt-title-ask")).toHaveTextContent("Choose one");
+    const board = screen.getByTestId("prompt-option-board");
+    expect(board).toHaveTextContent("Swap boards");
+    expect(board).toHaveTextContent("Every zone changes sides");
+    expect(screen.getByTestId("prompt-option-health")).toHaveTextContent("Swap hero Health");
+    expect(screen.getByTestId("prompt-option-library")).toHaveTextContent("Swap libraries");
+    for (const raw of ["health", "board", "library"]) {
+      expect(screen.getByTestId(`prompt-option-${raw}`).textContent).not.toBe(raw);
+    }
+
+    fireEvent.click(board);
+    expect(onAction).toHaveBeenCalledWith({ type: "play", instanceId: "h3", modes: ["board"] });
+  });
+
+  it("an option no card text covers is its own word, capitalised", () => {
+    const view = viewWith();
+    const interaction = playing([
+      { type: "play", instanceId: "h1", modes: ["alpha"] },
+      { type: "play", instanceId: "h1", modes: ["beta"] },
+    ]);
+    render(<Prompt view={view} interaction={interaction} onAction={vi.fn()} />);
+    expect(screen.getByTestId("prompt-option-alpha")).toHaveTextContent(/^Alpha$/);
+  });
+
   it("x is a numeric stepper over the values the engine listed", () => {
     const onAction = vi.fn();
     const view = viewWith();

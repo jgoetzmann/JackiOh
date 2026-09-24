@@ -92,6 +92,12 @@ export type FxDirector = {
   /** Removes every pending cue, DOM effect, particle, projectile, crack and ring; resets the shake and calls shakeSink.clear(). */
   clear(): void;
   /**
+   * The player has started acting (a pointer went down, a prompt opened): the turn banner and the
+   * rays behind it go at once instead of fading over the zones and pickers for a second or two.
+   * Everything else plays on. Nothing happens unless a banner is up or due.
+   */
+  dismissBanner(): void;
+  /**
    * The board now shows a newer view: removes every stand-in and un-hides every concealed card and
    * every aimed lunge (B46–B48), and leaves everything else to finish.
    */
@@ -104,7 +110,7 @@ export type FxDirector = {
 };
 
 type PendingCue = { cue: FxCue; due: number };
-type MountedEffect = { effect: DomEffect; expiresAt: number; kind: FxDomCue["kind"] };
+type MountedEffect = { effect: DomEffect; expiresAt: number; kind: FxDomCue["kind"]; tone?: string };
 /**
  * A stage effect: undone by release(), clear() or its own expiry. `track` moves a stand-in after its
  * zone, and runs only on frames where the board under it moved.
@@ -294,7 +300,7 @@ export function createFxDirector(options: FxDirectorOptions): FxDirector {
       });
     }
     const effect = mountDomEffect(domRoot, cue, boxes);
-    if (effect !== null) mounted.push({ effect, expiresAt, kind: cue.kind });
+    if (effect !== null) mounted.push({ effect, expiresAt, kind: cue.kind, ...(cue.kind === "rays" ? { tone: cue.tone } : {}) });
   };
 
   /** Holds, conceals and lunges act on the board's own elements (stage.ts). */
@@ -571,6 +577,17 @@ export function createFxDirector(options: FxDirectorOptions): FxDirector {
       if (added > 0) loop.wake();
     },
     clear,
+    dismissBanner(): void {
+      pending = pending.filter((item) => item.cue.kind !== "banner");
+      if (!mounted.some((item) => item.kind === "banner")) return;
+      // The turn banner's rays are the viewport-centred "victory" ones planned with it; the result
+      // sequence has no banner, so its rays are never taken here.
+      mounted = mounted.filter((item) => {
+        const goes = item.kind === "banner" || (item.kind === "rays" && item.tone === "victory");
+        if (goes) item.effect.remove();
+        return !goes;
+      });
+    },
     release: releaseStaged,
     active(): number {
       return pending.length + mounted.length + staged.length + canvasFx.alive() + (shake.active() ? 1 : 0);

@@ -1148,40 +1148,170 @@
   }
 }
 
+@keyframes jk-result-scrim {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 /* The overlay is terminal: nothing waits on it, so the queue gives it no time and this block
    never sees a `data-animating="gameOver"`. It is attached to the overlay's own testid instead,
    so the result still fades in without the runner holding the stream open.
 
-   It is also the game-over state that stays: the effects layer's Victory / Defeat sequence is gone
-   after FX_RESULT_MS, and an overlay left in the flow sat below the fold (y 874 of 720 at 1280x720).
-   So it is a panel fixed in the middle of the screen, under the sequence's word, above the effects
-   layer (38) and below the prompt scrim (40). */
+   It is also the game-over state that stays (Result.tsx): the effects layer's Victory / Defeat
+   sequence is gone after FX_RESULT_MS, and the overlay waits that long (an inline
+   `animation-delay`, and `data-revealed="false"` takes it out of the pointer's way until then) to
+   come in after the word rather than under it. It sits above the effects layer (38) and below
+   the prompt scrim (40). Two forms: the panel, over a dimmed board, and the chip at the foot of the
+   screen. */
 [data-testid="result-overlay"] {
   position: fixed;
   left: 50%;
-  top: 66%;
+  top: 50%;
   translate: -50% -50%;
   z-index: 39;
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: 6px;
   box-sizing: border-box;
+  width: max-content;
   max-width: calc(100vw - 32px);
-  padding: 12px 24px 14px;
-  border: 1px solid var(--line-bright, #454d66);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-sunken, #0b0d13) 92%, transparent);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 60%);
+  padding: 20px 28px 22px;
+  border: 1px solid color-mix(in srgb, var(--selected, #f0c04a) 45%, var(--line-bright, #454d66));
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgb(255 210 120 / 10%), transparent 70%),
+    linear-gradient(180deg, var(--bg-raised, #1a1d28), var(--bg-sunken, #0b0d13));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 18px 48px rgb(0 0 0 / 70%);
   text-align: center;
   animation-name: jk-result-overlay;
   animation-duration: calc(220ms * var(--anim-scale) * var(--anim-squeeze, 1));
   animation-fill-mode: both;
 }
 
-[data-testid="result-overlay"] > strong {
-  font-size: 1.6em;
-  letter-spacing: 0.04em;
+.result-overlay__word {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 2.4em;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+[data-outcome="win"] > .result-overlay__word {
+  color: #fcd34d;
+  text-shadow: 0 0 18px rgb(252 211 77 / 45%), 0 2px 0 #713f12;
+}
+
+[data-outcome="loss"] > .result-overlay__word {
+  color: #f87171;
+  text-shadow: 0 0 18px rgb(192 69 63 / 45%), 0 2px 0 #450a0a;
+}
+
+[data-outcome="draw"] > .result-overlay__word {
+  color: #cbd5e1;
+  text-shadow: 0 2px 0 #1e293b;
+}
+
+.result-overlay__reason {
+  color: var(--text, #e8eaf2);
+  font-size: 1.05em;
+}
+
+.result-overlay__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.result-overlay__actions > button,
+.result-overlay__actions > a,
+.result-overlay__reopen {
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+/* The route's first way on is the primary action, in the one primary colour (index.css). */
+.result-overlay__actions > :first-child:not(.result-overlay__view) {
+  border-color: var(--primary-edge, #fde68a);
+  background: var(--primary-face, #d4a017);
+  color: var(--primary-ink, #2b1800);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+  box-shadow: var(--primary-shadow, none);
+}
+
+.result-overlay__actions > :first-child:not(.result-overlay__view):hover {
+  background: var(--primary-face-hover, #e3b12a);
+}
+
+/* The chip: one line at the foot of the screen, over the hand rather than the field. */
+[data-testid="result-overlay"][data-form="chip"] {
+  top: auto;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  translate: -50% 0;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 18px;
+  border-radius: 999px;
+}
+
+[data-form="chip"] > .result-overlay__word {
+  font-size: 1.15em;
+}
+
+[data-form="chip"] > .result-overlay__reason {
+  font-size: 0.9em;
+  color: var(--text-dim, #9aa1b8);
+}
+
+/* Practice's chip has no button, so it keeps its right padding. */
+[data-form="chip"]:not(:has(> button)) {
+  padding-right: 18px;
+}
+
+/* The chip is a label over a finished board: only its own button takes the pointer, so a control it
+   happens to lie over still answers a tap round it. */
+[data-testid="result-overlay"][data-form="chip"] {
+  pointer-events: none;
+}
+
+[data-testid="result-overlay"][data-form="chip"] > button {
+  pointer-events: auto;
+}
+
+/* A phone's control bar is one row: the chip keeps to the outcome and its button, clear of the log
+   and the gear at the bar's end. The reason is in the panel it opens. */
+@media (max-width: 600px) {
+  [data-form="chip"] > .result-overlay__reason {
+    display: none;
+  }
+}
+
+[data-testid="result-overlay"][data-revealed="false"] {
+  pointer-events: none;
+}
+
+/* The dim is only a dim: blind to the pointer, so the route's own chrome under it (hotseat's Hand
+   over, the match's Back) still answers, and elementFromPoint never returns it. */
+.result-scrim {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: radial-gradient(ellipse at 50% 45%, rgb(5 7 12 / 55%), rgb(5 7 12 / 82%));
+  animation-name: jk-result-scrim;
+  animation-duration: calc(220ms * var(--anim-scale) * var(--anim-squeeze, 1));
+  animation-fill-mode: both;
 }
 
 /* A finished game has no turn: the status line would still say whose turn the last view gave. */
@@ -1197,6 +1327,7 @@
   *::after,
   [data-animating],
   [data-testid="result-overlay"],
+  .result-scrim,
   .damage-pop,
   .heal-pop,
   .loss-pop {

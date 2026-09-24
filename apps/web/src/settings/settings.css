@@ -82,6 +82,21 @@
   animation: settings-pop calc(180ms * var(--anim-scale)) ease-out;
 }
 
+/* The panel scrolls when it is taller than the screen (1280x720 cut it under "Effects intensity"),
+   so its foot fades into the panel's own colour: a section running on under the edge reads as
+   more to scroll, not as the end. A sticky strip, blind to the pointer. */
+.settings-panel::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  display: block;
+  height: 28px;
+  margin-top: -28px;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg-raised) 72%, var(--bg)));
+  pointer-events: none;
+}
+
 .settings-head {
   position: sticky;
   top: 0;

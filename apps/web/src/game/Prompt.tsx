@@ -45,6 +45,7 @@ import {
 import { CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
 import { useCardInfo } from "./catalog.ts";
 import { sideOf } from "./contract.ts";
+import { modeText } from "./modeText.ts";
 import "./prompt.css";
 
 export type PromptProps = {
@@ -83,6 +84,8 @@ type PickerItem = {
   group?: string;
   /** Which arrow a direction option draws. Never read off the key, which is the engine's. */
   arrow?: "left" | "right";
+  /** A "Choose one" option's line of detail under its label (modeText.ts). */
+  detail?: string;
 };
 
 type Submitted = { action?: ActionBody; interaction?: Interaction };
@@ -91,6 +94,8 @@ type Picker = {
   /** Which picker to draw, and the `data-prompt-kind` value M5-T4 animates on. */
   chrome: PromptKind;
   title: string;
+  /** The card asking, when the picker knows it: its name heads the title ("Pocket Chaos: choose one"). */
+  sourceDefId?: string;
   items: PickerItem[];
   min: number;
   max: number;
@@ -332,17 +337,27 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
         },
       };
     }
-    case "mode":
-      return {
+    case "mode": {
+      // The card being played is the one asking; its options read as that card's words.
+      const source =
+        interaction.stage === "playing" ? (cardRefFor(view, interaction.instanceId)?.defId ?? undefined) : undefined;
+      const picker: Picker = {
         ...common,
         chrome: isDirection(need.options) ? "direction" : "mode",
         title: isDirection(need.options) ? "Choose a direction" : "Choose one",
-        items: need.options.map((option) => {
+        items: need.options.map((option): PickerItem => {
           const arrow = DIRECTIONS.find((d) => d === option);
-          return arrow === undefined ? { key: option, label: option } : { key: option, label: option, arrow };
+          if (arrow !== undefined) return { key: option, label: option, arrow };
+          const text = modeText(source, option);
+          return text.detail === undefined
+            ? { key: option, label: text.label }
+            : { key: option, label: text.label, detail: text.detail };
         }),
         submit: (keys) => play({ modes: [...keys] }),
       };
+      if (source !== undefined) picker.sourceDefId = source;
+      return picker;
+    }
   }
 }
 
@@ -434,12 +449,32 @@ function PlainOption(props: { item: PickerItem; pressed: boolean; onPick: () => 
   return (
     <button
       type="button"
+      className={props.item.detail === undefined ? undefined : "prompt-mode"}
       data-testid={`prompt-option-${props.item.key}`}
       aria-pressed={props.pressed}
       onClick={props.onPick}
     >
-      {props.item.label}
+      {props.item.detail === undefined ? (
+        props.item.label
+      ) : (
+        <>
+          <span className="prompt-mode-label">{props.item.label}</span>
+          <span className="prompt-mode-detail">{props.item.detail}</span>
+        </>
+      )}
     </button>
+  );
+}
+
+/** The picker's heading: the asking card's name before it, when the picker knows the card. */
+function PickerTitle(props: { title: string; sourceDefId: string | undefined }) {
+  const info = useCardInfo(props.sourceDefId ?? "", false);
+  if (props.sourceDefId === undefined) return <p className="prompt-title">{props.title}</p>;
+  return (
+    <p className="prompt-title">
+      <span className="prompt-title-source">{info.name}</span>
+      <span className="prompt-title-ask">{props.title}</span>
+    </p>
   );
 }
 
@@ -647,7 +682,7 @@ function PromptModal(props: {
         aria-modal="true"
         aria-label={picker.title}
       >
-        <p className="prompt-title">{picker.title}</p>
+        <PickerTitle title={picker.title} sourceDefId={picker.sourceDefId} />
         <p className="prompt-count">
           Choose {range} — {selected.length} chosen
         </p>
