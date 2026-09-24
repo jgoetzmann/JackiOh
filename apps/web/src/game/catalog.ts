@@ -10,7 +10,7 @@
 
 import { createContext, useContext } from "react";
 
-import type { CardDefs, CardType, Rarity, Tag } from "@jackioh/shared";
+import type { CardDef, CardDefs, CardType, Rarity, Tag } from "@jackioh/shared";
 
 export type CardInfo = {
   name: string;
@@ -21,6 +21,8 @@ export type CardInfo = {
   /** Printed attack and health for the face being shown; spells have neither. */
   attack?: number;
   health?: number;
+  /** The whole catalog def, for the card faces (apps/web/src/cards, faceModel). */
+  def?: CardDef;
   /** The catalog rarity (public, §5.1); the effects layer's Legendary and Mythic entrances read it. */
   rarity?: Rarity;
 };
@@ -41,6 +43,7 @@ export function lookupFromDefs(defs: CardDefs): CardLookup {
       tags: def.tags,
       attack: face.attack,
       health: face.health,
+      def,
       rarity: def.rarity,
     };
   };

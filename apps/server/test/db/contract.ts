@@ -227,6 +227,10 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
 
         expect(await store.codes.countAttemptsByProfile(profile.id, now - 60_000)).toBe(2);
         expect(await store.codes.countAttemptsByProfile(profile.id, now + 1)).toBe(0);
+        // R192: when the oldest counted attempt was made, so the status can say when it lapses.
+        expect(await store.codes.oldestAttemptAtByProfile(profile.id, now - 60_000)).toBe(now - 10);
+        expect(await store.codes.oldestAttemptAtByProfile(profile.id, now - 5)).toBe(now);
+        expect(await store.codes.oldestAttemptAtByProfile(profile.id, now + 1)).toBeNull();
         expect(await store.codes.countAttemptsByIp(ipHash, now - 60_000)).toBe(2);
         expect(await store.codes.countFailures(now - 60_000)).toBe(2);
       });

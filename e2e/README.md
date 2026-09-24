@@ -1,4 +1,4 @@
-# `e2e/` — the twelve BUILD M8 specs
+# `e2e/` — the fifteen BUILD M8 specs
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,7 +16,10 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the twelve specs
+  cypress/e2e/*.cy.ts      the fifteen specs
+  cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
+  cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
+  cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
   support/
     commands.ts            seedGame, playCard, attack, answerPrompt, endTurn (+ the waiting
@@ -30,7 +33,7 @@ e2e/
     tasks/
       index.ts             registers the node tasks
       wsPlayer.ts          `cy.task("wsPlayer")`: the second player, driven from Node (spec 06)
-      replay.ts            `cy.task("replayHash")`: fold the recorded log outside the browser
+      replay.ts            `cy.task("replayHash")`: fold the recorded log (and spec 13's handicaps) outside the browser
       replay-runner.ts     runs under the repo's tsx; the only file here that imports packages/*
   scripts/check-fixtures.mjs  pre-flight for the deck fixtures; needs no browser and no client
   artifacts/               recorded logs, screenshots, videos (git-ignored)
@@ -152,6 +155,18 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 08 | M4 + M5 only: it ends turns until the cap. |
 | 09 | M6-T3 (validator + loadout endpoints) and the deckbuilder UI. |
 | 10 | M6-T1 (auth, invite gate) and the code screen. |
+| 13 | Polish 3 (SPEC §9.9): `/practice`, the practice worker and `packages/ai`, against `build:e2e` with no server. The replay check passes the game's handicaps to the fold (R180, R187). |
+| 14 | A built client only (`pnpm build:e2e`, then `vite preview`): no server and no auth provider. Every `${apiUrl}/api/*` call is a `cy.intercept` stub, sessions are seeded under `jackioh.e2e.session` in `onBeforeLoad`, and emailed links are visited as `/login#…`. It covers the landing page, the segmented code field, rate-limit feedback, emailed-link handling, the reset screen and the gate's exits (`docs/polish/5-sign-in.md`). |
+| 15 | Polish 2 (SPEC §10.11): the audio layer on `/dev/hotseat`, M4 + M5, no server. Chrome for the audio context; it asserts the voice request in `window.__jackiohAudio`'s log, never the sound. |
+
+Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
+bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:
+
+```
+pnpm build:e2e
+pnpm --dir apps/web exec vite preview --port 5173 --strictPort
+E2E_BASE_URL=http://localhost:5173 pnpm --dir e2e exec cypress run --spec cypress/e2e/14-landing-and-sign-in.cy.ts
+```
 
 ## What the root still needs (not changed from here)
 

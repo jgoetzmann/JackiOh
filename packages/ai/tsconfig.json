@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // `scripts/` is Node tooling (the shadow-ban sweep) and `test/` runs under vitest; `src/` stays
+    // pure, which ESLint enforces rather than the type environment.
+    "types": ["node"]
+  },
+  "include": ["src", "test", "scripts"]
+}

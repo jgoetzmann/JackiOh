@@ -67,11 +67,12 @@ describe("turn loop and mana (M1-T6)", () => {
     state.players.p2.mana.nextTurnMod = -1;
     state = endTurns(state, 2); // back to p2, now their second turn
     expect(state.players.p2.turnsStarted).toBe(2);
-    expect(state.players.p2.mana.max).toBe(1);
+    // §2.3: the refresh is 1 lower; max mana is still min(turns, 4).
+    expect(state.players.p2.mana).toMatchObject({ current: 1, max: 2 });
 
     state.players.p2.mana.nextTurnMod = -5;
     state = endTurns(state, 2);
-    expect(state.players.p2.mana.max).toBe(0);
+    expect(state.players.p2.mana.max).toBe(3);
     expect(state.players.p2.mana.current).toBe(0);
   });
 

@@ -18,6 +18,8 @@
 //                       "(seed, log) reconstructs any match" true.
 //   4. FAILURE DETAIL — every card id in the failing seed's two decks is named in the report,
 //                       because a bare seed number is useless against a 100-card pool.
+// And at every step, INVARIANTS: `_invariants.ts`'s I1–I4 (summoning sickness and exertion, R171)
+// hold on the state each action is chosen in and on the state it produces (stage "invariant").
 //
 // Determinism (SPEC §9.3, §10.7, CLAUDE.md rule 4): nothing here reads `Math.random` or the clock.
 // The deck draw, the game and the policy each come from `createRng` over a seed string derived from
@@ -48,6 +50,7 @@ import {
   type GameState,
 } from "@jackioh/engine";
 import { CATALOG, registerAll } from "../src/index";
+import { createInvariantMonitor } from "./_invariants";
 
 // ---------------------------------------------------------------------------------------------
 // Wave size
@@ -174,7 +177,7 @@ export function decksForSeed(seed: number): [string[], string[]] {
 // Playing one game with the real policy
 // ---------------------------------------------------------------------------------------------
 
-type FailureStage = "play" | "termination" | "replay";
+type FailureStage = "play" | "termination" | "replay" | "invariant";
 
 /**
  * An error carrying the stage it happened in, so the report can group by kind as well as by text,
@@ -212,6 +215,7 @@ function playGame(seed: number): GameRun {
   let state = beginGame(createGame({ seed: gameSeed, decks })).state;
   const policy = createRng(`jackioh-fuzz-policy-${seed}`);
   const log: Action[] = [];
+  const monitor = createInvariantMonitor(state);
 
   while (state.result === null) {
     if (log.length >= MAX_ACTIONS_PER_GAME) {
@@ -238,6 +242,11 @@ function playGame(seed: number): GameRun {
       );
     }
 
+    const unsound = monitor.before(state, player, chosen);
+    if (unsound[0] !== undefined) {
+      throw new FuzzFailure("invariant", unsound[0], { turn: state.turn, actions: log.length });
+    }
+
     const action = { ...chosen, playerId: player, nonce: `fuzz-${log.length}` } as Action;
     const result = reduce(state, action);
     if (result.error !== undefined) {
@@ -250,6 +259,11 @@ function playGame(seed: number): GameRun {
 
     log.push(action);
     state = result.state;
+
+    const broken = monitor.after(result.events, state);
+    if (broken[0] !== undefined) {
+      throw new FuzzFailure("invariant", broken[0], { turn: state.turn, actions: log.length });
+    }
   }
 
   return { state, log, decks };
@@ -518,7 +532,8 @@ describe("fuzz (M4 gate)", () => {
         `[M4 fuzz] ${ran === WAVE_SEEDS ? "FULL GATE" : `SHORT WAVE (the gate is ${WAVE_SEEDS} seeds: pnpm fuzz)`}\n` +
           `  seeds ${from}..${from + ran - 1}: ${passed} passed, ${failures.length} failed\n` +
           `  ${byStage.get("play") ?? 0} throw(s), ${byStage.get("termination") ?? 0} over the ` +
-          `${MAX_ACTIONS_PER_GAME}-action bound or stalled, ${byStage.get("replay") ?? 0} replay mismatch(es)\n` +
+          `${MAX_ACTIONS_PER_GAME}-action bound or stalled, ${byStage.get("replay") ?? 0} replay mismatch(es), ` +
+          `${byStage.get("invariant") ?? 0} invariant violation(s)\n` +
           `  endings: ${[...reasons.entries()].map(([r, n]) => `${r}=${n}`).join(" ") || "none"}\n` +
           `  ${passed > 0 ? Math.round(actionsTotal / passed) : 0} actions/game on average, ` +
           `${actionsMax} at most; longest game ended on turn ${turnMax} of ${TURN_CAP_PLAYER_TURNS}\n` +

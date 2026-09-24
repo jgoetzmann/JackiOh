@@ -379,7 +379,7 @@ describe("Combo-Index (§8 #93, R27, M3-T7)", () => {
     expect(empty.players.p2.exile).toHaveLength(0);
   });
 
-  it("R60 grade B picks only among non-Radiant hand cards, and does nothing when none are left", () => {
+  it("R60 grade B picks only among non-Radiant hand cards, and changes none when none are left, though it cues the hand (R177)", () => {
     const state = game("step-b");
     const sink = sinkFor(state);
     const card = onField(state);
@@ -392,11 +392,14 @@ describe("Combo-Index (§8 #93, R27, M3-T7)", () => {
     expect(target.radiant).toBe(true);
     expect(hand.every((c) => c.radiant)).toBe(true);
 
-    // With every hand card Radiant the pool is empty and nothing happens (R60).
+    // With every hand card Radiant the pool is empty and nothing changes (R60): no card and no
+    // random number (R129). The hidden hand is still cued once, as a pick would cue it (R177).
     const eventsAfter: GameEvent[] = [];
     const secondSink = sinkFor(state, eventsAfter);
+    const cursor = secondSink.rng.cursor;
     run(secondSink, card, [stepB()]);
-    expect(eventsAfter).toHaveLength(0);
+    expect(secondSink.rng.cursor).toBe(cursor);
+    expect(eventsAfter.map((event) => event.type)).toEqual(["radiantSet"]);
 
     // A Radiant card on the field is not in the hand pool either.
     const field = game("step-b-field");

@@ -16,6 +16,12 @@ export type GameEvent =
    * X and embiggen prices included, and 0 for a cast (R70). It is carried rather than looked up
    * because R89 is the hazard: a trigger answering this event must find what it needs on the event,
    * since the instance may have been reset between the two moments (#60 reads "costing 1 or less").
+   *
+   * `radiant` is the face that resolved, for the same reason: #33 Unstable Clone Machine copies the
+   * played card with its radiant flag (R34, R57), and by step 7 the card may have ceased to exist —
+   * #41 Sheepish transforms a played Unit at step 4 — so a trigger cannot look it up. It is the
+   * card's flag at step 7 when it still exists, and the flag it was played with otherwise. A view
+   * that hides the card hides this too (R97).
    */
   | {
       type: "cardResolved";
@@ -24,6 +30,14 @@ export type GameEvent =
       defId: string;
       permanent: boolean;
       costPaid: number;
+      radiant?: boolean;
+      /**
+       * R119: the permanents that arrived on the field while this play resolved, whatever put them
+       * there — a Recruit by its Cry (#98), #95's backrow, a Reborn body its own Cry brought back, a
+       * unit a trap answering the play summoned — which do not answer it, as the played card does not
+       * answer its own play. Engine bookkeeping: a view never forwards it.
+       */
+      arrivedDuring?: string[];
     }
   | { type: "summoned"; player: PlayerId; instanceId: string; defId: string; row: Row; lane: number }
   | { type: "damage"; sourceId: string | null; targetId: string; amount: number; combat: boolean }
@@ -51,10 +65,28 @@ export type GameEvent =
   | { type: "buffed"; instanceId: string; attack: number; health: number }
   | { type: "keywordGranted"; instanceId: string; keyword: Keyword }
   | { type: "counterChanged"; instanceId: string; counter: "plague" | "grade"; value: number }
-  | { type: "costChanged"; instanceId: string; cost: number }
+  /**
+   * R177: `hiddenFrom` is set on a change made to a card in a library — both players, who could not
+   * read it there (§3) — so a view keeps the event hidden from them for good, even once the card
+   * reads openly. The view uses it and never forwards it.
+   */
+  | { type: "costChanged"; instanceId: string; cost: number; hiddenFrom?: PlayerId[] }
   | { type: "modifierChanged"; player: PlayerId; modifierId: string; added: boolean }
   | { type: "radiantSet"; instanceId: string; defId: string; zone: Zone }
-  | { type: "transformed"; instanceId: string; fromDefId: string; toDefId: string; newInstanceId: string }
+  /**
+   * R177: `hiddenFrom` names the players who could not read the old card where it ceased to exist —
+   * both of them for a library card, the other player for a face-down trap (R33) — so a view keeps
+   * it hidden from them for good, even after its replacement reaches a public pile. Absent when the
+   * old card was public. The view uses it and never forwards it.
+   */
+  | {
+      type: "transformed";
+      instanceId: string;
+      fromDefId: string;
+      toDefId: string;
+      newInstanceId: string;
+      hiddenFrom?: PlayerId[];
+    }
   | { type: "fused"; instanceIds: string[]; resultInstanceId: string; defId: string }
   | { type: "positionSwitched"; instanceId: string; position: "ATK" | "DEF" }
   | { type: "controlChanged"; instanceId: string; controller: PlayerId; row: Row; lane: number }

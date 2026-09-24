@@ -9,8 +9,8 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getMe } from "../net/api.ts";
-import { navigate } from "../net/navigate.ts";
-import PlayRoute from "./play.tsx";
+import { navigate, paths } from "../net/navigate.ts";
+import PlayRoute, { playTestid } from "./play.tsx";
 
 vi.mock("../net/api.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../net/api.ts")>();
@@ -78,5 +78,19 @@ describe("the lobby's match watch", () => {
       expect(vi.mocked(getMe)).toHaveBeenCalled();
     });
     expect(vi.mocked(navigate)).not.toHaveBeenCalled();
+  });
+});
+
+describe("the lobby's way to practice", () => {
+  /** /practice needs no account; the lobby links it so a player can find it without typing the URL. */
+  it("links to /practice", async () => {
+    vi.mocked(getMe).mockResolvedValue(me(null));
+    const { getByTestId } = render(<PlayRoute token={TOKEN} />);
+
+    expect(getByTestId(playTestid.practice)).toHaveAttribute("href", paths.practice);
+    expect(paths.practice).toBe("/practice");
+    await waitFor(() => {
+      expect(vi.mocked(getMe)).toHaveBeenCalled();
+    });
   });
 });

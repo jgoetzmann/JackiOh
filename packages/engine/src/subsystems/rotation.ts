@@ -4,16 +4,21 @@
 // rotating player's lanes 1 to 5, then the opponent's lanes 5 down to 1, and back (§3.1). Both
 // rings turn together, one step, in the direction the play declared (R81).
 //
-// What travels with a card: everything on its instance. A rotation never takes a card off the
-// field, so R78's reset never runs and its damage, buffs, counters, position and summoning
-// sickness all come along (R14). What changes is `controller`, and only when the card's new zone
-// is on the other side of the centre line; the owner never changes, so the card still goes to its
-// owner's hand, library, graveyard or exile whenever it later leaves the field (R12). A face-down
-// trap that crosses is read by its new controller and no longer by the old one, which follows from
-// `controller` alone, so `faceUp` is deliberately untouched here (R33).
+// What travels with a card: its instance. A rotation never takes a card off the field, so R78's
+// reset never runs and its damage, buffs, counters and position all come along (R14). What
+// changes is `controller`, and only when the card's new zone is on the other side of the centre
+// line. That crossing is an entry (R171): the card takes this turn as its
+// `summonedTurn` and a fresh exertion, so it is summoning sick on its new side for the rest of the
+// turn. A card that moves along its own side has entered nothing and keeps both. The owner never
+// changes, so the card still goes to its owner's hand, library, graveyard or exile whenever it
+// later leaves the field (R12). A face-down trap that crosses is read by its new controller and no
+// longer by the old one, which follows from `controller` alone, so `faceUp` is deliberately
+// untouched here (R33).
 
 import type { PlayerId, Row } from "@jackioh/shared";
+import { enterNewSide } from "../combat";
 import { addToHand } from "../draw";
+import { effectiveCost } from "../mana";
 import type { EngineSink } from "../resolve";
 import type { CardInstance, GameState } from "../state";
 import {
@@ -39,14 +44,20 @@ export type RotationArgs = {
   direction: RotationDirection;
   /** Whose seat "left" and "right" are read from: the rotating player (§3.1, §8 #52). */
   perspective: PlayerId;
-  /** #52 radiant: a card that would cross bounces to its owner's hand at cost 0 instead. */
+  /**
+   * #52 radiant: a card that would cross to the opponent of `perspective` bounces to its owner's
+   * hand at cost 0 instead; one crossing towards `perspective` still crosses (R14).
+   */
   radiant?: boolean;
 };
 
 export type RotationResult = {
   /** Cards that reached a new zone, in ring order: the unit ring first, then the backrow ring. */
   moved: string[];
-  /** Cards whose controller changed because their new zone is on the other side (R12). */
+  /**
+   * Cards whose controller changed because their new zone is on the other side (R12). Each one has
+   * entered its new side on this turn (R171).
+   */
   crossed: string[];
   /** Cards sent to their owner's hand: a Locked destination, or the radiant bounce (R14). */
   bounced: string[];
@@ -112,7 +123,14 @@ function bounceHome(sink: EngineSink, card: CardInstance, costOverride?: number)
 
   sink.events.push(event);
   addToHand(sink, card);
-  if (costOverride !== undefined) card.costOverride = costOverride;
+  // §8 #52 radiant: "bounced to their owner's hand costing 0" is a rider on a card that reaches the
+  // hand. A full hand burns it instead (§2.4, R4), and a burned card is an ordinary graveyard card
+  // that R78 would otherwise have carry the 0 into every later zone.
+  if (costOverride === undefined || card.zone.z !== "hand") return;
+  card.costOverride = costOverride;
+  // §10.3: the new price is a visible change, announced as #31's +1 and #72r's 0 are once the card has
+  // landed (R215), with what the card costs now (R65). A view redacts it for the other seat (R177).
+  sink.events.push({ type: "costChanged", instanceId: card.id, cost: effectiveCost(sink.state, card) });
 }
 
 /**
@@ -149,10 +167,14 @@ export function rotateRings(sink: EngineSink, args: RotationArgs): RotationResul
   for (const entry of entries) {
     const crosses = entry.to.player !== entry.from.player;
 
-    // #52 radiant: crossing is replaced by a bounce at cost 0, in either direction, so no card
-    // ever changes control. The bounce still goes to the card's owner's hand (R12, R14).
-    // A Locked destination would have bounced it anyway, so this reading also covers that case.
-    if (radiant && crosses) {
+    // #52 radiant: "cards that would move to the opponent are bounced to their owner's hand
+    // costing 0 instead" — the cards the rotating player would lose, which are the ones leaving
+    // their side. "The opponent" is the rotating player's (§8 Conventions: "your" is the
+    // controller), so a card crossing the other way, onto the rotating player's side, is not one of
+    // them: the base clause the radiant cell does not restate still holds for it, and it crosses and
+    // changes control like any other (R14, R171). The bounce goes to the card's owner's hand (R12).
+    // A Locked destination would have bounced an outbound card anyway, so this also covers that case.
+    if (radiant && crosses && entry.from.player === args.perspective) {
       for (const card of entry.cards) {
         bounceHome(sink, card, 0);
         result.bounced.push(card.id);
@@ -174,7 +196,9 @@ export function rotateRings(sink: EngineSink, args: RotationArgs): RotationResul
 
     entry.cards.forEach((card, at) => {
       result.moved.push(card.id);
-      if (card.controller === before[at]) return;
+      const previous = before[at];
+      if (previous === undefined || card.controller === previous) return;
+      enterNewSide(sink, card, previous);
       result.crossed.push(card.id);
       sink.events.push({
         type: "controlChanged",

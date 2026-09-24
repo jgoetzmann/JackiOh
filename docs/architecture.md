@@ -399,6 +399,7 @@ whole of what it can reach. Legacy `anon` JWT keys still work and are compatibil
 | `NODE_ENV` | no (`development`) | `development \| test \| production` | — |
 | `CATALOG_VERSION` | yes | the catalog version this server accepts (§9.4) | must match what `db:seed-catalog` stamped |
 | `E2E` | no (`0`) | BUILD M8's test-server mode; refused when `NODE_ENV=production` | — |
+| `TRUSTED_PROXY_HOPS` | no (`0`) | R190: how many `X-Forwarded-For` entries, counted from the right, this deployment's own proxies write. The per-IP limits (§9.4 step 3, R157) key on that entry and ignore everything the caller wrote to its left; `CF-Connecting-IP` and `X-Real-IP` are never read. `0` to `5`; `0` (the default) ignores the header and keys on the socket's peer address, which is right with no proxy in front | `render.yaml` starts it at `1`, which can only over-group; set it to the count your own request shows in the `api.forwarded_for` log (§10, step 8); leave unset for a local server |
 
 `apps/server/src/env.ts` loads these, reports **every** missing or malformed variable in one error
 naming where to get each, and never logs a secret value — not even truncated. It exports
@@ -497,6 +498,21 @@ step that is not yet implemented says which BUILD task delivers it.
 8. **Start the server and the client.** `pnpm --filter @jackioh/server dev` and
    `pnpm --filter @jackioh/web dev`. The server must print its resolved config and refuse to start
    with a missing env var.
+   Behind a proxy (Render), calibrate `TRUSTED_PROXY_HOPS` (R190) from the `api.forwarded_for` log
+   lines. The server logs one each time a request carries fewer `X-Forwarded-For` entries than any
+   before it (`fewestEntries`, next to the configured `trustedProxyHops`, and never an address). A
+   caller can add entries on the left but can never remove the ones the deployment's proxies
+   append, so the lowest count is the number of hops those proxies add. So:
+   1. Right after a deploy, send a request of your own that carries no `X-Forwarded-For`
+      (`curl https://<service>/api/catalog`) and read the `fewestEntries` its line shows.
+   2. Set `TRUSTED_PROXY_HOPS` to exactly that count, and redeploy. Render's edge alone gives 1; a
+      CDN in front of it (Cloudflare) adds its own entry, which gives 2. The blueprint's 1 is only
+      the safe starting point: with 2 hops and 1 trusted, every caller behind one CDN edge shares one
+      per-IP bucket, so §9.4 step 3's limit could refuse strangers.
+   3. Keep an eye on later lines. A `fewestEntries` below the configured count means a path with
+      fewer proxies (lower the setting to it). A higher count on its own proves nothing: a caller can
+      write extra entries, so never set the hops above the lowest count any request has shown, since
+      trusting a caller's entries hands the per-IP key back to the caller.
 9. **Sign up two accounts** (BUILD M6-T1). Each gets a `profiles` row at `pending` from the
    `auth.users` trigger. Verify both emails. Confirm a pending account gets 403 from
    `/api/collection`, `/api/loadouts` and `/api/queue`.

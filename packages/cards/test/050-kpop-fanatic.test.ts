@@ -1,5 +1,7 @@
 // #50 Kpop Fanatic — SPEC §8.2, BUILD M4-T4: "Steal fires at your next start of turn even if it
-// died (R76); fizzles if the target left; radiant Divine Shield".
+// died (R76); fizzles if the target left; radiant Divine Shield". The polish-4 edge-case hunt, round 5
+// (lens "card by card"): a base #50 made Radiant on the field gains its radiant face's Divine Shield
+// at once, even after a granted one was spent (§5.2).
 //
 // Every case here crosses a turn boundary, so both sides keep a card in hand, a unit on the board
 // and a few library cards: the engine auto-ends a turn with nothing meaningful left (R82, and the
@@ -20,7 +22,7 @@
 // (10/10 Indestructible, the wall), #16 Hit Job and #8 Mr. Vanilla as inert hand and library cards.
 
 import { describe, expect, it } from "vitest";
-import { scenario } from "./_harness";
+import { scenario, type Scenario } from "./_harness";
 import { base, def, radiant } from "../src/scripts/050-kpop-fanatic";
 
 const KPOP = "core-050";
@@ -28,6 +30,7 @@ const SEVEN_SEVEN = "core-025";
 const DUELIST = "core-045";
 const ROCK = "core-066";
 const FILLER = "core-016";
+const MENACE = "core-019";
 const LIBRARY = [SEVEN_SEVEN, "core-008", "core-020"];
 
 describe("#50 Kpop Fanatic", () => {
@@ -280,5 +283,48 @@ describe("#50 Kpop Fanatic", () => {
     expect(base.modes).toBeUndefined();
     expect(typeof base.cry).toBe("function");
     expect(typeof base.resume?.steal).toBe("function");
+  });
+});
+
+const SAINTESS = "core-081";
+const SURGERY = "core-063";
+
+describe("#50 Kpop Fanatic — a Radiant flip on the field adds Divine Shield (§5.2)", () => {
+  it("§5.2 a base #50 whose granted Divine Shield was spent gets its radiant face's Divine Shield when #81 radiates it", () => {
+    // #63 Plastic Surgery grants one random keyword (R21); pick the cursor whose roll is Divine
+    // Shield, the only way a base #50 (no keywords) ever has one.
+    let s: Scenario | null = null;
+    for (let cursor = 0; cursor < 200 && s === null; cursor += 1) {
+      const trial = scenario({
+        seed: "r5-ds-flip",
+        p1: { hand: [SURGERY, MENACE], field: [KPOP, SAINTESS], mana: 20 },
+        p2: { field: [MENACE] },
+      });
+      trial.state.rngCursor = cursor;
+      trial.play(SURGERY, { targets: [{ pick: "instance", instanceId: trial.card(KPOP).id }] });
+      if (trial.stats(KPOP).keywords.some((k) => k.kind === "Divine Shield")) s = trial;
+    }
+    if (s === null) throw new Error("no cursor below 200 grants #50 Divine Shield");
+    const kpop = s.card(KPOP);
+    const menace = s.unit("p2", 1);
+    if (menace === null) throw new Error("p2's #19");
+
+    // The granted shield takes #19's strike back and is spent (§6.1).
+    s.attack(kpop, menace);
+    expect(s.card(kpop).damage).toBe(0);
+    expect(s.stats(kpop).keywords.some((k) => k.kind === "Divine Shield")).toBe(false);
+
+    // #81 dies to #19 and its Death makes p1's other units Radiant: #50's radiant face prints
+    // Divine Shield, a keyword its base face does not have, so it applies at once (§5.2) — the same
+    // way a spent shield comes back when the keyword is granted again (§10.4, `grantTo`).
+    s.attack(SAINTESS, menace);
+    expect(s.card(kpop).radiant).toBe(true);
+    expect(s.stats(kpop).keywords.map((k) => k.kind)).toContain("Divine Shield");
+
+    // And it works as one: on p2's turn #19's 9 is negated whole, where the radiant 5/5 would die.
+    s.endTurn();
+    s.attack(menace, kpop);
+    s.expectInZone(kpop, "field");
+    expect(s.card(kpop).damage).toBe(0);
   });
 });

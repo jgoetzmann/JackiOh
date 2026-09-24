@@ -28,15 +28,21 @@
 //   * Silas is already on the field when his Cry resolves (§10.5 step 4 precedes step 5), so he is
 //     in the snapshot and rotates with everything else — the Engine cell's "Silas rotates too";
 //   * a card never leaves the field, so R78's reset never runs: damage, buffs, granted keywords,
-//     counters, position, exertion and `summonedTurn` all travel with it (R14);
+//     counters and position all travel with it (R14), and so do exertion and `summonedTurn` for a
+//     card that moves along its own side;
+//   * a card that crosses the centre line has entered its new controller's side (R171): it takes
+//     this turn as its `summonedTurn`, so it is summoning sick there, and a fresh exertion;
 //   * `controller` changes only when the destination is on the other side of the centre line, and
 //     `owner` never changes (R12), so a crossed card still leaves to its OWNER's piles later; a
 //     face-down trap that crosses is read by its new controller alone, which follows from
 //     `controller` and is why `faceUp` is untouched (R33);
 //   * a Locked or Reborn-reserved destination bounces the card to its owner's hand instead (R14,
 //     R88), where the hand cap applies (R4) and a unit token ceases to exist on the way (R11);
-//   * `radiant: true` replaces crossing with that same bounce at `costOverride: 0`, in either
-//     direction, so no card changes control at all on the radiant face (R14, R65).
+//   * `radiant: true` replaces an OUTBOUND crossing — a card leaving this player's side for the
+//     opponent's, "cards that would move to the opponent" — with that same bounce at
+//     `costOverride: 0`. The opponent's cards crossing onto this side are not moving "to the
+//     opponent", so the base clause holds for them and they cross and change control (R14, R65,
+//     R171): the radiant face loses nothing and still takes what the rotation brings over.
 //
 // BASE AND RADIANT SHARE ONE HOOK. The only difference between the faces is `ctx.radiant`, which
 // `rotateRings` already honours through its own `radiant` argument — so the wrapper passes
