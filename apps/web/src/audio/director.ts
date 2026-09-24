@@ -28,7 +28,7 @@ import type { GameEvent, PlayerId, PlayerView, UnitView } from "@jackioh/shared"
 
 import type { AnimationEntry } from "../game/animations.ts";
 import { FLUSH_GAP_MS, FLUSH_MAX_SFX, HIDDEN_DEF_ID, PAIR_OFFSET_MS } from "./constants.ts";
-import { cuesFor, type CueContext } from "./cues.ts";
+import { cuesFor, type CueCard, type CueContext } from "./cues.ts";
 import type { SoundCue, SoundSink, VoiceLineTable } from "./types.ts";
 import { VOICE_LINES } from "./voiceData.ts";
 
@@ -96,7 +96,15 @@ function sideMana(view: PlayerView, player: PlayerId): number {
   return 0;
 }
 
-export function createSoundDirector(sink: SoundSink, lines: VoiceLineTable = VOICE_LINES): SoundDirector {
+/**
+ * `card` is the public catalog (`useGameAudio` reads the board's `CatalogContext`), asked only for
+ * a defId the viewer can read; without it every card makes its type's plain sounds.
+ */
+export function createSoundDirector(
+  sink: SoundSink,
+  lines: VoiceLineTable = VOICE_LINES,
+  card?: (defId: string) => CueCard | undefined,
+): SoundDirector {
   let seen: PlayerView | null = null;
   let owed: Owed[] = [];
   const voiced = new WeakSet<GameEvent>();
@@ -113,6 +121,7 @@ export function createSoundDirector(sink: SoundSink, lines: VoiceLineTable = VOI
       manaBefore: (player) => lastMana.get(player) ?? sideMana(view, player),
       wasPlayed: (instanceId) => played.has(instanceId),
       unitNow: (instanceId) => findUnit(seen, instanceId) ?? findUnit(view, instanceId),
+      ...(card === undefined ? {} : { card }),
     };
   }
 

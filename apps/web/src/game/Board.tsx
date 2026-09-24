@@ -43,6 +43,7 @@ import Log from "./Log.tsx";
 import Zone from "./Zone.tsx";
 import { glowAttr, hasMovesLeft } from "./glow.ts";
 import { SettingsButton, useSetting } from "../settings/index.ts";
+import AudioToggle from "../audio/AudioToggle.tsx";
 
 // Order matters: highlights.css paints the glow over board.css's borders (S7).
 import "./board.css";
@@ -447,6 +448,9 @@ export default function Board({
         >
           <span className="log-toggle-icon" aria-hidden="true" />
         </button>
+        {/* Task 2's mute, beside the gear that holds the rest of its controls: a fixed corner button
+            sat on the practice HUD's Menu and the match bar's clock (integration). */}
+        <AudioToggle className="audio-toggle--bar" />
         <SettingsButton placement="game" />
       </div>
 

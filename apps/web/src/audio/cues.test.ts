@@ -9,7 +9,7 @@ import { GAME_EVENT_TYPES, type GameEvent, type GameEventType, type PlayerId } f
 import { describe, expect, it } from "vitest";
 
 import { DEATH_VOICE_DELAY_MS, HIDDEN_DEF_ID, VOICE_DELAY_MS, VOICE_PRIORITY } from "./constants.ts";
-import { SOUND_CUES, cuesFor, type CueContext } from "./cues.ts";
+import { SOUND_CUES, cuesFor, timbreFor, type CueCard, type CueContext } from "./cues.ts";
 import { SFX_IDS } from "./sfx.ts";
 import type { SfxId, SoundCue, VoiceLineTable } from "./types.ts";
 import { baseView, emptySide, unit } from "../test/fixtures.ts";
@@ -617,5 +617,90 @@ describe("B56 a summon is sized by the unit that lands", () => {
     const golden = unit("p1", { instanceId: "c1", defId: UNIT, attack: 2, health: 3, radiant: true });
     const ids = cuesFor(landed, { ...played1, unitNow: () => golden }).map((c) => (c.kind === "sfx" ? c.id : c.kind));
     expect(ids).toEqual(["summon", "radiant"]);
+  });
+});
+
+/* --------------------------------------------------------------------------------------------- *
+ * Integration: the public catalog colours a card the viewer can name (docs/polish/reference.md,
+ * audio x cards), and R203 still bounds it.
+ * --------------------------------------------------------------------------------------------- */
+
+describe("the catalog colours summons and spells, never what the viewer cannot name", () => {
+  const CATALOG: Record<string, CueCard> = {
+    [UNIT]: { type: "Unit", tags: ["Felinor"], rarity: "Common" },
+    [SPELL]: { type: "Spell", tags: ["Call to Chaos"], rarity: "Rare" },
+    [FIELD_SPELL]: { type: "Field Spell", tags: [], rarity: "Epic" },
+    [TRAP]: { type: "Trap", tags: ["KY"], rarity: "Rare" },
+    "core-legend": { type: "Unit", tags: ["Human"], rarity: "Legendary" },
+    "core-mythic": { type: "Unit", tags: [], rarity: "Mythic" },
+  };
+  const withCatalog = (over: Partial<CueContext> = {}): CueContext =>
+    ctx({ card: (defId) => CATALOG[defId], ...over });
+  const summoned = (defId: string, row: "units" | "backrow" = "units"): GameEvent => ({
+    type: "summoned",
+    player: "p1",
+    instanceId: "c1",
+    defId,
+    row,
+    lane: 1,
+  });
+  const sfxCue = (cues: readonly SoundCue[], id: SfxId): Extract<SoundCue, { kind: "sfx" }> | undefined =>
+    cues.find((cue): cue is Extract<SoundCue, { kind: "sfx" }> => cue.kind === "sfx" && cue.id === id);
+
+  it("timbreFor follows the card art's theme: tags first, then Token, then a Field Spell's type", () => {
+    expect(timbreFor({ type: "Unit", tags: ["Human", "Felinor"] })).toBe("felinor");
+    expect(timbreFor({ type: "Spell", tags: ["Call to Chaos", "KY"] })).toBe("chaos");
+    expect(timbreFor({ type: "Unit", tags: ["Token"] })).toBe("token");
+    expect(timbreFor({ type: "Field Spell", tags: [] })).toBe("field");
+    expect(timbreFor({ type: "Unit", tags: [] })).toBeUndefined();
+    expect(timbreFor({ type: "Spell", tags: [] })).toBeUndefined();
+  });
+
+  it("a unit the viewer can name lands with its family's accent on the thud", () => {
+    const cue = sfxCue(cuesFor(summoned(UNIT), withCatalog()), "summon");
+    expect(cue?.params?.timbre).toBe("felinor");
+  });
+
+  it("a Legendary unit enters with the brass sting, a Mythic one with the prismatic sting, at the thud", () => {
+    const legend = cuesFor(summoned("core-legend"), withCatalog());
+    expect(sfxCue(legend, "entrance")).toEqual({ kind: "sfx", id: "entrance", delayMs: 0 });
+    expect(sfxCue(legend, "summon")?.params?.timbre).toBe("human");
+
+    const mythic = cuesFor(summoned("core-mythic"), withCatalog());
+    expect(sfxCue(mythic, "entrance")).toEqual({ kind: "sfx", id: "entrance", params: { mythic: true }, delayMs: 0 });
+    expect(sfxCue(cuesFor(summoned(UNIT), withCatalog()), "entrance")).toBeUndefined();
+  });
+
+  it("a cast spell rings in its family's chimes, a Field Spell in the field's", () => {
+    expect(sfxCue(cuesFor(played(SPELL), withCatalog()), "spell")?.params).toEqual({ timbre: "chaos" });
+    expect(sfxCue(cuesFor(played(FIELD_SPELL), withCatalog()), "spell")?.params).toEqual({ timbre: "field" });
+  });
+
+  it("with no catalog every card keeps its type's plain sounds", () => {
+    expect(sfxCue(cuesFor(summoned("core-legend"), ctx()), "entrance")).toBeUndefined();
+    expect(sfxCue(cuesFor(summoned(UNIT), ctx()), "summon")?.params).toBeUndefined();
+    expect(sfxCue(cuesFor(played(SPELL), ctx()), "spell")?.params).toBeUndefined();
+  });
+
+  it("R203 a card behind the sentinel is never looked up: no accent, no sting, the generic sound", () => {
+    const asked: string[] = [];
+    const context = withCatalog({
+      card: (defId) => {
+        asked.push(defId);
+        return CATALOG["core-mythic"];
+      },
+    });
+    const cues = cuesFor(summoned(HIDDEN_DEF_ID), context);
+    expect(sfxCue(cues, "entrance")).toBeUndefined();
+    expect(sfxCue(cues, "summon")?.params?.timbre).toBeUndefined();
+    expect(shape(played(HIDDEN_DEF_ID), context)).toEqual([sfx("play")]);
+    expect(asked).toEqual([]);
+  });
+
+  it("R203 a Trap sounds like every Trap: its set and its backrow arrival take no family", () => {
+    expect(shape(played(TRAP), withCatalog())).toEqual([sfx("trapSet")]);
+    const arrival = sfxCue(cuesFor(summoned(TRAP, "backrow"), withCatalog()), "summon");
+    expect(arrival?.params?.timbre).toBeUndefined();
+    expect(sfxCue(cuesFor(summoned("core-mythic", "backrow"), withCatalog()), "entrance")).toBeUndefined();
   });
 });

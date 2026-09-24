@@ -10,12 +10,32 @@
 // `destroyed`, a spell on its `cardPlayed`, a trap on its `trapFired`. Each line carries its
 // VOICE_PRIORITY: a death or a firing trap answers something that just happened and takes the
 // channel from a play or cast line, and a summoned unit speaks only when nothing else is talking.
+//
+// A card the viewer can name may also colour its sounds from the public catalog (§5.1): a unit's
+// summon thud carries its family's accent and a Legendary or Mythic unit enters with a sting beside
+// the effects layer's light rays (R202's rarity entrance), and a spell's shimmer rings in its
+// family's chimes. The family is the card art's theme (cards/art/themes.ts), so a card looks and
+// sounds like the same kind of thing. R203 bounds it: only a unit on the field (always public) and a
+// cast spell vary, never a card behind the sentinel and never a Trap, whose set must sound the same
+// for every Trap.
 
-import type { GameEvent, GameEventType, PlayerId, PlayerView, UnitView } from "@jackioh/shared";
+import type { CardType, GameEvent, GameEventType, PlayerId, PlayerView, Rarity, Tag, UnitView } from "@jackioh/shared";
 
-import { DEATH_VOICE_DELAY_MS, VOICE_DELAY_MS, VOICE_PRIORITY } from "./constants.ts";
-import type { SfxId, SfxParams, SoundCue, VoiceLineKind, VoiceLineTable, VoicePriority } from "./types.ts";
+import { themeFor } from "../cards/art/themes.ts";
+import { DEATH_VOICE_DELAY_MS, HIDDEN_DEF_ID, VOICE_DELAY_MS, VOICE_PRIORITY } from "./constants.ts";
+import type {
+  SfxId,
+  SfxParams,
+  SfxTimbre,
+  SoundCue,
+  VoiceLineKind,
+  VoiceLineTable,
+  VoicePriority,
+} from "./types.ts";
 import { entryFor } from "./voiceData.ts";
+
+/** The public catalog facts a cue may colour itself with (§5.1): never looked up for "hidden". */
+export type CueCard = { type: CardType; tags: readonly Tag[]; rarity?: Rarity };
 
 export type CueContext = {
   /** The view the batch was planned against (pre-batch): `viewer` and seat orientation come from here. */
@@ -30,6 +50,8 @@ export type CueContext = {
   wasPlayed?: (instanceId: string) => boolean;
   /** The unit as the newest view shows it (its size and Radiance), or null. Absent: unknown. */
   unitNow?: (instanceId: string) => UnitView | null;
+  /** The public catalog, by a defId the viewer can read. Absent (or undefined): the plain sounds. */
+  card?: (defId: string) => CueCard | undefined;
 };
 
 export type CueRow<K extends GameEventType> = {
@@ -39,6 +61,34 @@ export type CueRow<K extends GameEventType> = {
   silentBecause?: string;
   cues: (event: Extract<GameEvent, { type: K }>, ctx: CueContext) => readonly SoundCue[];
 };
+
+/**
+ * A card's sound family: the card art's theme (tags first, then Token, then the type), where it is
+ * one the recipes know. A plain Unit, Spell or Trap theme has no family of its own.
+ */
+export function timbreFor(card: CueCard): SfxTimbre | undefined {
+  const theme = themeFor(card.tags, card.type);
+  switch (theme) {
+    case "human":
+    case "felinor":
+    case "ky":
+    case "cn":
+    case "fruit":
+    case "chaos":
+    case "quickdraw":
+    case "token":
+      return theme;
+    case "field-spell":
+      return "field";
+    default:
+      return undefined;
+  }
+}
+
+/** The catalog facts for a card the viewer can name, else undefined (R203: never for "hidden"). */
+function readable(ctx: CueContext, defId: string): CueCard | undefined {
+  return defId === HIDDEN_DEF_ID ? undefined : ctx.card?.(defId);
+}
 
 /** A spell's shimmer lands just after the card whoosh, under its cast line (the cast beat). */
 const SPELL_SHIMMER_DELAY_MS = 60;
@@ -57,12 +107,21 @@ function voice(defId: string, line: VoiceLineKind, delayMs: number, priority: Vo
 
 /**
  * A unit arriving: a thud sized by the unit (attack plus health, so a 1/1 Sheep taps the table and a
- * 7/7 shakes it), a golden glint when it is Radiant, and, when no play of it has sounded (a token, a
- * Recruit, a Reborn, a copy), its play line at the lowest priority.
+ * 7/7 shakes it) with its family's accent, a Legendary or Mythic sting as the light rays rise, a
+ * golden glint when it is Radiant, and, when no play of it has sounded (a token, a Recruit, a
+ * Reborn, a copy), its play line at the lowest priority. Only a unit colours its thud: the backrow
+ * holds face-down Traps, whose arrival must sound alike (R203).
  */
 function summonCues(event: Extract<GameEvent, { type: "summoned" }>, ctx: CueContext): readonly SoundCue[] {
   const unit = ctx.unitNow?.(event.instanceId) ?? null;
-  const cues: SoundCue[] = [sfx("summon", unit === null ? undefined : { amount: unit.attack + unit.health })];
+  const card = event.row === "units" ? readable(ctx, event.defId) : undefined;
+  const timbre = card === undefined ? undefined : timbreFor(card);
+  const params: SfxParams = {};
+  if (unit !== null) params.amount = unit.attack + unit.health;
+  if (timbre !== undefined) params.timbre = timbre;
+  const cues: SoundCue[] = [sfx("summon", Object.keys(params).length === 0 ? undefined : params)];
+  if (card?.rarity === "Legendary") cues.push(sfx("entrance"));
+  else if (card?.rarity === "Mythic") cues.push(sfx("entrance", { mythic: true }));
   if (unit?.radiant === true) cues.push(sfx("radiant", undefined, RADIANT_GLINT_DELAY_MS));
   const played = ctx.wasPlayed?.(event.instanceId) ?? false;
   if (!played && entryFor(ctx.lines, event.defId)?.kind === "unit") {
@@ -84,9 +143,11 @@ export const SOUND_CUES: { readonly [K in GameEventType]: CueRow<K> } = {
       const kind = entryFor(ctx.lines, event.defId)?.kind;
       if (kind === "unit") return [sfx("play"), voice(event.defId, "play", VOICE_DELAY_MS, VOICE_PRIORITY.play)];
       if (kind === "spell") {
+        const card = readable(ctx, event.defId);
+        const timbre = card === undefined ? undefined : timbreFor(card);
         return [
           sfx("play"),
-          sfx("spell", undefined, SPELL_SHIMMER_DELAY_MS),
+          sfx("spell", timbre === undefined ? undefined : { timbre }, SPELL_SHIMMER_DELAY_MS),
           voice(event.defId, "cast", VOICE_DELAY_MS, VOICE_PRIORITY.play),
         ];
       }

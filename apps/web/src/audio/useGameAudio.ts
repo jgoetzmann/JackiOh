@@ -11,11 +11,13 @@
 // It never throws. With no AudioContext (jsdom) every call inside it is a no-op, and a failure in
 // the sound path is swallowed rather than taking the board down with it.
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef } from "react";
 
 import type { PlayerView } from "@jackioh/shared";
 
 import type { AnimationQueue } from "../game/animations.ts";
+import { CatalogContext, type CardLookup } from "../game/catalog.ts";
+import type { CueCard } from "./cues.ts";
 import { retainAppAudio } from "./appAudio.ts";
 import { exposeAudioDebug } from "./debug.ts";
 import { createSoundDirector, type SoundDirector } from "./director.ts";
@@ -30,10 +32,25 @@ function quietly(run: () => void): void {
   }
 }
 
+/** The catalog facts a cue may use, from the board's lookup (base face; "hidden" never reaches it). */
+function cueCard(lookup: CardLookup | null, defId: string): CueCard | undefined {
+  const info = lookup?.(defId, false);
+  if (info === undefined) return undefined;
+  return info.rarity === undefined
+    ? { type: info.type, tags: info.tags }
+    : { type: info.type, tags: info.tags, rarity: info.rarity };
+}
+
 export function useGameAudio(runner: AnimationQueue, view: PlayerView): void {
+  // 0. The public catalog the board renders with (routes put `CatalogContext` above Game), read
+  //    through a ref so the director made once still sees a catalog that arrives later.
+  const lookup = useContext(CatalogContext);
+  const lookupRef = useRef(lookup);
+  lookupRef.current = lookup;
+
   // 1. The director, created once per mounted Game against the singleton engine.
   const directorRef = useRef<SoundDirector | null>(null);
-  directorRef.current ??= createSoundDirector(getAudioEngine());
+  directorRef.current ??= createSoundDirector(getAudioEngine(), VOICE_LINES, (defId) => cueCard(lookupRef.current, defId));
   const director = directorRef.current;
 
   // 2. Every view, before Game's enqueue layout effect sees it.

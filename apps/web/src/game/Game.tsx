@@ -41,7 +41,7 @@ import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
 import FxLayer from "../fx/FxLayer.tsx";
 import { useSetting } from "../settings/index.ts";
 import "./animations.css";
-import { AudioToggle, useGameAudio } from "../audio/index.ts";
+import { useGameAudio, useVoiceSpeaking } from "../audio/index.ts";
 
 /**
  * The `turnStarted` / `turnAutoEnded` banner. `Board` deliberately does not render it — one
@@ -115,6 +115,9 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   }
   const runner = queue.current;
   useGameAudio(runner, view); // before the layout effects below: it must see each view before the runner is fed (audio/useGameAudio.ts)
+  // A voice line holding the channel marks the board `data-speaking`, the one attribute practice's
+  // pacing reads to hold the AI's next step (SPEC §9.9); hotseat and online play simply carry it.
+  const speaking = useVoiceSpeaking();
 
   // Also a layout effect, and declared before the one that enqueues, so the subscription is in
   // place before the very first batch of events is planned — a passive one here would run after
@@ -237,11 +240,10 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
           : "Your opponent offers a draw";
 
   return (
-    <div className="game" data-testid="game" data-viewer={shown.viewer}>
+    <div className="game" data-testid="game" data-viewer={shown.viewer} data-speaking={speaking ? "true" : undefined}>
       {inFlight === null ? null : (
         <span data-testid="animation-queue" data-animating={inFlight.type} hidden aria-hidden="true" />
       )}
-      <AudioToggle />
       {error != null && error !== "" ? (
         <p className="game-error" data-testid="action-error" role="alert">
           {error}

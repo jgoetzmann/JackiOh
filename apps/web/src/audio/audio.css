@@ -1,8 +1,11 @@
 /* Audio chrome (SPEC §10.11): the HUD mute toggle and the full controls panel.
  *
- * The toggle sits fixed in the top-right corner, clear of the notch, at a 44px touch target. Its
- * z-index (20) keeps it under the prompt modal (40) and every animation overlay, so a prompt or a
- * result screen always covers it. Only index.css tokens are used, so the theme stays in one place.
+ * On its own the toggle sits fixed in the top-right corner, clear of the notch, at a 44px touch
+ * target. Its z-index (20) keeps it under the prompt modal (40) and every animation overlay, so a
+ * prompt or a result screen always covers it. The game mounts it in the board's control bar
+ * instead, beside the settings gear (`.board .control-bar .audio-toggle` below): the corner held the
+ * practice HUD's Menu and the match bar's clock. Only index.css tokens are used, so the theme
+ * stays in one place.
  *
  * `.app-shell .audio-toggle` is there for specificity, not for layout: every screen that renders
  * Game wraps it in `.app-shell` (routes/dev/hotseat.tsx, routes/match.tsx), and index.css's
@@ -28,6 +31,20 @@
   color: var(--text);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* In the board's control bar (Board.tsx), beside the settings gear: one of the bar's buttons,
+   sized and flowed like the gear (board.css names both wherever it places the gear), instead of a
+   fixed corner button over whatever the page puts in its top-right corner. */
+.board .control-bar .audio-toggle {
+  position: static;
+  z-index: auto;
+  width: auto;
+  height: auto;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border-radius: 8px;
 }
 
 .audio-toggle:hover {

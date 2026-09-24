@@ -265,6 +265,9 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   /** Decoded buffers per key, least recently used first, at most VOICE_DECODED_MAX. */
   const decoded = new Map<VoiceKey, Promise<AudioBuffer | null>>();
   let channel: VoiceChannel | null = null;
+  /** What `speaking()` last reported to its subscribers. */
+  let spoke = false;
+  const speakingListeners = new Set<() => void>();
   let waiting: VoiceLine[] = [];
   let prefetchScheduled = false;
   /** The keys the prefetch has still to fetch: null until VOICE_PREFETCH_DELAY_MS after it was scheduled. */
@@ -505,10 +508,30 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
 
   /* ----- voice channel ----- */
 
+  /** Tells the `speaking` subscribers when the channel has gone from free to held or back. */
+  function notifySpeaking(): void {
+    const held = channel !== null;
+    if (held === spoke) return;
+    spoke = held;
+    for (const listener of [...speakingListeners]) {
+      try {
+        listener();
+      } catch {
+        // A throwing subscriber must not stop the others, or the engine.
+      }
+    }
+  }
+
+  /** Every write to the channel goes through here, so `speaking` never misses a change. */
+  function setChannel(next: VoiceChannel | null): void {
+    channel = next;
+    notifySpeaking();
+  }
+
   function voiceBusy(): boolean {
     if (channel === null) return false;
     if (channel.until !== null && now() >= channel.until) {
-      channel = null;
+      setChannel(null);
       return false;
     }
     return true;
@@ -517,8 +540,10 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   /** Frees the channel if `ch` still holds it, and hands it to the next waiting line. */
   function release(ch: VoiceChannel): void {
     if (channel !== ch) return;
+    // Held across the hand-over: the next waiting line takes the channel before anyone is told.
     channel = null;
     startNext();
+    notifySpeaking();
   }
 
   function finish(ch: VoiceChannel, outcome: VoiceOutcome): void {
@@ -529,6 +554,8 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   /** Takes the channel from its line: a line that had not started yet is dropped, one speaking fades out. */
   function cut(ch: VoiceChannel): void {
     if (channel !== ch) return;
+    // Not `setChannel`: a cut is followed by the line that cut in (`begin`) or by `silenceVoice`,
+    // which report the outcome, so a cut-in never flickers `speaking` off and on.
     channel = null;
     if (ch.phase === "loading" || ch.phase === "waiting") setOutcome(ch.line, "dropped");
     try {
@@ -543,6 +570,7 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     if (channel !== null) cut(channel);
     for (const line of waiting) setOutcome(line, "dropped");
     waiting = [];
+    notifySpeaking();
   }
 
   /** The waiting line to start next: the most important, then the oldest; stale ones are dropped. */
@@ -654,7 +682,7 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
       until: null,
       stop: null,
     };
-    channel = ch;
+    setChannel(ch);
     if (line.hasFile) {
       later(VOICE_LATE_MS, () => {
         if (channel === ch && ch.phase === "loading") finish(ch, "late");
@@ -788,7 +816,8 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
         // Nothing to stop.
       }
     }
-    channel = null;
+    setChannel(null);
+    speakingListeners.clear();
     waiting = [];
     heldPreload = null;
     prefetchRest = null;
@@ -813,6 +842,15 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
       entries = [];
     },
     contextsCreated: () => created,
+    // The channel as it stands, with no side effect: a React snapshot reads it during render. A line
+    // past its end is released by its own timer (startFile, speakNow), which reports the change.
+    speaking: () => channel !== null,
+    subscribeSpeaking: (listener) => {
+      speakingListeners.add(listener);
+      return () => {
+        speakingListeners.delete(listener);
+      };
+    },
     dispose,
   };
 }

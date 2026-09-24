@@ -3086,6 +3086,39 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       />
     </button>
     <button
+      aria-label="Mute sound"
+      aria-pressed="false"
+      class="audio-toggle audio-toggle--bar"
+      data-testid="audio-toggle"
+      title="Mute sound"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="audio-toggle__icon"
+        fill="none"
+        focusable="false"
+        height="22"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="22"
+      >
+        <path
+          d="M4 9h4l5-4v14l-5-4H4z"
+          fill="currentColor"
+        />
+        <path
+          d="M16 9.5a3.5 3.5 0 0 1 0 5"
+        />
+        <path
+          d="M18.5 7a7 7 0 0 1 0 10"
+        />
+      </svg>
+    </button>
+    <button
       aria-expanded="false"
       aria-haspopup="dialog"
       aria-label="Settings"

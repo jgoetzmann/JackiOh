@@ -1294,9 +1294,11 @@
     border-radius: 14px;
   }
 
+  /* Offer draw and Concede share a row, and the mute and the gear the one below (integration):
+     at 40% each, the mute cannot squeeze in beside them and leave the gear on a row of its own. */
   .board .control-bar .control-offer-draw,
   .board .control-bar .control-concede {
-    flex: 1 1 0;
+    flex: 1 1 40%;
     padding-inline: 8px;
     white-space: nowrap;
   }
@@ -1390,7 +1392,8 @@
 
   /* The buttons fill the width the turn plate above them sets, End turn the most. */
   .board .control-bar .control,
-  .board .control-bar [data-testid="settings-open-game"] {
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
     flex: 1 1 auto;
   }
 
@@ -1491,6 +1494,7 @@
   .board .control,
   .board .control-bar button,
   .board [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle,
   .board .power-button {
     min-width: 44px;
     min-height: 44px;
@@ -1670,6 +1674,12 @@
 /* Phone portrait, 390x844: one column, the opponent's hand beside their seat, and a card height
    that gives the field and your hand the rest of the screen. */
 @media (max-width: 600px) {
+  /* The control bar is one row here, and a sixth button squeezed End turn to a stub: the mute
+     steps aside, and the gear beside it holds Mute with the rest of the sound controls. */
+  .board .control-bar .audio-toggle {
+    display: none;
+  }
+
   .board {
     /* Four field rows and your hand (1.24) stacked; the opponent's hand sits beside their seat.
        The 90px cap keeps each card of a seven-card fan 44px wide at 390px (B30). */
@@ -1720,7 +1730,8 @@
 
   .board .control-bar .control-offer-draw,
   .board .control-bar .control-concede,
-  .board .control-bar [data-testid="settings-open-game"] {
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
     flex: 0 0 auto;
   }
 
@@ -1840,10 +1851,16 @@
     order: 1;
   }
 
-  /* The log toggle sits after Offer draw and Concede, on a row of its own at the column's foot. */
+  /* The log toggle sits after Offer draw and Concede, on a row of its own at the column's foot,
+     with the mute beside it (integration: the gear's row is End turn's). */
   .board .control-bar .log-toggle {
     order: 3;
     flex: 1 1 auto;
+  }
+
+  .board .control-bar .audio-toggle {
+    order: 3;
+    flex: 0 0 auto;
   }
 
   .board .control-bar .control-offer-draw,
