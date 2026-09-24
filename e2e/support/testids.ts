@@ -322,3 +322,63 @@ export const INVITE_ERROR = "invite-error";
 export const INVITE_PAUSED = "invite-paused";
 /** An active account reached the code screen; redemption is the pending → active transition only. */
 export const INVITE_NOT_NEEDED = "invite-not-needed";
+
+// ---------------------------------------------------------------------------------------------
+// PRACTICE: `/practice`, a game against the AI with no account and no server (SPEC §9.9, R187,
+// spec 13). Like A11 and A13 these name the route's own vocabulary: `practiceTestid` in
+// `apps/web/src/practice/testids.ts` carries the same strings. Keep the two files identical.
+// ---------------------------------------------------------------------------------------------
+
+/** The setup form: a difficulty, a deck and Start. */
+export const PRACTICE_SETUP = "practice-setup";
+
+/** One `<input type="radio">` per difficulty. */
+export function practiceDifficultyId(d: "easy" | "medium" | "hard"): string {
+  return `practice-difficulty-${d}`;
+}
+
+/** The deck `<select>`: `random`, `preset:<id>` per preset, and `saved:<1..3>` for an active account. */
+export const PRACTICE_DECK = "practice-deck";
+/** Under the deck picker: why no saved deck is offered; absent when some are. */
+export const PRACTICE_DECK_HINT = "practice-deck-hint";
+/** The chosen deck: its name, its identity and, once the catalog is in, its curve and cards. */
+export const PRACTICE_DECK_PREVIEW = "practice-deck-preview";
+/** In the preview: one bar per cost, `data-cost` and `data-count`. */
+export const PRACTICE_DECK_CURVE = "practice-deck-curve";
+/** In the preview: one row per card of the chosen deck. */
+export function practiceDeckCardId(defId: string): string {
+  return `practice-deck-card-${defId}`;
+}
+export const PRACTICE_START = "practice-start";
+/** Shown while the worker builds the decks and deals. */
+export const PRACTICE_LOADING = "practice-loading";
+/** The worker failed or refused the setup. */
+export const PRACTICE_ERROR = "practice-error";
+/** Above the board; carries data-difficulty, data-human-seat, data-ai-seat and data-thinking. */
+export const PRACTICE_HUD = "practice-hud";
+/** Rendered only while the AI owes an action; role="status", text "AI is thinking…". */
+export const PRACTICE_THINKING = "practice-thinking";
+/** Mid-game it opens PRACTICE_LEAVE; once the game is over, or on the failure screen, it leaves at once. */
+export const PRACTICE_NEW_GAME = "practice-new-game";
+/** Out to the main menu: mid-game it opens PRACTICE_LEAVE first; once the game is over it leaves at once. */
+export const PRACTICE_MENU = "practice-menu";
+/** "Leave this game?": the confirmation PRACTICE_NEW_GAME or PRACTICE_MENU opens while a game is in progress. */
+export const PRACTICE_LEAVE = "practice-leave";
+/** In the confirmation: abandon the game and go back to setup. */
+export const PRACTICE_LEAVE_CONFIRM = "practice-leave-confirm";
+/** In the confirmation: close it and carry on. */
+export const PRACTICE_LEAVE_STAY = "practice-leave-stay";
+/** The end-of-game dialog; data-outcome="win|loss|draw". */
+export const PRACTICE_RESULT = "practice-result";
+/** In the result dialog: the same difficulty and deck again, with a fresh seed and seat. */
+export const PRACTICE_PLAY_AGAIN = "practice-play-again";
+/** In the result dialog: back to the setup screen. */
+export const PRACTICE_CHANGE_SETUP = "practice-change-setup";
+/** In the result dialog: close it and look at the final board. */
+export const PRACTICE_VIEW_BOARD = "practice-view-board";
+/** In the HUD once the game is over: the outcome, which reopens the result dialog. */
+export const PRACTICE_OUTCOME = "practice-outcome";
+/** In the HUD while any modifier is live (R169): a chip with the count, `data-count`; it opens the panel. */
+export const PRACTICE_MODIFIERS = "practice-modifiers";
+/** Every live modifier's label in full, grouped You and AI. */
+export const PRACTICE_MODIFIERS_PANEL = "practice-modifiers-panel";

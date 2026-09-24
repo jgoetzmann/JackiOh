@@ -1,7 +1,9 @@
 // Replay: (seed, decks, action log) rebuilds a match exactly, and a state hash makes two folds
-// comparable (SPEC §9.2, §9.3).
+// comparable (SPEC §9.2, §9.3). A practice game adds its handicaps to that tuple (§9.9, R180, R187):
+// they are setup, not actions, so the fold hands them to `createGame` exactly as the live game did.
 
-import type { Action, CardDefs } from "@jackioh/shared";
+import type { Action, CardDefs, PlayerId } from "@jackioh/shared";
+import type { Handicap } from "./config";
 import { beginGame, reduce } from "./reduce";
 import { createGame, type GameState } from "./state";
 
@@ -33,16 +35,23 @@ export type ReplayInput = {
   decks: [string[], string[]];
   log: readonly Action[];
   catalog?: CardDefs;
+  /** R180, R187: the same handicaps the live createGame had. */
+  handicaps?: Partial<Record<PlayerId, Handicap>>;
 };
 
 export type ReplayResult = { state: GameState; errors: { nonce: string; error: string }[] };
 
-/** Fold a recorded log from scratch. Errors are collected, not thrown: a log may hold rejects. */
+/**
+ * Fold a recorded log from scratch. Errors are collected, not thrown: a log may hold rejects. The
+ * setup is not: `createGame` throws on a deck its seat's handicap does not allow, so a handicapped
+ * game folded without its handicaps fails loudly instead of replaying a different game (R180).
+ */
 export function fold(input: ReplayInput): ReplayResult {
   const start = createGame({
     seed: input.seed,
     decks: input.decks,
     ...(input.catalog === undefined ? {} : { catalog: input.catalog }),
+    ...(input.handicaps === undefined ? {} : { handicaps: input.handicaps }),
   });
   let state = beginGame(start).state;
   const errors: { nonce: string; error: string }[] = [];
