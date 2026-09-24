@@ -1,13 +1,13 @@
-// The card registry (BUILD M4-T2, SPEC §10.9): the one place that turns 109 script files plus
+// The card registry (BUILD M4-T2, SPEC §10.9): the one place that turns 110 script files plus
 // `catalog.json` into what the engine, the harness, the validator and the client consume.
 //
 //   CARDS       Record<catalog id, { def, base, radiant }> — one entry per script file present
-//   CATALOG     every def in catalog.json (109), script or no script
+//   CATALOG     every def in catalog.json (110), script or no script
 //   registerAll() registers the catalog and the scripts with the engine
 //   query / catalog.query  SPEC §5.1's single pool source, re-exported from ./query
 //
 // Two invariants hold the contract together, and both are checked here rather than in a test, so a
-// mistake in one of 109 card files fails loudly at load instead of quietly at play time:
+// mistake in one of 110 card files fails loudly at load instead of quietly at play time:
 //   1. a script's `def` names a real catalog card (`export const def = cardDef("core-043")`), and
 //   2. no two scripts claim the same card.
 //
@@ -37,7 +37,7 @@ export type CardModule = { def: CardDef; base: CardScripts["base"]; radiant: Car
 /**
  * Folds the generated barrel into the registry, keyed by each module's own `def.id`.
  *
- * Exported for `test/registry.test.ts`, which proves the two throws without needing 109 files;
+ * Exported for `test/registry.test.ts`, which proves the two throws without needing 110 files;
  * `CARDS` below is this function applied to `SCRIPT_MODULES`.
  */
 export function buildRegistry(modules: readonly CardModule[]): Record<string, CardModule> {
@@ -64,7 +64,7 @@ export function buildRegistry(modules: readonly CardModule[]): Record<string, Ca
 
 /**
  * Every card whose script file exists, by catalog id. Empty until BUILD M4-T4 lands the script
- * files; `CATALOG` is the full 109 either way.
+ * files; `CATALOG` is the full 110 either way.
  */
 export const CARDS: Record<string, CardModule> = buildRegistry(SCRIPT_MODULES);
 

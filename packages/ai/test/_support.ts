@@ -1,6 +1,6 @@
 // Helpers shared by the packages/ai tests (docs/polish/3-ai.md §Tests). Not a test file itself.
 //
-// Every state an AI test builds comes from the real engine and the real 109-card catalog:
+// Every state an AI test builds comes from the real engine and the real 110-card catalog:
 // `scenario()` from the cards harness (which calls `registerAll()` on import) for hand-built
 // boards, and `createGame`/`beginGame` plus §10.7's random policy for real mid-game states.
 //

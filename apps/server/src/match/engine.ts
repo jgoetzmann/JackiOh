@@ -124,7 +124,7 @@ export function injectedEnginePort(): EnginePort | null {
  *  - `setEnginePort`. A test (or a degraded runtime) that installs its own port never reaches the
  *    real engine at all: `injected !== null` short-circuits before the import. Statically, every
  *    process that touches this file would load `@jackioh/engine` and, through `engine.real.ts`,
- *    `packages/cards`' 109 card scripts, whether or not a match is ever played.
+ *    `packages/cards`' 110 card scripts, whether or not a match is ever played.
  *
  * So the day to make this static is the day the server stops wanting to run without an engine,
  * which is not a typecheck question.

@@ -12,9 +12,11 @@
  *   core-051-1  "KY's Empty Notebook"   src/scripts/051-1-kys-empty-notebook.ts
  *   core-090-1  "CN-Virus"              src/scripts/090-1-cn-virus.ts
  *   core-t-rush "Rush Token"            src/scripts/t-rush.ts               test/t-rush.test.ts
+ *   core-t-coin "The Coin"              src/scripts/t-coin.ts               test/t-coin.test.ts
  *
  * So a basename is `<prefix>-<slug>`, where the prefix is the id minus its set segment, except for
- * the four shared tokens (SPEC §7), which are filed under the bare prefix (`t-rush`).
+ * the named tokens of SPEC §7 — the four shared ones and The Coin — which are filed under the bare
+ * prefix (`t-rush`, `t-coin`).
  */
 
 /** Every shipped id is `<set>-<prefix>`; SPEC §5 ships only the Core set. */
@@ -37,7 +39,7 @@ export function isTokenPrefix(prefix: string): boolean {
   return /^t-/.test(prefix) || /^\d+-\d+$/.test(prefix);
 }
 
-/** The four shared tokens of SPEC §7, filed under the bare prefix (`t-rush.ts`). */
+/** SPEC §7's named tokens (the four shared ones and The Coin), filed under the bare prefix (`t-rush.ts`). */
 export function isSharedTokenPrefix(prefix: string): boolean {
   return /^t-/.test(prefix);
 }

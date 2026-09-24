@@ -9,7 +9,7 @@
 // `loadEnginePort` doc says why making it static would cost more than it saves.
 //
 // WHY `registerAll()` IS HERE. `createGame` looks its card definitions up in the engine's
-// registered catalog, and `packages/cards` is the one module that owns the catalog and the 109
+// registered catalog, and `packages/cards` is the one module that owns the catalog and the 110
 // scripts (SPEC §10.9, BUILD M4-T2). Without this call `registeredCatalog()` is empty and every
 // real match throws on the first card of the first deck — the server tests miss it because they
 // inject a fake engine port. It is idempotent by identity comparison in `packages/cards`, so

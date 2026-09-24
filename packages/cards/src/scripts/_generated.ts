@@ -119,6 +119,7 @@ import * as m098_heroic_power from "./098-heroic-power";
 import * as m099_craft_a_card from "./099-craft-a-card";
 import * as m100_ceaseless_void from "./100-ceaseless-void";
 import * as mt_bread from "./t-bread";
+import * as mt_coin from "./t-coin";
 import * as mt_felinor from "./t-felinor";
 import * as mt_rush from "./t-rush";
 import * as mt_sheep from "./t-sheep";
@@ -230,6 +231,7 @@ export const SCRIPT_MODULES: readonly CardModule[] = [
   m099_craft_a_card,
   m100_ceaseless_void,
   mt_bread,
+  mt_coin,
   mt_felinor,
   mt_rush,
   mt_sheep,

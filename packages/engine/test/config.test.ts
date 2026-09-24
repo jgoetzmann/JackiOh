@@ -8,6 +8,8 @@ describe("config constants (BUILD §2)", () => {
     expect(config.MAX_MANA).toBe(4);
     expect(config.HERO_HEALTH).toBe(30);
     expect(config.OPENING_DRAW).toEqual([3, 4]);
+    expect(config.OPENING_COINS).toEqual([0, 1]);
+    expect(config.COIN_DEF_ID).toBe("core-t-coin");
     expect(config.UNIT_ZONES).toBe(5);
     expect(config.BACKROW_ZONES).toBe(5);
     expect(config.DRAW_OFFERS_PER_TURN).toBe(1);

@@ -24,6 +24,14 @@ export const HAND_CAP = 10;
 /** §2.1: indexed by seat; the Nth seat (1-based) draws N+2. */
 export const OPENING_DRAW: readonly number[] = [3, 4];
 
+/**
+ * §2.1, R244: indexed by seat like `OPENING_DRAW`, the copies of The Coin each seat is dealt once both
+ * mulligans are answered. Hearthstone's rule: the player going second gets one, the first none.
+ */
+export const OPENING_COINS: readonly number[] = [0, 1];
+/** §7, R245: the catalog id of The Coin, the one token a rule deals rather than a card. */
+export const COIN_DEF_ID = "core-t-coin";
+
 /** §3 */
 export const UNIT_ZONES = 5;
 /** §3 */

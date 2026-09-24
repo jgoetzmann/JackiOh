@@ -94,7 +94,7 @@ export const TRAP_TYPES: CardType[] = ["Trap", "Field Trap"];
  */
 export { queryCost };
 
-/** §5.1's `catalog.query(...)`, as the object 109 card scripts call. */
+/** §5.1's `catalog.query(...)`, as the object 110 card scripts call. */
 export const catalog = {
   query,
   pool,

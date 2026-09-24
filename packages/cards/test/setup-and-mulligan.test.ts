@@ -234,11 +234,12 @@ describe("R225: a Quickdraw card is counted as the draw it replaces", () => {
     const withPower = voidGame(HEROIC_POWER);
     const without = voidGame(CRAFT);
 
-    // Same public course: p1's turn 1 has begun, p2 holds 4 cards, and p1 holds its Void.
+    // Same public course: p1's turn 1 has begun, p2 holds its 4 opening cards and The Coin (R244),
+    // and p1 holds its Void.
     for (const state of [withPower, without]) {
       expect(state.turn).toBe(1);
       expect(state.active).toBe("p1");
-      expect(viewFor(state, "p1").opponent.hand).toEqual({ count: 4 });
+      expect(viewFor(state, "p1").opponent.hand).toEqual({ count: 5 });
       const hand = viewFor(state, "p1").you.hand;
       expect(Array.isArray(hand) && hand.some((card) => card.defId === VOID)).toBe(true);
     }

@@ -8,6 +8,7 @@
   * Player 1 draws 3 cards at the start of the game. Player 2 draws 4 cards. Etc. etc.  
   * Mulligan  
     * You predraw your opening hand before the game starts. You may choose to return any number of them to the deck to redraw a card in its place (without replacement).  
+  * The player who goes second gets The Coin after the mulligan: a 0 mana spell, gain +1 mana this turn (Hearthstone's rule)  
 * Deckbuilding  
   * Decks consist of 20 cards without duplicates  
 * Combat  

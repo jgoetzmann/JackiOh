@@ -1,6 +1,6 @@
 // M1's replay gate, over games this suite generates from its own script-less fixture catalog.
 //
-// BUILD M5-T3's replay — the log a BROWSER recorded, folded with the real catalog and the 109 card
+// BUILD M5-T3's replay — the log a BROWSER recorded, folded with the real catalog and the 110 card
 // scripts — cannot live here: it needs `@jackioh/cards`, and the dependency runs the other way
 // (cards -> engine). It is `packages/cards/test/hotseat-replay.test.ts`.
 
