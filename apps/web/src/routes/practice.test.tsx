@@ -28,6 +28,7 @@ import {
   PRACTICE_PACING_FAST,
   PRACTICE_PACING_REDUCED,
   PRACTICE_SETUP_KEY,
+  PRACTICE_SHOWCASE_HOLD_MAX_MS,
   PRACTICE_VOICE_HOLD_MAX_MS,
   type PracticePacing,
 } from "../practice/config.ts";
@@ -326,6 +327,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   document.body.removeAttribute("data-speaking");
+  document.body.removeAttribute("data-showcase");
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   delete window.__jackiohPractice;
@@ -988,6 +990,66 @@ describe("B33 starting renders the game under the practice HUD", () => {
       document.body.removeAttribute("data-speaking");
       vi.useRealTimers();
     }
+  });
+
+  it("the AI's next step waits while its last card is held up (data-showcase), and goes once it is down", async () => {
+    visit("?seed=show1&difficulty=easy&deck=random&seat=p1");
+    const host = routeHost({ aiToAct: true });
+    const gap = 40;
+    // game/showcase/CardShowcase.tsx marks the showcase while the AI's played card is up.
+    document.body.setAttribute("data-showcase", "played");
+    renderRoute(host, { pacing: { firstActionMs: gap, actionGapMs: gap, promptAnswerMs: gap } });
+    await screen.findByTestId(T.hud);
+
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, gap * 5));
+      });
+      expect(host.requests.filter((body) => body.type === "aiStep"), "no step while the card is held up").toEqual([]);
+    } finally {
+      document.body.removeAttribute("data-showcase");
+    }
+    await waitFor(() => {
+      expect(host.requests).toContainEqual({ type: "aiStep" });
+    });
+  });
+
+  it("a showcase mark nobody clears holds the AI for PRACTICE_SHOWCASE_HOLD_MAX_MS and no longer", async () => {
+    vi.useFakeTimers();
+    try {
+      visit("?seed=show2&difficulty=easy&deck=random&seat=p1");
+      const host = routeHost({ aiToAct: true, holdAiSteps: true });
+      const gap = 40;
+      document.body.setAttribute("data-showcase", "stuck");
+      renderRoute(host, { pacing: { firstActionMs: gap, actionGapMs: gap, promptAnswerMs: gap } });
+      await settle();
+      const aiSteps = (): number => host.requests.filter((body) => body.type === "aiStep").length;
+
+      await act(async () => {
+        vi.advanceTimersByTime(PRACTICE_SHOWCASE_HOLD_MAX_MS - 1);
+        await Promise.resolve();
+      });
+      expect(aiSteps(), "held by the mark").toBe(0);
+      await act(async () => {
+        vi.advanceTimersByTime(1 + gap);
+        await Promise.resolve();
+      });
+      expect(aiSteps(), "the cap ran out, so the AI plays on").toBe(1);
+    } finally {
+      document.body.removeAttribute("data-showcase");
+      vi.useRealTimers();
+    }
+  });
+
+  it("?pace=fast (e2e) does not wait for the showcase", async () => {
+    visit("?seed=show3&difficulty=easy&deck=random&seat=p1&pace=fast");
+    const host = routeHost({ aiToAct: true });
+    document.body.setAttribute("data-showcase", "played");
+    renderRoute(host, { pacing: undefined });
+    await screen.findByTestId(T.hud);
+    await waitFor(() => {
+      expect(host.requests).toContainEqual({ type: "aiStep" });
+    });
   });
 
   it("B33 practice-new-game asks first mid-game, and confirming leaves the game for setup", async () => {

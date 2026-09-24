@@ -17,12 +17,13 @@
 // there and shows `log-toggle` instead, which opens it over the top of the board
 // (`data-log="open"`) until it is pressed again.
 
-import { useState, type ReactElement } from "react";
+import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
 
 import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
 import { animTestid } from "./animations.ts";
 import Card, { cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
+import { CatalogContext } from "./catalog.ts";
 import {
   LANES,
   NO_HIGHLIGHT,
@@ -41,13 +42,16 @@ import Hand from "./Hand.tsx";
 import Hero from "./Hero.tsx";
 import Log from "./Log.tsx";
 import Zone from "./Zone.tsx";
+import { listedFace } from "./faces.ts";
 import { glowAttr, hasMovesLeft } from "./glow.ts";
+import { CardListPreview, CardListSheet, useInspectTrigger, type CardListEntry, type InspectOverlayState } from "../cards/index.ts";
 import { SettingsButton, useSetting } from "../settings/index.ts";
 import AudioToggle from "../audio/AudioToggle.tsx";
 
 // Order matters: highlights.css paints the glow over board.css's borders (S7).
 import "./board.css";
 import "./highlights.css";
+import "./inspectable.css";
 
 /** Top to bottom in every lane column (BUILD M5-T1). */
 const FIELD_ROWS: readonly { side: Side; row: Row }[] = [
@@ -176,7 +180,14 @@ function ManaTray({ side, mana, animating }: { side: Side; mana: { current: numb
  * M5-T4 animation table moves (`animTestid.library` and friends), `testId` is the number the e2e
  * specs read (`library-count-<side>` in `e2e/support/testids.ts`). They are different elements
  * because the count must not be the thing that pulses.
+ *
+ * A graveyard or an exile pile is public on both seats (§10.8: `SideView.graveyard` and `.exile` are
+ * full `CardView` lists), so either one can be looked through (`browse`): a resting mouse opens a
+ * preview of its newest cards, and a click, a tap, a long-press or Enter opens every card in a
+ * sheet, newest first. The library is a count and nothing else, so it has no `browse`.
  */
+type PileBrowse = { title: string; cards: readonly CardView[]; view: PlayerView };
+
 function Pile({
   label,
   regionId,
@@ -184,6 +195,7 @@ function Pile({
   count,
   fatigue,
   animating,
+  browse,
 }: {
   label: string;
   regionId: string;
@@ -191,20 +203,72 @@ function Pile({
   count: number;
   fatigue?: number;
   animating?: AnimatingMap;
+  browse?: PileBrowse;
 }): ReactElement {
+  const lookup = useContext(CatalogContext);
+  const hoverPreviews = useSetting("hoverPreviews");
+  // Newest first: a pile grows at its end (the engine appends each card that lands in it).
+  const entries: CardListEntry[] = [];
+  if (browse !== undefined) {
+    for (let at = browse.cards.length - 1; at >= 0; at -= 1) {
+      const card = browse.cards[at];
+      const face = card === undefined ? null : listedFace(lookup, browse.view, card);
+      if (card !== undefined && face !== null) entries.push({ key: card.instanceId, face });
+    }
+  }
+  const title = browse?.title ?? label;
+  const browsable = entries.length > 0;
+  const inspect = useInspectTrigger(
+    browsable
+      ? {
+          key: `pile-${regionId}`,
+          render: ({ mode, anchor, close }: InspectOverlayState) =>
+            mode === "hover" ? (
+              <CardListPreview title={title} entries={entries} anchor={anchor} />
+            ) : (
+              <CardListSheet title={title} entries={entries} onClose={close} />
+            ),
+        }
+      : null,
+  );
+
+  const open = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>): void => {
+    inspect.openSheet(event.currentTarget);
+  };
+
   return (
-    <span
-      className="pile"
-      title={label}
-      data-testid={regionId}
-      data-fatigue={fatigue}
-      data-animating={animating?.get(regionId)}
-    >
-      <span className="pile-label">{label}</span>
-      <span className="pile-n" data-testid={testId}>
-        {count}
+    <>
+      <span
+        {...(browsable ? inspect.handlers : {})}
+        className={cx("pile", browsable && "pile--browsable")}
+        // The preview replaces the native tooltip; with previews off, the label comes back.
+        title={browsable && hoverPreviews ? undefined : label}
+        data-testid={regionId}
+        data-fatigue={fatigue}
+        data-animating={animating?.get(regionId)}
+        data-browsable={browsable ? "true" : undefined}
+        role={browsable ? "button" : undefined}
+        tabIndex={browsable ? 0 : undefined}
+        aria-haspopup={browsable ? "dialog" : undefined}
+        aria-label={browsable ? `${title}: ${String(count)} ${count === 1 ? "card" : "cards"}. Show them` : undefined}
+        onClick={browsable ? open : undefined}
+        onKeyDown={
+          browsable
+            ? (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                open(event);
+              }
+            : undefined
+        }
+      >
+        <span className="pile-label">{label}</span>
+        <span className="pile-n" data-testid={testId}>
+          {count}
+        </span>
       </span>
-    </span>
+      {inspect.overlay}
+    </>
   );
 }
 
@@ -253,6 +317,7 @@ function Seat({
           testId={countId("graveyard", side)}
           count={seat.graveyard.length}
           animating={animating}
+          browse={{ title: side === "you" ? "Your graveyard" : "Opponent's graveyard", cards: seat.graveyard, view }}
         />
         <Pile
           label="Exile"
@@ -260,6 +325,7 @@ function Seat({
           testId={countId("exile", side)}
           count={seat.exile.length}
           animating={animating}
+          browse={{ title: side === "you" ? "Your exile" : "Opponent's exile", cards: seat.exile, view }}
         />
       </span>
       {/* R98: a card mid-resolution is public and still itself, so it is shown rather than

@@ -511,3 +511,42 @@ export function deckFoldId(oneBased: number): string {
 export function deckCurveId(oneBased: number): string {
   return `deck-curve-${oneBased}`;
 }
+
+// ---------------------------------------------------------------------------------------------
+// A15: the opponent's-play showcase, the log's card lines and the pile browser. These mirror, name
+// for name, `apps/web/src/game/showcase/constants.ts` (`showcaseTestid`), `LOG_CARD_TESTID` in
+// `apps/web/src/game/Log.tsx` and the `INSPECT_LIST_*` names in
+// `apps/web/src/cards/inspect/testids.ts`. Keep the files identical. None starts with `card-` or
+// `hand-card-`, so `cy.fieldCardByName` and `cy.handCardByName` never resolve to one of them.
+// ---------------------------------------------------------------------------------------------
+
+/** A15: the opponent's play, held up for about a second. `data-showcase="played|set|hidden"`; click-through. */
+export const SHOWCASE = "showcase";
+/** A15: its caption ("Opponent played", "Opponent set a card"). */
+export const SHOWCASE_CAPTION = "showcase-caption";
+/** A15: the face of a card the view names, inside the showcase. */
+export const SHOWCASE_FACE = "showcase-face";
+/** A15: the back drawn for a card the view hides (R97, R227), inside the showcase. */
+export const SHOWCASE_BACK = "showcase-back";
+/** A15: the polite live region that says what the opponent played; always present, empty between plays. */
+export const SHOWCASE_LIVE = "showcase-live";
+
+/** A15: a log line that names a card is this button, `data-def-id` naming the card; hover or click opens it. */
+export const LOG_CARD = "log-card";
+
+/** A15: a pile (`graveyard-<side>`, `exile-<side>`) that holds cards carries `data-browsable="true"`. */
+export const BROWSABLE = '[data-browsable="true"]';
+/** A15: a pile's hover preview: its title, count and newest faces. `pointer-events: none`. */
+export const INSPECT_LIST_HOVER = "inspect-list-hover";
+/** A15: a pile's sheet (`role="dialog"`): every card, newest first. */
+export const INSPECT_LIST_SHEET = "inspect-list-sheet";
+/** A15: the count in the preview or the sheet, in `data-count`. */
+export const INSPECT_LIST_COUNT = "inspect-list-count";
+/** A15: one face in the preview, or one face button in the sheet; `data-def-name` is its name. */
+export const INSPECT_LIST_CARD = "inspect-list-card";
+/** A15: the preview's "+N more" line, past its cap. */
+export const INSPECT_LIST_MORE = "inspect-list-more";
+/** A15: a face opened large inside the sheet. */
+export const INSPECT_LIST_DETAIL = "inspect-list-detail";
+/** A15: back from a face opened large to the whole list. */
+export const INSPECT_LIST_BACK = "inspect-list-back";

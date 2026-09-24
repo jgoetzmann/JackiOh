@@ -1,14 +1,23 @@
 // The game log's wording for events the view redacted (SPEC §10.10, R97, R177). The log is built
 // from the event payload alone, so a redacted payload must not read as a real statement.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { CATALOG } from "@jackioh/cards";
+import type { GameEvent, PlayerView } from "@jackioh/shared";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import Log from "./Log.tsx";
+import { INSPECT_CLOSE, INSPECT_HOVER, INSPECT_SHEET, closeInspect } from "../cards/index.ts";
+import { HOVER_DELAY_MS } from "../cards/inspect/index.ts";
+import Log, { LOG_CARD_TESTID } from "./Log.tsx";
+import { CatalogContext, lookupFromDefs } from "./catalog.ts";
 import { testid } from "./contract.ts";
-import { fullBoardView, withEvents } from "../test/fixtures.ts";
+import { baseView, fullBoardView, withEvents } from "../test/fixtures.ts";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  closeInspect();
+  vi.useRealTimers();
+});
 
 describe("Log: redacted events", () => {
   it("R177 says a hidden card was buffed rather than '+0/+0', and names a public buff in full", () => {
@@ -90,5 +99,124 @@ describe("Log: a line never prints an id or the sentinel (integration QA)", () =
   it("ends the game in words", () => {
     render(<Log view={withEvents(fullBoardView(), [{ type: "gameOver", winner: "p2", reason: "concede" }])} />);
     expect(lines()).toEqual(["Opponent won. You conceded."]);
+  });
+});
+
+describe("Log: a line about a card opens that card", () => {
+  const lookup = lookupFromDefs(CATALOG);
+  const nameOf = (defId: string): string => CATALOG[defId]?.name ?? defId;
+
+  function renderLog(view: PlayerView): void {
+    render(
+      <CatalogContext.Provider value={lookup}>
+        <Log view={view} />
+      </CatalogContext.Provider>,
+    );
+  }
+
+  function cardLines(): HTMLElement[] {
+    return within(screen.getByTestId(testid.log)).queryAllByTestId(LOG_CARD_TESTID);
+  }
+
+  const PLAY: GameEvent = { type: "cardPlayed", player: "p2", instanceId: "c7", defId: "core-032", costPaid: 2 };
+
+  it("hovering the line with a mouse shows the card's face after the hover delay; leaving hides it", () => {
+    vi.useFakeTimers();
+    renderLog(withEvents(baseView(), [PLAY]));
+    const [line] = cardLines();
+    expect(line).toBeDefined();
+    if (line === undefined) return;
+    expect(line.tagName).toBe("BUTTON");
+    expect(line).toHaveAttribute("data-def-id", "core-032");
+    expect(line).toHaveTextContent(`Opponent played ${nameOf("core-032")} for 2`);
+
+    fireEvent.pointerEnter(line, { pointerType: "mouse" });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_DELAY_MS - 1);
+    });
+    expect(screen.queryByTestId(INSPECT_HOVER)).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId(INSPECT_HOVER)).toHaveTextContent(nameOf("core-032"));
+    fireEvent.pointerLeave(line, { pointerType: "mouse" });
+    expect(screen.queryByTestId(INSPECT_HOVER)).toBeNull();
+  });
+
+  it("a click (a tap, Enter or Space on the button) opens the card in the sheet; Escape closes it and gives focus back", () => {
+    renderLog(withEvents(baseView(), [PLAY]));
+    const [line] = cardLines();
+    if (line === undefined) throw new Error("no card line");
+    line.focus();
+    fireEvent.click(line);
+    const sheet = screen.getByTestId(INSPECT_SHEET);
+    expect(sheet).toHaveAttribute("role", "dialog");
+    expect(sheet).toHaveTextContent(nameOf("core-032"));
+    expect(screen.getByTestId(INSPECT_CLOSE)).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId(INSPECT_SHEET)).toBeNull();
+    expect(line).toHaveFocus();
+  });
+
+  it("R97 a line that names no card opens nothing: the sentinel, a hero, a draw, a mana change", () => {
+    renderLog(
+      withEvents(baseView(), [
+        { type: "cardPlayed", player: "p2", instanceId: "hidden", defId: "hidden", costPaid: 1 },
+        { type: "summoned", player: "p2", instanceId: "hidden", defId: "hidden", row: "backrow", lane: 3 },
+        { type: "damage", sourceId: null, targetId: "hero-p1", amount: 3, combat: false },
+        // Even the viewer's own draw, whose card it may read: the log never names a draw.
+        { type: "drawn", player: "p1", instanceId: "c1", defId: "core-011" },
+        { type: "manaChanged", player: "p1", current: 2, max: 2 },
+        { type: "trapFired", instanceId: "hidden", defId: "hidden", controller: "p2", row: "backrow", lane: 2 },
+      ] as GameEvent[]),
+    );
+    expect(cardLines()).toHaveLength(0);
+    expect(screen.getByTestId(testid.log).innerHTML).not.toMatch(/core-\d+/);
+  });
+
+  it("names a unit that has left the board from the window's own events, as the line's words do", () => {
+    renderLog(
+      withEvents(baseView(), [
+        { type: "summoned", player: "p2", instanceId: "c46", defId: "core-002", row: "units", lane: 1 },
+        { type: "attackDeclared", attackerId: "c46", targetId: "hero-p1", forced: false },
+        { type: "attackDeclared", attackerId: "c99", targetId: "c98", forced: false },
+      ]),
+    );
+    const lines = cardLines();
+    expect(lines.map((line) => line.getAttribute("data-def-id"))).toEqual(["core-002", "core-002"]);
+    // "A unit attacked a unit" names nothing, so it opens nothing.
+    expect(screen.getByText("A unit attacked a unit").querySelector(`[data-testid="${LOG_CARD_TESTID}"]`)).toBeNull();
+  });
+
+  it("a line about a card on the board opens the face the board shows it with, and a radiantSet the radiant one", () => {
+    vi.useFakeTimers();
+    const view = fullBoardView();
+    const radiantUnit = view.you.units.find((u) => u !== null && u.radiant);
+    if (radiantUnit === undefined || radiantUnit === null) throw new Error("the fixture has a radiant unit");
+    renderLog(
+      withEvents(view, [
+        { type: "buffed", instanceId: radiantUnit.instanceId, attack: 1, health: 1 },
+        {
+          type: "radiantSet",
+          instanceId: "c5",
+          defId: "core-005",
+          zone: { z: "graveyard", player: "p1" },
+        } as GameEvent,
+      ]),
+    );
+    const [buffed, radiant] = cardLines();
+    if (buffed === undefined || radiant === undefined) throw new Error("two card lines");
+    fireEvent.pointerEnter(buffed, { pointerType: "mouse" });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_DELAY_MS);
+    });
+    expect(screen.getByTestId(INSPECT_HOVER).querySelector(".cf")).toHaveAttribute("data-radiant-face", "true");
+    fireEvent.pointerLeave(buffed, { pointerType: "mouse" });
+    fireEvent.pointerEnter(radiant, { pointerType: "mouse" });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_DELAY_MS);
+    });
+    expect(screen.getByTestId(INSPECT_HOVER)).toHaveTextContent(nameOf("core-005"));
+    expect(screen.getByTestId(INSPECT_HOVER).querySelector(".cf")).toHaveAttribute("data-radiant-face", "true");
   });
 });

@@ -33,11 +33,19 @@ src/
     engine.real.ts      the real binding (see "Blocked on the engine" below)
     contract.ts         data-testid vocabulary, ClickTarget, Highlight, BoardProps
     catalog.ts          card names and rules text (see the §10.8 finding below)
-    Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1
+    Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1; a graveyard or exile pile that
+                        holds cards (public on both seats, §10.8) opens its cards on hover and in a dialog on a
+                        click (cards/inspect/CardList.tsx), and a log line that names a card opens that card
     actions.ts Prompt.tsx                                               M5-T2
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
-    Game.tsx            board + prompts + animation runner + effects layer + audio + drag layer, wired together
+    Game.tsx            board + prompts + animation runner + effects layer + audio + drag layer + showcase, wired together
+    showcase/           the opponent's play held up beside the field for about a second (SHOWCASE_HOLD_MS over the
+                        effects speed): plan.ts picks the opponent's `cardPlayed` out of the redacted events,
+                        per viewer, and a card the view hides (R97, R227) is a back with "Opponent set a card".
+                        Click-through, never on `data-animating`; `data-showcase` holds practice's AI while it is up
+    faces.ts            the printed face of a card the view names (the showcase, a log line, a pile)
+    inspectable.css     the look of what can be looked into: a browsable pile and a log line that names a card
     board.css prompt.css  layout and look: the game screen budgeted to the viewport (the
                         route's bar and the board share its height, and the cards are sized
                         off the board's with `cqh`), the board grid (a play area and sidebar
@@ -133,11 +141,12 @@ routes/practice.tsx   the route: setup, HUD, and Game.tsx unchanged inside the w
 - `vite.config.ts` sets `worker: { format: "es" }` for the module worker.
 - The setup previews decks from the catalog a short-lived worker sends (`{ type: "catalog" }`), so
   the page still bundles no card data; an autostarted game (`?difficulty=&deck=`) asks for none.
-- The AI's next step waits while anything on the board carries `data-animating`, and while any
+- The AI's next step waits while anything on the board carries `data-animating`, while any
   element on the page carries `data-speaking` (Game marks its root while a voice line holds the
   audio engine's channel; a mark that is never cleared holds the AI for at most
-  `PRACTICE_VOICE_HOLD_MAX_MS`, and `?pace=fast` does not wait for voice). The controller's general
-  form is `setHold(reason, held)`. The settings panel's "Reduce motion" gives the reduced pacing,
+  `PRACTICE_VOICE_HOLD_MAX_MS`), and while the showcase holds up the card the AI has just played
+  (`data-showcase`, at most `PRACTICE_SHOWCASE_HOLD_MAX_MS`). `?pace=fast` waits for neither the
+  voice nor the showcase. The controller's general form is `setHold(reason, held)`. The settings panel's "Reduce motion" gives the reduced pacing,
   as the media query does.
 - A game in progress asks before a reload or a closed tab ends it (`beforeunload`), and the HUD's
   Menu leaves for the landing page, asking first while the game is on.

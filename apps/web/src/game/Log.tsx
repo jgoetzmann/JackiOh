@@ -11,13 +11,21 @@
 // else as "a unit" or "a card". The R154 sentinel reads as "a face-down trap", never as "hidden".
 // `cardResolved` gets no line: it is bookkeeping, and "… finished resolving" read like a debug
 // trace between the lines that matter.
+//
+// A line about a card can be looked at: hovering it with a mouse opens that card's face beside the
+// log, and a click, a tap, a long-press or Enter opens it in a sheet (the cards module's inspect,
+// one overlay at a time). The card is the one the line names, found exactly as the name was, so a
+// line never opens a card it does not print: a sentinel, a hero, a draw or a line that says "a
+// unit" opens nothing.
 
-import { useContext, useLayoutEffect, useRef, type ReactElement } from "react";
+import { useContext, useLayoutEffect, useRef, type MouseEvent, type ReactElement } from "react";
 
 import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
+import { useInspectTrigger, type FaceModel } from "../cards/index.ts";
 import { CatalogContext } from "./catalog.ts";
 import { sideOf, testid } from "./contract.ts";
+import { cardInView, printedFace } from "./faces.ts";
 import { outcomeFor, resultReason } from "./Result.tsx";
 
 export type LogProps = {
@@ -25,6 +33,9 @@ export type LogProps = {
   /** True once a hidden log (the phone's popover) is opened, so it can scroll to its newest line. */
   revealed?: boolean;
 };
+
+/** The button inside a line that names a card; `data-def-id` says which. */
+export const LOG_CARD_TESTID = "log-card";
 
 /** R97: the id an event carries in place of a card this seat may not read (`view.ts`). */
 const HIDDEN_CARD = "hidden";
@@ -220,6 +231,98 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string | nu
   }
 }
 
+/** The card a line is about: the one it names, by definition, and the face it wears where the view shows it. */
+type LineCard = { defId: string; radiant: boolean };
+
+/**
+ * The card a line is about, or null when it names none: the one `describe` names (for a Transform,
+ * the card it became; for an attack, the attacker). It reads the same sources `Naming` does — the
+ * event's own `defId`, else the instance on the board or in the window's public events — so it can
+ * never open a card the line does not print (R97: the sentinel is none).
+ */
+function cardOf(event: GameEvent, view: PlayerView, remembered: ReadonlyMap<string, string>): LineCard | null {
+  const face = (instanceId: string | undefined): boolean =>
+    instanceId === undefined ? false : (cardInView(view, instanceId)?.radiant ?? false);
+  const byDef = (defId: string, instanceId?: string): LineCard | null =>
+    defId === HIDDEN_CARD ? null : { defId, radiant: face(instanceId) };
+  const byInstance = (instanceId: string): LineCard | null => {
+    if (instanceId === HIDDEN_CARD) return null;
+    const defId = defIdOfInstance(view, instanceId) ?? remembered.get(instanceId);
+    return defId === undefined ? null : byDef(defId, instanceId);
+  };
+  switch (event.type) {
+    case "cardPlayed":
+    case "summoned":
+    case "destroyed":
+    case "enteredGraveyard":
+    case "exiled":
+    case "bounced":
+    case "burned":
+    case "discarded":
+    case "trapFired":
+      return event.instanceId === HIDDEN_CARD ? null : byDef(event.defId, event.instanceId);
+    case "radiantSet": {
+      const card = event.instanceId === HIDDEN_CARD ? null : byDef(event.defId, event.instanceId);
+      return card === null ? null : { ...card, radiant: true };
+    }
+    case "transformed":
+      return byDef(event.toDefId, event.newInstanceId);
+    case "fused":
+      return byDef(event.defId, event.resultInstanceId);
+    case "damage":
+    case "healed":
+      return byInstance(event.targetId);
+    case "divineShieldLost":
+    case "buffed":
+    case "keywordGranted":
+    case "counterChanged":
+    case "costChanged":
+    case "positionSwitched":
+    case "controlChanged":
+      return byInstance(event.instanceId);
+    case "attackDeclared":
+    case "attackCancelled":
+      return byInstance(event.attackerId);
+    default:
+      return null;
+  }
+}
+
+type Line = { key: string; type: GameEvent["type"]; text: string; face: FaceModel | null };
+
+/** One line; a line about a card is a button that opens it (see the header). */
+function LogLine({ line }: { line: Line }): ReactElement {
+  const face = line.face;
+  const inspect = useInspectTrigger(face === null ? null : { key: `log-${line.key}`, face });
+  if (face === null) {
+    return (
+      <li className="log-line" data-event={line.type}>
+        {line.text}
+      </li>
+    );
+  }
+  // A button: Enter and Space click it, so the keyboard needs nothing of its own.
+  const open = (event: MouseEvent<HTMLElement>): void => {
+    inspect.openSheet(event.currentTarget);
+  };
+  return (
+    <li className="log-line" data-event={line.type} data-inspectable="true">
+      <button
+        {...inspect.handlers}
+        type="button"
+        className="log-card"
+        data-testid={LOG_CARD_TESTID}
+        data-def-id={face.defId}
+        aria-haspopup="dialog"
+        onClick={open}
+      >
+        {line.text}
+      </button>
+      {inspect.overlay}
+    </li>
+  );
+}
+
 export default function Log({ view, revealed = false }: LogProps): ReactElement {
   const lookup = useContext(CatalogContext);
   const remembered = publicNames(view.events);
@@ -245,17 +348,18 @@ export default function Log({ view, revealed = false }: LogProps): ReactElement 
     if (list !== null) list.scrollTop = list.scrollHeight;
   }, [view.events, revealed]);
 
-  const lines = view.events.flatMap((event, index) => {
+  const lines = view.events.flatMap((event, index): Line[] => {
     const text = describe(event, view, name);
-    return text === null ? [] : [{ key: `${String(index)}-${event.type}`, type: event.type, text }];
+    if (text === null) return [];
+    const card = cardOf(event, view, remembered);
+    const face = card === null ? null : printedFace(lookup, view, card.defId, card.radiant);
+    return [{ key: `${String(index)}-${event.type}`, type: event.type, text, face }];
   });
 
   return (
     <ol ref={listRef} className="log" data-testid={testid.log} aria-label="Game log">
       {lines.map((line) => (
-        <li key={line.key} className="log-line" data-event={line.type}>
-          {line.text}
-        </li>
+        <LogLine key={line.key} line={line} />
       ))}
     </ol>
   );

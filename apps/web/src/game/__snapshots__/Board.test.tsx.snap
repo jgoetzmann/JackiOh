@@ -103,9 +103,13 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         </span>
       </span>
       <span
-        class="pile"
+        aria-haspopup="dialog"
+        aria-label="Opponent's graveyard: 1 card. Show them"
+        class="pile pile--browsable"
+        data-browsable="true"
         data-testid="graveyard-opponent"
-        title="Graveyard"
+        role="button"
+        tabindex="0"
       >
         <span
           class="pile-label"
@@ -2695,9 +2699,13 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         </span>
       </span>
       <span
-        class="pile"
+        aria-haspopup="dialog"
+        aria-label="Your graveyard: 2 cards. Show them"
+        class="pile pile--browsable"
+        data-browsable="true"
         data-testid="graveyard-you"
-        title="Graveyard"
+        role="button"
+        tabindex="0"
       >
         <span
           class="pile-label"
@@ -2712,9 +2720,13 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
         </span>
       </span>
       <span
-        class="pile"
+        aria-haspopup="dialog"
+        aria-label="Your exile: 1 card. Show them"
+        class="pile pile--browsable"
+        data-browsable="true"
         data-testid="exile-you"
-        title="Exile"
+        role="button"
+        tabindex="0"
       >
         <span
           class="pile-label"

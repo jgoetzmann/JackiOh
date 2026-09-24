@@ -13,6 +13,11 @@
 // pick the card; that disarms on the next pointerdown or after CLICK_SUPPRESS_MS. The native
 // context menu is prevented while a touch press is pending or has fired, and a mouse right-click
 // calls `options.onContextMenu` when one is given.
+//
+// A subject is a card face by default (`face`: the preview and the sheet draw it). A subject that
+// is not one card — a graveyard pile, say — passes `render` instead and draws its own overlay for
+// each mode; it still takes the one inspect slot and closes on everything above. `openSheet` opens
+// the sheet at once, for a tap or Enter on a trigger that has nothing else to do on a click.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
@@ -28,7 +33,14 @@ import type { PreviewPrefer, Rect } from "./placement.ts";
 import { closeHoverFor, closeInspect, inspectSnapshot, openInspect, subscribeInspect } from "./store.ts";
 import "./inspect.css";
 
+/** What a custom overlay is drawn from: the open mode, the trigger's box and a way to close it. */
+export type InspectOverlayState = { mode: "hover" | "sheet"; anchor: Rect; close: () => void };
+
+/** A card: the preview and the sheet draw its face. */
 export type InspectSubject = { key: string; face: FaceModel };
+
+/** Anything else (a pile): the caller draws the overlay for each mode. */
+export type InspectRenderSubject = { key: string; render: (state: InspectOverlayState) => ReactElement | null };
 
 export type InspectOptions = {
   /** Default true: a mouse or pen hover opens the preview (also gated by settings.hoverPreviews). */
@@ -54,7 +66,13 @@ export type InspectHandlers = {
   onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
 };
 
-export type InspectBindings = { handlers: InspectHandlers; overlay: ReactElement | null; open: "hover" | "sheet" | null };
+export type InspectBindings = {
+  handlers: InspectHandlers;
+  overlay: ReactElement | null;
+  open: "hover" | "sheet" | null;
+  /** Opens the sheet now, anchored on `element`; a no-op for a null subject. */
+  openSheet: (element: Element) => void;
+};
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -94,7 +112,10 @@ function rectOf(element: Element): Rect {
   return { left: box.left, top: box.top, width: box.width, height: box.height };
 }
 
-export function useInspectTrigger(subject: InspectSubject | null, options?: InspectOptions): InspectBindings {
+export function useInspectTrigger(
+  subject: InspectSubject | InspectRenderSubject | null,
+  options?: InspectOptions,
+): InspectBindings {
   const key = subject === null ? null : subject.key;
   const settings = useCardSettings();
   const active = useSyncExternalStore(subscribeInspect, () => inspectSnapshot(key));
@@ -236,6 +257,16 @@ export function useInspectTrigger(subject: InspectSubject | null, options?: Insp
     };
   }, []);
 
+  const openSheet = useMemo(
+    () =>
+      (element: Element): void => {
+        const current = live.current.subject;
+        if (current === null) return;
+        openInspect({ key: current.key, mode: "sheet", anchor: rectOf(element) });
+      },
+    [],
+  );
+
   // Timers never outlive the card.
   useEffect(() => {
     const t = timers.current;
@@ -295,13 +326,18 @@ export function useInspectTrigger(subject: InspectSubject | null, options?: Insp
   let overlay: ReactElement | null = null;
   if (subject !== null && active !== null) {
     const closeKey = subject.key;
-    overlay =
-      active.mode === "hover" ? (
-        <HoverPreview face={subject.face} anchor={active.anchor} prefer={options?.prefer} />
-      ) : (
-        <InspectSheet face={subject.face} onClose={() => closeInspect(closeKey)} />
-      );
+    const close = (): void => closeInspect(closeKey);
+    if ("render" in subject) {
+      overlay = subject.render({ mode: active.mode, anchor: active.anchor, close });
+    } else {
+      overlay =
+        active.mode === "hover" ? (
+          <HoverPreview face={subject.face} anchor={active.anchor} prefer={options?.prefer} />
+        ) : (
+          <InspectSheet face={subject.face} onClose={close} />
+        );
+    }
   }
 
-  return { handlers: subject === null ? NOOP_HANDLERS : handlers, overlay, open: mode };
+  return { handlers: subject === null ? NOOP_HANDLERS : handlers, overlay, open: mode, openSheet };
 }

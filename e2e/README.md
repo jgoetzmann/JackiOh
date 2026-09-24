@@ -1,4 +1,4 @@
-# `e2e/` — the sixteen BUILD M8 specs
+# `e2e/` — the seventeen BUILD M8 specs
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,8 +16,9 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the sixteen specs
+  cypress/e2e/*.cy.ts      the seventeen specs
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
+  cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
@@ -176,6 +177,7 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 14 | A built client only (`pnpm build:e2e`, then `vite preview`): no server and no auth provider. Every `${apiUrl}/api/*` call is a `cy.intercept` stub, sessions are seeded under `jackioh.e2e.session` in `onBeforeLoad`, and emailed links are visited as `/login#…`. It covers the landing page, the segmented code field, rate-limit feedback, emailed-link handling, the reset screen and the gate's exits (`docs/polish/5-sign-in.md`). |
 | 15 | Polish 2 (SPEC §10.11): the audio layer on `/dev/hotseat`, M4 + M5, no server. Chrome for the audio context; it asserts the voice request in `window.__jackiohAudio`'s log, never the sound. |
 | 16 | Polish 7 (§10.8, R195): drag to play on `/dev/hotseat` with spec 04's decks and seed, M4 + M5, no server. The gestures are real pointer events from `support/ux.ts`, and the settings panel turns drag to play off. |
+| 17 | M4 + M5 and polish 3 (`/practice`), against `build:e2e` with no server: the opponent's-play showcase, the log's card lines and the pile browser (§10.8, §10.10, R97, R202, R227), with the selectors in `support/testids.ts` block A15. It uses spec 01's and spec 03's decks and seeds, and plays `/practice` at normal pacing, because `?pace=fast` releases the AI without waiting for the showcase. How long the showcase stood is read off a MutationObserver recorder in the page, never off a fixed wait. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

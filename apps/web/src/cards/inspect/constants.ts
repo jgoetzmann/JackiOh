@@ -22,3 +22,15 @@ export const PREVIEW_MAX_VIEWPORT_SHARE = 0.8;
 export const PREVIEW_GLOSSARY_WIDTH_PX = 240;
 /** Space between the preview card and its glossary. Mirrors `.inspect-hover`'s `gap`. */
 export const PREVIEW_GLOSSARY_GAP_PX = 10;
+
+/** A pile's hover preview (CardList.tsx) shows at most this many faces, newest first; the sheet shows them all. */
+export const LIST_PREVIEW_MAX = 8;
+/** Faces per row in a pile's hover preview. Mirrors `.inspect-list-hover .inspect-list-grid`. */
+export const LIST_PREVIEW_COLUMNS = 4;
+/** The height of one face in a pile's hover preview. Mirrors `--list-face-h` in inspect.css. */
+export const LIST_PREVIEW_FACE_HEIGHT_PX = 150;
+/** Space between faces, and the panel's padding, in a pile's hover preview. Mirrors inspect.css. */
+export const LIST_PREVIEW_GAP_PX = 8;
+export const LIST_PREVIEW_PADDING_PX = 10;
+/** The header row (title and count) and the "more" line of a pile's hover preview. */
+export const LIST_PREVIEW_HEADER_PX = 26;

@@ -47,6 +47,7 @@ import {
 import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
 import { GameResult, type ResultForm } from "./Result.tsx";
 import FxLayer from "../fx/FxLayer.tsx";
+import CardShowcase from "./showcase/CardShowcase.tsx";
 import { useSetting } from "../settings/index.ts";
 import "./animations.css";
 import { useGameAudio, useVoiceSpeaking } from "../audio/index.ts";
@@ -300,6 +301,7 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
         onControl={handleControl}
       />
       <FxLayer queue={runner} view={shown} />
+      <CardShowcase view={view} />
 
       <Prompt
         view={shown}

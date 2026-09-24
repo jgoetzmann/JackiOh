@@ -1,0 +1,125 @@
+/* The opponent's play, held up beside the field (CardShowcase.tsx). Click-through and above the
+   effects layer (38), under the prompt scrim (40) and every inspect overlay (60, 70): a prompt the
+   play opened for the viewer is never covered by it. */
+
+.showcase {
+  --showcase-h: clamp(190px, 46vh, 340px);
+
+  position: fixed;
+  top: 50%;
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 39;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  transform: translateY(-50%);
+  animation:
+    showcase-in var(--showcase-fade-ms, 160ms) ease-out both,
+    showcase-out var(--showcase-fade-ms, 160ms) ease-in calc(var(--showcase-ms, 1000ms) - var(--showcase-fade-ms, 160ms)) forwards;
+}
+
+.showcase-caption {
+  padding: 4px 12px;
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 999px;
+  background: rgb(11 13 19 / 0.9);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.5);
+  color: var(--text, #e8eaf2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.showcase-card {
+  position: relative;
+  display: block;
+  height: var(--showcase-h);
+  aspect-ratio: 5 / 7;
+  filter: drop-shadow(0 14px 30px rgb(0 0 0 / 0.65));
+}
+
+.showcase-card--back {
+  overflow: hidden;
+  border-radius: 7% / 5%;
+}
+
+/* Phones held upright: the field is the middle of the screen, so the card stands over it, centred,
+   a little above the middle line and a little smaller. */
+@media (max-width: 600px) {
+  .showcase {
+    --showcase-h: clamp(180px, 38vh, 300px);
+
+    top: 42%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation-name: showcase-in-centred, showcase-out-centred;
+  }
+}
+
+/* Phones held sideways: little height, so the card keeps to the left edge at what the height allows. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .showcase {
+    --showcase-h: calc(100dvh - 90px);
+
+    gap: 4px;
+  }
+
+  .showcase-caption {
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+}
+
+.showcase[data-motion="reduce"] {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showcase {
+    animation: none;
+  }
+}
+
+@keyframes showcase-in {
+  from {
+    opacity: 0;
+    transform: translateY(-46%) scale(0.92);
+  }
+}
+
+@keyframes showcase-out {
+  to {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.96);
+  }
+}
+
+@keyframes showcase-in-centred {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.92);
+  }
+}
+
+@keyframes showcase-out-centred {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
+
+/* The live region: read by assistive tech, drawn nowhere. */
+.showcase-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}

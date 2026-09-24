@@ -489,3 +489,218 @@
     animation: none;
   }
 }
+
+/* ---- A list of cards: a graveyard or an exile pile (CardList.tsx) ------------------------------ */
+
+.inspect-list-hover {
+  --list-face-h: 150px; /* LIST_PREVIEW_FACE_HEIGHT_PX */
+
+  position: fixed;
+  z-index: var(--z-inspect-hover);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* LIST_PREVIEW_GAP_PX */
+  max-width: calc(100vw - 16px);
+  padding: 10px; /* LIST_PREVIEW_PADDING_PX */
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 12px;
+  background: rgba(11, 13, 19, 0.95);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
+  color: var(--text, #e8eaf2);
+  pointer-events: none;
+  animation: inspect-pop 120ms ease-out;
+}
+
+.inspect-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-height: 18px;
+}
+
+.inspect-list-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.inspect-list-count {
+  color: var(--radiant, #ffd24a);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspect-list-order {
+  color: var(--text-dim, #9aa1b8);
+  font-size: 12px;
+}
+
+.inspect-list-grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto); /* LIST_PREVIEW_COLUMNS */
+  justify-content: start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspect-list-face {
+  position: relative;
+  display: block;
+  height: var(--list-face-h);
+  aspect-ratio: 5 / 7;
+}
+
+.inspect-list-more {
+  color: var(--text-dim, #9aa1b8);
+  font-size: 12.5px;
+}
+
+/* The sheet: a centred dialog on a wide screen, a bottom sheet on a phone. The grid scrolls
+   between the pinned header and the pinned actions row. */
+.inspect-list-sheet {
+  --list-face-h: 200px;
+
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(920px, calc(100vw - 16px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  padding: 16px;
+  background: var(--bg-raised, #1a1d28);
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+  color: var(--text, #e8eaf2);
+  transform: translate(-50%, -50%);
+  animation: inspect-fade 160ms ease-out;
+}
+
+.inspect-list-sheet .inspect-list-title {
+  font-size: 17px;
+}
+
+.inspect-list-grid--sheet {
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--list-face-h) * 5 / 7), 1fr));
+  justify-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+
+.inspect-list-item {
+  display: contents;
+}
+
+/* A face in the sheet is a button that opens it large: no chrome of its own, a ring on focus. */
+.inspect-list-face--button {
+  box-sizing: content-box;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: zoom-in;
+}
+
+.inspect-list-face--button:hover {
+  filter: brightness(1.08);
+}
+
+.inspect-list-face--button:focus-visible {
+  outline: 2px solid var(--selected, #f0c04a);
+  outline-offset: 3px;
+}
+
+.inspect-list-detail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.inspect-face--list {
+  height: min(420px, calc(100vh - 200px));
+  height: min(420px, calc(100dvh - 200px));
+}
+
+.inspect-list-detail .inspect-glossary {
+  flex: 1 1 220px;
+  max-width: 420px;
+  box-shadow: none;
+}
+
+.inspect-list-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #2c3245);
+}
+
+@media (max-width: 600px) {
+  .inspect-list-sheet {
+    --list-face-h: 150px;
+
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 88vh;
+    max-height: 88dvh;
+    padding: 12px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    border-radius: 18px 18px 0 0;
+    transform: none;
+    animation: inspect-rise 180ms ease-out;
+  }
+
+  .inspect-list-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .inspect-face--list {
+    height: min(380px, calc(88dvh - 220px));
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .inspect-list-sheet {
+    --list-face-h: 150px;
+
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  .inspect-face--list {
+    height: calc(100dvh - 130px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspect-list-hover,
+  .inspect-list-sheet {
+    animation: none;
+  }
+}

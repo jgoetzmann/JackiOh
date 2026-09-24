@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "BUILD M8: the sixteen Cypress end-to-end specs. Runs against apps/web in E2E=1 mode.",
+  "description": "BUILD M8: the seventeen Cypress end-to-end specs. Runs against apps/web in E2E=1 mode.",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "// typecheck:component": "The component specs are .tsx, which `tsconfig.json`'s `cypress/**/*.ts` glob does not match, so they have a project of their own rather than being silently unchecked.",
