@@ -1,5 +1,6 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R170, in order.
+// name. One `it("R<n> …")` per §11 row, in ascending order: the same ids, in the same order, as
+// SPEC §11's table, gaps included (`pnpm rulings:coverage` compares the two).
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -184,7 +185,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
