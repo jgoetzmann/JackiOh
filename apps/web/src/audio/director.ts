@@ -11,14 +11,13 @@
 // R203: the first view, and a view for a different seat (a hotseat hand-over), voices nothing and
 // drops everything owed, so the arriving seat hears nothing its own view did not produce.
 //
-// WHICH EVENTS ARE NEW. Two windows overlap where the tail of the older one is the head of the newer
-// one, but not always byte for byte: R97 judges a card by where it sits NOW, so when the opponent
-// plays a card it drew earlier in the window, that older `drawn` (or `shuffledIn`, …) changes from
-// the sentinel to the card's real id between the two views. `sameOccurrence` lets a redacted field
-// match the value it later reveals (and the reverse), so only the new action's events are owed. The
-// runner may still be handed the whole window again (task 1's `newEventsSince` compares exactly),
-// and every event of a view the director has already seen and not owed stays silent when the runner
-// starts it (`known`): old news does not speak twice.
+// WHICH EVENTS ARE NEW. The director diffs two views with the runner's own `newEventsSince`
+// (game/animations.ts), so what it owes is exactly what Game enqueues. Two windows overlap where the
+// tail of the older one is the head of the newer one, but not always byte for byte: R97 judges a
+// card by where it sits NOW, so when the opponent plays a card it drew earlier in the window, that
+// older `drawn` (or `shuffledIn`, …) changes from the sentinel to the card's real id between the two
+// views, and `sameOccurrence` lets it match. Every event of a view the director has already seen and
+// not owed also stays silent should the runner ever start it (`known`): old news does not speak twice.
 //
 // Events are matched by object identity: `newEventsSince` and `planEntries` both hand out the very
 // objects in `view.events`, so the entry the runner starts carries the same objects the director
@@ -26,7 +25,7 @@
 
 import type { GameEvent, PlayerId, PlayerView, UnitView } from "@jackioh/shared";
 
-import type { AnimationEntry } from "../game/animations.ts";
+import { newEventsSince, type AnimationEntry } from "../game/animations.ts";
 import { FLUSH_GAP_MS, FLUSH_MAX_SFX, HIDDEN_DEF_ID, PAIR_OFFSET_MS } from "./constants.ts";
 import { cuesFor, type CueCard, type CueContext } from "./cues.ts";
 import type { SoundCue, SoundSink, VoiceLineTable } from "./types.ts";
@@ -44,43 +43,6 @@ export type SoundDirector = {
 };
 
 type Owed = { event: GameEvent; view: PlayerView };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Two events are the same occurrence when every field is, except that R97's sentinel in either
- * one matches whatever the other names there: a card a later view may read, or no longer read.
- */
-export function sameOccurrence(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a === "string" && typeof b === "string") return a === HIDDEN_DEF_ID || b === HIDDEN_DEF_ID;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, i) => sameOccurrence(item, b[i]));
-  }
-  if (isRecord(a) && isRecord(b)) {
-    const keys = Object.keys(a);
-    if (keys.length !== Object.keys(b).length) return false;
-    return keys.every((key) => Object.hasOwn(b, key) && sameOccurrence(a[key], b[key]));
-  }
-  return false;
-}
-
-/**
- * The events in `next` that `prev` did not carry: everything after the longest tail of `prev` that
- * is also a head of `next`, comparing with `sameOccurrence`. No overlap at all means all of `next`.
- */
-export function eventsAfterOverlap(prev: readonly GameEvent[], next: readonly GameEvent[]): GameEvent[] {
-  if (prev.length === 0 || next.length === 0) return [...next];
-  for (let overlap = Math.min(prev.length, next.length); overlap > 0; overlap -= 1) {
-    const from = prev.length - overlap;
-    let matches = true;
-    for (let i = 0; i < overlap && matches; i += 1) matches = sameOccurrence(prev[from + i], next[i]);
-    if (matches) return next.slice(overlap);
-  }
-  return [...next];
-}
 
 function findUnit(view: PlayerView | null, instanceId: string): UnitView | null {
   if (view === null) return null;
@@ -193,7 +155,7 @@ export function createSoundDirector(
         return;
       }
       const planned = seen;
-      for (const event of eventsAfterOverlap(planned.events, view.events)) {
+      for (const event of newEventsSince(planned.events, view.events)) {
         if (voiced.has(event) || isOwed(event)) continue;
         owed.push({ event, view: planned });
       }

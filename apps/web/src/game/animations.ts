@@ -720,9 +720,59 @@ export function scaleForSpeed(durationMs: number, speed: number): number {
   return Math.max(MIN_ENTRY_MS, Math.round(durationMs / s));
 }
 
-/** Two events are the same occurrence when every field of them is. Order-stable by construction. */
-function sameEvent(a: GameEvent | undefined, b: GameEvent | undefined): boolean {
-  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b);
+/** R97's sentinel: what a redacted event names in place of a card (engine `viewFor.ts` `HIDDEN_ID`). */
+export const HIDDEN_ID = "hidden";
+
+/**
+ * The fields R97 rewrites together with a card's identity when the card turns unreadable, besides
+ * the ids that become the sentinel (engine `viewFor.ts` `redactEvent`): `cardResolved` drops its
+ * `radiant`, `cardPlayed` and `summoned` drop their `formerId` (R227), `buffed` zeroes its
+ * `attack` and `health` and `costChanged` blanks its `cost` (R177), and `radiantSet` moves its
+ * `zone` to the owner's hand. Every one of them is rewritten only when the event's own
+ * `instanceId` is the one hidden.
+ */
+const REWRITTEN_WITH_IDENTITY: Partial<Record<GameEventType, readonly string[]>> = {
+  cardResolved: ["radiant"],
+  cardPlayed: ["formerId"],
+  summoned: ["formerId"],
+  buffed: ["attack", "health"],
+  costChanged: ["cost"],
+  radiantSet: ["zone"],
+};
+
+const NOTHING_REWRITTEN: readonly string[] = [];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether two copies of an event, from two views, are the same occurrence: every field agrees,
+ * except where R97 redacted one copy and not the other. R97 judges a card by where it sits NOW, so
+ * an event still in the window can change between two views: the opponent's `drawn` names the card
+ * once they play it, and a spell that returns to its owner's hand hides its `cardPlayed` from the
+ * other seat again. The sentinel therefore matches any id, in either direction, and on an event
+ * whose `instanceId` either copy hides, the fields R97 rewrites with it (`REWRITTEN_WITH_IDENTITY`)
+ * are not compared. Everything else still has to match exactly, and a field that is `undefined`
+ * counts as absent, as it does on the wire.
+ */
+export function sameOccurrence(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "string" && typeof b === "string") return a === HIDDEN_ID || b === HIDDEN_ID;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => sameOccurrence(item, b[i]));
+  }
+  if (!isRecord(a) || !isRecord(b)) return false;
+  const redacted = a["instanceId"] === HIDDEN_ID || b["instanceId"] === HIDDEN_ID;
+  const rewritten = redacted ? (REWRITTEN_WITH_IDENTITY[a["type"] as GameEventType] ?? NOTHING_REWRITTEN) : NOTHING_REWRITTEN;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (rewritten.includes(key)) continue;
+    const left = a[key];
+    const right = b[key];
+    if (left === undefined && right === undefined) continue;
+    if (left === undefined || right === undefined || !sameOccurrence(left, right)) return false;
+  }
+  return true;
 }
 
 /**
@@ -736,10 +786,17 @@ function sameEvent(a: GameEvent | undefined, b: GameEvent | undefined): boolean 
  * actions, so the events the two views share are the longest suffix of `prev` that is also a
  * prefix of `next`, and everything after it is new.
  *
- * No rule lives here: it is bookkeeping over an array the engine handed over verbatim. When the
- * two windows have nothing in common — a reload, or more than N events since the last view — the
- * whole of `next` is new, which is the honest answer and the one that animates too much rather
- * than too little.
+ * The two copies of a shared event are compared with `sameOccurrence`, not byte for byte, because
+ * R97 re-redacts the whole window for every view. An exact comparison found no overlap whenever an
+ * older event in the window had changed (the opponent playing a card it drew a moment ago, which is
+ * most of an opponent's turn), and handed the runner the whole window again: every animation the
+ * board had already played, played a second time before the new ones.
+ *
+ * No rule lives here: it is bookkeeping over an array the engine handed over. When the two windows
+ * have nothing in common — a reload, or more than N events since the last view — the whole of
+ * `next` is new, which is the honest answer and the one that animates too much rather than too
+ * little. It returns the very objects `next` holds, so the sound director, which diffs views with
+ * this same function, can match the runner's entries by identity.
  */
 export function newEventsSince(prev: readonly GameEvent[], next: readonly GameEvent[]): GameEvent[] {
   if (prev.length === 0 || next.length === 0) return [...next];
@@ -747,7 +804,7 @@ export function newEventsSince(prev: readonly GameEvent[], next: readonly GameEv
   for (let overlap = most; overlap > 0; overlap -= 1) {
     const from = prev.length - overlap;
     let matches = true;
-    for (let i = 0; i < overlap && matches; i += 1) matches = sameEvent(prev[from + i], next[i]);
+    for (let i = 0; i < overlap && matches; i += 1) matches = sameOccurrence(prev[from + i], next[i]);
     if (matches) return next.slice(overlap);
   }
   return [...next];
