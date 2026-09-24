@@ -111,6 +111,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `DRAW_OFFERS_PER_TURN` | 1 | §2.5, R36 |
 | `DRAW_OFFER_BLOCK_TURNS` | 3 | §2.5, R36 |
 | `CALL_TO_CHAOS_CHAIN_CAP` | 20 | R28 |
+| `TIMEOUT_ANSWER_CAP` | 500 | §2.5, R79 |
 | `CAST_ON_DRAW_CHAIN_CAP` | 20 | R58 |
 | `LIBRARY_CAP` | 60 | R80 |
 | `ANTI_ONESHOT_CAP` | `{ base: 5, radiant: 3 }` | §8 #73 |

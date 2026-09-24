@@ -237,22 +237,27 @@
 
 /* --- the invite screen ------------------------------------------------------------------------ */
 
-.invite-screen__top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
+/* The top bar is BackLink's nav: Back, then who is signed in and Sign out, then the gear at the far
+   end (settings.css places the slot, and moves it under Back and the gear on a phone). */
+.invite-screen__top > .screen-nav {
+  width: 100%;
 }
 
 .invite-screen__account {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px 12px;
   min-width: 0;
   color: var(--text-dim);
   font-size: 13px;
+}
+
+/* The address is the point of the line, so it is never cut: a long one wraps, anywhere. */
+.invite-screen__who {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .invite-screen__email {
@@ -436,36 +441,21 @@
   color: color-mix(in srgb, var(--tavern-parchment) 66%, transparent);
 }
 
-/* A phone: who is signed in and Sign out stack on the right of Back, in the height Back already
-   takes, instead of wrapping onto two more lines above the board. A long address ends in an
-   ellipsis there; the unconfirmed-email notice spells it out in full when it matters. */
+/* A phone: who is signed in and Sign out take their own row under Back and the gear (settings.css),
+   the address first and wrapping where it must, Sign out at the row's end. At 390 px the address
+   used to share Back's row and ran off the screen mid-string (integration QA). */
 @media (max-width: 560px) {
-  .invite-screen__top {
-    flex-wrap: nowrap;
-  }
-
-  .invite-screen__top > .screen-nav {
-    flex: none;
-  }
-
   .invite-screen__account {
-    flex: 1 1 auto;
-    flex-direction: column;
     flex-wrap: nowrap;
-    align-items: flex-end;
-    gap: 2px;
-    text-align: right;
+    justify-content: space-between;
   }
 
   .invite-screen__who {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 1 1 auto;
   }
 
   .invite-screen .invite-screen__account .link-button {
-    align-self: flex-end;
+    flex: none;
   }
 }
 
@@ -543,8 +533,4 @@
   color: var(--tavern-gold-pale);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.invite-screen__example {
-  white-space: nowrap;
 }

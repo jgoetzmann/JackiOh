@@ -299,6 +299,30 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     expect(onAction).toHaveBeenCalledWith({ type: "play", instanceId: "h3", modes: ["board"] });
   });
 
+  it("#24 Efficiency Dividend's options say X on its base face and X+1 on its Radiant face (§8 #24)", () => {
+    const modes = ["damage", "heal", "mana"];
+    const pickerFor = (radiant: boolean): void => {
+      const view = viewWith({
+        you: emptySide("p1", { hand: [card({ instanceId: "h24", defId: "core-024", radiant })] }),
+      });
+      const interaction = playing(
+        modes.map((mode): ActionBody => ({ type: "play", instanceId: "h24", x: 2, modes: [mode] })),
+        "h24",
+      );
+      render(<Prompt view={view} interaction={interaction} onAction={vi.fn()} />);
+    };
+
+    pickerFor(false);
+    expect(screen.getByTestId("prompt-option-damage")).toHaveTextContent("Deal X damage to a target.");
+    expect(screen.getByTestId("prompt-option-heal")).toHaveTextContent("Heal a target by twice X.");
+    cleanup();
+
+    pickerFor(true);
+    expect(screen.getByTestId("prompt-option-damage")).toHaveTextContent("Deal X+1 damage to a target.");
+    expect(screen.getByTestId("prompt-option-heal")).toHaveTextContent("Heal a target by twice X+1.");
+    expect(screen.getByTestId("prompt-option-mana")).toHaveTextContent("Gain half of X+1, rounded down");
+  });
+
   it("an option no card text covers is its own word, capitalised", () => {
     const view = viewWith();
     const interaction = playing([

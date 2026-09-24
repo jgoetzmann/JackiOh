@@ -217,7 +217,7 @@ describe("per-card variety within a theme", () => {
     }
   });
 
-  it("each layout, backdrop and sky scheme is one of the composition's own, and every theme of four or more cards spreads over them", () => {
+  it("B40 each layout, backdrop and sky scheme is one of the composition's own, and every theme of four or more cards spreads over them", () => {
     const byTheme = new Map<ArtThemeId, ArtSpec[]>();
     for (const card of DEFS) {
       const { base } = specsOf(card);
@@ -234,7 +234,7 @@ describe("per-card variety within a theme", () => {
     }
   });
 
-  it("the largest themes use every layout of their composition", () => {
+  it("B40 the largest themes use every layout of their composition", () => {
     for (const theme of ["human", "spell", "unit", "field-spell"] as const) {
       const specs = DEFS.map((card) => specsOf(card).base).filter((spec) => spec.theme === theme);
       const composition = specs[0]?.composition;

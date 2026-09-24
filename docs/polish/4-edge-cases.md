@@ -623,10 +623,10 @@ were needed; every other finding was already a rule SPEC states.
 | `turn-clock-and-legality.test.ts` | `timeout` acted for the wrong player and stopped after one prompt; a declined draw offer could still be accepted; `activatePower` accepted unreachable ping targets and a forged Discover answer; Heroic Power offered and recorded a chosen X; "this turn" read the opponent's last turn | R79, R36, R103, R43, §6.2 |
 | `hidden-information.test.ts` | Prompt options named face-down traps; `transformed` named cards replaced in hidden zones; `costChanged` gave away hidden costs and library order | R177 |
 
-One finding is kept as an expected failure rather than fixed: `legalActions` names a face-down trap
-by its instance id, which a player who saw that id while the card was public can read. Ids are the
-action protocol's only handle for a face-down target, so closing it is a protocol change (a
-per-viewer alias, or a fresh id on entering a hidden zone), not an edge-case fix.
+One finding was kept as an expected failure rather than fixed here: `legalActions` named a face-down
+trap by its instance id, which a player who saw that id while the card was public could read. Ids are
+the action protocol's only handle for a face-down target. The integration's fix stage closed it
+(R227): a card set face-down takes a fresh id, and the test now passes as an ordinary `it`.
 
 The recorded hotseat game's hash moved once, deliberately: the other player's turn log is emptied at
 each turn start (§6.2's "this turn"), and that log is in the hashed state. The log itself replays
@@ -1449,13 +1449,13 @@ tasks' total maps over `GameEventType` need no new entry.
 
 ## Known limits
 
-- **A face-down card's id in `legalActions`** (R177's last sentences). The action protocol names a
-  face-down card by its instance id, and a card keeps its id across zones. So a player who saw the
-  id while the card was public can recognise the trap, for example one returned from a graveyard to
-  hand and set again. An `it.fails` in `turn-clock-and-legality.test.ts` pins it, so the change that
-  closes it has to flip that test. Closing it needs a per-viewer alias, or a fresh id whenever a card
-  enters a hidden zone. Either is a change to the action protocol the server, the client and the e2e
-  specs share. The gap predates this branch. The PR should open a tracked issue for it.
+- **A face-down card's id in `legalActions`** (R177's last sentences), **closed at integration by
+  R227.** The action protocol names a face-down card by its instance id, and a card kept its id
+  across zones, so a player who saw the id while the card was public could recognise the trap, for
+  example one returned from a graveyard to hand and set again. A card set face-down (played, cast or
+  recruited) now takes a fresh id; the `cardPlayed` and `summoned` that set it carry the old one as
+  `formerId`, which only a viewer who may read the card receives. The action protocol itself did
+  not change. The `it.fails` in `turn-clock-and-legality.test.ts` is now an ordinary `it("R227 …")`.
 - **The hunt was halted, not finished** (see "Hunt status"): it stopped at the user's request after
   round 8, with every lens still finding something.
 - **No sleep marker** for a sick unit (see the seam under task 7).

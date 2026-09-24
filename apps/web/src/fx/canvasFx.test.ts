@@ -376,7 +376,7 @@ describe("R200 and intensity: shapes age by real time, projectiles scale with in
     expect(fx.alive()).toBe(1);
   });
 
-  it("B42 a projectile's trail and arrival burst scale with its density (the intensity), as a burst's count does", () => {
+  it("B54 a projectile's trail and arrival burst scale with its density (the intensity), as a burst's count does", () => {
     const emitted = (density: number): number => {
       const { particles, fx } = setup();
       fx.projectile("fire", FROM, TO, 200, density);

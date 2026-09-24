@@ -641,7 +641,7 @@ describe("B37 — when the layer draws, and what it never renders", () => {
  * ------------------------------------------------------------------------------------------- */
 
 describe("R200 — the reduce setting stops CSS-only motion exactly as the media query does", () => {
-  it("R200 the reduce setting zeroes --anim-scale on the game root, and turning it back restores it", () => {
+  it("R200 the reduce setting zeroes --anim-scale on the game root, and turning it back restores it (B51)", () => {
     // index.css zeroes --anim-scale on :root under prefers-reduced-motion; the setting only turned
     // the layer off, so the result overlay's fade and the board's transitions kept moving.
     setFxSettings({ motion: "reduce" });

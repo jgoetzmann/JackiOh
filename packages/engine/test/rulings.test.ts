@@ -1939,6 +1939,13 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   it("R226 plays no card that left its owner's hand before §10.5 step 4", () => {
     provenIn(226, CARDS_PAUSED_SEQUENCES_TEST);
   });
+
+  // Proved by turn-clock-and-legality.test.ts "R227 …": a Sheepish p1 saw in p2's graveyard, returned
+  // and set again, is named by `legalActions` only under a fresh id; hidden-information.test.ts's
+  // "R227 …" tests pin `formerId` on both seats, and effects-summon.test.ts's the Recruit path.
+  it("R227 gives a card set face-down a fresh id, so no id seen while it was public names it", () => {
+    provenIn(227, CARDS_TURN_CLOCK_TEST);
+  });
 });
 
 describe("SPEC §11 index completeness", () => {

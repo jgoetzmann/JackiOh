@@ -464,7 +464,7 @@ describe("B40 — animations.css follows the squeeze and loses nothing", () => {
     }
   });
 
-  it("B40 the result overlay is a panel fixed on screen, and a finished game shows no turn", () => {
+  it("B50 the result overlay is a panel fixed on screen, and a finished game shows no turn", () => {
     // Review: after the 3.2 s Victory / Defeat sequence the only result left was an unstyled line
     // below the fold (y 874 in a 720 px viewport), under a status line still saying "Your turn".
     const overlay = declsFor(anim, '[data-testid="result-overlay"]');
@@ -542,7 +542,7 @@ describe("Every motion runs on the compositor (review: lunge, splat, dissolve, h
     ["fx.css", fx],
     ["animations.css", anim],
   ] as const) {
-    it(`${label}: every @keyframes animates only transform, opacity and pixel-preserving filters`, () => {
+    it(`B55 ${label}: every @keyframes animates only transform, opacity and pixel-preserving filters`, () => {
       const bodies = keyframeBodies(sheet);
       expect(bodies.size).toBeGreaterThan(5);
       const offenders: string[] = [];

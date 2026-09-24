@@ -156,6 +156,7 @@ function zoneOfCard(view: PlayerView, zone: Zone, instanceId: string): string {
 export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
   // Card lifts from hand and lands in the zone (unit) or flashes centre then to GY (spell).
   // Only the viewer's own hand renders cards, so an opponent's play animates the hand region.
+  // A card set face-down took a fresh id (R227): the hand card still carries `formerId`.
   cardPlayed: {
     animation: "jk-card-played",
     durationMs: 400,
@@ -163,7 +164,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     fx: { recipe: "cast" },
     target: (e, view) =>
       sideOf(view, e.player) === "you"
-        ? (locateInstance(view, e.instanceId) ?? testid.handCard(e.instanceId))
+        ? (locateInstance(view, e.formerId ?? e.instanceId) ?? testid.handCard(e.formerId ?? e.instanceId))
         : animTestid.hand("opponent"),
   },
   // Card scales in at the zone. Collapsed into one motion with the `cardPlayed` that precedes it

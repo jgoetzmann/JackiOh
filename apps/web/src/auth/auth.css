@@ -101,15 +101,18 @@
   gap: 14px;
 }
 
+/* The screen's one call to action, full width like every auth form's own (Sign in, Send reset link),
+   so one card never sets two button styles side by side (integration QA). */
 .auth-screen .auth-no-link .button-primary {
-  border-radius: 8px;
-  padding: 9px 16px;
+  width: 100%;
 }
 
-/* Touch targets: the link-style buttons are text, so give them room to be pressed on a phone. */
-@media (pointer: coarse) {
+/* Touch targets (task 7's 44 px floor): the link-style buttons are text, so on a touch screen or a
+   phone-sized one they get a finger's height (tavern.css gives every tavern screen the same). */
+@media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
   .auth-screen .link-button,
   .auth-screen .affix-button {
     min-height: 44px;
   }
 }
+

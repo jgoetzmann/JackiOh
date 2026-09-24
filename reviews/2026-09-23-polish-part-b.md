@@ -91,3 +91,63 @@ BLOCKER ids: **B-1**
   green.
 - **BUILD M3-T7's acceptance cases for the subsystems (B3.5)** were not re-read one by one. I
   checked only that each test file exists and is green.
+
+## Resolved (integration fix stage)
+
+Fixed in the commit that follows `827dd6d` on `polish/integration`, with the gate rerun on it
+(below). B-2 is the one finding still open.
+
+- **B-1 (BLOCKER): fixed, new ruling R227.** A Trap or Field Trap that goes face-down (played,
+  cast or recruited) now takes a fresh instance id as it is placed (`zones.freshFaceDownId`, called
+  from `playSteps.placeCard` and `summon.summonExisting`), so no id a player saw while the card was
+  public ever names it in its zone. The action protocol, the server and the e2e specs are unchanged.
+  The `cardPlayed` and `summoned` that set it carry the old id as `formerId`: `viewFor` follows it,
+  so the events that named the old id are judged by the card's zone exactly as before (R97), and
+  strips it from any viewer who may not read the card; the setter's client uses it to find the hand
+  card it animates from. The `it.fails` at `turn-clock-and-legality.test.ts:278` is now
+  `it("R227 …")` and passes; `hidden-information.test.ts` adds three R227 tests (both seats, and
+  the old events reading openly once the trap is public), `effects-summon.test.ts` two for the
+  Recruit path, and the web's `animations.test.ts` and `stage.test.tsx` one each. SPEC R177's
+  "known limit" sentences, R223's last sentence and §10.5 step 4 now point at R227;
+  `docs/polish/4-edge-cases.md` says it is closed, so no tracked issue is needed.
+- **B-2 (MAJOR): open, the user's decision.** Rerun on this commit, the AI still misses the
+  brief's 70% against greedy on the frozen series: 33 of 50 (35 asked) and 12 of 20 (14 asked).
+  Nothing an agent may do closes it: tuning on `gate:v2` would spend the frozen series, and
+  lowering the floors is the sign-off SPEC §9.9 reserves for the user. `docs/polish/3-ai.md`
+  records the levers already measured (a four-times search, perfect information, weights tuned by
+  self-play, a reply that plays the sampled hand, last-turn kills), none of which moved the rate
+  past noise. The `gateNeeded` rule stays marked "Proposed, pending the user's acceptance".
+- **B-3: fixed.** SPEC §9.9 now says the AI reaches the brief against random (97 of 100 full, 19
+  of 20 smoke on this commit) and as Hard against Easy (45 of 50, 17 of 20), and falls short only
+  against greedy.
+- **B-4: fixed.** `lint-ban.test.ts` has `it("applies the same ban under packages/ai")`, which
+  lints a fixture path under `packages/ai/src` and expects the import, `Math.random`, `Date.now`,
+  timer and `async` bans.
+- **B-5: fixed (the comment, BUILD §2 and R79).** The loop's behaviour stays: after 500 answers
+  with a prompt still open, the timeout stops with the turn running, and the next expiry carries
+  on. It cannot end a turn under an open prompt. `config.ts` now says so, BUILD §2 lists
+  `TIMEOUT_ANSWER_CAP`, and R79 names the cap.
+- **B-6: fixed.** `modeText(defId, option, radiant)` reads `RADIANT_MODE_TEXT`, so a Radiant #24
+  says "Deal X+1 damage", "Heal a target by twice X+1" and "Gain half of X+1". `Prompt.tsx` passes
+  the played card's face, and `Prompt.test.tsx` covers both faces.
+- **B-7: fixed.** `gate-perf.test.ts` reads the clock against a yardstick: each run of a decision
+  is timed right after a fixed piece of engine work (`AI_GATE.calibrationGames` random-policy
+  games), and the smallest ratio, times the yardstick's time on the development machine
+  (`AI_GATE.calibrationRefMs`, 72 ms), must stay under `maxDecisionMs`. The node budget is still
+  asserted exactly. Under 24 busy loops on 10 cores (load average 20) the file took 58 s and
+  passed; the raw clock had failed at 1,520 ms. SPEC §9.9 ("Budgets") and B42 say so.
+
+### The gate on the fix
+
+`pnpm lint`, `pnpm typecheck`, `pnpm validate:catalog`, `missing-tests`, `pnpm rulings:coverage`
+(219 rows, R1–R227) and `pnpm test` (356 files: 6,659 passed, 1 expected fail, the older GAP R76,
+and the same 9 todos) pass. So do `pnpm fuzz` (seeds 1–1000: 0 throws, 0 replay mismatches, 0
+invariant violations; fuzz-handicap 0 failed), `pnpm test:coverage` (lines 97.8%, statements
+94.16%), `pnpm test:sql`, `pnpm test:db` (80 tests) and `pnpm ai:gate` (exit 0 under the proposed
+counts; greedy as above).
+
+E2E on Chrome against a `build:e2e` client and the `E2E=1` server: 15 of the 16 specs passed in
+one run; spec 12 failed because it tracked a trap by the id it had in hand, which R227 now
+replaces as the trap is set. The spec reads the id from the trap's zone after the play instead,
+and passed on its own rerun. The component specs on Chrome: 9 specs, 168 of 168. Electron was not
+rerun.

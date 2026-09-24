@@ -499,7 +499,8 @@ describe("B23 the settings gears open and close the dialog", () => {
     expect(gear).toHaveAttribute("aria-label", "Settings");
     expect(gear).toHaveAttribute("aria-haspopup", "dialog");
     expect(gear).toHaveAttribute("aria-expanded", "false");
-    expect(gear.textContent).toContain("⚙");
+    // A drawn gear, not the U+2699 glyph that rendered as a dot (integration QA).
+    expect(gear.querySelector("svg path")).not.toBeNull();
     expectClosed();
 
     fireEvent.click(gear);

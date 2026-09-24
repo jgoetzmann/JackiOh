@@ -17,6 +17,7 @@ import { E2E_SESSION_STORAGE_KEY } from "../net/session.ts";
 import { __resetSettingsForTests, writeSettings } from "../settings/store.ts";
 import { setReducedMotion } from "../test/setup.ts";
 import LandingRoute from "./landing.tsx";
+import { LANDING_FAN } from "./landingFan.ts";
 
 const { App } = await import("../main.tsx");
 
@@ -277,6 +278,34 @@ describe("B38 the hero", () => {
       expect(card.closest('[aria-hidden="true"]'), `${landingFanCardTestid(index)} is aria-hidden`).not.toBeNull();
     }
     expect(screen.queryByTestId(landingFanCardTestid(FAN_CARDS))).toBeNull();
+  });
+
+  it("B38 the fan's cards are the game's own faces, named and costed, with a card back last (integration QA)", () => {
+    render(<LandingRoute />);
+    const fan = within(landing()).getByTestId(landingTestid.fan);
+    const faces = [0, 1, 2, 3].map((index) => within(fan).getByTestId(landingFanCardTestid(index)));
+
+    for (const [index, face] of faces.entries()) {
+      const { def, radiant } = LANDING_FAN[index] ?? { def: undefined, radiant: false };
+      expect(face.querySelector(".cf"), `fan card ${String(index)} is a CardFace`).not.toBeNull();
+      expect(face).toHaveAttribute("data-def-id", def?.id);
+      expect(face.querySelector(".card-name")?.textContent).toBe(def?.name);
+      expect(face.querySelector(".cost-gem")?.textContent).toBe(String(def?.cost));
+      expect(face.getAttribute("data-radiant") === "true").toBe(radiant);
+    }
+    const back = within(fan).getByTestId(landingFanCardTestid(4));
+    expect(back).toHaveAttribute("data-face", "down");
+    expect(back.querySelector(".cf-back")).not.toBeNull();
+    expect(back.textContent).toBe("");
+  });
+
+  it("B38 the corner holds the settings gear beside Sign in, as every other screen's top bar does", () => {
+    render(<LandingRoute />);
+    const gear = within(landing()).getByTestId("settings-open-nav");
+    expect(gear.closest(".landing-corner")).not.toBeNull();
+    expect(gear).toHaveAttribute("aria-label", "Settings");
+    fireEvent.click(gear);
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument();
   });
 
   it("B38 data-motion is full when reduced motion is not requested", () => {

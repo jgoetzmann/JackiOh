@@ -1101,7 +1101,7 @@ describe("inspecting in the builder (B38)", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("the deck status line", () => {
-  it("names each add and removal with the deck's count, is polite, and clears after DECK_STATUS_MS", () => {
+  it("B41 names each add and removal with the deck's count, is polite, and clears after DECK_STATUS_MS", () => {
     vi.useFakeTimers();
     mount([["x-01"], [], []]);
     const status = screen.getByTestId(DB_DECK_STATUS);

@@ -1248,9 +1248,19 @@
   }
 
   .deckbuilder.app-shell .db-filter-row--cost .db-chip {
+    position: relative;
     flex: 1 1 0;
     min-width: 0;
     padding-inline: 0;
+  }
+
+  /* Eight crystals share one row, so at 390 px each is drawn 40 px wide. Its hit area reaches half
+     the group's 4 px gap on each side, as the card's "+" widens its own, which makes it the 44 px a
+     finger needs without pushing X onto a second row (integration QA). */
+  .deckbuilder.app-shell .db-filter-row--cost .db-chip::before {
+    content: "";
+    position: absolute;
+    inset: 0 -2px;
   }
 }
 

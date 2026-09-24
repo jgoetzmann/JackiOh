@@ -48,13 +48,21 @@ export const AI_GATE = {
    * acceptance.
    */
   falseAlarm: 0.05,
-  /** SPEC §9.9: the most one decision at AI_BUDGET may take on the machine that runs the gate. */
+  /** SPEC §9.9: the most one decision at AI_BUDGET may take on the development machine. */
   maxDecisionMs: 1500,
   /** ai-vs-greedy games whose AI decisions the timing gate replays: `pnpm test`, then `pnpm ai:gate`. */
   perfSmokeGames: 1,
   perfFullGames: 6,
   /** Runs per decision; the fastest counts, so a context switch on a shared machine is not a failure. */
   perfRepeats: 3,
+  /**
+   * The timing gate's yardstick: random-policy games 1..calibrationGames of ai-vs-random, played
+   * through `reduce`, a fixed piece of engine work timed beside every decision. A decision is judged
+   * by its time over the yardstick's, so a slower or busier machine slows both and fails nothing.
+   */
+  calibrationGames: 2,
+  /** The yardstick's time on the development machine, alone (the median of 25 runs, 2026-09-23). */
+  calibrationRefMs: 72,
 } as const satisfies {
   seedSeries: string;
   smokeSeeds: number;
@@ -66,6 +74,8 @@ export const AI_GATE = {
   perfSmokeGames: number;
   perfFullGames: number;
   perfRepeats: number;
+  calibrationGames: number;
+  calibrationRefMs: number;
 };
 
 /** The series tuning runs play (`scripts/bench.ts`'s default), so no tuned seed is a gate seed. */

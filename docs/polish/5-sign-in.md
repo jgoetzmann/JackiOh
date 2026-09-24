@@ -1039,7 +1039,8 @@ Client:
   not Sign in, to a device holding a session when `/api/auth/me` fails; "Checking your link…" explains
   a sleeping server after `GATE_SLOW_NOTICE_SECONDS`; the sign-in screen says which account the
   browser is already signed in as; resend is offered only after a `credentials` refusal; and the
-  forgot form's locked button reads "Send in N s" with a line saying why.
+  forgot form's locked button keeps its name, with one line under it saying how long to wait (the
+  integration's fix stage: the button's own "Send in N s" said the wait a second time).
 
 ## After the visual pass
 
@@ -1087,9 +1088,11 @@ it. No behaviour or test id changed; two sentences on the code screen did (below
   rate-limit line under the server's sentence now says only who and when ("This account or
   network can try again in about an hour."), where it used to repeat "too many tries … try again"
   after the server had just said it.
-- **A phone held upright** keeps the code screen's top bar to the height of Back: who is signed in
-  and Sign out stack on its right, and a long address ends in an ellipsis there. The auth boards sit
-  closer under Back, because the keyboard takes the lower half of the screen once a field is tapped.
+- **A phone held upright** gives the code screen's "Signed in as" and Sign out a row of their own
+  under Back and the gear, where a long address wraps rather than ending in an ellipsis (the
+  integration's fix stage: at 390 px the ellipsis never drew and the address ran off the screen).
+  The auth boards sit closer under Back, because the keyboard takes the lower half of the screen
+  once a field is tapped.
 - **Addresses** break before their "@" (`auth/Address.tsx`, a `<wbr>`), not at whatever letter
   reaches the edge of a narrow column. A long address no longer runs out of a notice.
 - **The landing.** "How it plays" has drawn icons in place of Unicode symbols: a teal mana crystal,

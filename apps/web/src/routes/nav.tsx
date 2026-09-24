@@ -5,7 +5,7 @@
 // none of them offered any way to leave except the browser's own Back button — which does not
 // exist on a screen opened from a link, and is not obvious on a phone.
 
-import type { MouseEvent, ReactElement } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 
 import { navigate, paths } from "../net/navigate.ts";
 import { SettingsButton } from "../settings/index.ts";
@@ -26,13 +26,25 @@ export type BackLinkProps = {
    * spends a one-time link). Without it, a press runs `onLeave` and goes to `to`.
    */
   onPress?: () => void;
+  /**
+   * What a screen keeps in its top bar between Back and the gear (the invite screen's "Signed in
+   * as"), so the gear is the top-right control on every screen. On a phone it takes a row of its
+   * own under them (settings.css).
+   */
+  children?: ReactNode;
 };
 
 /**
  * `navigate`, not `history.back()`: a player who opened this URL directly has no history entry to
  * go back to, and would either sit still or leave the site entirely.
  */
-export function BackLink({ to = paths.landing, label = "← Back", onLeave, onPress }: BackLinkProps): ReactElement {
+export function BackLink({
+  to = paths.landing,
+  label = "← Back",
+  onLeave,
+  onPress,
+  children,
+}: BackLinkProps): ReactElement {
   return (
     <nav className="row screen-nav">
       <button
@@ -50,6 +62,7 @@ export function BackLink({ to = paths.landing, label = "← Back", onLeave, onPr
       >
         {label}
       </button>
+      {children === undefined ? null : <div className="screen-nav__extra">{children}</div>}
       <SettingsButton placement="nav" />
     </nav>
   );

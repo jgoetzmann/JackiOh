@@ -1028,3 +1028,56 @@ describe("R119: the arrivals a play's cardResolved names stay the engine's", () 
     expect(JSON.stringify(s.view("p2").events)).not.toContain(`"${honeypot.id}"`);
   });
 });
+
+describe("R227: a card set face-down takes a fresh id (R177's last channel)", () => {
+  const REMINISCE = "core-072";
+  const RENO = "core-053";
+
+  /** p2 returns a Sheepish p1 watched go to the graveyard, and sets it again. */
+  function resetSheepish(): { s: Scenario; oldId: string; newId: string } {
+    const s = scenario({
+      seed: "r227-reset-sheepish",
+      active: "p2",
+      p1: { hand: [MR_VANILLA, RENO], mana: 4, library: [MR_VANILLA, MR_VANILLA, MR_VANILLA] },
+      p2: { hand: [REMINISCE, RENO], graveyard: [SHEEPISH], mana: 4, library: [MR_VANILLA, MR_VANILLA] },
+    });
+    const oldId = must(s.state.players.p2.graveyard[0], "Sheepish in p2's graveyard").id;
+    s.play(REMINISCE);
+    s.answer(SHEEPISH);
+    s.play(must(s.state.players.p2.hand.find((card) => card.id === oldId), "Sheepish back in p2's hand"));
+    const newId = must(s.backrow("p2", 1), "Sheepish set face-down").id;
+    return { s, oldId, newId };
+  }
+
+  it("R227 the setter's own events carry the old id as formerId, so its client can find the hand card", () => {
+    const { s, oldId, newId } = resetSheepish();
+    expect(newId).not.toBe(oldId);
+
+    const played = eventsOf(s.view("p2"), "cardPlayed").filter((event) => event.defId === SHEEPISH);
+    expect(played.map((event) => [event.instanceId, event.formerId])).toEqual([[newId, oldId]]);
+    const summoned = eventsOf(s.view("p2"), "summoned").filter((event) => event.defId === SHEEPISH);
+    expect(summoned.map((event) => [event.instanceId, event.formerId])).toEqual([[newId, oldId]]);
+  });
+
+  it("R227 the other seat sees neither id while the card is face-down, and no formerId at all", () => {
+    const { s, oldId, newId } = resetSheepish();
+    const view = JSON.stringify(s.view("p1"));
+    expect(view).not.toContain(`"${oldId}"`);
+    expect(view).not.toContain(`"${newId}"`);
+    expect(view).not.toContain("formerId");
+    // The Sheepish's return to hand named the old id, and follows the card to its face-down zone.
+    const returned = s.view("p1").events.filter((event) => "defId" in event && event.defId === SHEEPISH);
+    expect(returned).toEqual([]);
+  });
+
+  it("R227 once the trap fires and is public, the events that named its old id read openly again (R97)", () => {
+    const { s, oldId } = resetSheepish();
+    s.endTurn();
+    expect(s.state.active).toBe("p1");
+    s.play(MR_VANILLA);
+    expect(s.state.players.p2.graveyard.some((card) => card.defId === SHEEPISH)).toBe(true);
+
+    const named = s.view("p1").events.filter((event) => JSON.stringify(event).includes(`"${oldId}"`));
+    expect(named.some((event) => JSON.stringify(event).includes(SHEEPISH))).toBe(true);
+  });
+});

@@ -48,8 +48,30 @@ export const MODE_TEXT: Readonly<Record<string, Readonly<Record<string, ModeText
   },
 };
 
-/** An option's label and detail for card `defId`; an unknown one is its own word, capitalised. */
-export function modeText(defId: string | undefined, option: string): { label: string; detail?: string } {
+/**
+ * The options whose words change on the card's Radiant face, keyed like `MODE_TEXT`. Any option
+ * missing here reads the same on both faces.
+ */
+export const RADIANT_MODE_TEXT: Readonly<Record<string, Readonly<Record<string, ModeText>>>> = {
+  // #24 Efficiency Dividend, radiant: "Uses X+1" (§8 #24), for every mode.
+  "core-024": {
+    damage: { label: "Deal X+1 damage", detail: "Deal X+1 damage to a target." },
+    heal: { label: "Heal 2(X+1)", detail: "Heal a target by twice X+1." },
+    mana: { label: "Mana next turn", detail: "Gain half of X+1, rounded down, as mana next turn." },
+  },
+};
+
+/**
+ * An option's label and detail for card `defId` on the face it will resolve with (`radiant`); an
+ * unknown one is its own word, capitalised.
+ */
+export function modeText(
+  defId: string | undefined,
+  option: string,
+  radiant = false,
+): { label: string; detail?: string } {
+  const face = radiant && defId !== undefined ? RADIANT_MODE_TEXT[defId]?.[option] : undefined;
+  if (face !== undefined) return face;
   const known = defId === undefined ? undefined : MODE_TEXT[defId]?.[option];
   if (known !== undefined) return known;
   return { label: option.length === 0 ? option : `${option.charAt(0).toUpperCase()}${option.slice(1)}` };

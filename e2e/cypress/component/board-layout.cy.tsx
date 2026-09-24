@@ -239,7 +239,7 @@ describe("BUILD M5-T1 — the full fixture board fits 1280x720, 844x390, 768x102
   for (const viewport of VIEWPORTS) {
     const where = `${viewport.label} ${viewport.width}x${viewport.height}`;
 
-    it(`draws all 20 field cards with no horizontal overflow at ${where}`, () => {
+    it(`B28 draws all 20 field cards with no horizontal overflow at ${where}`, () => {
       cy.viewport(viewport.width, viewport.height);
 
       cy.get(BOARD).should("be.visible");

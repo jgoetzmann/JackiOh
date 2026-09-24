@@ -1678,7 +1678,8 @@ describe("R192 the mail interval, wherever it started", () => {
     setField(loginTestid.email, EMAIL);
     const submit = screen.getByTestId(loginTestid.submit);
     expect(submit).toBeDisabled();
-    expect(submit.textContent).toMatch(/Send in \d+ s/);
+    // The wait is said once, under the button; the button keeps its name while it is locked.
+    expect(submit.textContent).toBe("Send reset link");
     // Only the wait: whether a mail went out is the neutral notice's to say (R192).
     expect(screen.getByTestId(loginTestid.resetCooldown).textContent).toMatch(/^You can ask for another in \d+ s\.$/);
     submitForm();
@@ -1748,6 +1749,11 @@ describe("R192 the mail interval, wherever it started", () => {
     submitForm();
     const resend = await screen.findByTestId(loginTestid.resend);
     expect(resend).toBeDisabled();
+    // The countdown's interval is set up in an effect; flush it before the clock moves, or on a busy
+    // machine the tick below can land before the interval exists (it failed so once, under load).
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     // A phone freezes a background tab's timers: the clock moves on, one tick arrives on return.
     vi.setSystemTime(Date.now() + 120_000);
@@ -1964,7 +1970,7 @@ describe("R192 one account of a send on the forgot form", () => {
     expect(notice.textContent).toBe(AUTH_NOTICES.resetSent);
     const submit = screen.getByTestId(loginTestid.submit);
     expect(submit).toBeDisabled();
-    expect(submit.textContent).toMatch(/^Send in \d+ s$/);
+    expect(submit.textContent).toBe("Send reset link");
     const why = screen.getByTestId(loginTestid.resetCooldown);
     // No flat "was just sent" beside the notice's "if that address has an account".
     expect(why.textContent).not.toMatch(/was just sent/);

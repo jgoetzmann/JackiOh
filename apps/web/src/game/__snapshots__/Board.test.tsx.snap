@@ -3129,8 +3129,20 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     >
       <span
         aria-hidden="true"
+        class="settings-gear__icon"
       >
-        ⚙
+        <svg
+          focusable="false"
+          height="20"
+          viewBox="0 0 24 24"
+          width="20"
+        >
+          <path
+            d="M19.47 10.14 L22.11 10.64 L22.11 13.36 L19.47 13.86 L18.60 15.97 L20.11 18.19 L18.19 20.11 L15.97 18.60 L13.86 19.47 L13.36 22.11 L10.64 22.11 L10.14 19.47 L8.03 18.60 L5.81 20.11 L3.89 18.19 L5.40 15.97 L4.53 13.86 L1.89 13.36 L1.89 10.64 L4.53 10.14 L5.40 8.03 L3.89 5.81 L5.81 3.89 L8.03 5.40 L10.14 4.53 L10.64 1.89 L13.36 1.89 L13.86 4.53 L15.97 5.40 L18.19 3.89 L20.11 5.81 L18.60 8.03 Z M15.30 12.00 A3.3 3.3 0 1 0 8.70 12.00 A3.3 3.3 0 1 0 15.30 12.00 Z"
+            fill="currentColor"
+            fill-rule="evenodd"
+          />
+        </svg>
       </span>
     </button>
   </div>

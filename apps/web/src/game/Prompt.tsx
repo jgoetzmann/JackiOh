@@ -338,9 +338,11 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
       };
     }
     case "mode": {
-      // The card being played is the one asking; its options read as that card's words.
-      const source =
-        interaction.stage === "playing" ? (cardRefFor(view, interaction.instanceId)?.defId ?? undefined) : undefined;
+      // The card being played is the one asking; its options read as that card's words, on the face
+      // it is played with (#24's radiant "Uses X+1").
+      const played = interaction.stage === "playing" ? cardRefFor(view, interaction.instanceId) : null;
+      const source = played?.defId ?? undefined;
+      const radiant = played?.radiant === true;
       const picker: Picker = {
         ...common,
         chrome: isDirection(need.options) ? "direction" : "mode",
@@ -348,7 +350,7 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
         items: need.options.map((option): PickerItem => {
           const arrow = DIRECTIONS.find((d) => d === option);
           if (arrow !== undefined) return { key: option, label: option, arrow };
-          const text = modeText(source, option);
+          const text = modeText(source, option, radiant);
           return text.detail === undefined
             ? { key: option, label: text.label }
             : { key: option, label: text.label, detail: text.detail };

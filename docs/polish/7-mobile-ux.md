@@ -349,7 +349,7 @@ export { default as SettingsButton, type SettingsButtonProps } from "./SettingsB
 
 | testid | Element |
 |---|---|
-| `settings-open-game` / `settings-open-nav` | gear `<button aria-label="Settings" aria-haspopup="dialog" aria-expanded>`, glyph ⚙ |
+| `settings-open-game` / `settings-open-nav` | gear `<button aria-label="Settings" aria-haspopup="dialog" aria-expanded>`, a drawn 20 px SVG gear (the ⚙ glyph rendered as a dot; integration fix stage), the top-right control of every screen, the landing included |
 | `settings-scrim` | full-screen scrim; a click on it (not on the panel) closes |
 | `settings-panel` | `role="dialog" aria-modal="true" aria-label="Settings"`; focus moves to its first switch on open. Escape inside it closes it and calls `stopPropagation()`. Focus goes back to the gear on close |
 | `settings-close`, `settings-reset` | buttons |

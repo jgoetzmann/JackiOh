@@ -1715,7 +1715,7 @@ describe("R200 planLethal: the killing blow a drained game over never drew", () 
   const entriesOf = (events: GameEvent[], D: number): AnimationEntry[] =>
     planEntries(events, withEvents(fullBoardView(), events), false).map((entry) => ({ ...entry, durationMs: D }));
 
-  it("R200 the last entry that hits the losing hero is planned again, and the result waits for it", () => {
+  it("R200 the last entry that hits the losing hero is planned again, and the result waits for it (B49)", () => {
     const entries = entriesOf(
       [
         { type: "attackDeclared", attackerId: MINE, targetId: "hero-p2", forced: false },

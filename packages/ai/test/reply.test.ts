@@ -40,7 +40,7 @@ function handedOver(setup: ScenarioOptions): GameState {
 }
 
 describe("simulateReply", () => {
-  it("swings an unblocked unit at the open face, ends the turn, and stops at the seat's next main phase", () => {
+  it("B41 swings an unblocked unit at the open face, ends the turn, and stops at the seat's next main phase", () => {
     const state = handedOver({ p2: { field: ["core-008"] } });
     const counter = createNodeCounter(20);
     const after = simulateReply(state, AI, counter);
@@ -56,13 +56,13 @@ describe("simulateReply", () => {
     expect(counter.used).toBe(2);
   });
 
-  it("takes lethal when the face is in reach", () => {
+  it("B41 takes lethal when the face is in reach", () => {
     const state = handedOver({ p1: { health: 3 }, p2: { field: ["core-008"] } });
     const reply = simulateReply(state, AI, createNodeCounter(20)) as GameState;
     expect(reply.result?.winner).toBe(HUMAN);
   });
 
-  it("does not throw a unit into a Defense-Position wall it cannot hurt, and ends its turn instead", () => {
+  it("B41 does not throw a unit into a Defense-Position wall it cannot hurt, and ends its turn instead", () => {
     // The 7/7 in Defense Position has Taunt and 8 Armor: Mr. Vanilla's 3 does nothing and it dies.
     const state = handedOver({
       p1: { field: [{ def: "core-025", position: "DEF" }] },
@@ -76,7 +76,7 @@ describe("simulateReply", () => {
     expect(counter.used).toBe(1);
   });
 
-  it("trades into a unit worth more than the face damage it gives up", () => {
+  it("B41 trades into a unit worth more than the face damage it gives up", () => {
     // Midrange Menace survives Pointmaster's First Strike 7 and kills it: an 11-point unit for free
     // beats 9 to the face.
     const state = handedOver({ p1: { field: ["core-020"] }, p2: { field: ["core-019"] } });

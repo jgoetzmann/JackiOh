@@ -201,11 +201,6 @@ button:disabled {
   color: transparent;
 }
 
-.brand .tagline {
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
 /* --- surfaces ------------------------------------------------------------------------------ */
 
 .panel {
@@ -346,10 +341,12 @@ button:disabled {
   background: none;
 }
 
-/* A way back is a finger's target on a touch screen (task 7's 44 px floor). */
+/* A way back is a finger's target on a touch screen (task 7's 44 px floor), and so is the hotseat's
+   Hand over, which measured 38 px tall on a touch phone (integration QA). */
 @media (pointer: coarse), (max-width: 600px) {
   .app-shell .screen-nav .link-button,
-  .hotseat-bar .link-button {
+  .hotseat-bar .link-button,
+  .hotseat-bar > button {
     min-height: 44px;
   }
 }
@@ -418,39 +415,10 @@ button:disabled {
   padding: 3vh 0 6px;
 }
 
-.hero .lede {
-  font-size: 17px;
-  color: var(--text-dim);
-  max-width: 54ch;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px;
-}
-
-.card-grid .panel {
-  gap: 8px;
-}
-
-.card-grid h2 {
-  font-size: 16px;
-}
-
-.card-grid p {
-  font-size: 13px;
-  flex: 1;
-}
-
 /* --- screen nav ---------------------------------------------------------------------------- */
 
 .screen-nav {
   margin-bottom: -4px;
-}
-
-.screen-nav--end {
-  justify-content: flex-end;
 }
 
 /* --- an input with a control inside it (the password reveal) --------------------------------- */

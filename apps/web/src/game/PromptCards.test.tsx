@@ -60,7 +60,7 @@ function discoverView(): PlayerView {
 }
 
 describe("card options are card faces", () => {
-  it("each Discover option draws the full face of its card, named, with art, and no text square", () => {
+  it("B42 each Discover option draws the full face of its card, named, with art, and no text square", () => {
     renderPrompt(discoverView());
     for (const defId of DISCOVER) {
       const option = screen.getByTestId(`prompt-option-mode:${defId}`);
@@ -75,7 +75,7 @@ describe("card options are card faces", () => {
     }
   });
 
-  it("a mulligan's options are the faces of the hand cards they name", () => {
+  it("B42 a mulligan's options are the faces of the hand cards they name", () => {
     const view = baseView({
       you: emptySide("p1", {
         hand: [card({ instanceId: "h1", defId: "core-002" }), card({ instanceId: "h2", defId: "core-019" })],
