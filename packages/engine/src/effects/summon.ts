@@ -18,6 +18,8 @@ import { exitMark } from "../stays";
 import {
   fillBoardZones,
   firstFreeZone,
+  freshFaceDownId,
+  landsFaceDown,
   isEmpty,
   isLocked,
   isReserved,
@@ -92,7 +94,13 @@ function zoneFor(ctx: EffectContext, player: PlayerId, row: Row, at: SummonPlace
  * The body every summon shares: put the card in the zone, apply the §7 stat override, leave a Trap
  * face-down while a Field Spell is public (§3.2, R33), and emit `summoned`.
  */
-function summonOnto(ctx: EffectContext, card: CardInstance, ref: ZoneSlot, at: SummonPlacement): boolean {
+function summonOnto(
+  ctx: EffectContext,
+  card: CardInstance,
+  ref: ZoneSlot,
+  at: SummonPlacement,
+  formerId?: string,
+): boolean {
   if (!placeOnField(ctx.state, card, ref, { stack: at.stack === true })) return false;
 
   card.summonedTurn = ctx.state.turn;
@@ -108,6 +116,7 @@ function summonOnto(ctx: EffectContext, card: CardInstance, ref: ZoneSlot, at: S
     defId: card.defId,
     row: ref.row,
     lane: ref.lane,
+    ...(formerId === undefined ? {} : { formerId }),
   });
   // R43, R151: "one created later rolls when it is created", as it arrives anywhere a card can be
   // looked at, and the field is such a place. A #98 Heroic Power that #22's Death summons as a copy
@@ -153,9 +162,12 @@ function summonExisting(
   if (ref === null) return null;
 
   removeFromAnyZone(ctx.state, card);
+  // R227: a Trap a Recruit sets face-down takes a fresh id, as a Trap played face-down does, so an
+  // id seen while the card was public never names it in its zone.
+  const formerId = landsFaceDown(ctx.state, card, ref.row) ? freshFaceDownId(ctx.state, card) : undefined;
   if (at.radiant === true) card.radiant = true;
   if (at.armorOverride !== undefined) card.armorOverride = at.armorOverride;
-  return summonOnto(ctx, card, ref, at) ? card : null;
+  return summonOnto(ctx, card, ref, at, formerId) ? card : null;
 }
 
 /**

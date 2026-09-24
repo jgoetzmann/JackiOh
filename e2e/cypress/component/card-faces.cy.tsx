@@ -8,7 +8,8 @@
 //   B15  every catalog card, base and radiant face, as a full CardFace in a 5:7 box 270 px wide
 //        and 170 px wide: `.card-name` and `.card-text` stay inside their own boxes on both axes
 //        (scroll <= client + 1). At 270 px nothing may clamp; at 170 px only a face whose printed
-//        text (base plus radiant clause) runs past 260 characters may carry `data-clamped`.
+//        text (base plus radiant clause) runs past 260 characters may carry `data-clamped`, and a
+//        clamped rules box instead stays inside the face at the reading floor (FIT_FLOOR_PX).
 //   B21  `Game` rendering `fullBoardView()` inside `.app-shell.app-shell--wide`, WITH the real
 //        catalog in `CatalogContext`: no horizontal overflow and all 20 field cards visible at
 //        1280x720 and 390x844. board-layout.cy.tsx measures the same board with no catalog, where
@@ -26,6 +27,7 @@
 
 import { CATALOG } from "../../../packages/cards/src/catalog-data.ts";
 import { CardFace, FACE_ASPECT, TEXT_TIER_MAX, faceModel } from "../../../apps/web/src/cards/index.ts";
+import { FIT_FLOOR_PX } from "../../../apps/web/src/cards/constants.ts";
 import { CatalogContext, lookupFromDefs } from "../../../apps/web/src/game/catalog.ts";
 import Game from "../../../apps/web/src/game/Game.tsx";
 import { fullBoardView, pendingFor } from "../../../apps/web/src/test/fixtures.ts";
@@ -94,6 +96,17 @@ function fitProblems(doc: Document, def: CardDef, box: FitBox, radiant: boolean)
     const el = cf.querySelector<HTMLElement>(selector);
     if (el === null) {
       problems.push(`${where}: no ${selector}`);
+      continue;
+    }
+    // A rules box that may clamp and did is cut at a line with an ellipsis, by design: the rest of
+    // its text is scrollable overflow it never paints (fit.ts). It must still stay inside the face
+    // and print at the reading floor, which is what is checked for it instead.
+    if (selector === ".card-text" && el.getAttribute("data-clamped") === "true" && box.clampAllowed) {
+      const face = cf.getBoundingClientRect();
+      const own = el.getBoundingClientRect();
+      if (own.bottom > face.bottom + 1 || own.top < face.top - 1) problems.push(`${where}: a clamped .card-text runs off the face`);
+      const px = parseFloat(getComputedStyle(el).fontSize);
+      if (px < FIT_FLOOR_PX - 0.05) problems.push(`${where}: a clamped .card-text prints at ${px.toFixed(2)}px, under the floor`);
       continue;
     }
     if (el.scrollHeight > el.clientHeight + 1) {

@@ -91,7 +91,8 @@ function stageOf(event: GameEvent, c: Ctx): FxCue[] {
       );
       const landMs = frac(FX_SLAM_AT, D);
       if (played !== undefined && event.instanceId !== "hidden") {
-        const inHand = locateInstance(view, event.instanceId);
+        // R227: a card set face-down took a fresh id, and its hand card still has the old one.
+        const inHand = locateInstance(view, event.formerId ?? event.instanceId);
         if (inHand !== null && inHand.startsWith("hand-card-")) {
           return [hold(tid(inHand), zone, landMs), conceal(inHand, "now")];
         }

@@ -2,6 +2,7 @@
 // here, and task 7's settings panel imports `AudioControls` and the settings store.
 
 export { useGameAudio } from "./useGameAudio.ts";
+export { useVoiceSpeaking } from "./useVoiceSpeaking.ts";
 export { default as AudioToggle } from "./AudioToggle.tsx";
 export { default as AudioControls } from "./AudioControls.tsx";
 export { getAudioEngine } from "./engine.ts";

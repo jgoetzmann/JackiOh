@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { SFX, SFX_IDS, noiseBuffer, type SfxRecipe, type SfxSpec } from "./sfx.ts";
+import { SFX, SFX_IDS, SFX_TIMBRES, noiseBuffer, type SfxRecipe, type SfxSpec } from "./sfx.ts";
 import { FakeAudio, FakeNode, type FakeParam, type ParamEvent } from "./test/fakeAudio.ts";
 import type { SfxId, SfxParams } from "./types.ts";
 
@@ -15,7 +15,7 @@ const UNION_ORDER: SfxId[] = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel",
+  "cancel", "entrance",
 ];
 
 /** The design's durationMs column: each recipe's upper bound over all params. */
@@ -47,6 +47,7 @@ const DURATION_MS: Record<SfxId, number> = {
   notify: 300,
   drain: 600,
   cancel: 260,
+  entrance: 1400,
 };
 
 const PARAM_SETS: readonly SfxParams[] = [{}, { amount: 1 }, { amount: 25 }, { mine: true }];
@@ -193,7 +194,7 @@ function rampProblems(run: Run): string[] {
  * --------------------------------------------------------------------------------------------- */
 
 describe("B14 the SFX table", () => {
-  it("B14 SFX_IDS lists all 27 ids, in the order of the SfxId union", () => {
+  it("B14 SFX_IDS lists all 28 ids, in the order of the SfxId union", () => {
     expect([...SFX_IDS]).toEqual(UNION_ORDER);
   });
 
@@ -279,6 +280,49 @@ describe("B14 every recipe keeps the recipe contract on the fake context", () =>
 
     expect(run.threw).toBeInstanceOf(RangeError);
     expect(subsetProblems(run)).not.toEqual([]);
+  });
+});
+
+// Integration (docs/polish/reference.md, audio x cards): a card the viewer can name colours its
+// summon thud and its spell shimmer with its family (`timbre`), and a Legendary or Mythic unit enters
+// with its own sting. Every one of those renders keeps the same contract as the plain recipe.
+describe("B14 the card families and the entrance keep the recipe contract", () => {
+  const runs: Run[] = [
+    ...SFX_TIMBRES.flatMap((timbre) => [
+      runRecipe(`summon {timbre: ${timbre}}`, SFX.summon.recipe, SFX.summon.durationMs, { timbre }),
+      runRecipe(`summon {amount: 25, timbre: ${timbre}}`, SFX.summon.recipe, SFX.summon.durationMs, { amount: 25, timbre }),
+      runRecipe(`spell {timbre: ${timbre}}`, SFX.spell.recipe, SFX.spell.durationMs, { timbre }),
+    ]),
+    runRecipe("entrance {mythic: true}", SFX.entrance.recipe, SFX.entrance.durationMs, { mythic: true }),
+  ];
+
+  it("covers every family on summon and spell, and the Mythic entrance", () => {
+    expect(runs).toHaveLength(SFX_TIMBRES.length * 3 + 1);
+  });
+
+  it("no family breaks a clause of the contract", () => {
+    expect([
+      ...runs.flatMap(subsetProblems),
+      ...runs.flatMap(lengthProblems),
+      ...runs.flatMap(scheduleProblems),
+      ...runs.flatMap(stopProblems),
+      ...runs.flatMap(wiringProblems),
+      ...runs.flatMap(rampProblems),
+    ]).toEqual([]);
+  });
+
+  it("a family changes the sound: a summon with an accent builds more than the plain thud", () => {
+    const plain = runRecipe("summon {}", SFX.summon.recipe, SFX.summon.durationMs, {});
+    for (const timbre of SFX_TIMBRES.filter((t) => t !== "field")) {
+      const coloured = runs.find((run) => run.label === `summon {timbre: ${timbre}}`);
+      expect(coloured?.made.length ?? 0, timbre).toBeGreaterThan(plain.made.length);
+    }
+  });
+
+  it("a Mythic entrance is not a Legendary one", () => {
+    const legendary = runRecipe("entrance {}", SFX.entrance.recipe, SFX.entrance.durationMs, {});
+    const mythic = runs.find((run) => run.label === "entrance {mythic: true}");
+    expect(mythic?.made.length ?? 0).toBeGreaterThan(legendary.made.length);
   });
 });
 

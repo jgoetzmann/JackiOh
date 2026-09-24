@@ -5,6 +5,8 @@
 
 import type { Difficulty } from "@jackioh/engine/config";
 
+import { FX_LETHAL_LEAD_MAX_MS, FX_RESULT_MS } from "../fx/constants.ts";
+
 /**
  * The gaps the controller leaves before each AI step, so a human can watch the AI play one action
  * at a time (animations and task 2's voice lines need the room; a voice line also holds the AI
@@ -12,7 +14,17 @@ import type { Difficulty } from "@jackioh/engine/config";
  * before the AI's first step of a turn, `actionGapMs` the pause between its later steps, and
  * `promptAnswerMs` the pause before it answers a prompt that is waiting on it.
  */
-export type PracticePacing = { firstActionMs: number; actionGapMs: number; promptAnswerMs: number };
+export type PracticePacing = {
+  firstActionMs: number;
+  actionGapMs: number;
+  promptAnswerMs: number;
+  /**
+   * How long the result dialog waits once the game is over, so it opens on the board's own
+   * game-over sequence rather than over it (task 1's killing blow and Victory or Defeat, R200).
+   * Absent: at once. The route also opens it at once when the effects are off.
+   */
+  resultDelayMs?: number;
+};
 
 /**
  * Each gap is timed from the moment the board has finished animating the AI's last step (the
@@ -20,7 +32,13 @@ export type PracticePacing = { firstActionMs: number; actionGapMs: number; promp
  * pause and the gap only has to let the player take the result in. The turn's first step waits
  * longest, so "Enemy turn" registers before anything moves.
  */
-export const PRACTICE_PACING: PracticePacing = { firstActionMs: 800, actionGapMs: 550, promptAnswerMs: 450 };
+export const PRACTICE_PACING: PracticePacing = {
+  firstActionMs: 800,
+  actionGapMs: 550,
+  promptAnswerMs: 450,
+  // The killing blow replays in at most FX_LETHAL_LEAD_MAX_MS, then the result plays in FX_RESULT_MS.
+  resultDelayMs: FX_LETHAL_LEAD_MAX_MS + FX_RESULT_MS,
+};
 
 /**
  * The longest one voice line may hold the AI back (routes/practice.tsx `useVoiceHold`): a play or

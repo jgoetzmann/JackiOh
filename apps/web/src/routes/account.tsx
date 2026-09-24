@@ -205,7 +205,7 @@ export default function AccountRoute({ token, me }: AccountRouteProps): ReactEle
           <>
             <AccountIdentity email={me.email} status={me.profile.status} />
             <p>Online play opens once this account has redeemed an invite code.</p>
-            <div className="row">
+            <div className="account-actions">
               <a
                 className="button-primary"
                 href={paths.invite}
@@ -262,7 +262,7 @@ export default function AccountRoute({ token, me }: AccountRouteProps): ReactEle
             Signing out ends this session: this device forgets it, and it is revoked so no copy of it
             works again. Your account and decks are unaffected.
           </p>
-          <div className="row">
+          <div className="account-actions">
             <button
               type="button"
               data-testid={accountTestid.signOut}

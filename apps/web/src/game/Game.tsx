@@ -12,6 +12,12 @@
 //
 // Everything else is `props.view` and `props.legal`. `onAction` goes straight out to the caller,
 // which is the only thing that talks to the engine (CLAUDE.md rule 7).
+//
+// `legal` belongs to `props.view`, so it only reaches the board once the board SHOWS that view.
+// While the runner holds it back (the AI's last attack still playing out, say), the board draws the
+// older position, and the newer position's moves on it lit End turn and glowed the hand before the
+// player could see the turn was theirs: a click there ended a turn they had not seen. So until the
+// board catches up, every consumer of `legal` gets none.
 
 import {
   useCallback,
@@ -21,6 +27,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
 } from "react";
 
 import type { ActionBody, PlayerView } from "@jackioh/shared";
@@ -38,16 +45,18 @@ import {
   type AnimationQueue,
 } from "./animations.ts";
 import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
+import { GameResult, type ResultForm } from "./Result.tsx";
 import FxLayer from "../fx/FxLayer.tsx";
 import { useSetting } from "../settings/index.ts";
 import "./animations.css";
-import { AudioToggle, useGameAudio } from "../audio/index.ts";
+import { useGameAudio, useVoiceSpeaking } from "../audio/index.ts";
 
 /**
  * The `turnStarted` / `turnAutoEnded` banner. `Board` deliberately does not render it — one
  * `turn-banner` in the tree, and the shell owns it (M5-T4, `e2e/support/testids.ts` BANNER).
  */
 function bannerText(view: PlayerView, lastType: string | undefined): string | null {
+  if (view.result !== null) return "Game over";
   if (lastType === "turnAutoEnded") return "No moves left — turn ended";
   if (view.phase === "mulligan") return "Mulligan";
   return view.active === view.viewer ? "Your turn" : "Opponent's turn";
@@ -59,9 +68,16 @@ export type GameProps = {
   onAction: (body: ActionBody) => void;
   /** The engine's refusal for the last action, if any. `PlayerView` has no error channel. */
   error?: string | null;
+  /** The route's ways on from a finished game, drawn in the result panel (Result.tsx). */
+  resultActions?: ReactNode;
+  /** `chip` when the route draws its own result dialog (practice); `panel` otherwise. */
+  resultForm?: ResultForm;
 };
 
-export default function Game({ view, legal, onAction, error }: GameProps): ReactElement {
+/** What the board is offered while it is still showing an older view than `legal` describes. */
+const NOTHING_LEGAL: readonly ActionBody[] = [];
+
+export default function Game({ view, legal: offered, onAction, error, resultActions, resultForm = "panel" }: GameProps): ReactElement {
   const [interaction, setInteraction] = useState<Interaction>(IDLE);
 
   // The view the DOM is showing: the newest one once the queue has settled, an older one while
@@ -115,6 +131,9 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   }
   const runner = queue.current;
   useGameAudio(runner, view); // before the layout effects below: it must see each view before the runner is fed (audio/useGameAudio.ts)
+  // A voice line holding the channel marks the board `data-speaking`, the one attribute practice's
+  // pacing reads to hold the AI's next step (SPEC §9.9); hotseat and online play simply carry it.
+  const speaking = useVoiceSpeaking();
 
   // Also a layout effect, and declared before the one that enqueues, so the subscription is in
   // place before the very first batch of events is planned — a passive one here would run after
@@ -179,6 +198,9 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
     if (runner.idle()) setShown(view);
   }, [view, runner]);
 
+  // The moves `offered` are the newest view's; they apply once the board shows it (see the header).
+  const legal = shown === view ? offered : NOTHING_LEGAL;
+
   // A seat hand-over or a game over must not sit behind a queue of animations.
   const settleNow = useCallback(() => {
     runner.drain();
@@ -237,13 +259,12 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
           : "Your opponent offers a draw";
 
   return (
-    <div className="game" data-testid="game" data-viewer={shown.viewer}>
+    <div className="game" data-testid="game" data-viewer={shown.viewer} data-speaking={speaking ? "true" : undefined}>
       {inFlight === null ? null : (
         <span data-testid="animation-queue" data-animating={inFlight.type} hidden aria-hidden="true" />
       )}
-      <AudioToggle />
       {error != null && error !== "" ? (
-        <p className="game-error" data-testid="action-error" role="alert">
+        <p key={error} className="game-error" data-testid="action-error" role="alert">
           {error}
         </p>
       ) : null}
@@ -286,22 +307,21 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         legal={legal}
         onAction={dispatch}
         onInteraction={setInteraction}
-        onCancel={() => setInteraction(IDLE)}
+        // Cancel backs out of a play still being built (R81). An engine prompt has paused the game
+        // and must be answered, so it offers none: the button would do nothing (the mulligan, a
+        // Discover, a trigger's choice).
+        onCancel={shown.pending === null ? () => setInteraction(IDLE) : undefined}
       />
       <DragLayer view={shown} legal={legal} interaction={interaction} onInteraction={setInteraction} onAction={onAction} />
 
       {shown.result !== null ? (
-        <div
-          className="result-overlay"
-          data-testid={testid.result}
-          data-animating={animating.get(testid.result)}
-          role="status"
-        >
-          <strong>
-            {shown.result.winner === "draw" ? "Draw" : shown.result.winner === shown.viewer ? "Win" : "Loss"}
-          </strong>
-          <span>{shown.result.reason}</span>
-        </div>
+        <GameResult
+          result={shown.result}
+          viewer={shown.viewer}
+          form={resultForm}
+          actions={resultActions}
+          animating={animating.get(testid.result)}
+        />
       ) : null}
     </div>
   );

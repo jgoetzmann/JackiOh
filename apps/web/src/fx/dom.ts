@@ -190,6 +190,30 @@ const CARD_ASPECT = 0.74;
 /** How far a stand-in with nothing to fly from drops in from, and how large it starts. */
 const DROP_PX = -14;
 const DROP_SCALE = 1.3;
+/** fx.css's `fx-hold-fly` swells the stand-in to this mid-flight, whatever it starts at. */
+const FLIGHT_PEAK_SCALE = 1.3;
+/** fx.css's resting `transform-origin` for a stand-in, as fractions of its box. */
+const HOLD_ORIGIN = { x: 0.5, y: 0.6 } as const;
+
+/**
+ * Where a stand-in scales from, as fractions of its box, so that at `scale` it stays inside the
+ * `view` (the viewport): the resting origin, moved toward any edge the box is too close to. A unit
+ * summoned into lane 1 of a phone board otherwise swelled half off the screen's left edge.
+ */
+export function holdOrigin(land: FxBox, scale: number, view: { width: number; height: number }): { x: number; y: number } {
+  const axis = (start: number, size: number, room: number, rest: number): number => {
+    const grow = size * (scale - 1);
+    if (!(grow > 0)) return rest;
+    // Scaling from fraction f moves the near edge out by f × grow and the far edge by (1 − f) × grow.
+    const most = start / grow;
+    const least = 1 - (room - start - size) / grow;
+    return Math.min(1, Math.max(0, Math.min(Math.max(rest, least), most)));
+  };
+  return {
+    x: axis(land.x, land.width, view.width, HOLD_ORIGIN.x),
+    y: axis(land.y, land.height, view.height, HOLD_ORIGIN.y),
+  };
+}
 
 export type HoldEffect = DomEffect & {
   /** Re-places the stand-in on a new landing box (its size changed: a resize). Costs a layout. */
@@ -228,6 +252,17 @@ export function mountHold(
   place(parts.land);
 
   const landCentre = centreOf(parts.land);
+  const startScale = parts.from !== null ? parts.from.height / Math.max(1, parts.land.height) : DROP_SCALE;
+  const view = doc.defaultView;
+  if (view !== null && view.innerWidth > 0) {
+    const origin = holdOrigin(parts.land, Math.max(FLIGHT_PEAK_SCALE, startScale), {
+      width: view.innerWidth,
+      height: view.innerHeight,
+    });
+    if (origin.x !== HOLD_ORIGIN.x || origin.y !== HOLD_ORIGIN.y) {
+      el.style.setProperty("transform-origin", `${(origin.x * 100).toFixed(1)}% ${(origin.y * 100).toFixed(1)}%`);
+    }
+  }
   if (parts.from !== null) {
     const start = centreOf(parts.from);
     el.style.setProperty("--fx-dx", px(start.x - landCentre.x));

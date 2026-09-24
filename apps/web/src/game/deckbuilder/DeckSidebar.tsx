@@ -13,11 +13,16 @@
 // `deckListOrder` (cost, then name), which is display only: the draft's own order is what `save`
 // sends.
 //
+// ON A PHONE the open deck's curve and tiles fold behind a "Show list" toggle in its header
+// (closed at first), so a full deck's 560 px of sidebar no longer pushes the whole pool below the
+// fold; the tabs, the count, the meter and Save stay. deckbuilder.css shows the toggle and applies
+// the fold only in the one-column layout, so every tile stays mounted, and visible elsewhere.
+//
 // A tile says what a click does ("Remove Bigot from Deck 1"). Hovering it previews the card, a
 // touch long-press opens the inspect sheet, and a right-click, the I key, the context-menu key or
 // Shift+F10 open the card's detail view, so a keyboard can inspect a card in the list too.
 
-import { useLayoutEffect, useMemo, useRef, type DragEvent, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactElement, type ReactNode, type RefObject } from "react";
 
 import type { CardCost, CardDef } from "@jackioh/shared";
 import type { CatalogSnapshot } from "@jackioh/validator";
@@ -33,6 +38,7 @@ import {
   deckCardRowId,
   deckCountId,
   deckDropId,
+  deckFoldId,
   deckListId,
   deckTabId,
 } from "./testids.ts";
@@ -186,6 +192,9 @@ function DeckTile({ deck, cardId, def, onRemove, onInspect }: DeckTileProps): Re
 type DeckPanelProps = {
   deck: number;
   active: boolean;
+  /** Whether the phone layout shows this deck's curve and tiles (DeckSidebar's fold). */
+  listOpen: boolean;
+  onToggleList: () => void;
   cards: readonly string[];
   catalog: CatalogSnapshot;
   onDropCard: (deck: number, event: DragEvent<HTMLElement>, select: boolean) => void;
@@ -193,11 +202,13 @@ type DeckPanelProps = {
   onInspect: (cardId: string) => void;
 };
 
-function DeckPanel({ deck, active, cards, catalog, onDropCard, onRemove, onInspect }: DeckPanelProps): ReactElement {
+function DeckPanel(props: DeckPanelProps): ReactElement {
+  const { deck, active, listOpen, onToggleList, cards, catalog, onDropCard, onRemove, onInspect } = props;
   const ordered = useMemo(() => deckListOrder(cards, catalog), [cards, catalog]);
   const full = cards.length === DECK_SIZE;
   const list = useRef<HTMLUListElement>(null);
   useScrollEdges(list, cards.length);
+  const listId = `db-deck-list-${String(deck)}`;
 
   return (
     <section
@@ -207,6 +218,7 @@ function DeckPanel({ deck, active, cards, catalog, onDropCard, onRemove, onInspe
       data-testid={deckDropId(deck)}
       data-deck={deck}
       data-active={active ? "true" : "false"}
+      data-list-open={listOpen ? "true" : "false"}
       hidden={!active}
       onDragOver={allowDrop}
       onDrop={(event) => {
@@ -218,6 +230,18 @@ function DeckPanel({ deck, active, cards, catalog, onDropCard, onRemove, onInspe
         <span className="db-deck-size" data-full={full ? "true" : "false"}>
           {`${String(cards.length)}/${String(DECK_SIZE)}`}
         </span>
+        {cards.length === 0 ? null : (
+          <button
+            type="button"
+            className="db-deck-fold"
+            data-testid={deckFoldId(deck)}
+            aria-expanded={listOpen}
+            aria-controls={listId}
+            onClick={onToggleList}
+          >
+            {listOpen ? "Hide list" : "Show list"}
+          </button>
+        )}
         {/* How full the deck is, at a glance. Drawn only: the count beside it is the number. */}
         <span className="db-deck-meter" data-full={full ? "true" : "false"} aria-hidden="true">
           <span
@@ -227,7 +251,7 @@ function DeckPanel({ deck, active, cards, catalog, onDropCard, onRemove, onInspe
         </span>
       </header>
       <ManaCurve deck={deck} cardIds={cards} catalog={catalog} />
-      <ul ref={list} className="db-deck-list" data-testid={deckListId(deck)}>
+      <ul ref={list} id={listId} className="db-deck-list" data-testid={deckListId(deck)}>
         {tileKeys(ordered).map(([cardId, key]) => (
           <DeckTile
             key={key}
@@ -248,6 +272,11 @@ function DeckPanel({ deck, active, cards, catalog, onDropCard, onRemove, onInspe
 
 export default function DeckSidebar(props: DeckSidebarProps): ReactElement {
   const { deckNumbers, activeDeck, draft, catalog, onSelectDeck, onDropCard, onRemove, onInspect, children } = props;
+  // Layout, not state of the loadout: one switch for every deck, closed at first.
+  const [listOpen, setListOpen] = useState(false);
+  const toggleList = (): void => {
+    setListOpen((open) => !open);
+  };
 
   return (
     <aside className="db-sidebar" data-testid={DB_SIDEBAR} aria-label="Your decks">
@@ -287,6 +316,8 @@ export default function DeckSidebar(props: DeckSidebarProps): ReactElement {
           key={deck}
           deck={deck}
           active={deck === activeDeck}
+          listOpen={listOpen}
+          onToggleList={toggleList}
           cards={draft[deck - 1] ?? EMPTY_DECK}
           catalog={catalog}
           onDropCard={onDropCard}

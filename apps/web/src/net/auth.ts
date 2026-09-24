@@ -143,8 +143,8 @@ const MAIL_INTERVAL = mailInterval();
  * or before a reload) does not go out.
  */
 const MAIL_INTERVAL_NOTE =
-  `If one was already sent in the last ${MAIL_INTERVAL.span}, from this device or another, ` +
-  `this one can't go out yet: wait ${MAIL_INTERVAL.wait}, then ask again.`;
+  `If one went out in the last ${MAIL_INTERVAL.span}, from any device, this one can't: ` +
+  `wait ${MAIL_INTERVAL.wait}, then ask again.`;
 
 /** What the screens say when something went RIGHT (or, for the two mailers, might have). */
 export const AUTH_NOTICES: Readonly<{
@@ -169,7 +169,7 @@ export const AUTH_NOTICES: Readonly<{
   signUpSent:
     "Check your email for a confirmation link, then sign in. No email after a few minutes? You may already have an account: sign in, or reset your password.",
   resendSent: `If that address has an account waiting for confirmation, a new link is on its way. ${MAIL_INTERVAL_NOTE}`,
-  resetSent: `If that address has an account, a password reset link is on its way. ${MAIL_INTERVAL_NOTE}`,
+  resetSent: `If that address has an account, a reset link is on its way. ${MAIL_INTERVAL_NOTE}`,
   emailConfirmed: "Your email is confirmed. Sign in to continue.",
   sessionExpired: "Your session ended. Sign in again to continue.",
   // Keyed on this browser's own sign-up (`pendingEmail`), never on the provider's answer, so it

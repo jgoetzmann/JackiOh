@@ -1292,3 +1292,94 @@ describe("B58 background voice work waits while the engine is busy", () => {
     expect(r.fetch.urls()).toHaveLength(1 + 2 * VOICE_PREFETCH_CONCURRENCY);
   });
 });
+
+/* --------------------------------------------------------------------------------------------- *
+ * Integration: `speaking`, the signal behind the page's `data-speaking` (SPEC §9.9: practice holds
+ * the AI's next step while a line plays).
+ * --------------------------------------------------------------------------------------------- */
+
+describe("speaking: a line holds the voice channel from its request until it ends", () => {
+  it("is false before any line, true from the request of a file line (loading included), false once it has played", async () => {
+    const r = rig();
+    unlocked(r);
+    const heard = vi.fn();
+    r.engine.subscribeSpeaking(heard);
+    expect(r.engine.speaking()).toBe(false);
+
+    r.fetch.mode = "hang";
+    expect(r.engine.playVoice("core-004", "play", 0)).toBe(true);
+    expect(r.engine.speaking(), "loading its file already holds the channel").toBe(true);
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    r.fetch.release();
+    await settle();
+    expect(lastVoice(r)?.outcome).toBe("file");
+    expect(r.engine.speaking()).toBe(true);
+
+    await elapse(r, 1_050);
+    expect(r.engine.speaking(), "the 1 s line has played").toBe(false);
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays true across a queued line taking over, and across a cut-in, with no flicker", async () => {
+    const r = rig();
+    unlocked(r);
+    const heard = vi.fn();
+    r.engine.subscribeSpeaking(heard);
+
+    expect(r.engine.playVoice("core-004", "play", 0)).toBe(true);
+    await settle();
+    expect(r.engine.playVoice("core-008", "play", 0)).toBe(true);
+    expect(r.engine.playVoice("core-004", "death", 0, VOICE_PRIORITY.react), "cuts in").toBe(true);
+    await settle();
+    expect(r.engine.speaking()).toBe(true);
+    expect(heard, "one change: free to held").toHaveBeenCalledTimes(1);
+
+    await elapse(r, 1_050);
+    await elapse(r, 1_050);
+    await elapse(r, 1_050);
+    expect(r.engine.speaking()).toBe(false);
+    expect(heard, "and one back, once nothing is left to say").toHaveBeenCalledTimes(2);
+  });
+
+  it("a spoken fallback line holds it until the speech ends; muting frees it at once", async () => {
+    const r = rig();
+    unlocked(r);
+    expect(r.engine.playVoice("core-005", "cast", 0)).toBe(true);
+    await elapse(r, 10);
+    expect(r.engine.speaking()).toBe(true);
+    must(r.speech.spoken[0], "the spoken line").onEnd();
+    await settle();
+    expect(r.engine.speaking()).toBe(false);
+
+    expect(r.engine.playVoice("core-005", "cast", 0)).toBe(true);
+    await elapse(r, 10);
+    const heard = vi.fn();
+    r.engine.subscribeSpeaking(heard);
+    writeAudioSettings({ muted: true });
+    expect(r.engine.speaking()).toBe(false);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unsubscribed listener hears nothing more, a throwing one stops no other, and dispose frees the channel", async () => {
+    const r = rig();
+    unlocked(r);
+    const gone = vi.fn();
+    const stop = r.engine.subscribeSpeaking(gone);
+    const angry = vi.fn(() => {
+      throw new Error("a subscriber that throws");
+    });
+    const calm = vi.fn();
+    r.engine.subscribeSpeaking(angry);
+    r.engine.subscribeSpeaking(calm);
+    stop();
+
+    expect(r.engine.playVoice("core-004", "play", 0)).toBe(true);
+    expect(gone).not.toHaveBeenCalled();
+    expect(angry).toHaveBeenCalledTimes(1);
+    expect(calm).toHaveBeenCalledTimes(1);
+
+    r.engine.dispose();
+    expect(r.engine.speaking()).toBe(false);
+  });
+});

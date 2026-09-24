@@ -658,7 +658,9 @@ export default function LoginRoute(): ReactElement {
     submitLabel = busy ? "Creating…" : "Create account";
   } else if (forgot) {
     // "Send", not "Send again": the interval may have been started before a reload.
-    submitLabel = busy ? "Sending…" : resetWait > 0 ? `Send in ${String(resetWait)} s` : "Send reset link";
+    // The wait is said once, in the line under the button (as the confirmation resend says it),
+    // so the button keeps its name while it is locked (integration QA: the countdown was twice).
+    submitLabel = busy ? "Sending…" : "Send reset link";
   } else if (claiming) {
     submitLabel = "Continue";
   } else {

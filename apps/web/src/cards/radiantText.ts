@@ -40,6 +40,10 @@ const LIST_SEPARATOR = ", ";
 /** How a keyword line ends when the text goes on: "Taunt; End of turn: …" or "Rush. Whenever …". */
 const LINE_END = /^(?:; |\. |\.$)/;
 const SAME = /^same$/i;
+/** A cell that is only a number ("60", Reno #53): it changes the number its base clause states. */
+const BARE_NUMBER = /^\d+$/;
+/** A whole number in running text, not part of a longer token ("1–6" is two). */
+const NUMBER = /(?<![\w.])\d+(?![\w.])/g;
 const TRAILING_SAME = /;\s*same$/i;
 /** A sentence ends at a full stop followed by a space. */
 const SENTENCE_BREAK = /(?<=\.)\s+/;
@@ -137,6 +141,24 @@ export function radiantText(base: string, cell: string, radiantKeywords: readonl
 
   const baseLine = splitKeywordLine(base);
   const radiantKinds = new Set<string>(radiantKeywords.map((keyword) => keyword.kind));
+
+  // "A cell that changes only a number changes only that number": the base clause, restated with
+  // the new number wherever it states the old one (Reno's "below 30, set it to 30" is one number),
+  // under the gold rule as any restated clause is. A clause with two different numbers would be
+  // ambiguous, and none in the catalog has one, so that case falls through to the general reading.
+  const number = cell.trim();
+  if (BARE_NUMBER.test(number)) {
+    const stated = new Set(baseLine.rest.match(NUMBER) ?? []);
+    const [old] = stated;
+    if (stated.size === 1 && old !== undefined) {
+      const line = baseLine.terms.filter((term) => !isKeyword(term.term) || radiantKinds.has(term.term));
+      return {
+        kept: joinLine(line, "", baseLine.separator),
+        changed: baseLine.rest.replace(NUMBER, (found) => (found === old ? number : found)),
+      };
+    }
+  }
+
   let line: LineTerm[];
   let cellRest: string;
 

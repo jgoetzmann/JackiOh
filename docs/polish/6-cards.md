@@ -756,7 +756,10 @@ div.app-shell.app-shell--wide.deckbuilder [deckbuilder]
                                                 I, the context-menu key or Shift+F10 open CardDetail
               span.db-tile-cost  span.db-tile-name  span.db-tile-art > CardArt shape="strip"  span.db-tile-pip[data-rarity]
       div.db-actions > button [loadout-save], span [loadout-saved]        unchanged
-  p [loadout-save-error], ul [loadout-errors] > li [loadout-error-<rule>]  unchanged
+      p [loadout-save-error], ul [loadout-errors][data-tone] > li [loadout-error-<rule>]
+                                                under Save since the integration QA (a phone rendered them
+                                                below all 100 pool cards); data-tone "hint" for the client's
+                                                verdict, "error" once the server has refused a save
   CardDetail when open, actions = button [db-detail-add] "Add to Deck N" (disabled while held)
 ```
 
@@ -925,7 +928,11 @@ The deck builder does the same for its own buttons by scoping every button rule 
   axes (Cypress component):
   - at 270 px wide, no element carries `data-clamped`;
   - at 170 px wide, only faces whose printed text exceeds 260 characters may carry
-    `data-clamped="true"`.
+    `data-clamped="true"`, and a clamped rules box stays inside the face at `FIT_FLOOR_PX`.
+  - Since the integration QA, the rules text has a reading floor (`FIT_FLOOR_PX`, 9 px): a text
+    that would need less first drops its tier's head start, then takes the long layout
+    (`data-long` on the face: a shorter art window and a taller rules box), and only then clamps at
+    the floor with an ellipsis (`fit.ts`). Before, the densest cards printed at 6 px in the grid.
 - **B16.** `Card` with `card: null` renders one `.card.card-back` with an empty `textContent`, no
   `data-def-id`, no `data-testid` and no `.card-name`. Hovering or long-pressing it opens nothing
   (jsdom).
@@ -1248,7 +1255,8 @@ since §10.10 is task 1's and this task adds no event animation.
   Cypress Chrome and Electron runners qualify; older browsers get unscaled but unclipped text. The
   component specs are the only proof of fit and overflow, because jsdom has no layout.
 - **The longest rules texts** (core-093, core-095, core-098 at 341–400 characters, and core-051's
-  radiant face at 269) shrink to about 6 px at grid size. B15 allows them to clamp at 170 px wide.
+  radiant face at 269) shrank to about 6 px at grid size; the reading floor (B15) now holds them at
+  9 px, in the long layout, clamped where even that will not fit. B15 allows them to clamp at 170 px wide.
   The detail view (both faces at about 260 px) and the hover preview (380 px tall) must show them
   in full. If they don't, raise `PREVIEW_HEIGHT_PX` rather than lowering `FIT_MIN`.
 - **An intrinsic width of zero.** An element with size containment, or only absolutely positioned
@@ -1294,3 +1302,13 @@ since §10.10 is task 1's and this task adds no event animation.
   plus the inspect trigger (a minimal edit, flagged in the PR), and cards.css's
   `.app-shell .prompt-card:has(> .cf-option)` only drops index.css's button padding so the face
   fills the box. If task 7's bottom-sheet pickers resize `.prompt-card`, the face follows it.
+
+## Integration note: the settings and the mulligan
+
+Task 7's panel mounts the animated-foil switch (`settings/controls.tsx`, with this module's own
+label and description). Its "Hover previews" switch is the player's one handle on hovering: the
+enlarged preview opens only while both it and `CardSettings.hoverPreviews` allow it
+(`useInspectTrigger.tsx`), and `Card.tsx`'s native tooltip returns when either is off, so the panel
+mounts no second "Hover previews". A prompt's card option now draws its face with the view's live
+cost (`liveCost`), reads its cost out in its accessible name, and on a mulligan carries a Keep or
+Redraw stamp across the foot of the art window.

@@ -34,6 +34,20 @@
   background: rgb(7 9 14 / 45%);
 }
 
+/* The other seat's choice is a notice, not a form: a compact card around its two lines rather than
+   a 560 px panel with nothing in it, over a lighter dim (the board is still the thing to watch). */
+.prompt-scrim:has(> .prompt-waiting) {
+  background: rgb(7 9 14 / 30%);
+}
+
+.prompt.prompt-waiting {
+  width: auto;
+  max-width: min(360px, 100%);
+  align-items: center;
+  padding: 14px 22px;
+  text-align: center;
+}
+
 .prompt {
   display: flex;
   flex-direction: column;
@@ -119,13 +133,56 @@
   transform: translateY(-4px);
 }
 
-/* Confirm is the one primary action: filled, in the selection's ice blue. */
-.prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]) {
-  border-color: #7dd3fc;
-  background: linear-gradient(180deg, #38bdf8, #0284c7);
-  color: #03141f;
+/* A mulligan says on each card what Confirm will do to it (Prompt.tsx CardOption): a stamp across
+   the foot of the art window, clear of the cost gem and the stats, so the option keeps the box the
+   face fills. A card going back dims. */
+.prompt-card[data-verdict] {
+  position: relative;
+}
+
+.prompt-card-verdict {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 750;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%), 0 2px 8px rgb(0 0 0 / 35%);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.prompt-card[data-verdict="keep"] .prompt-card-verdict {
+  background: color-mix(in srgb, var(--legal) 85%, #000);
+  color: #04130a;
+}
+
+.prompt-card[data-verdict="redraw"] .prompt-card-verdict {
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+
+.prompt-card[data-verdict="redraw"] .cf-option {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+/* Confirm is the one primary action: filled in End turn's amber (index.css --primary-*), so the
+   game has a single "go" colour rather than a blue one beside a gold one. */
+.prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]) {
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
+  font-weight: 800;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+  box-shadow: var(--primary-shadow);
+}
+
+.prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]):hover {
+  background: var(--primary-face-hover);
 }
 
 .prompt-card-name {
@@ -156,6 +213,51 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--gap);
+}
+
+/* A "Choose one" option that says what it does (modeText.ts): its label over a line of detail,
+   one option per row so the details read as a list. */
+.prompt-modes:has(> .prompt-mode) {
+  flex-direction: column;
+}
+
+.prompt-modes > .prompt-mode {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.prompt-mode-label {
+  font-weight: 750;
+}
+
+.prompt-mode-detail {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 1.3;
+}
+
+.prompt-modes > .prompt-mode[aria-pressed="true"] .prompt-mode-detail {
+  color: inherit;
+}
+
+/* The card asking, over what it asks ("Pocket Chaos" / "Choose one"). */
+.prompt-title-source {
+  display: block;
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.prompt-title-ask {
+  display: block;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .prompt-zones {
@@ -428,6 +530,9 @@
       > [data-prompt-kind="embiggen"]
     ) {
     place-items: end center;
+    /* Docked above the turn plate and the control bar (about 120 px at the foot of a tablet), not
+       over End turn: the picker covers the hand the play came from instead. */
+    padding-bottom: calc(env(safe-area-inset-bottom) + 132px);
   }
 }
 
@@ -568,5 +673,12 @@
 
   .prompt:has(> .prompt-cards) > .prompt-actions button {
     flex: 0 1 180px;
+  }
+}
+
+/* Touch sizing (task 7's 44 px floor): Confirm and Cancel on every picker, the mulligan's included. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .prompt .prompt-actions button {
+    min-height: 44px;
   }
 }

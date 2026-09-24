@@ -27,3 +27,68 @@ describe("Log: redacted events", () => {
     expect(lines.join("\n")).not.toContain("+0/+0");
   });
 });
+
+describe("Log: a line never prints an id or the sentinel (integration QA)", () => {
+  function lines(): string[] {
+    return [...screen.getByTestId(testid.log).querySelectorAll(".log-line")].map((li) => li.textContent ?? "");
+  }
+
+  it("R154 an opponent's trap the viewer may not read fires as a face-down trap, not as 'hidden'", () => {
+    const view = fullBoardView();
+    render(
+      <Log
+        view={withEvents(view, [
+          { type: "trapFired", instanceId: "hidden", defId: "hidden", controller: "p2", row: "backrow", lane: 2 },
+        ])}
+      />,
+    );
+    expect(lines()).toEqual(["The opponent's face-down trap fired"]);
+  });
+
+  it("names a unit that has left the board from the window's own public events, and never prints its id", () => {
+    const view = fullBoardView();
+    render(
+      <Log
+        view={withEvents(view, [
+          { type: "summoned", player: "p2", instanceId: "c46", defId: "core-002", row: "units", lane: 1 },
+          { type: "attackDeclared", attackerId: "c46", targetId: "hero-p1", forced: false },
+          { type: "damage", sourceId: "c46", targetId: "c46", amount: 12, combat: true },
+          { type: "attackDeclared", attackerId: "c99", targetId: "c98", forced: false },
+        ])}
+      />,
+    );
+    const text = lines();
+    expect(text[1]).toBe("core-002 attacked your hero");
+    expect(text[2]).toBe("core-002 took 12 damage in combat");
+    // Nothing public ever named c99 or c98: they read as units, not as ids.
+    expect(text[3]).toBe("A unit attacked a unit");
+    expect(text.join("\n")).not.toMatch(/\bc\d+\b/);
+  });
+
+  it("says mana and summons in words, prints a modifier's label, and leaves out 'finished resolving'", () => {
+    const view = fullBoardView();
+    const modifier = view.you.modifiers[0];
+    render(
+      <Log
+        view={withEvents(view, [
+          { type: "manaChanged", player: "p1", current: 2, max: 2 },
+          { type: "summoned", player: "p1", instanceId: "x1", defId: "core-015", row: "units", lane: 1 },
+          { type: "cardResolved", instanceId: "x1", defId: "core-015" } as never,
+          { type: "modifierChanged", player: "p1", modifierId: modifier?.id ?? "", added: true } as never,
+          { type: "modifierChanged", player: "p2", modifierId: "m-gone", added: false } as never,
+        ])}
+      />,
+    );
+    const text = lines();
+    expect(text[0]).toBe("You have 2/2 mana");
+    expect(text[1]).toBe("core-015 entered your lane 1");
+    expect(text).toHaveLength(4);
+    expect(text[2]).toBe(`You gained "${modifier?.label ?? ""}"`);
+    expect(text[3]).toBe("Opponent lost an effect");
+  });
+
+  it("ends the game in words", () => {
+    render(<Log view={withEvents(fullBoardView(), [{ type: "gameOver", winner: "p2", reason: "concede" }])} />);
+    expect(lines()).toEqual(["Opponent won. You conceded."]);
+  });
+});

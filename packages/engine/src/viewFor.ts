@@ -16,6 +16,8 @@
 //     it is open and whose it is, nothing more.
 //   - R97: the event stream is redacted, not truncated. An event that names a card the viewer may
 //     not read keeps its type and its animation fields and shows `HIDDEN_ID` for that card.
+//   - R227: a card set face-down took a fresh id, so the events that named its old id follow it to
+//     its zone through the `formerId` that set it, and `formerId` itself travels only with the card.
 //   - R177: more fields follow R97 — a prompt option offering a face-down card names it by id only,
 //     a `costChanged` on an unreadable card hides its cost and a `buffed` one its amounts, and a
 //     `transformed` whose new card is unreadable hides the card it replaced, as does one whose old
@@ -136,6 +138,13 @@ function replacementsOf(events: readonly GameEvent[]): Replacements {
       for (const id of event.instanceIds) {
         if (id !== event.resultInstanceId) replacedBy.set(id, event.resultInstanceId);
       }
+    }
+    // R227: a card set face-down took a fresh id. It is the same card, so the events that named it
+    // by its old id are judged by where it is now, exactly as they were before it moved: its draw
+    // stays hidden while the trap is face-down and reads once the trap is public (R97). No
+    // `hiddenFrom` is kept, since nothing ceased to exist.
+    if ((event.type === "cardPlayed" || event.type === "summoned") && event.formerId !== undefined) {
+      replacedBy.set(event.formerId, event.instanceId);
     }
   }
   return { replacedBy, hiddenFrom };
@@ -496,8 +505,16 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return killerHidden ? { ...redacted, killerId: HIDDEN_ID } : redacted;
     }
 
+    // R227: `formerId` is the id a card set face-down had, and it goes with the card's identity —
+    // shown to a viewer who may read the card, never to one who may not, or the old id would name
+    // the face-down card after all (R177).
     case "cardPlayed":
-    case "summoned":
+    case "summoned": {
+      if (!hidden(event.instanceId)) return event;
+      const { formerId: _former, ...rest } = event;
+      return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
+    }
+
     case "enteredGraveyard":
     case "exiled":
     case "bounced":

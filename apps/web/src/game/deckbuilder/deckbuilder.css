@@ -8,8 +8,10 @@
 
    Two constraints from the design notes:
    - Nothing on /decks is sticky or fixed in position, except the status toast, which has
-     `pointer-events: none`. Cypress scrolls a click or drag target to the top of the viewport
-     and fails on anything covering it; `elementFromPoint`, which it asks, skips the toast.
+     `pointer-events: none`, and the sidebar of a phone on its side, which sticks in its own
+     column and so never covers a pool card. Cypress scrolls a click or drag target to the top of
+     the viewport and fails on anything covering it; `elementFromPoint`, which it asks, skips the
+     toast.
    - A hidden deck panel stays `display: none`: an author `display` rule beats the UA's `[hidden]`,
      so `.db-deck[hidden]` says it again.
 
@@ -206,6 +208,8 @@
 /* Only the one-column layout shows the fold toggle (see the widths section). */
 .deckbuilder.app-shell .db-filter-toggle {
   display: none;
+  align-items: center;
+  justify-content: center;
   padding: 5px 12px;
   border-radius: 999px;
   font-size: 12px;
@@ -563,6 +567,22 @@
   transition: opacity 160ms ease;
 }
 
+/* Beside the sidebar it centres on the browse column, so it never lies over the verdicts under
+   Save (the sidebar is 340 px, 280 px on a tablet, and 14 px of gap). */
+@media (min-width: 761px) {
+  .db-deck-status {
+    left: calc(50% - 177px);
+    max-width: calc(100vw - 420px);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .db-deck-status {
+    left: calc(50% - 147px);
+    max-width: calc(100vw - 340px);
+  }
+}
+
 .db-deck-status:empty {
   opacity: 0;
   padding: 0;
@@ -670,6 +690,16 @@
   color: var(--legal);
 }
 
+/* The phone's list toggle (DeckSidebar). Only the one-column layout shows it; see the widths. */
+.deckbuilder.app-shell .db-deck-fold {
+  display: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .db-deck-hint {
   margin: 0;
   padding: 14px 8px;
@@ -683,6 +713,7 @@
 /* The mana curve: one bar per bucket, 0–5, 6+, X. Each bar is a glassy column of mana over a
    small crystal naming its cost, the way the deck list's tiles and the cards wear it. */
 .db-curve {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   align-items: end;
@@ -936,6 +967,10 @@
 
 /* --- verdicts ----------------------------------------------------------------------------------- */
 
+/* Under Save, in the sidebar (Deckbuilder.tsx): a refused save is explained where the eye already
+   is. Two tones. `hint` is the client's own verdict before the server has spoken about this draft:
+   progress, like the 0/20 beside each tab, so an amber dot and dim text rather than an alarm. `error`
+   is a refused save: the server's verdict, in red. */
 .db-errors {
   list-style: none;
   margin: 0;
@@ -943,12 +978,22 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 80ch;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.db-errors:focus {
+  outline: none;
+}
+
+.db-errors:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
 }
 
 .db-errors li {
   position: relative;
-  padding: 7px 12px 7px 32px;
+  padding: 6px 10px 6px 28px;
   border: 1px solid color-mix(in srgb, var(--opponent) 55%, var(--line));
   border-left: 3px solid var(--opponent);
   border-radius: var(--radius);
@@ -960,16 +1005,37 @@
   content: "";
   position: absolute;
   top: 50%;
-  left: 10px;
-  width: 13px;
-  height: 12px;
+  left: 9px;
+  width: 12px;
+  height: 11px;
   translate: 0 -50%;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
   background: var(--opponent);
 }
 
+.db-errors[data-tone="hint"] li {
+  padding: 3px 6px 3px 20px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+}
+
+.db-errors[data-tone="hint"] li::before {
+  left: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  clip-path: none;
+  background: #e0a93b;
+}
+
 .db-errors:empty {
   display: none;
+}
+
+.db-save-error {
+  margin: 0;
+  font-size: 12.5px;
 }
 
 /* --- the detail view's slots (CardDetail draws the dialog itself) ------------------------------ */
@@ -1020,6 +1086,25 @@
     gap: 8px;
     padding: 8px;
   }
+
+  /* The page scrolls here, so the sidebar sticks in its column while the pool scrolls past, and
+     scrolls inside itself: the deck stays in sight instead of leaving a blank strip. It shares
+     no column with a pool card, so it never covers one. */
+  .db-sidebar {
+    position: sticky;
+    top: 8px;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Nothing in it shrinks to fit (the deck list would be squeezed to one tile): the sidebar
+     scrolls instead, and the list keeps its own scroller. */
+  .db-sidebar > *,
+  .db-deck > * {
+    flex-shrink: 0;
+  }
 }
 
 /* Desktop: the builder is exactly one screen tall, and the pool scrolls inside its column from its
@@ -1046,11 +1131,18 @@
     min-height: 0;
   }
 
+  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them: the card
+     width follows the screen's height (the page above the pool, with the chip rows folded, is
+     about 220 px), within a range where rules text still reads. The columns keep that width and
+     centre, rather than stretching every card back to one tall row. */
   .db-pool {
+    --db-card-w: clamp(150px, calc((100dvh - 220px) * 5 / 14), 220px);
     flex: 1 1 auto;
     min-height: 240px;
     overflow-y: auto;
     overscroll-behavior: contain;
+    grid-template-columns: repeat(auto-fill, min(var(--db-card-w), calc(50% - 5px)));
+    justify-content: center;
   }
 
   .db-sidebar {
@@ -1112,12 +1204,71 @@
   .db-deck-list {
     max-height: 36vh;
   }
+
+  /* …and the curve and the tiles fold behind "Show list" (DeckSidebar), closed at first: the tabs,
+     the count, the meter and Save stay, and the pool's first row is on the first screen. */
+  .deckbuilder.app-shell .db-deck-fold {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .db-deck[data-list-open="false"] .db-curve,
+  .db-deck[data-list-open="false"] .db-deck-list {
+    display: none;
+  }
+
+  .db-deck-head {
+    align-items: center;
+  }
 }
 
-/* The chip rows fold behind the "Filters" toggle wherever they would fill the first screen: the
-   one-column phone layout, and a phone on its side, which is wide enough for two columns but
-   only about 390 px tall. */
-@media (max-width: 760px), (max-height: 500px) {
+/* On a phone the filter block keeps to three rows (search and Owned; sort, Filters and Clear; the
+   cost chips), so a first screen still reaches the pool: the Sort and Cost labels go (the select
+   and the crystals say what they are), the result count is kept for a screen reader only, and the
+   eight cost chips share one row. */
+@media (max-width: 760px) {
+  .db-sort .db-group-label,
+  .db-filter-row--cost .db-group-label {
+    display: none;
+  }
+
+  .db-result-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .db-filter-row--cost .db-chip-group {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+  }
+
+  .deckbuilder.app-shell .db-filter-row--cost .db-chip {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 0;
+  }
+
+  /* Eight crystals share one row, so at 390 px each is drawn 40 px wide. Its hit area reaches half
+     the group's 4 px gap on each side, as the card's "+" widens its own, which makes it the 44 px a
+     finger needs without pushing X onto a second row (integration QA). */
+  .deckbuilder.app-shell .db-filter-row--cost .db-chip::before {
+    content: "";
+    position: absolute;
+    inset: 0 -2px;
+  }
+}
+
+/* The type, tag and rarity rows fold behind the "Filters" toggle wherever they would crowd the
+   first screen: a phone, a tablet (a 450 px browse column wraps them into five rows), a phone on
+   its side (two columns but only about 390 px tall), and a desktop under about 860 px tall, where
+   three chip rows left one row of cards. The cost chips never fold (FilterBar). */
+@media (max-width: 1024px), (max-height: 860px) {
   .deckbuilder.app-shell .db-filter-toggle {
     display: inline-flex;
     margin-left: auto;
@@ -1125,6 +1276,49 @@
 
   .db-filters[data-expanded="false"] .db-filter-chips {
     display: none;
+  }
+}
+
+/* Touch sizing: every control a finger hits is at least 44 px, the floor task 7 set for the board
+   (board.css B29). The "+" on a card already widens its hit area with ::before. */
+@media (max-width: 760px), (max-height: 500px), (pointer: coarse) {
+  .deckbuilder.app-shell .db-chip,
+  .deckbuilder.app-shell .db-filter-toggle,
+  .deckbuilder.app-shell .db-filter-clear,
+  .deckbuilder.app-shell .db-sort-dir,
+  .deckbuilder.app-shell .db-deck-fold,
+  .deckbuilder.app-shell .db-actions button,
+  .deckbuilder.app-shell .db-header .link-button,
+  .db-sort-select {
+    min-height: 44px;
+  }
+
+  .deckbuilder.app-shell .db-chip,
+  .deckbuilder.app-shell .db-sort-dir {
+    min-width: 44px;
+  }
+
+  .deckbuilder.app-shell .db-tabs button {
+    min-height: 44px;
+  }
+
+  .deckbuilder.app-shell .db-tile {
+    height: 44px;
+  }
+
+  /* The label is the checkbox's hit area, so the whole "Owned only" row answers a tap. */
+  .db-owned {
+    min-height: 44px;
+    padding: 0 4px;
+  }
+
+  .db-owned input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .db-search {
+    min-height: 44px;
   }
 }
 

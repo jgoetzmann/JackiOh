@@ -125,6 +125,30 @@
   box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.2), 0 0 18px rgba(243, 201, 105, 0.3);
 }
 
+/* The settings gear at the bar's far end, a round brass button like the landing's (landing.css):
+   the same control in the same corner on every screen, not a wood square beside a pill. */
+/* Written long enough to outrank the wood button rule below, which every other button here takes. */
+.tavern.app-shell .screen-nav button.settings-gear.settings-gear--nav:not(.link-button):not(.button-primary) {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 50%;
+  background: rgba(18, 11, 7, 0.65);
+  color: var(--tavern-gold-pale);
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.15), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.tavern.app-shell .screen-nav button.settings-gear.settings-gear--nav:not(.link-button):not(.button-primary):hover:not(:disabled) {
+  border-color: var(--tavern-gold);
+  background: rgba(90, 52, 27, 0.75);
+  color: var(--tavern-gold-pale);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.2), 0 0 18px rgba(243, 201, 105, 0.3);
+}
+
 /* ---- the board ----------------------------------------------------------------------------- */
 
 /* Framed like the landing's call-to-action panel: brass trim, a dark inner line, wood below and a
@@ -511,6 +535,36 @@
   opacity: 1;
 }
 
+/* Touch targets (task 7's 44 px floor). The text-like ways on and out measured 17 to 22 px tall at
+   390 px wide and on a phone on its side (integration QA), so on a touch screen, or one sized like a
+   phone either way up, each gets a finger's height with its words on the centre line. An anchor in
+   running prose ("play vs AI") keeps its line and grows a hit area round it instead, as the deck
+   builder's "+" does. Here rather than in auth.css because every tavern screen loads this file and
+   the invite and account screens do not load that one. */
+@media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
+  .tavern.app-shell .link-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* The 44 px boxes space a wrapped column of links on their own. */
+  .tavern.app-shell .auth-links,
+  .tavern.app-shell .auth-actions {
+    row-gap: 0;
+  }
+
+  .tavern.app-shell p a:not(.link-button):not(.button-primary):not(.button-secondary) {
+    position: relative;
+  }
+
+  .tavern.app-shell p a:not(.link-button):not(.button-primary):not(.button-secondary)::before {
+    content: "";
+    position: absolute;
+    inset: -14px -6px;
+  }
+}
+
 /* A row of ways on: a link beside a button sits on the button's centre line. */
 .tavern.app-shell .auth-actions > .link-button,
 .tavern.app-shell .row > .link-button {
@@ -641,6 +695,13 @@
   color: var(--tavern-gold-pale);
 }
 
+/* The record's four tiles as two rows of two at every width: `auto-fit` made three and left Played
+   alone on a second row (integration QA), and the card, about 400 px inside at its widest, has no
+   room for four tiles once a record reads like "112–97–6". */
+.tavern.app-shell.account-screen .stat-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 /* The record: the stat tiles set in the board's wells. */
 .tavern.app-shell .stat {
   border-color: rgba(201, 149, 63, 0.3);
@@ -654,6 +715,20 @@
 
 .tavern.app-shell .stat-label {
   color: var(--tavern-text-dim);
+}
+
+/* The account card's actions, each the card's full width like the auth forms' own buttons: the gold
+   one for the way on (Redeem an invite code), the wood one for Sign out (integration QA: they were
+   shrink-wrapped, a second button style in the same card). */
+.tavern.app-shell .account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tavern.app-shell .account-actions > .button-primary,
+.tavern.app-shell .account-actions > button {
+  width: 100%;
 }
 
 /* Signing out, set apart from the account above by a brass hairline. */
@@ -723,15 +798,22 @@
     align-items: start;
   }
 
+  /* Back in the left margin and the gear in the right one, the board between them: the nav spans
+     the row and the board sits over its middle, so the gear keeps the top-right corner it has on
+     every other screen instead of wrapping under Back in a narrow column (integration QA). */
   .tavern.app-shell.auth-screen > .screen-nav {
-    grid-column: 1;
-    justify-self: start;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: stretch;
     width: auto;
     margin: 0;
   }
 
   .tavern.app-shell.auth-screen > .panel--auth {
     grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    z-index: 1;
   }
 
   /* Both parts start at the top: a refusal appearing under the button lengthens the form's part

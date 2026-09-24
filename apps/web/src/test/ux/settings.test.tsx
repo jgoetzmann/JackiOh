@@ -23,7 +23,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_SETTINGS,
-  SETTINGS_SLOTS,
   SETTINGS_STORAGE_KEY,
   SettingsPanel,
   __resetSettingsForTests,
@@ -500,7 +499,8 @@ describe("B23 the settings gears open and close the dialog", () => {
     expect(gear).toHaveAttribute("aria-label", "Settings");
     expect(gear).toHaveAttribute("aria-haspopup", "dialog");
     expect(gear).toHaveAttribute("aria-expanded", "false");
-    expect(gear.textContent).toContain("⚙");
+    // A drawn gear, not the U+2699 glyph that rendered as a dot (integration QA).
+    expect(gear.querySelector("svg path")).not.toBeNull();
     expectClosed();
 
     fireEvent.click(gear);
@@ -622,8 +622,9 @@ describe("B24 the panel's sections, switches, reset and slots", () => {
   ];
 
   it("B24 shows gameplay (drag, confirm, hover) and visuals (reduce motion), and no empty audio section", () => {
-    expect(SETTINGS_SLOTS).toEqual([]);
-    render(<SettingsPanel onClose={noop} />);
+    // Integration mounts tasks 1, 2 and 6's controls through SETTINGS_SLOTS (settings-wiring.test.tsx);
+    // with no slots the panel is task 7's alone, and a section with nothing in it is not drawn.
+    render(<SettingsPanel onClose={noop} slots={[]} />);
 
     const gameplay = screen.getByTestId("settings-section-gameplay");
     const visuals = screen.getByTestId("settings-section-visuals");

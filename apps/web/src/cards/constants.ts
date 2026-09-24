@@ -21,5 +21,13 @@ export const FIT_MIN = 0.55;
 /** Binary-search steps between FIT_MIN and 1. */
 export const FIT_STEPS = 6;
 
+/**
+ * The rules text's reading floor, in CSS pixels. Rules text that would have to shrink below it to
+ * fit first takes the long layout (`data-long` on the face: a shorter art window and a taller rules
+ * box), and if it still does not fit at this size there, it clamps with an ellipsis at this size
+ * instead of shrinking further. The detail view and the hover preview print it whole.
+ */
+export const FIT_FLOOR_PX = 9;
+
 /** Below this face height the rules box, tags and type line hide. Mirrored in cards.css's @container rule. */
 export const FACE_TEXT_MIN_HEIGHT_PX = 150;

@@ -94,6 +94,18 @@ describe("B46 stand-ins are planned for every card the burst moves onto the boar
     ]);
   });
 
+  it("R227 a trap set face-down flies from its hand card, which still carries the id the trap had (formerId)", () => {
+    const D = 400;
+    const set: GameEvent[] = [
+      { type: "cardPlayed", player: "p1", instanceId: "c99", defId: "core-041", costPaid: 1, formerId: HAND },
+      { type: "summoned", player: "p1", instanceId: "c99", defId: "core-041", row: "backrow", lane: 2, formerId: HAND },
+    ];
+    expect(stage(set, D)).toEqual([
+      { kind: "hold", from: tid(`hand-card-${HAND}`), to: tid("zone-you-backrow-2"), delayMs: 0, landMs: Math.round(FX_SLAM_AT * D), durationMs: FX_HOLD_MAX_MS },
+      { kind: "conceal", testid: `hand-card-${HAND}`, mode: "now", delayMs: 0, durationMs: FX_HOLD_MAX_MS },
+    ]);
+  });
+
   it("B46 the opponent's unit flies from the opponent's hand of backs (R202: a back, never a face)", () => {
     const cues = stage([play("p2", "c99"), summon("p2", "c99", 2)]);
     expect(cues).toEqual([

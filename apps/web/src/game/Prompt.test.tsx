@@ -142,13 +142,14 @@ describe("prompt-driven pickers answer the open PendingChoice (§10.6)", () => {
 
     expect(kindOfModal()).toBe("mulligan");
 
-    // A toggle alone sends nothing: the mulligan always waits for the confirm.
+    // Every card opens kept (R9 names the cards kept), so a toggle marks one to go back. A toggle
+    // alone sends nothing: the mulligan always waits for the confirm.
     fireEvent.click(screen.getByTestId("prompt-option-h2"));
     expect(onAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("prompt-submit"));
 
-    expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h2"] });
+    expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h1"] });
   });
 
   it("hand shows the viewer's cards and answers with the instance", () => {
@@ -267,6 +268,69 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
       zone: { row: "units", lane: 2 },
       modes: ["left"],
     });
+  });
+
+  it("a Choose one names the card asking and says what each option does, answering with the card's own option string", () => {
+    // Integration QA: Pocket Chaos offered three bare buttons, "health", "board" and "library".
+    const onAction = vi.fn();
+    const view = viewWith({
+      you: emptySide("p1", { hand: [card({ instanceId: "h3", defId: "core-087" })] }),
+    });
+    const interaction = playing(
+      ["health", "board", "library"].map((mode): ActionBody => ({ type: "play", instanceId: "h3", modes: [mode] })),
+      "h3",
+    );
+
+    render(<Prompt view={view} interaction={interaction} onAction={onAction} />);
+
+    expect(kindOfModal()).toBe("mode");
+    expect(document.querySelector(".prompt-title-source")).not.toBeNull();
+    expect(document.querySelector(".prompt-title-ask")).toHaveTextContent("Choose one");
+    const board = screen.getByTestId("prompt-option-board");
+    expect(board).toHaveTextContent("Swap boards");
+    expect(board).toHaveTextContent("Every zone changes sides");
+    expect(screen.getByTestId("prompt-option-health")).toHaveTextContent("Swap hero Health");
+    expect(screen.getByTestId("prompt-option-library")).toHaveTextContent("Swap libraries");
+    for (const raw of ["health", "board", "library"]) {
+      expect(screen.getByTestId(`prompt-option-${raw}`).textContent).not.toBe(raw);
+    }
+
+    fireEvent.click(board);
+    expect(onAction).toHaveBeenCalledWith({ type: "play", instanceId: "h3", modes: ["board"] });
+  });
+
+  it("#24 Efficiency Dividend's options say X on its base face and X+1 on its Radiant face (§8 #24)", () => {
+    const modes = ["damage", "heal", "mana"];
+    const pickerFor = (radiant: boolean): void => {
+      const view = viewWith({
+        you: emptySide("p1", { hand: [card({ instanceId: "h24", defId: "core-024", radiant })] }),
+      });
+      const interaction = playing(
+        modes.map((mode): ActionBody => ({ type: "play", instanceId: "h24", x: 2, modes: [mode] })),
+        "h24",
+      );
+      render(<Prompt view={view} interaction={interaction} onAction={vi.fn()} />);
+    };
+
+    pickerFor(false);
+    expect(screen.getByTestId("prompt-option-damage")).toHaveTextContent("Deal X damage to a target.");
+    expect(screen.getByTestId("prompt-option-heal")).toHaveTextContent("Heal a target by twice X.");
+    cleanup();
+
+    pickerFor(true);
+    expect(screen.getByTestId("prompt-option-damage")).toHaveTextContent("Deal X+1 damage to a target.");
+    expect(screen.getByTestId("prompt-option-heal")).toHaveTextContent("Heal a target by twice X+1.");
+    expect(screen.getByTestId("prompt-option-mana")).toHaveTextContent("Gain half of X+1, rounded down");
+  });
+
+  it("an option no card text covers is its own word, capitalised", () => {
+    const view = viewWith();
+    const interaction = playing([
+      { type: "play", instanceId: "h1", modes: ["alpha"] },
+      { type: "play", instanceId: "h1", modes: ["beta"] },
+    ]);
+    render(<Prompt view={view} interaction={interaction} onAction={vi.fn()} />);
+    expect(screen.getByTestId("prompt-option-alpha")).toHaveTextContent(/^Alpha$/);
   });
 
   it("x is a numeric stepper over the values the engine listed", () => {
@@ -429,15 +493,14 @@ describe("min and max gate the confirm, and both came from the view", () => {
     render(<Prompt view={view} onAction={onAction} />);
     const confirm = screen.getByTestId("prompt-submit");
 
-    fireEvent.click(confirm);
-    expect(onAction).not.toHaveBeenCalled();
-
+    // Both cards open kept, so two of two holds at once; marking one to go back drops below min.
+    expect(confirm).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(screen.getByTestId("prompt-option-h1"));
     expect(confirm).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(confirm);
     expect(onAction).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("prompt-option-h2"));
+    fireEvent.click(screen.getByTestId("prompt-option-h1"));
     expect(confirm).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(confirm);
     expect(onAction).toHaveBeenCalledWith({ type: "mulligan", keep: ["h1", "h2"] });

@@ -50,6 +50,7 @@ import { planStage } from "./stage.ts";
 import { capacityFor, createFxDirector, type FxDirector } from "./director.ts";
 import { createFxMemory } from "./memory.ts";
 import { useFxSettings } from "./settings.ts";
+import { useSetting } from "../settings/store.ts";
 import { createSurface, type FxSurface } from "./surface.ts";
 import type {
   FxAnchor,
@@ -129,8 +130,11 @@ function removeSqueeze(root: HTMLElement | null): void {
 
 export function FxLayer({ queue, view, seams }: FxLayerProps): ReactElement {
   const [settings] = useFxSettings();
-  const enabled = !reducedMotionNow(settings) && settings.intensity !== "off";
-  const settingReduces = settings.motion === "reduce";
+  // The settings panel's "Reduce motion" is read through its hook so a change re-renders the layer;
+  // `reducedMotionNow` reads the same switch for callers outside React.
+  const panelReduces = useSetting("reduceMotion");
+  const enabled = !panelReduces && !reducedMotionNow(settings) && settings.intensity !== "off";
+  const settingReduces = settings.motion === "reduce" || panelReduces;
   const intensity: number = FX_INTENSITY_SCALE[settings.intensity];
   const lookup = useContext(CatalogContext);
 
@@ -257,6 +261,23 @@ export function FxLayer({ queue, view, seams }: FxLayerProps): ReactElement {
     if (releasedFor.current !== null && releasedFor.current !== view) director.current?.release();
     releasedFor.current = view;
   }, [view]);
+
+  // The turn banner says its piece until the player acts: the first pointer down anywhere, or a
+  // prompt opening for the viewer, takes it (and its rays) away, so it never sits over the zones a
+  // play is asking about or behind a Discover sheet (integration QA).
+  useEffect(() => {
+    const onDown = (): void => {
+      director.current?.dismissBanner();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, []);
+  const promptForViewer = view.pending !== null && view.pending.forYou;
+  useEffect(() => {
+    if (promptForViewer) director.current?.dismissBanner();
+  }, [promptForViewer]);
 
   // The game-over sequence and the hot-seat hand-over banner run off the shown view, not an entry:
   // `gameOver` is a zero-duration row the runner never plays, and a seat change drains the runner.

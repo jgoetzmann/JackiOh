@@ -364,3 +364,80 @@ describe("saving", () => {
     expect(screen.queryByTestId("loadout-saved")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Where the verdict sits, and how loud it is (the integration QA pass: a phone's refused save
+// rendered its reason 13,000 px below the button, and a fresh account opened to three red rows).
+// ---------------------------------------------------------------------------------------------
+
+describe("the verdict sits under Save", () => {
+  it("renders the issues inside the deck sidebar, right after the save control", () => {
+    mount(null);
+    const sidebar = screen.getByTestId("db-sidebar");
+    const errors = screen.getByTestId("loadout-errors");
+    expect(sidebar).toContainElement(errors);
+    // Save comes first in the sidebar's reading order, then the reasons it would be refused.
+    const save = screen.getByTestId("loadout-save");
+    expect(save.compareDocumentPosition(errors) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the client's own verdict as a hint, not an error, before the server has spoken", () => {
+    mount(null);
+    expect(screen.getByTestId("loadout-errors")).toHaveAttribute("data-tone", "hint");
+    // Still the validator's sentences, still marked as the client's (spec 09 reads both).
+    expect(shown("L2")).toEqual(expected([[], [], []], "L2"));
+    for (const node of screen.getAllByTestId("loadout-error-L2")) expect(node).toHaveAttribute("data-source", "client");
+  });
+
+  it("turns the verdict into an error, and moves focus to it, when the server refuses the save", async () => {
+    const decks = legalDecks();
+    const short = [(decks[0] ?? []).slice(0, DECK_SIZE - 1), decks[1] ?? [], decks[2] ?? []];
+    const serverIssues = issuesFor(short);
+    mount(short, vi.fn().mockResolvedValue({ ok: false, message: serverIssues[0]?.message ?? "", issues: serverIssues }));
+    expect(screen.getByTestId("loadout-errors")).toHaveAttribute("data-tone", "hint");
+
+    fireEvent.click(screen.getByTestId("loadout-save"));
+    await waitFor(() => {
+      expect(screen.getByTestId("loadout-errors")).toHaveAttribute("data-tone", "error");
+    });
+    expect(screen.getByTestId("loadout-error-L2")).toHaveAttribute("data-source", "server");
+    expect(document.activeElement).toBe(screen.getByTestId("loadout-errors"));
+  });
+
+  it("puts a refusal that is not a rule failure under Save too", async () => {
+    mount(legalDecks(), vi.fn().mockResolvedValue({ ok: false, message: "update required", issues: [] }));
+    fireEvent.click(screen.getByTestId("loadout-save"));
+    await waitFor(() => {
+      expect(screen.getByTestId("loadout-save-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("db-sidebar")).toContainElement(screen.getByTestId("loadout-save-error"));
+  });
+});
+
+describe("the deck list folds on a phone", () => {
+  it("starts folded, and one toggle opens every deck's curve and tiles", () => {
+    mount(legalDecks());
+    const toggle = screen.getByTestId("deck-fold-1");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls", screen.getByTestId("deck-list-1").id);
+    expect(screen.getByTestId("deck-drop-1")).toHaveAttribute("data-list-open", "false");
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("deck-fold-1")).toHaveAttribute("aria-expanded", "true");
+    for (const deck of [1, 2, 3]) {
+      expect(screen.getByTestId(`deck-drop-${String(deck)}`)).toHaveAttribute("data-list-open", "true");
+    }
+  });
+
+  it("keeps every tile mounted while folded, so a click (or a test) still finds it", () => {
+    const decks = legalDecks();
+    mount(decks);
+    const held = decks[0]?.[0] ?? "";
+    expect(screen.getByTestId(`deck-card-1-${held}`)).toBeInTheDocument();
+  });
+
+  it("offers no toggle for an empty deck, whose hint is all there is to show", () => {
+    mount(null);
+    expect(screen.queryByTestId("deck-fold-1")).toBeNull();
+  });
+});

@@ -52,9 +52,11 @@ const CONTROLS: Readonly<Record<SettingKey, { label: string; hint: string }>> = 
     label: "Confirm end turn",
     hint: "Ask again before ending the turn while you can still play or attack.",
   },
+  // One switch for both hover behaviours: task 7's hand lift and task 6's enlarged preview, which
+  // opens only while this is on (cards/inspect/useInspectTrigger.tsx).
   hoverPreviews: {
     label: "Hover previews",
-    hint: "Lift a card in your hand when the mouse is over it.",
+    hint: "Lift a card in your hand, and show any card enlarged, when the mouse rests on it.",
   },
   reduceMotion: {
     label: "Reduce motion",
@@ -193,6 +195,8 @@ export default function SettingsPanel({
             data-testid="settings-reset"
             onClick={() => {
               resetSettings();
+              // Every store the panel shows goes back to its defaults, not only this module's.
+              for (const slot of slots) slot.reset?.();
             }}
           >
             Reset to defaults

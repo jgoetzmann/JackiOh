@@ -212,6 +212,12 @@ function playWhenDrawn(
   ensureSeat(player);
   return cy.instanceInHand(player, defId).then((instanceId) => {
     cy.playCard(instanceId, options);
+    // R227: a card set face-down takes a fresh instance id as it lands, so a trap is tracked by the
+    // id its zone holds from then on, not the one it had in hand.
+    const zone = options.zone;
+    if (zone !== undefined && zone.row === "backrow" && zone.side === "you") {
+      return cy.instanceAt(player, "backrow", zone.lane);
+    }
     return cy.wrap(instanceId, { log: false });
   });
 }

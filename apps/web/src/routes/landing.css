@@ -149,6 +149,30 @@
   display: flex;
   min-height: 44px;
   align-items: center;
+  gap: 10px;
+}
+
+/* The settings gear (settings/SettingsButton.tsx), last in the corner as it is last in every other
+   screen's top bar: a round brass button beside the Sign in / Account pill. */
+.landing .landing-corner .settings-gear {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 50%;
+  background: rgba(18, 11, 7, 0.65);
+  color: var(--tavern-gold-pale);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.15), 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: background-color 140ms, border-color 140ms, box-shadow 140ms;
+}
+
+.landing .landing-corner .settings-gear:hover {
+  border-color: var(--tavern-gold);
+  background: rgba(90, 52, 27, 0.75);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.2), 0 0 18px rgba(243, 201, 105, 0.3);
 }
 
 .landing a.landing-corner-link {
@@ -301,217 +325,36 @@
 .landing .landing-fan-slot:nth-child(4) { --fan-offset: 1; --deal-delay: 510ms; }
 .landing .landing-fan-slot:nth-child(5) { --fan-offset: 2; --deal-delay: 630ms; }
 
+/* Each card is the game's own face (cards/CardFace.tsx, 5:7, as tall as its slot) or its back; this
+   box only deals it, floats it and throws its shadow on the table. */
 .landing .landing-fan-card {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: calc(var(--fan-card-w) * 0.09);
-  border: 2px solid #3a2410;
-  background:
-    linear-gradient(180deg, rgba(251, 231, 176, 0.12), transparent 30%),
-    linear-gradient(160deg, var(--tavern-wood-light), var(--tavern-wood) 45%, var(--tavern-wood-deep));
-  box-shadow:
-    inset 0 0 0 2px var(--tavern-brass),
-    inset 0 0 0 4px rgba(18, 11, 7, 0.55),
-    0 10px 22px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
+  border-radius: calc(var(--fan-card-w) * 0.07);
   translate: 0 0;
   transition: translate 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
   animation:
     landing-deal 720ms cubic-bezier(0.18, 0.9, 0.25, 1.05) var(--deal-delay) both,
     landing-float 6s ease-in-out calc(var(--deal-delay) + 720ms) infinite;
-  --art-a: #ffb347;
-  --art-b: #7a2a10;
 }
 
-.landing .landing-fan-card--ember { --art-a: #ffb347; --art-b: #7a2a10; }
-.landing .landing-fan-card--tide { --art-a: #7fe0d4; --art-b: #13454a; }
-.landing .landing-fan-card--grove { --art-a: #b6e27a; --art-b: #2c4a16; }
-.landing .landing-fan-card--radiant { --art-a: #fff1b8; --art-b: #a86a1f; }
-
-.landing .landing-fan-art {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 8%;
-  height: 44%;
-  display: grid;
-  place-items: center;
-  border-radius: 50% 50% 42% 42% / 58% 58% 42% 42%;
-  border: 2px solid #3a2410;
-  background: radial-gradient(circle at 50% 40%, var(--art-a), var(--art-b) 78%);
-  box-shadow: inset 0 0 0 1px rgba(251, 231, 176, 0.35), inset 0 -8px 14px rgba(0, 0, 0, 0.35);
+.landing .landing-fan-card > .cf {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 10px 22px rgba(0, 0, 0, 0.6);
 }
 
-.landing .landing-fan-sigil {
-  font-family: var(--tavern-serif);
-  font-size: calc(var(--fan-card-w) * 0.34);
-  line-height: 1;
-  color: rgba(36, 22, 12, 0.72);
-  text-shadow: 0 1px 0 rgba(251, 231, 176, 0.45);
-}
-
-.landing .landing-fan-gem {
-  position: absolute;
-  top: 3%;
-  left: 3%;
-  width: calc(var(--fan-card-w) * 0.28);
-  height: calc(var(--fan-card-w) * 0.28);
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 2px solid #1d3b37;
-  background: radial-gradient(circle at 35% 30%, #c6fff6, var(--tavern-teal) 45%, #1d5b54);
-  color: #0d2724;
-  font-size: calc(var(--fan-card-w) * 0.15);
-  line-height: 1;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
-}
-
-.landing .landing-fan-ribbon {
-  position: absolute;
-  left: 4%;
-  right: 4%;
-  top: 50%;
-  height: 10%;
-  border-radius: 3px;
-  background: linear-gradient(180deg, #e0b35b, var(--tavern-brass) 55%, #8d5e22);
-  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(251, 231, 176, 0.5);
-}
-
-/* The name, engraved into the ribbon: a dark stroke with a light edge under it. */
-.landing .landing-fan-name {
-  position: absolute;
-  left: 22%;
-  right: 22%;
-  top: 50%;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 1px;
-  background: rgba(58, 31, 12, 0.7);
-  box-shadow: 0 1px 0 rgba(255, 240, 200, 0.45);
-}
-
-.landing .landing-fan-text {
-  position: absolute;
-  left: 11%;
-  right: 11%;
-  top: 63%;
-  bottom: 13%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 9%;
-  padding: 0 9%;
-  border-radius: 4px;
-  background: linear-gradient(180deg, var(--tavern-parchment), #d8c396);
-  box-shadow: inset 0 0 6px rgba(36, 22, 12, 0.35);
-}
-
-/* Rules text as a printed card sets it: a bold keyword, a full line, a short last line. */
-.landing .landing-fan-line {
-  display: block;
-  width: 100%;
-  height: 2px;
-  border-radius: 1px;
-  background: rgba(36, 22, 12, 0.32);
-}
-
-.landing .landing-fan-line--keyword {
-  width: 46%;
-  height: 3px;
-  background: rgba(36, 22, 12, 0.62);
-}
-
-.landing .landing-fan-line--short {
-  width: 68%;
-}
-
-.landing .landing-fan-stat {
-  position: absolute;
-  bottom: 3%;
-  width: calc(var(--fan-card-w) * 0.22);
-  height: calc(var(--fan-card-w) * 0.22);
-  border: 2px solid #2a1709;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
-}
-
-.landing .landing-fan-stat--attack {
-  left: 4%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--tavern-gold) 45%, #9b6423);
-}
-
-.landing .landing-fan-stat--health {
-  right: 4%;
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-  background: radial-gradient(circle at 35% 30%, #ffb2a2, #c0453f 50%, #6d1a16);
-}
-
-/* The radiant card: gold frame, a warm halo and a sheen that sweeps across it. */
-.landing .landing-fan-card--radiant {
-  border-color: #6b4212;
-  background:
-    linear-gradient(180deg, rgba(255, 246, 214, 0.3), transparent 35%),
-    linear-gradient(160deg, #f7d27a, #c9953f 45%, #7a4c18);
+/* The radiant card: CardFace gilds it; the hearth adds a warm halo round it. */
+.landing .landing-fan-card[data-radiant="true"] > .cf {
   box-shadow:
-    inset 0 0 0 2px var(--tavern-gold-pale),
-    inset 0 0 0 4px rgba(107, 66, 18, 0.6),
     0 0 18px rgba(243, 201, 105, 0.55),
+    0 1px 3px rgba(0, 0, 0, 0.55),
     0 10px 22px rgba(0, 0, 0, 0.6);
 }
 
-.landing .landing-fan-card--radiant::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(
-    115deg,
-    transparent 32%,
-    rgba(255, 250, 225, 0.8) 46%,
-    rgba(255, 215, 90, 0.4) 53%,
-    transparent 66%
-  );
-  background-size: 260% 100%;
-  background-position: 130% 0;
-  mix-blend-mode: screen;
-  animation: landing-shimmer 3.4s ease-in-out 1.4s infinite;
-}
-
-/* The face-down card: a card back with a rune. */
+/* The face-down card: CardBack fills the box, which gives it the face's corners and shadow. */
 .landing .landing-fan-card--back {
-  background:
-    repeating-linear-gradient(45deg, rgba(201, 149, 63, 0.14) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(-45deg, rgba(201, 149, 63, 0.14) 0 2px, transparent 2px 9px),
-    radial-gradient(circle at 50% 50%, #4a2a52, #24122b 70%);
-}
-
-.landing .landing-fan-back {
-  position: absolute;
-  inset: 12%;
-  display: grid;
-  place-items: center;
-  border: 2px solid rgba(201, 149, 63, 0.7);
-  border-radius: calc(var(--fan-card-w) * 0.06);
-}
-
-.landing .landing-fan-rune {
-  display: grid;
-  place-items: center;
-  width: calc(var(--fan-card-w) * 0.52);
-  height: calc(var(--fan-card-w) * 0.52);
-  border-radius: 50%;
-  border: 2px solid var(--tavern-brass);
-  background: radial-gradient(circle, rgba(63, 182, 168, 0.35), transparent 70%);
-  color: var(--tavern-gold);
-  font-size: calc(var(--fan-card-w) * 0.3);
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(63, 182, 168, 0.9);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.6);
 }
 
 /* The spread: only where a pointer can hover, so a tap on a phone never leaves it stuck open. */
@@ -896,8 +739,9 @@
     padding-top: 0;
   }
 
+  /* 12 px, the smallest text the page sets on a phone (it measured 11 here, integration QA). */
   .landing .landing-kicker {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .landing .landing-wordmark {
@@ -947,16 +791,6 @@
   }
   50% {
     transform: translateY(-5px);
-  }
-}
-
-@keyframes landing-shimmer {
-  0% {
-    background-position: 130% 0;
-  }
-  55%,
-  100% {
-    background-position: -130% 0;
   }
 }
 

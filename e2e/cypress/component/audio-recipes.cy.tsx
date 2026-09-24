@@ -38,7 +38,7 @@
 
 import { buildMix } from "../../../apps/web/src/audio/mix.ts";
 import { DEFAULT_AUDIO_SETTINGS } from "../../../apps/web/src/audio/settings.ts";
-import { SFX, SFX_IDS, type SfxRecipe } from "../../../apps/web/src/audio/sfx.ts";
+import { SFX, SFX_IDS, SFX_TIMBRES, type SfxRecipe } from "../../../apps/web/src/audio/sfx.ts";
 import voiceLines from "../../../apps/web/src/audio/voice-lines.json";
 
 type SfxId = (typeof SFX_IDS)[number];
@@ -57,12 +57,12 @@ const SILENT = 0.001;
 /** B16's tolerance. */
 const RMS_TOLERANCE = 0.01;
 
-/** The SfxId union from types.ts, in its order: SFX_IDS is "all 27, in the order of the union". */
+/** The SfxId union from types.ts, in its order: SFX_IDS is "all 28, in the order of the union". */
 const EXPECTED_IDS = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel",
+  "cancel", "entrance",
 ] as const;
 
 /** The Surface's recipe table, `durationMs` column: the window each recipe must fall silent in. */
@@ -94,6 +94,7 @@ const DURATION_MS: Readonly<Record<(typeof EXPECTED_IDS)[number], number>> = {
   notify: 300,
   drain: 600,
   cancel: 260,
+  entrance: 1400,
 };
 
 /** B14's params sets, reused so the browser checks the same inputs the fake context does. */
@@ -143,7 +144,7 @@ function rms(samples: Float32Array): number {
 }
 
 describe("polish 2 — SFX recipes rendered by a real browser", () => {
-  it("B15 renders all 27 SfxIds, each with a recipe and the Surface's durationMs", () => {
+  it("B15 renders all 28 SfxIds, each with a recipe and the Surface's durationMs", () => {
     expect([...SFX_IDS], "SFX_IDS, in the order of the SfxId union").to.deep.eq([...EXPECTED_IDS]);
     for (const id of EXPECTED_IDS) {
       const spec = SFX[id];
@@ -175,6 +176,29 @@ describe("polish 2 — SFX recipes rendered by a real browser", () => {
       });
     });
   }
+
+  // Integration: every card family's summon and spell, and the Mythic entrance, keep B15's bounds.
+  it("B15 every card family's summon and spell, and the Mythic entrance: finite, unclipped, silent after durationMs", () => {
+    const cases: { id: SfxId; params: SfxParams }[] = [
+      ...SFX_TIMBRES.flatMap((timbre): { id: SfxId; params: SfxParams }[] => [
+        { id: "summon", params: { timbre } },
+        { id: "summon", params: { amount: 25, timbre } },
+        { id: "spell", params: { timbre } },
+      ]),
+      { id: "entrance", params: { mythic: true } },
+    ];
+    const renders = Promise.all(cases.map(async ({ id, params }) => ({ id, params, samples: await render(id, params) })));
+    cy.wrap(renders, { timeout: RENDER_TIMEOUT_MS, log: false }).then((results) => {
+      for (const { id, params, samples } of results as { id: SfxId; params: SfxParams; samples: Float32Array }[]) {
+        const where = `${id} ${JSON.stringify(params)}`;
+        const tailFrom = Math.ceil((SAMPLE_RATE * DURATION_MS[id]) / 1000);
+        expect(nonFiniteCount(samples), `${where}: every sample is finite`).to.eq(0);
+        expect(peak(samples), `${where}: peak is audible`).to.be.at.least(MIN_PEAK);
+        expect(peak(samples), `${where}: peak never clips`).to.be.at.most(MAX_PEAK);
+        expect(peak(samples, tailFrom), `${where}: silent after durationMs`).to.be.below(SILENT);
+      }
+    });
+  });
 
   it("B16 impact RMS strictly increases across amount 1, 4 and 10", () => {
     const amounts = [1, 4, 10] as const;
@@ -285,6 +309,9 @@ const LOUD: readonly Cue[] = [
   { id: "defeat", params: {} },
   { id: "drain", params: { amount: 10 } },
   { id: "summon", params: { amount: 14 } },
+  // Integration: a Legendary or Mythic unit's entrance is one of the big moments.
+  { id: "entrance", params: {} },
+  { id: "entrance", params: { mythic: true } },
 ];
 const LOUD_BAND = [-5, 1] as const;
 const ROUTINE: readonly Cue[] = [
@@ -348,6 +375,15 @@ describe("polish 2 — B57 the mix at the default settings", () => {
   check("uiClick", [{ id: "uiClick", params: {} }], UI_BANDS.uiClick);
   check("uiHover", [{ id: "uiHover", params: {} }], UI_BANDS.uiHover);
   check("victory", [{ id: "victory", params: {} }], VICTORY_BAND);
+  // Integration: a card's family changes a summon's accent and a spell's chimes, never its level.
+  check(
+    "summon and spell in every card family",
+    SFX_TIMBRES.flatMap((timbre): Cue[] => [
+      { id: "summon", params: { timbre } },
+      { id: "spell", params: { timbre } },
+    ]),
+    ROUTINE_BAND,
+  );
 
   it("B57 victory plays louder than defeat", () => {
     const renders = Promise.all([renderMix([{ id: "victory", params: {} }]), renderMix([{ id: "defeat", params: {} }])]);
@@ -368,6 +404,7 @@ describe("polish 2 — B57 the mix at the default settings", () => {
       { id: "trapSting", params: {}, at: 0.1 },
       { id: "burn", params: {}, at: 0.12 },
       { id: "summon", params: { amount: 14 }, at: 0.12 },
+      { id: "entrance", params: { mythic: true }, at: 0.12 },
     ];
     const loudest = REFERENCE_LINES.reduce((a, b) => (personaGain(a) >= personaGain(b) ? a : b));
     const render = renderMix(scene, [{ buffer: buffers[loudest] as AudioBuffer, gain: personaGain(loudest), at: 0.1 }]);

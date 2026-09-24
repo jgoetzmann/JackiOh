@@ -525,29 +525,30 @@ function InviteScreen({ account }: { account: Account }) {
   return (
     <div className="app-shell invite-screen tavern">
       <div className="invite-screen__top">
-        <BackLink />
-        <div className="invite-screen__account">
-          {account.kind === "ready" ? (
-            <span className="invite-screen__who">
-              Signed in as{" "}
-              <span className="invite-screen__email" data-testid={inviteTestid.accountEmail}>
-                {email ?? "an account with no email address"}
+        <BackLink>
+          <div className="invite-screen__account">
+            {account.kind === "ready" ? (
+              <span className="invite-screen__who">
+                Signed in as{" "}
+                <span className="invite-screen__email" data-testid={inviteTestid.accountEmail}>
+                  {email ?? "an account with no email address"}
+                </span>
               </span>
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className="link-button"
-            data-testid={inviteTestid.signOut}
-            disabled={leaving}
-            aria-busy={leaving}
-            onClick={() => {
-              signOut();
-            }}
-          >
-            {signOutLabel(leaving)}
-          </button>
-        </div>
+            ) : null}
+            <button
+              type="button"
+              className="link-button"
+              data-testid={inviteTestid.signOut}
+              disabled={leaving}
+              aria-busy={leaving}
+              onClick={() => {
+                signOut();
+              }}
+            >
+              {signOutLabel(leaving)}
+            </button>
+          </div>
+        </BackLink>
       </div>
 
       {/* Two parts, so a phone held sideways can set them side by side (auth/tavern.css): the title

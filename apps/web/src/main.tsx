@@ -62,6 +62,7 @@ import type { MeResponse } from "./net/api.ts";
 import AccountRoute, { signOut, signOutLabel, useSigningOut } from "./routes/account.tsx";
 import LandingRoute from "./routes/landing.tsx";
 import { followInApp } from "./routes/nav.tsx";
+import { readSettings } from "./settings/store.ts";
 
 import "./index.css";
 import "./auth/tavern.css";
@@ -421,6 +422,9 @@ if (import.meta.env.MODE !== "test") {
   const host = document.getElementById("root");
   if (host === null) throw new Error("index.html is missing #root");
 
+  // The settings store's first read puts `data-reduce-motion` on <html> (index.css), so the player's
+  // "Reduce motion" holds from the first paint of every screen, not only once a board has read it.
+  readSettings();
   createRoot(host).render(
     <StrictMode>
       <App />

@@ -32,6 +32,7 @@ import {
 import { useCardInfo } from "./catalog.ts";
 import { NO_HIGHLIGHT, testid, type AnimatingMap, type ClickTarget, type Highlight } from "./contract.ts";
 import { conditionAttr, glowAttr } from "./glow.ts";
+import { useSetting } from "../settings/store.ts";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join(" ");
@@ -167,6 +168,8 @@ export default function Card(props: CardProps): ReactElement {
   const { card, unit, target, testId } = props;
   const info = useCardInfo(card?.defId ?? "", card?.radiant ?? false);
   const settings = useCardSettings();
+  // The preview opens only while the panel's "Hover previews" is on too (useInspectTrigger.tsx).
+  const panelHover = useSetting("hoverPreviews");
   const form = formOf(card, unit, props.type);
 
   const live =
@@ -270,7 +273,7 @@ export default function Card(props: CardProps): ReactElement {
       // It is the root's only inline style; the faces put theirs on inner elements.
       style={position === "DEF" ? { transform: "rotate(90deg) scale(0.72)" } : undefined}
       // The hover preview replaces the native tooltip; with previews off, the name comes back.
-      title={settings.hoverPreviews ? undefined : face.name}
+      title={settings.hoverPreviews && panelHover ? undefined : face.name}
     >
       {unit !== undefined && unit !== null ? (
         <MinionFace face={face} unit={unit} />

@@ -21,10 +21,14 @@
 
 import Deckbuilder from "../../../apps/web/src/game/deckbuilder/Deckbuilder.tsx";
 import { CATALOG, CATALOG_VERSION } from "../../../packages/cards/src/catalog-data.ts";
+import { FIT_FLOOR_PX, TEXT_TIER_MAX } from "../../../apps/web/src/cards/constants.ts";
+import { faceModel } from "../../../apps/web/src/cards/model.ts";
 import {
   CARD_POOL,
   DB_FILTERS,
   DB_SIDEBAR,
+  LOADOUT_ERRORS,
+  LOADOUT_SAVE,
   DECKBUILDER,
   INSPECT_DETAIL,
   INSPECT_FACE_BASE,
@@ -169,6 +173,92 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
       expect(Math.ceil(pool.getBoundingClientRect().bottom), "the pool ends on screen").to.be.at.most(720);
       expect(pool.scrollHeight, "the pool scrolls inside itself").to.be.greaterThan(pool.clientHeight);
       expect(doc.documentElement.scrollHeight, "the page fits the screen").to.be.at.most(720 + 1);
+    });
+  });
+
+  // Integration QA: at 1280x720 the pool held one row of cards (a 164 px filter block over
+  // 213 px cards); Hearthstone's collection shows two. The chip rows fold on a short screen and the
+  // cards size to the screen's height.
+  it("the pool shows two whole rows of cards at 1280x720", () => {
+    cy.viewport(1280, 720);
+    cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
+    cy.document().should((doc) => {
+      const pool = doc.querySelector(ts(CARD_POOL));
+      expect(pool, "the pool").to.not.eq(null);
+      if (pool === null) return;
+      const bottom = pool.getBoundingClientRect().bottom;
+      const items = [...pool.querySelectorAll<HTMLElement>(".db-item")];
+      const tops = [...new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))].sort((a, b) => a - b);
+      expect(tops.length, "rows").to.be.at.least(2);
+      const second = items.find((item) => Math.round(item.getBoundingClientRect().top) === tops[1]);
+      expect(second, "a card in the second row").to.not.eq(undefined);
+      if (second === undefined) return;
+      expect(Math.ceil(second.getBoundingClientRect().bottom), "the second row ends inside the pool").to.be.at.most(Math.ceil(bottom));
+    });
+  });
+
+  // Integration QA: dense cards printed their rules at 6-7 px in the grid. Every face now prints at
+  // the floor or above: the long layout first, then a clamp at the floor (fit.ts), and only the
+  // texts past 260 characters (B15's allowance) may clamp.
+  for (const viewport of VIEWPORTS) {
+    const where = `${viewport.label} ${String(viewport.width)}x${String(viewport.height)}`;
+    it(`every pool card's rules text is at least ${String(FIT_FLOOR_PX)} px at ${where}`, () => {
+      cy.viewport(viewport.width, viewport.height);
+      cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
+      cy.document().should((doc) => {
+        const small: string[] = [];
+        for (const text of doc.querySelectorAll<HTMLElement>(`${ts(CARD_POOL)} .card-text`)) {
+          const px = parseFloat(getComputedStyle(text).fontSize);
+          const id = text.closest(".db-item")?.getAttribute("data-card") ?? "?";
+          if (px < FIT_FLOOR_PX - 0.05) small.push(`${id} at ${px.toFixed(2)}px`);
+          if (text.getAttribute("data-clamped") === "true") {
+            const def = CATALOG[id];
+            const face = def === undefined ? null : faceModel({ defId: id, def, radiant: false }).text;
+            const printed = face === null ? 0 : face.base.length + (face.radiant?.length ?? 0);
+            expect(printed, `${id} clamps only past 260 characters`).to.be.greaterThan(TEXT_TIER_MAX.xl);
+          }
+        }
+        expect(small, "rules text under the floor").to.deep.equal([]);
+      });
+    });
+  }
+
+  // Integration QA: a refused save's reasons rendered under all 100 pool cards on a phone. They sit
+  // in the sidebar, directly under Save, at every size.
+  for (const viewport of VIEWPORTS) {
+    const where = `${viewport.label} ${String(viewport.width)}x${String(viewport.height)}`;
+    it(`the verdicts sit directly under Save at ${where}`, () => {
+      cy.viewport(viewport.width, viewport.height);
+      // A fresh account: three empty decks, so the list has something to say (the legal loadout
+      // the other tests mount has no verdict at all).
+      cy.mount(
+        <Deckbuilder
+          catalog={{ version: CATALOG_VERSION, cards: CATALOG }}
+          collection={COLLECTION}
+          initialDecks={null}
+          save={cy.stub().resolves({ ok: true })}
+        />,
+      );
+      cy.get(`${ts(DB_SIDEBAR)} ${ts(LOADOUT_ERRORS)}`).should("have.attr", "data-count", "3");
+      cy.document().should((doc) => {
+        const save = doc.querySelector(ts(LOADOUT_SAVE))?.getBoundingClientRect();
+        const errors = doc.querySelector(ts(LOADOUT_ERRORS))?.getBoundingClientRect();
+        expect(save, "Save").to.not.eq(undefined);
+        expect(errors, "the verdict list").to.not.eq(undefined);
+        if (save === undefined || errors === undefined) return;
+        expect(errors.top - save.bottom, "the verdicts start within 40 px under Save").to.be.within(-1, 40);
+      });
+    });
+  }
+
+  it("at 390x844 with a full loadout, the first row of the pool is on the first screen", () => {
+    cy.viewport(390, 844);
+    cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
+    cy.document().should((doc) => {
+      const first = doc.querySelector(POOL_ITEMS);
+      expect(first, "the first pool card").to.not.eq(null);
+      if (first === null) return;
+      expect(Math.ceil(first.getBoundingClientRect().bottom), "it ends on the first screen").to.be.at.most(844);
     });
   });
 

@@ -87,8 +87,10 @@ export default function Hero(props: HeroProps): ReactElement {
       }}
     >
       <span className="hero-seat">{side === "you" ? "You" : "Opponent"}</span>
+      {/* A hero past lethal reads 0, as Hearthstone draws it: "-6" is overkill, not health. The
+          true number stays in `data-health`. */}
       <span className="hero-health" data-health={hero.health} title="Health">
-        {hero.health}
+        {Math.max(0, hero.health)}
       </span>
       {hero.armor > 0 && (
         <span className="hero-armor" data-armor={hero.armor} title="Hero armor">

@@ -14,7 +14,8 @@
 //
 // THE LAYOUT (docs/polish/6-cards.md, Surface D). A browse column (`FilterBar` over `PoolGrid`, a
 // grid of full cards) beside a deck sidebar (`DeckSidebar`: the tabs, the open deck's mana curve
-// and tiles, and the save control); one column with the sidebar first on a phone. The sidebar
+// and tiles, the save control and the verdicts under it); one column with the sidebar first on a
+// phone, where the deck's list and curve fold behind a toggle so the pool starts on the first screen. The sidebar
 // comes first in the DOM too, so the focus and reading order match the phone's visual order (the
 // desktop grid places it on the right by area name). This file keeps the state and the moves: the
 // draft, the open deck, the filter and sort, the save and its verdict, which card's detail view is
@@ -101,6 +102,9 @@ export default function Deckbuilder(props: DeckbuilderProps) {
   const [sort, setSort] = useState<PoolSort>(DEFAULT_SORT);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  /** Bumped by each refused save, so the verdict under Save is brought into view and focused. */
+  const [refusals, setRefusals] = useState(0);
+  const verdictRef = useRef<HTMLUListElement>(null);
   const dragged = useRef<string | null>(null);
 
   // The status line fades after a moment; the next add or removal replaces it.
@@ -113,6 +117,18 @@ export default function Deckbuilder(props: DeckbuilderProps) {
       window.clearTimeout(timer);
     };
   }, [status]);
+
+  // A refused save moves the reader to why: the list under Save scrolls into view (a phone's page
+  // may have been deep in the pool) and takes focus, so a screen reader reads it too.
+  useEffect(() => {
+    if (refusals === 0) return;
+    const list = verdictRef.current;
+    if (list === null) return;
+    // The server's own sentence, when the refusal was not a rule, sits just above the list.
+    const target = list.parentElement?.querySelector<HTMLElement>(".db-save-error") ?? list;
+    if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "nearest" });
+    list.focus({ preventScroll: true });
+  }, [refusals]);
 
   const nameOf = useCallback((cardId: string) => catalog.cards[cardId]?.name ?? cardId, [catalog]);
 
@@ -230,6 +246,7 @@ export default function Deckbuilder(props: DeckbuilderProps) {
         }
         setServerIssues(outcome.issues);
         setServerMessage(outcome.issues.length === 0 ? outcome.message : null);
+        setRefusals((count) => count + 1);
       })
       .finally(() => {
         setSaving(false);
@@ -290,6 +307,42 @@ export default function Deckbuilder(props: DeckbuilderProps) {
               </span>
             ) : null}
           </div>
+
+          {/* The verdicts sit under Save, where the eye already is when a save is refused: below the
+              pool they landed 13,000 px down a phone's page. */}
+          {serverMessage === null ? null : (
+            // Not a rule failure (a stale catalog version, a closed gate): the server's own sentence,
+            // unchanged. The client has no second wording for any of these.
+            <p className="notice db-save-error" data-testid={LOADOUT_SAVE_ERROR} role="alert">
+              {serverMessage}
+            </p>
+          )}
+
+          <ul
+            ref={verdictRef}
+            className="db-errors"
+            data-testid={LOADOUT_ERRORS}
+            data-count={String(issues.length)}
+            // The client's verdict is progress until the server has spoken about this draft: a
+            // fresh account's three empty decks are "needs 20", not three failures. A refused save
+            // is the server's verdict, and that one is red.
+            data-tone={serverIssues === null ? "hint" : "error"}
+            tabIndex={-1}
+            aria-label={serverIssues === null ? "Before you can save" : "Why the save was refused"}
+          >
+            {issues.map((issue, position) => (
+              <li
+                key={`${issue.rule}:${String(issue.deck ?? "")}:${issue.cardId ?? ""}:${String(position)}`}
+                data-testid={loadoutErrorId(issue.rule)}
+                data-rule={issue.rule}
+                data-deck={issue.deck === undefined ? undefined : String(issue.deck)}
+                data-card={issue.cardId}
+                data-source={serverIssues === null ? "client" : "server"}
+              >
+                {issue.message}
+              </li>
+            ))}
+          </ul>
         </DeckSidebar>
 
         <section className="db-browse" aria-label="Browse cards">
@@ -326,29 +379,6 @@ export default function Deckbuilder(props: DeckbuilderProps) {
           ) : null}
         </section>
       </div>
-
-      {serverMessage === null ? null : (
-        // Not a rule failure (a stale catalog version, a closed gate): the server's own sentence,
-        // unchanged. The client has no second wording for any of these.
-        <p className="notice" data-testid={LOADOUT_SAVE_ERROR}>
-          {serverMessage}
-        </p>
-      )}
-
-      <ul className="db-errors" data-testid={LOADOUT_ERRORS} data-count={String(issues.length)}>
-        {issues.map((issue, position) => (
-          <li
-            key={`${issue.rule}:${String(issue.deck ?? "")}:${issue.cardId ?? ""}:${String(position)}`}
-            data-testid={loadoutErrorId(issue.rule)}
-            data-rule={issue.rule}
-            data-deck={issue.deck === undefined ? undefined : String(issue.deck)}
-            data-card={issue.cardId}
-            data-source={serverIssues === null ? "client" : "server"}
-          >
-            {issue.message}
-          </li>
-        ))}
-      </ul>
 
       {detailCardId === null || detailDef === undefined ? null : (
         <CardDetail

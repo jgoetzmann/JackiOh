@@ -1199,7 +1199,7 @@ Web and e2e (slice C):
 The strength pass (after the build; see "Strength pass" below):
 
 - **B41**: the opponent's reply. From a state where the seat has just passed the turn, `simulateReply` has the opponent swing an unblocked unit at the face and end its turn (one node each), take lethal when it has it, leave a Defense-Position wall it cannot hurt alone, trade into a unit worth more than the face damage it gives up, stop at the seat's own start-of-turn prompt, and return null without a node. It replays the units the seat's own Flood bounced into its hand and none of the cards it held unseen. `replyScore` scores a passed line with `evaluate(after, seat, "seat")` less its unspent crystals, keeps the static score of a line that ended the game, and is null when the counter runs out. Observed on `scenario()` boards.
-- **B42**: timing. Every decision the Easy AI faced in the first ai-vs-greedy gate game (the first six under `pnpm ai:gate`), decided again at `AI_BUDGET`, spends at most `AI_BUDGET.nodes` nodes, and the fastest of three runs of each takes under `AI_GATE.maxDecisionMs`. Observed with `performance.now()`.
+- **B42**: timing. Every decision the Easy AI faced in the first ai-vs-greedy gate game (the first six under `pnpm ai:gate`), decided again at `AI_BUDGET`, spends at most `AI_BUDGET.nodes` nodes, and the fastest of three runs of each takes under `AI_GATE.maxDecisionMs` as the development machine would time it: each run is timed right after a fixed yardstick of engine work (`AI_GATE.calibrationGames` random-policy games), and the smallest ratio times `AI_GATE.calibrationRefMs` is what counts, so load or a slower runner fails nothing (integration fix stage; the raw clock failed at 1,520 and 5,523 ms under load and passed alone). Observed with `performance.now()`.
 
 ## Tests
 
@@ -2246,3 +2246,21 @@ exactly as hotseat and online play do. What the skin decided for practice alone 
 under the HUD, Offer draw is hidden (§9.9, R188), and the AI's hero breathes a ring while it
 thinks. `practice-table.cy.tsx` measures the same things on task 7's board, holding a hand card to
 task 7's B46 line (its top 24 px on screen, as a phone's hand hangs below the edge).
+
+## Integration note: practice on the full board
+
+- **Voice lines hold the AI for real.** `Game` marks its root `data-speaking` while the audio
+  engine's voice channel is held (task 2's `speaking()`), which is the mark `useVoiceHold` watched
+  for; `?pace=fast` (e2e) does not wait on it.
+- **The result waits for the board.** The dialog opened over task 1's killing blow and Victory or
+  Defeat sequence. `PRACTICE_PACING.resultDelayMs` (`FX_LETHAL_LEAD_MAX_MS + FX_RESULT_MS`) holds it
+  until that has played; with the effects off, reduced motion or e2e pacing it opens at once, and the
+  HUD's outcome chip opens it at once too.
+- **Reduced pacing** follows the settings panel's "Reduce motion" as well as the media query
+  (`reducedMotionNow`).
+- **The fix-pass asks of task 7 are done:** the mulligan opens with every card kept, shows each
+  card's live cost and stamps it Keep or Redraw; engine prompts offer no Cancel; the waiting modal
+  says "Your opponent is choosing."; and a target or Tribute picker names a card's place ("Enemy
+  unit, lane 2"), not its instance id.
+- **A way back from loading.** The "Shuffling the decks…" screen has a Back to the setup, so a
+  worker that never answers traps nobody.

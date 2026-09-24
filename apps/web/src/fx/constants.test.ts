@@ -141,7 +141,7 @@ describe("S2 the effects constants", () => {
     expect((1 / constants.FX_TRAUMA_DECAY) * 1000).toBeLessThanOrEqual(constants.FX_MAX_TAIL_MS);
   });
 
-  it("S2 a typical hit reads: 4 or 5 damage moves the board several pixels and keeps it moving for a third of a second", () => {
+  it("S2 a typical hit reads: 4 or 5 damage moves the board several pixels and keeps it moving for a third of a second (B52)", () => {
     // Peak offset is FX_SHAKE_MAX_PX · trauma² (shake.ts). Review: at 8 px and 0.1 per damage point a
     // 5-damage hit peaked under 1 px on screen, which no player notices.
     const trauma = (damage: number): number => Math.min(constants.FX_SHAKE_MAX_TRAUMA, damage * constants.FX_TRAUMA_PER_DAMAGE);

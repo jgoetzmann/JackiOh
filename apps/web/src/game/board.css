@@ -537,6 +537,29 @@
   min-width: 0;
 }
 
+/* Wherever the board has the room (a desktop, a tablet held upright), the unit rows take height
+   from the backrow rows, which hold a trap's back or a field card and are mostly empty: minions
+   were a third of their lane, 57 px wide in a 188 px zone. The four rows still sum to four card
+   heights, so nothing else on the board moves, and a unit fills its taller row as a broad oval,
+   the way Hearthstone's minions sit on its board. A phone keeps equal rows: its backrow is already
+   at the 44 px touch floor. */
+@media (min-width: 761px) and (min-height: 501px) {
+  .lane {
+    --unit-row: calc(var(--card-h) * 1.2);
+    --back-row: calc(var(--card-h) * 0.8);
+
+    grid-template-rows: var(--back-row) var(--unit-row) var(--unit-row) var(--back-row);
+  }
+
+  .zone[data-row="units"] > .card.cf-host--minion {
+    max-width: min(100%, calc(var(--unit-row) * 0.86));
+  }
+
+  .zone[data-row="backrow"] > .card {
+    max-width: calc(var(--back-row) * 0.74);
+  }
+}
+
 .zone {
   position: relative;
   display: flex;
@@ -1057,18 +1080,15 @@
 }
 
 .board .control.control-end-turn:not(:disabled) {
-  border-color: #fde68a;
-  background: linear-gradient(180deg, #fcd34d, #d4a017 55%, #a16207);
-  color: #2b1800;
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
   text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 45%),
-    0 2px 0 #713f12,
-    0 4px 12px rgb(0 0 0 / 45%);
+  box-shadow: var(--primary-shadow);
 }
 
 .board .control.control-end-turn:not(:disabled):hover {
-  background: linear-gradient(180deg, #fde68a, #e3b12a 55%, #b7791f);
+  background: var(--primary-face-hover);
 }
 
 /* "Confirm end turn" (B25): the first click armed it, the second ends the turn. */
@@ -1133,6 +1153,48 @@
   .turn-plate[data-side="opponent"] .turn-plate-whose {
     color: color-mix(in srgb, var(--opponent) 60%, white);
   }
+}
+
+/* The engine's refusal of the last action (Game.tsx, `action-error`): a toast in the opponent's
+   red across the top of the screen, over the board rather than pushing it down, and blind to the
+   pointer. It was a line of bare text above the board's top-left corner. */
+.game > .game-error {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 45;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 8px 16px;
+  translate: -50% 0;
+  border: 1px solid color-mix(in srgb, var(--opponent) 70%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--opponent) 18%, var(--bg-raised));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+  pointer-events: none;
+  /* It says its piece and fades; the next refusal is a new element (keyed by its text) and shows.
+     Reduced motion zeroes every delay, which would fade it at once, so there it simply stays. */
+  animation: game-error-fade 400ms ease-in 4s forwards;
+}
+
+@keyframes game-error-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game > .game-error {
+    animation: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .game > .game-error {
+  animation: none;
 }
 
 /* The shell's turn banner (Game.tsx, `turn-banner`): the live region that announces the turn, and
@@ -1294,9 +1356,11 @@
     border-radius: 14px;
   }
 
+  /* Offer draw and Concede share a row, and the mute and the gear the one below (integration):
+     at 40% each, the mute cannot squeeze in beside them and leave the gear on a row of its own. */
   .board .control-bar .control-offer-draw,
   .board .control-bar .control-concede {
-    flex: 1 1 0;
+    flex: 1 1 40%;
     padding-inline: 8px;
     white-space: nowrap;
   }
@@ -1390,7 +1454,8 @@
 
   /* The buttons fill the width the turn plate above them sets, End turn the most. */
   .board .control-bar .control,
-  .board .control-bar [data-testid="settings-open-game"] {
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
     flex: 1 1 auto;
   }
 
@@ -1491,6 +1556,7 @@
   .board .control,
   .board .control-bar button,
   .board [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle,
   .board .power-button {
     min-width: 44px;
     min-height: 44px;
@@ -1558,8 +1624,10 @@
     color: var(--text);
     font-size: 0.95em;
     box-shadow: 0 14px 40px rgb(0 0 0 / 60%);
-    -webkit-mask-image: none;
-    mask-image: none;
+    /* It opens at its newest line (Log.tsx), so the older ones fade under the top edge rather than
+       being cut in half by it. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
+    mask-image: linear-gradient(to bottom, transparent, #000 18px);
   }
 
   /* A square icon button, like the gear beside it, so the control bar stays one row. */
@@ -1670,6 +1738,12 @@
 /* Phone portrait, 390x844: one column, the opponent's hand beside their seat, and a card height
    that gives the field and your hand the rest of the screen. */
 @media (max-width: 600px) {
+  /* The control bar is one row here, and a sixth button squeezed End turn to a stub: the mute
+     steps aside, and the gear beside it holds Mute with the rest of the sound controls. */
+  .board .control-bar .audio-toggle {
+    display: none;
+  }
+
   .board {
     /* Four field rows and your hand (1.24) stacked; the opponent's hand sits beside their seat.
        The 90px cap keeps each card of a seven-card fan 44px wide at 390px (B30). */
@@ -1720,7 +1794,8 @@
 
   .board .control-bar .control-offer-draw,
   .board .control-bar .control-concede,
-  .board .control-bar [data-testid="settings-open-game"] {
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
     flex: 0 0 auto;
   }
 
@@ -1840,10 +1915,16 @@
     order: 1;
   }
 
-  /* The log toggle sits after Offer draw and Concede, on a row of its own at the column's foot. */
+  /* The log toggle sits after Offer draw and Concede, on a row of its own at the column's foot,
+     with the mute beside it (integration: the gear's row is End turn's). */
   .board .control-bar .log-toggle {
     order: 3;
     flex: 1 1 auto;
+  }
+
+  .board .control-bar .audio-toggle {
+    order: 3;
+    flex: 0 0 auto;
   }
 
   .board .control-bar .control-offer-draw,

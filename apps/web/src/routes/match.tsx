@@ -39,6 +39,7 @@ import {
   type SocketFactory,
 } from "../game/net.ts";
 import { getCatalog } from "../net/api.ts";
+import { navigate, paths } from "../net/navigate.ts";
 import { BackLink } from "./nav.tsx";
 
 /** Chrome this route invented. None of it is in `e2e/support/testids.ts`; see the hand-off report. */
@@ -177,7 +178,18 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
   };
 
   const board = (
-    <Game view={view} legal={match.legal} onAction={match.send} error={match.error} />
+    <Game
+      view={view}
+      legal={match.legal}
+      onAction={match.send}
+      error={match.error}
+      resultActions={
+        // A finished match's way on (Result.tsx): the lobby, where the next one starts.
+        <button type="button" data-testid="result-back" onClick={() => navigate(paths.play)}>
+          Back to lobby
+        </button>
+      }
+    />
   );
 
   return (

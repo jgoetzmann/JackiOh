@@ -21,9 +21,15 @@ import { DECK_SIZE, MAX_MANA, UNIT_ZONES } from "@jackioh/engine/config";
 import { LOADOUT_DECKS } from "@jackioh/validator";
 
 import { landingFanCardTestid, landingStepTestid, landingTestid } from "../auth/testids.ts";
+import { CardBack } from "../cards/CardBack.tsx";
+import { CardFace } from "../cards/CardFace.tsx";
+import { faceModel } from "../cards/model.ts";
 import { useAccount, type Account } from "../net/gate.ts";
 import { paths } from "../net/navigate.ts";
 import { readSession } from "../net/session.ts";
+import { SettingsButton } from "../settings/index.ts";
+import { useSetting } from "../settings/store.ts";
+import { LANDING_FAN } from "./landingFan.ts";
 import { followInApp } from "./nav.tsx";
 
 import "../auth/tavern.css";
@@ -42,11 +48,13 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * `data-motion` on the root. The CSS also honours the media query directly, so this attribute is
- * what a test (and a future settings toggle) can see and set, not the only thing stopping motion.
+ * `data-motion` on the root: the media query, or the settings panel's "Reduce motion". The CSS also
+ * honours the media query and the setting's `<html>` attribute directly (index.css), so this
+ * attribute is what a test can see, not the only thing stopping motion.
  */
 function useMotion(): LandingMotion {
   const [reduced, setReduced] = useState(prefersReducedMotion);
+  const settingReduces = useSetting("reduceMotion");
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return undefined;
@@ -62,7 +70,7 @@ function useMotion(): LandingMotion {
     };
   }, []);
 
-  return reduced ? "reduced" : "full";
+  return reduced || settingReduces ? "reduced" : "full";
 }
 
 function accountState(account: Account): LandingAccountState {
@@ -79,68 +87,37 @@ function accountState(account: Account): LandingAccountState {
 // The hand of cards
 // ---------------------------------------------------------------------------------------------
 
-type FanTone = "ember" | "tide" | "radiant" | "grove" | "back";
-
-type FanCard = {
-  readonly tone: FanTone;
-  /** The cost gem. A glyph, never a numeral: these cards are decoration and cost nothing. */
-  readonly gem: string;
-  /** The art window's emblem, or the rune on the back. */
-  readonly sigil: string;
-};
-
-/** Five cards, left to right. The middle one is radiant and the last is face down. */
-const FAN_CARDS: readonly FanCard[] = [
-  { tone: "ember", gem: "✦", sigil: "✺" },
-  { tone: "tide", gem: "◆", sigil: "☾" },
-  { tone: "radiant", gem: "✧", sigil: "♛" },
-  { tone: "grove", gem: "❖", sigil: "♞" },
-  { tone: "back", gem: "", sigil: "❂" },
-];
-
-function FanCardFace({ card }: { card: FanCard }): ReactElement {
-  if (card.tone === "back") {
-    return (
-      <span className="landing-fan-back">
-        <span className="landing-fan-rune">{card.sigil}</span>
-      </span>
-    );
-  }
-  return (
-    <>
-      <span className="landing-fan-art">
-        <span className="landing-fan-sigil">{card.sigil}</span>
-      </span>
-      <span className="landing-fan-gem">{card.gem}</span>
-      <span className="landing-fan-ribbon">
-        <span className="landing-fan-name" />
-      </span>
-      <span className="landing-fan-text">
-        <span className="landing-fan-line landing-fan-line--keyword" />
-        <span className="landing-fan-line" />
-        <span className="landing-fan-line landing-fan-line--short" />
-      </span>
-      <span className="landing-fan-stat landing-fan-stat--attack" />
-      <span className="landing-fan-stat landing-fan-stat--health" />
-    </>
-  );
-}
-
+/**
+ * Five cards, left to right: the four real faces of `landingFan.ts` drawn by the cards module's
+ * CardFace, the middle one on its Radiant face, and a card back last. The deal, the float and the
+ * spread are landing.css's; the faces are the game's own, so the first screen shows cards as the
+ * board, the deck builder and the inspect sheet draw them.
+ */
 function CardFan(): ReactElement {
   return (
     <div className="landing-fan" data-testid={landingTestid.fan} aria-hidden="true">
-      {FAN_CARDS.map((card, index) => (
-        <div key={card.tone} className="landing-fan-slot">
+      {LANDING_FAN.map(({ def, radiant }, index) => (
+        <div key={def.id} className="landing-fan-slot">
           <div
-            className={`landing-fan-card landing-fan-card--${card.tone}`}
+            className="landing-fan-card"
             data-testid={landingFanCardTestid(index)}
-            data-face={card.tone === "back" ? "down" : "up"}
-            data-radiant={card.tone === "radiant" ? "true" : undefined}
+            data-face="up"
+            data-def-id={def.id}
+            data-radiant={radiant ? "true" : undefined}
           >
-            <FanCardFace card={card} />
+            <CardFace face={faceModel({ defId: def.id, def, radiant })} />
           </div>
         </div>
       ))}
+      <div className="landing-fan-slot">
+        <div
+          className="landing-fan-card landing-fan-card--back"
+          data-testid={landingFanCardTestid(LANDING_FAN.length)}
+          data-face="down"
+        >
+          <CardBack />
+        </div>
+      </div>
     </div>
   );
 }
@@ -438,8 +415,11 @@ export default function LandingRoute(): ReactElement {
         <Backdrop />
 
         <header className="landing-topbar">
+          {/* The gear beside the account pill, as every other screen keeps it top right: mute,
+              volume and reduced motion are reachable from the first screen too. */}
           <div className="landing-corner">
             <Corner account={account} />
+            <SettingsButton placement="nav" />
           </div>
         </header>
 

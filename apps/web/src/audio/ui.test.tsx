@@ -52,6 +52,8 @@ function fakeEngine(options: { state?: AudioState; contexts?: number; log?: Play
       log.length = 0;
     }),
     contextsCreated: vi.fn<AudioEngine["contextsCreated"]>(() => options.contexts ?? 0),
+    speaking: vi.fn<AudioEngine["speaking"]>(() => false),
+    subscribeSpeaking: vi.fn<AudioEngine["subscribeSpeaking"]>(() => () => undefined),
     dispose: vi.fn<AudioEngine["dispose"]>(),
     playSfx: vi.fn<AudioEngine["playSfx"]>(() => true),
     playVoice: vi.fn<AudioEngine["playVoice"]>(() => true),

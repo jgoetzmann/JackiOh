@@ -56,7 +56,8 @@ src/
                         the page-wide unlock and UI ticks main.tsx holds, mix.ts the buses and limiter
     engine.ts sfx.ts unlock.ts settings.ts   lazy AudioContext and buses, procedural SFX, gesture unlock, the settings store
     cues.ts director.ts useGameAudio.ts      SOUND_CUES (a total map over GameEventType) and the runner-synced director
-    AudioToggle.tsx AudioControls.tsx        the HUD mute button and the full panel
+    AudioToggle.tsx AudioControls.tsx        the mute button (in the board's control bar) and the full panel
+    useVoiceSpeaking.ts                      the engine's `speaking()`, which Game marks as data-speaking
     voice-lines.json voice-manifest.json     every card's lines and personas; the generated hash and size of each file
   fx/                   the effects layer (docs/polish/1-animations.md; SPEC §10.10, R200–R202)
     types.ts constants.ts   the cue contract and every FX number
@@ -71,6 +72,8 @@ src/
     index.ts            FxLayer, settings and types
   settings/             the settings store (localStorage, in try/catch) and the panel the
                         gear opens from the game's control bar and the nav
+    slots.ts controls.tsx   the other tasks' controls the panel mounts (effects speed and
+                        intensity, animated foil, the audio panel), each with its reset
   routes/dev/hotseat.tsx  the dev hotseat route
   test/
     setup.ts            jsdom matchers and a matchMedia stub
@@ -131,9 +134,11 @@ routes/practice.tsx   the route: setup, HUD, and Game.tsx unchanged inside the w
 - The setup previews decks from the catalog a short-lived worker sends (`{ type: "catalog" }`), so
   the page still bundles no card data; an autostarted game (`?difficulty=&deck=`) asks for none.
 - The AI's next step waits while anything on the board carries `data-animating`, and while any
-  element on the page carries `data-speaking` (the audio layer marks a voice line that way; a mark
-  that is never cleared holds the AI for at most `PRACTICE_VOICE_HOLD_MAX_MS`). The controller's
-  general form is `setHold(reason, held)`.
+  element on the page carries `data-speaking` (Game marks its root while a voice line holds the
+  audio engine's channel; a mark that is never cleared holds the AI for at most
+  `PRACTICE_VOICE_HOLD_MAX_MS`, and `?pace=fast` does not wait for voice). The controller's general
+  form is `setHold(reason, held)`. The settings panel's "Reduce motion" gives the reduced pacing,
+  as the media query does.
 - A game in progress asks before a reload or a closed tab ends it (`beforeunload`), and the HUD's
   Menu leaves for the landing page, asking first while the game is on.
 

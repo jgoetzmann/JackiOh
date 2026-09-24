@@ -328,6 +328,7 @@ The recipe sketches below are the designer's intent; builders tune them by ear w
 | notify | 300 | 0.4 | sine blips 880 then 1175 Hz, 90 ms each |
 | drain | 600 | 0.6 | sine 300→120 Hz with a 6 Hz ±15 Hz vibrato; peak scales with amount like impact |
 | cancel | 260 | 0.5 | square 330→165 Hz → lowpass 1500 Hz |
+| entrance | 1400 | 0.6 | (integration) FM gong 98 Hz + sawtooth fifth 196/294 Hz → lowpass opening 600→3000 Hz, then 3 high glints; `mythic`: 6 faster glints under a 9 Hz tremolo |
 
 ### `apps/web/src/audio/engine.ts` (slice 1)
 
@@ -1153,3 +1154,26 @@ R205 stays unused.
 - **Performance.** Each SFX cue builds a handful of nodes, capped by `SFX_MAX_VOICES`. The noise
   buffer is built once per context, the lines and manifest (about 30 KB) ride in the `Game` chunk,
   and voice files are fetched on demand and preloaded per view.
+
+## Integration note: sound by card, the speaking mark and the mute's place
+
+Task 6 put the catalog def on the client's `CardInfo`, so the integration branch gave the director
+the board's `CatalogContext` (`useGameAudio` hands `createSoundDirector` a `card` lookup) and used it
+for what this branch could not reach:
+
+- **Families.** `timbreFor` maps a card to the card art's theme (`cards/art/themes.ts`: tags first,
+  then Token, then a Field Spell's type), and `SfxParams.timbre` colours the summon thud with a short
+  accent and the spell shimmer with its own four chimes. Levels are the plain recipe's; the component
+  spec holds every family in the routine band.
+- **The entrance.** A Legendary or Mythic Unit's `summoned` adds the new `entrance` sting (the
+  table's 28th id) at the thud, where task 1 starts its light rays. It is one of the big moments in
+  B57's loud band.
+- **R203.** Only a Unit summoned to the field and a cast Spell vary. A defId behind the sentinel is
+  never looked up, and a Trap's set and its backrow arrival sound like every Trap's. The R203 row and
+  §10.11 say so.
+- **`data-speaking`.** The engine's `speaking()` and `subscribeSpeaking` report whether a line holds
+  the voice channel (loading included). `Game` marks its root `data-speaking` while it does, which is
+  the attribute task 3's practice pacing already held the AI on.
+- **The mute moved into the board's control bar**, beside the settings gear, where task 7's panel
+  mounts `AudioControls`: fixed in the corner it covered the practice HUD's Menu and the match bar.
+  On a phone held upright the bar is one row, so there the mute steps aside and the gear holds it.

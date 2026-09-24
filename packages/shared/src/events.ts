@@ -4,7 +4,21 @@
 import type { Keyword, PlayerId, PromptKind, Row, Zone } from "./catalog-types";
 
 export type GameEvent =
-  | { type: "cardPlayed"; player: PlayerId; instanceId: string; defId: string; costPaid: number; x?: number; embiggened?: boolean }
+  /**
+   * `formerId` (R227): the id the card had until this moment, set only when the play put it
+   * face-down into a backrow, which gives it a fresh id. Its controller's client finds the hand card
+   * by it; a view that hides the card hides this too (R97).
+   */
+  | {
+      type: "cardPlayed";
+      player: PlayerId;
+      instanceId: string;
+      defId: string;
+      costPaid: number;
+      x?: number;
+      embiggened?: boolean;
+      formerId?: string;
+    }
   /**
    * §10.5 step 7: the card has finished resolving — after its Cry and any Echo repeats, and after a
    * Spell has reached the graveyard or exile. R17 keys the post-resolution traps on this moment
@@ -39,7 +53,8 @@ export type GameEvent =
        */
       arrivedDuring?: string[];
     }
-  | { type: "summoned"; player: PlayerId; instanceId: string; defId: string; row: Row; lane: number }
+  /** `formerId` (R227): as on `cardPlayed`, when this summon put an existing card face-down. */
+  | { type: "summoned"; player: PlayerId; instanceId: string; defId: string; row: Row; lane: number; formerId?: string }
   | { type: "damage"; sourceId: string | null; targetId: string; amount: number; combat: boolean }
   | { type: "healthLost"; player: PlayerId; amount: number }
   | { type: "healed"; targetId: string; amount: number }

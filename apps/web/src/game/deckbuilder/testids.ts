@@ -176,6 +176,14 @@ export const DB_DETAIL_ADD = "db-detail-add";
 /** The deck sidebar: tabs, the open deck's list and curve, and the save control. */
 export const DB_SIDEBAR = "db-sidebar";
 
+/**
+ * Deck `n`'s list toggle: on a phone the open deck's curve and tiles fold behind it, so the pool
+ * starts on the first screen. `aria-expanded` says which; wider layouts never show it.
+ */
+export function deckFoldId(deck: number): string {
+  return `deck-fold-${deck}`;
+}
+
 /** Deck `n`'s mana curve: one `.db-bar[data-bucket][data-count]` per cost bucket. */
 export function deckCurveId(deck: number): string {
   return `deck-curve-${deck}`;

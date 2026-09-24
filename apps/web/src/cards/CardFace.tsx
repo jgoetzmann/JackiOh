@@ -14,7 +14,7 @@ import { useRef, type CSSProperties, type ReactElement } from "react";
 import type { CardType } from "@jackioh/shared";
 
 import { CardArt, type ArtShape } from "./art/index.ts";
-import { TIER_SCALE } from "./constants.ts";
+import { FIT_FLOOR_PX, TIER_SCALE } from "./constants.ts";
 import { nameTier, textTier, useFitText } from "./fit.ts";
 import { Icon } from "./icons.tsx";
 import { foilFor, type FaceModel } from "./model.ts";
@@ -69,8 +69,9 @@ export function CardFace({ face, layout = "full", className }: CardFaceProps): R
   const names = nameTier(face.name);
   const texts = textTier(printed);
   useFitText(nameRef, face.name);
-  // The rules box only exists on a full face; keying on the layout refits it when one appears.
-  useFitText(textRef, full ? printed : "");
+  // The rules box only exists on a full face; keying on the layout refits it when one appears. Its
+  // floor keeps dense cards readable: the long layout first, then a clamp (fit.ts).
+  useFitText(textRef, full ? printed : "", { floorPx: FIT_FLOOR_PX });
 
   const scales = { "--cf-name-scale": String(TIER_SCALE[names]), "--cf-text-scale": String(TIER_SCALE[texts]) } as CSSProperties;
 

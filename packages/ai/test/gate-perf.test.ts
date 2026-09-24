@@ -1,13 +1,20 @@
-// Quality gate: a decision at the browser's budget stays under AI_GATE.maxDecisionMs on the machine
-// that runs the tests (docs/polish/3-ai.md "Budgets", SPEC §9.9). Budgets count nodes, so what a
-// decision does is fixed; only its speed depends on the machine. The states are every decision the
-// Easy AI faced in real gate games against the greedy baseline, the opponent's reply included.
+// Quality gate: a decision at the browser's budget stays under AI_GATE.maxDecisionMs as the
+// development machine would time it (docs/polish/3-ai.md "Budgets", SPEC §9.9). Budgets count
+// nodes, so what a decision does is fixed and the node budget is asserted exactly; only its speed
+// depends on the machine. The states are every decision the Easy AI faced in real gate games
+// against the greedy baseline, the opponent's reply included.
+//
+// The clock is read against a yardstick, not on its own: a wall-clock limit failed whenever the
+// machine was busy (1,520 ms in a full `pnpm test` at load 26, 5,523 ms beside an e2e run) and
+// passed alone. So each run of a decision is timed right after a fixed piece of engine work
+// (`AI_GATE.calibrationGames` random-policy games), and the decision's cost is its time over the
+// yardstick's, times the yardstick's time on the development machine (`calibrationRefMs`). Load, or
+// a slower CI runner, slows both, and the ratio stands. Each state is decided AI_GATE.perfRepeats
+// times and its smallest ratio counts, so a burst of load during one run fails nothing, while a
+// decision that is slow on its own still does.
 //
 // `pnpm test` times the decisions of AI_GATE.perfSmokeGames games; `pnpm ai:gate`
-// (JACKIOH_AI_GATE=full) times AI_GATE.perfFullGames. Each state is decided AI_GATE.perfRepeats
-// times and its fastest run counts, so a test runner sharing the machine with other work does not
-// fail the gate on a context switch, while a decision that is slow on its own still does. The node
-// budget is exact, and it is asserted too.
+// (JACKIOH_AI_GATE=full) times AI_GATE.perfFullGames.
 //
 // Ordinary games seldom reach the worst case, so two hand-built wide boards are timed as well: five
 // units a side and a hand of X-cost and targeted spells beside a Lava Golem, at Hard's seven
@@ -25,7 +32,15 @@ const GAMES = FULL ? AI_GATE.perfFullGames : AI_GATE.perfSmokeGames;
 /** Per-game allowance under load (the machine is shared), plus a fixed margin. */
 const TIMEOUT = 60_000 + GAMES * 120_000;
 
-type Timed = { game: number; turn: number; ms: number; nodes: number; reason: string };
+type Timing = {
+  /** The decision's cost on the development machine: its smallest ratio to the yardstick, in ms. */
+  ms: number;
+  /** The fastest run as this machine timed it, for the report. */
+  rawMs: number;
+  nodes: number;
+  reason: string;
+};
+type Timed = Timing & { game: number; turn: number };
 
 /** Every state the AI seat decided in ai-vs-greedy gate games 1..GAMES, played at AI_BUDGET. */
 function decisionStates(): { game: number; seat: PlayerId; state: GameState }[] {
@@ -50,23 +65,43 @@ const WIDE_BOARDS: Record<string, ScenarioOptions> = {
   "wide-easy": { p1: { hand: WIDE_HAND, mana: 4, field: WIDE_FIELD }, p2: { field: WIDE_ENEMY, health: 30 } },
 };
 
-/** The fastest of AI_GATE.perfRepeats runs of one decision, with its node count. */
-function timeDecision(state: GameState, seat: PlayerId, rngSeed: string): { ms: number; nodes: number; reason: string } {
-  let fastest = Number.POSITIVE_INFINITY;
+/** The yardstick: a fixed piece of engine work, random-policy games played through `reduce`. */
+function yardstickMs(): number {
+  const started = performance.now();
+  for (let n = 1; n <= AI_GATE.calibrationGames; n += 1) {
+    const config = gameConfig("ai-vs-random", n, AI_BUDGET);
+    playMatch({ ...config, controllers: { p1: { kind: "random" }, p2: { kind: "random" } } });
+  }
+  return performance.now() - started;
+}
+
+/**
+ * AI_GATE.perfRepeats runs of one decision, each timed right after the yardstick: the smallest
+ * ratio of the two, in the development machine's milliseconds, with the node count.
+ */
+function timeDecision(state: GameState, seat: PlayerId, rngSeed: string): Timing {
+  let ratio = Number.POSITIVE_INFINITY;
+  let rawMs = Number.POSITIVE_INFINITY;
   let nodes = 0;
   let reason = "";
   for (let k = 0; k < AI_GATE.perfRepeats; k += 1) {
+    const unit = yardstickMs();
     const started = performance.now();
     const decision = decide(state, seat, { rng: createRng(rngSeed), budget: AI_BUDGET });
-    fastest = Math.min(fastest, performance.now() - started);
+    const ms = performance.now() - started;
+    ratio = Math.min(ratio, ms / unit);
+    rawMs = Math.min(rawMs, ms);
     nodes = decision?.stats.nodes ?? 0;
     reason = decision?.reason ?? "none";
   }
-  return { ms: fastest, nodes, reason };
+  return { ms: ratio * AI_GATE.calibrationRefMs, rawMs, nodes, reason };
 }
 
+// The yardstick's first runs pay for compiling the engine; they are no measurement.
+yardstickMs();
+
 describe(`gate perf: one decision at AI_BUDGET (${FULL ? "full" : "smoke"}: ${GAMES} game(s))`, () => {
-  it(`every decision stays within the node budget and under ${AI_GATE.maxDecisionMs} ms`, { timeout: TIMEOUT }, () => {
+  it(`B42 every decision stays within the node budget and under ${AI_GATE.maxDecisionMs} ms`, { timeout: TIMEOUT }, () => {
     const timed: Timed[] = [];
     for (const { game, seat, state } of decisionStates()) {
       timed.push({ game, turn: state.turn, ...timeDecision(state, seat, `perf:${game}:${state.turn}`) });
@@ -79,7 +114,7 @@ describe(`gate perf: one decision at AI_BUDGET (${FULL ? "full" : "smoke"}: ${GA
   });
 
   for (const [name, setup] of Object.entries(WIDE_BOARDS)) {
-    it(`a decision on the ${name} board stays within the node budget and under ${AI_GATE.maxDecisionMs} ms`, { timeout: 60_000 }, () => {
+    it(`B42 a decision on the ${name} board stays within the node budget and under ${AI_GATE.maxDecisionMs} ms`, { timeout: 60_000 }, () => {
       const state = scenario({ seed: `perf-${name}`, active: "p1", turn: 9, ...setup }).state;
       // Wide enough to be the worst case the header describes: 232 candidates at Easy's four
       // crystals, 343 at Hard's seven. Easy's count was above 250 until task 4's

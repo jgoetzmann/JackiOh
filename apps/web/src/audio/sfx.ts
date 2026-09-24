@@ -25,13 +25,18 @@
 // renders every recipe through the real mix and holds these bands, so a retune cannot drift.
 
 import { IMPACT_AMOUNT_CAP } from "./constants.ts";
-import type { SfxId, SfxParams } from "./types.ts";
+import type { SfxId, SfxParams, SfxTimbre } from "./types.ts";
 
 export const SFX_IDS: readonly SfxId[] = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel",
+  "cancel", "entrance",
+];
+
+/** Every card family a summon or spell may be given (types.ts SfxTimbre), for the tests. */
+export const SFX_TIMBRES: readonly SfxTimbre[] = [
+  "human", "felinor", "ky", "cn", "fruit", "chaos", "quickdraw", "token", "field",
 ];
 
 /** Schedules one sound starting at `at` (context seconds) into `out`; returns its length in seconds. */
@@ -269,9 +274,70 @@ const play: SfxRecipe = (ctx, out, at) => {
   return len;
 };
 
+/** When a summon's family accent starts: after the thud's attack, once its first boom has fallen. */
+const ACCENT_AT = 0.05;
+
+/**
+ * The family's voice on top of a summon thud, quiet and short (it ends by 0.24 s, inside the
+ * shortest thud), so the thud still carries the size of the unit and the accent only says what kind
+ * of thing landed: armour for a Human, a chirp for a Felinor, a page's bell for KY, bubbles for CN,
+ * a squelch for Fruit, a warble for Call to Chaos, a zip for Quickdraw, a pop for a token.
+ */
+function summonAccent(k: Kit, timbre: SfxTimbre | undefined): void {
+  const t0 = ACCENT_AT;
+  switch (timbre) {
+    case "human":
+      tone(k, k.out, "sine", 2350, t0, 0.002, 0.14, t0 + 0.15);
+      tone(k, k.out, "sine", 3520, t0 + 0.01, 0.002, 0.09, t0 + 0.12);
+      return;
+    case "felinor": {
+      const chirp = tone(k, k.out, "sine", 700, t0 + 0.01, 0.01, 0.16, t0 + 0.12);
+      glide(k, chirp.frequency, 1400, t0 + 0.08);
+      return;
+    }
+    case "ky":
+      fmBell(k, k.out, 1568, 2, 150, t0, 0.004, 0.12, t0 + 0.19);
+      return;
+    case "cn":
+      for (const start of [t0, t0 + 0.08]) {
+        const bubble = tone(k, k.out, "sine", 300, start, 0.005, 0.14, start + 0.07);
+        glide(k, bubble.frequency, 700, start + 0.06);
+      }
+      return;
+    case "fruit": {
+      const noise = noiseSource(k);
+      const band = biquad(k, "bandpass", 1800, 4);
+      glide(k, band.frequency, 400, t0 + 0.12);
+      chain(noise, band, envelope(k, t0, 0.01, 0.35, t0 + 0.12), k.out);
+      run(k, noise, t0, t0 + 0.12);
+      return;
+    }
+    case "chaos":
+      for (const hz of [523, 554]) tone(k, k.out, "triangle", hz, t0, 0.02, 0.08, t0 + 0.17);
+      return;
+    case "quickdraw": {
+      const noise = noiseSource(k);
+      const band = biquad(k, "bandpass", 2000, 3);
+      glide(k, band.frequency, 6000, t0 + 0.08);
+      chain(noise, band, envelope(k, t0, 0.005, 0.3, t0 + 0.08), k.out);
+      run(k, noise, t0, t0 + 0.08);
+      return;
+    }
+    case "token": {
+      const pop = tone(k, k.out, "sine", 900, t0 - 0.02, 0.003, 0.14, t0 + 0.04);
+      glide(k, pop.frequency, 500, t0 + 0.04);
+      return;
+    }
+    case "field":
+    case undefined:
+      return;
+  }
+}
+
 /**
  * A unit lands: a falling sine thud and a puff of dust, sized by the unit (`amount` is its attack
- * plus health): a 1/1 taps the table high and short, a 7/7 lands low, long and loud.
+ * plus health): a 1/1 taps the table high and short, a 7/7 lands low, long and loud. A unit the
+ * viewer can name adds its family's accent (`timbre`).
  */
 const summon: SfxRecipe = (ctx, out, at, params) => {
   const t = amountT(params);
@@ -285,6 +351,7 @@ const summon: SfxRecipe = (ctx, out, at, params) => {
   const dust = 0.05 + 0.05 * t;
   chain(noise, biquad(k, "lowpass", 900 - 300 * t, 0), envelope(k, 0, 0.005, peak, dust), out);
   run(k, noise, 0, dust);
+  summonAccent(k, params.timbre);
   return len;
 };
 
@@ -422,15 +489,35 @@ const trapSting: SfxRecipe = (ctx, out, at) => {
   return len;
 };
 
-/** A spell is cast: four FM chimes with a shimmering tremolo. */
-const spell: SfxRecipe = (ctx, out, at) => {
+/**
+ * Each family's four chimes, their FM ratio and their spacing (the default is the plain spell): a
+ * Field Spell rings an octave lower and warmer, Call to Chaos clashes in semitones, KY climbs a
+ * major arpeggio, CN sours on a tritone, a Quickdraw spell runs its notes twice as fast. The peak
+ * and the span are the plain spell's, so a family changes the colour and never the level.
+ */
+const SPELL_CHIMES: Readonly<Record<SfxTimbre | "plain", { hz: readonly number[]; ratio: number; step: number }>> = {
+  plain: { hz: [1319, 1760, 2093, 2637], ratio: 3.5, step: 0.06 },
+  field: { hz: [659, 880, 1047, 1319], ratio: 2, step: 0.06 },
+  chaos: { hz: [1319, 1397, 1976, 2093], ratio: 3.5, step: 0.06 },
+  ky: { hz: [1047, 1319, 1568, 2093], ratio: 2, step: 0.06 },
+  cn: { hz: [1245, 1319, 1760, 1865], ratio: 3.5, step: 0.06 },
+  quickdraw: { hz: [1319, 1760, 2093, 2637], ratio: 3.5, step: 0.03 },
+  felinor: { hz: [1568, 2093, 2349, 3136], ratio: 3.5, step: 0.06 },
+  fruit: { hz: [1175, 1480, 1760, 2349], ratio: 3.5, step: 0.06 },
+  human: { hz: [1047, 1568, 2093, 2637], ratio: 2, step: 0.06 },
+  token: { hz: [1319, 1760, 2093, 2637], ratio: 3.5, step: 0.06 },
+};
+
+/** A spell is cast: four FM chimes with a shimmering tremolo, in its family's colour. */
+const spell: SfxRecipe = (ctx, out, at, params) => {
   const len = 0.78;
   const k = kit(ctx, out, at, len);
   const shimmer = tremolo(k, 7, 0.15);
   chain(shimmer, out);
-  [1319, 1760, 2093, 2637].forEach((hz, i) => {
-    const start = 0.06 * i;
-    fmBell(k, shimmer, hz, 3.5, 200, start, 0.004, 0.22, 0.6 + start);
+  const chimes = SPELL_CHIMES[params.timbre ?? "plain"];
+  chimes.hz.forEach((hz, i) => {
+    const start = chimes.step * i;
+    fmBell(k, shimmer, hz, chimes.ratio, 200, start, 0.004, 0.22, 0.6 + start);
   });
   return len;
 };
@@ -605,6 +692,34 @@ const cancel: SfxRecipe = (ctx, out, at) => {
   return len;
 };
 
+/**
+ * A Legendary or Mythic unit enters (cues.ts, with the effects layer's light rays): a low gong under
+ * a brass fifth that swells open, and a run of high glints once it has risen. A Mythic's glints are
+ * a longer, faster, shimmering climb.
+ */
+const entrance: SfxRecipe = (ctx, out, at, params) => {
+  const len = 1.3;
+  const k = kit(ctx, out, at, len);
+  fmBell(k, out, 98, 1.4, 200, 0, 0.01, 0.35, len);
+  const brass = biquad(k, "lowpass", 600, 0);
+  glide(k, brass.frequency, 3000, 0.5);
+  chain(brass, heldEnvelope(k, 0, 0.25, 0.32, 0.9, 0.24, len), out);
+  for (const hz of [196, 294]) {
+    const note = oscillator(k, "sawtooth", hz);
+    chain(note, brass);
+    run(k, note, 0, len);
+  }
+  const mythic = params.mythic === true;
+  const glints = mythic ? [2093, 2637, 3136, 3520, 4186, 5274] : [1568, 2093, 2637];
+  const shimmer = mythic ? tremolo(k, 9, 0.2) : level(k, 1);
+  chain(shimmer, out);
+  glints.forEach((hz, i) => {
+    const start = 0.25 + (mythic ? 0.06 : 0.08) * i;
+    tone(k, shimmer, "sine", hz, start, 0.003, 0.1, start + 0.45);
+  });
+  return len;
+};
+
 export const SFX: { readonly [K in SfxId]: SfxSpec } = {
   draw: { recipe: draw, durationMs: 180, gain: 1 },
   play: { recipe: play, durationMs: 260, gain: 0.82 },
@@ -633,4 +748,5 @@ export const SFX: { readonly [K in SfxId]: SfxSpec } = {
   notify: { recipe: notify, durationMs: 300, gain: 0.6 },
   drain: { recipe: drain, durationMs: 600, gain: 0.69 },
   cancel: { recipe: cancel, durationMs: 260, gain: 1 },
+  entrance: { recipe: entrance, durationMs: 1400, gain: 0.6 },
 };

@@ -504,6 +504,30 @@ describe("B32 — review fixes: one banner at a time, a quiet canvas, wall-clock
     expect(h.root.querySelectorAll('[data-fx="splat"]')).toHaveLength(1);
   });
 
+  it("dismissBanner takes the turn banner and its rays at once, and leaves everything else", () => {
+    // Integration QA: "YOUR TURN" sat over the zones a play was asking about for a second or two.
+    const h = harness();
+    h.director.play([
+      { kind: "banner", text: "Your turn", tone: "you", delayMs: 0, durationMs: 1_400 },
+      { kind: "rays", tone: "victory", at: at("card-a"), delayMs: 0, durationMs: 1_400 },
+      { kind: "splat", tone: "damage", amount: 2, at: at("card-a"), delayMs: 0, durationMs: 500 },
+    ]);
+    h.frame(T0);
+    expect(h.root.querySelectorAll('[data-fx="banner"]')).toHaveLength(1);
+    h.director.dismissBanner();
+    expect(h.root.querySelectorAll('[data-fx="banner"]')).toHaveLength(0);
+    expect(h.root.querySelectorAll('[data-fx="rays"]')).toHaveLength(0);
+    expect(h.root.querySelectorAll('[data-fx="splat"]')).toHaveLength(1);
+  });
+
+  it("dismissBanner leaves a result's rays alone: no banner is up during the result", () => {
+    const h = harness();
+    h.director.play([{ kind: "rays", tone: "victory", at: at("card-a"), delayMs: 0, durationMs: 1_400 }]);
+    h.frame(T0);
+    h.director.dismissBanner();
+    expect(h.root.querySelectorAll('[data-fx="rays"]')).toHaveLength(1);
+  });
+
   it("B32 the canvas is cleared while it shows anything and once after, then left alone", () => {
     const h = harness();
     // A cue due in an hour keeps the loop running with nothing to draw.

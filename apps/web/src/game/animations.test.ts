@@ -421,6 +421,15 @@ describe("target resolution", () => {
     ).toBe(animTestid.hand("opponent"));
   });
 
+  it("R227 a trap set face-down animates its hand card, found by the id it had (formerId)", () => {
+    expect(
+      targetFor(
+        { type: "cardPlayed", player: "p1", instanceId: "c99", defId: "core-041", costPaid: 1, formerId: HAND_CARD },
+        view,
+      ),
+    ).toBe(testid.handCard(HAND_CARD));
+  });
+
   it("piles stand in for cards that are not rendered", () => {
     expect(targetFor({ type: "drawn", player: "p2", instanceId: "zz", defId: "core-001" }, view)).toBe(
       animTestid.library("opponent"),

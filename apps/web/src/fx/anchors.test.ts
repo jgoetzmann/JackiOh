@@ -162,7 +162,7 @@ describe("S8 a hand anchor is where the hand's cards are", () => {
     return strip;
   }
 
-  it("S8 a hand resolves to its cards plus the slot the next card takes, not the whole strip", () => {
+  it("S8 a hand resolves to its cards plus the slot the next card takes, not the whole strip (B53)", () => {
     hand("hand-you", [
       { x: 110, y: 640, width: 60, height: 82 },
       { x: 176, y: 640, width: 60, height: 82 },

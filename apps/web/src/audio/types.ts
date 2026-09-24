@@ -5,13 +5,24 @@ export type SfxId =
   | "draw" | "play" | "summon" | "attack" | "impact" | "shieldShatter" | "heal" | "buff" | "debuff"
   | "death" | "burn" | "trapSet" | "trapSting" | "spell" | "mana" | "turnStart" | "victory"
   | "defeat" | "uiClick" | "uiHover" | "whoosh" | "radiant" | "lock" | "poof" | "notify" | "drain"
-  | "cancel";
+  | "cancel" | "entrance";
+
+/**
+ * A card's sound family, from its public tags and type (cues.ts `timbreFor`, which follows the
+ * card art's theme order): the summon thud gains the family's accent and the spell shimmer its
+ * chimes. Absent: the plain recipe, which is all a card the viewer cannot name ever gets (R203).
+ */
+export type SfxTimbre = "human" | "felinor" | "ky" | "cn" | "fruit" | "chaos" | "quickdraw" | "token" | "field";
 
 export type SfxParams = {
   /** damage / heal / health-loss amount, or the mana gained; recipes clamp to [1, IMPACT_AMOUNT_CAP]. */
   amount?: number;
   /** true when the event is the viewer's own (turnStart, mana): a brighter variant. */
   mine?: boolean;
+  /** summon and spell: the card's family (see SfxTimbre). */
+  timbre?: SfxTimbre;
+  /** entrance: a Mythic's prismatic sting rather than a Legendary's brass. */
+  mythic?: boolean;
 };
 
 export type VoiceLineKind = "play" | "death" | "cast";
@@ -125,5 +136,13 @@ export type AudioEngine = SoundSink & {
   clearLog(): void;
   /** How many AudioContexts this engine has constructed (0 or 1). */
   contextsCreated(): number;
+  /**
+   * true while a voice line holds the one voice channel: from the moment it takes the channel
+   * (loading its file included) until it ends, is cut or is given up on. Practice holds the AI's
+   * next step on it through the page's `data-speaking` mark (SPEC §9.9, `useVoiceSpeaking`).
+   */
+  speaking(): boolean;
+  /** Called after every change of `speaking()`, never for a non-change. Returns the unsubscribe. */
+  subscribeSpeaking(listener: () => void): () => void;
   dispose(): void;
 };
