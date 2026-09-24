@@ -18,6 +18,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } fro
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import type { FaceModel } from "../model.ts";
 import { readCardSettings, useCardSettings } from "../settings.ts";
+// The settings panel's "Hover previews" switch (task 7) is the player's handle on this preview: it
+// opens only while both that switch and this module's own `hoverPreviews` allow it.
+import { readSettings as readPanelSettings, useSetting as usePanelSetting } from "../../settings/store.ts";
 import { CLICK_SUPPRESS_MS, HOVER_DELAY_MS, LONG_PRESS_MS, LONG_PRESS_SLOP_PX } from "./constants.ts";
 import { HoverPreview } from "./HoverPreview.tsx";
 import { InspectSheet } from "./InspectSheet.tsx";
@@ -75,6 +78,11 @@ const NOOP_HANDLERS: InspectHandlers = {
   onContextMenu: noop,
   onClickCapture: noop,
 };
+
+/** Both switches that govern the hover preview, read now (handlers and timers outlive a render). */
+function hoverAllowed(): boolean {
+  return readCardSettings().hoverPreviews && readPanelSettings().hoverPreviews;
+}
 
 /** Mouse, pen, or an event with no pointerType at all. */
 function hoverPointer(pointerType: string | undefined): boolean {
@@ -134,7 +142,7 @@ export function useInspectTrigger(subject: InspectSubject | null, options?: Insp
     return {
       onPointerEnter: (event) => {
         const { subject: current, options: opts } = live.current;
-        if (current === null || opts.hover === false || !readCardSettings().hoverPreviews) return;
+        if (current === null || opts.hover === false || !hoverAllowed()) return;
         if (!hoverPointer(event.pointerType)) return;
         clearHoverTimer();
         const element = event.currentTarget;
@@ -143,7 +151,7 @@ export function useInspectTrigger(subject: InspectSubject | null, options?: Insp
           t.hover = null;
           const now = live.current;
           if (now.subject === null || now.subject.key !== hoverKey) return;
-          if (now.options.hover === false || !readCardSettings().hoverPreviews || !element.isConnected) return;
+          if (now.options.hover === false || !hoverAllowed() || !element.isConnected) return;
           openInspect({ key: hoverKey, mode: "hover", anchor: rectOf(element) });
         }, HOVER_DELAY_MS);
       },
@@ -251,7 +259,8 @@ export function useInspectTrigger(subject: InspectSubject | null, options?: Insp
   }, [key]);
 
   const mode = active === null ? null : active.mode;
-  const hoverPreviews = settings.hoverPreviews;
+  const panelHover = usePanelSetting("hoverPreviews");
+  const hoverPreviews = settings.hoverPreviews && panelHover;
 
   // While the preview is open, the page closes it: Escape, any pointerdown, a window blur, any
   // scroll (capturing, so a scrolled zone counts), or the tab going hidden. Turning hover previews

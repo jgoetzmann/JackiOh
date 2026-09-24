@@ -5,7 +5,7 @@
 // Layout (no horizontal overflow at 360-1280 px, B39) needs a layout engine, so it is the Cypress
 // component spec's job (e2e/cypress/component/landing-and-code-field.cy.tsx), not this file's.
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DECK_SIZE, MAX_MANA, UNIT_ZONES } from "@jackioh/engine/config";
@@ -14,6 +14,7 @@ import { LOADOUT_DECKS } from "@jackioh/validator";
 import { landingFanCardTestid, landingStepTestid, landingTestid } from "../auth/testids.ts";
 import { paths } from "../net/navigate.ts";
 import { E2E_SESSION_STORAGE_KEY } from "../net/session.ts";
+import { __resetSettingsForTests, writeSettings } from "../settings/store.ts";
 import { setReducedMotion } from "../test/setup.ts";
 import LandingRoute from "./landing.tsx";
 
@@ -287,6 +288,26 @@ describe("B38 the hero", () => {
     setReducedMotion(true);
     render(<LandingRoute />);
     expect(landing()).toHaveAttribute("data-motion", "reduced");
+  });
+
+  // Integration: the settings panel's "Reduce motion" (task 7) stops the landing as the media query
+  // does, and a change applies to the page already showing.
+  it("B38 data-motion is reduced under the settings panel's Reduce motion, live", () => {
+    render(<LandingRoute />);
+    expect(landing()).toHaveAttribute("data-motion", "full");
+    try {
+      act(() => {
+        writeSettings({ reduceMotion: true });
+      });
+      expect(landing()).toHaveAttribute("data-motion", "reduced");
+      expect(document.documentElement).toHaveAttribute("data-reduce-motion", "true");
+    } finally {
+      act(() => {
+        writeSettings({ reduceMotion: false });
+      });
+      __resetSettingsForTests();
+    }
+    expect(landing()).toHaveAttribute("data-motion", "full");
   });
 
   it("B38 the four steps state MAX_MANA, UNIT_ZONES, DECK_SIZE and LOADOUT_DECKS from config", () => {

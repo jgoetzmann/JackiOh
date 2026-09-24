@@ -23,6 +23,7 @@ import type { GameEvent, GameEventType, PlayerId, PlayerView, Zone } from "@jack
 
 import type { FxDescriptor } from "../fx/types.ts";
 import { getFxSettings, normalizeSpeed, type FxSettings } from "../fx/settings.ts";
+import { readSettings as readPanelSettings } from "../settings/store.ts";
 import { type AnimatingMap, type Side, sideOf, testid } from "./contract";
 
 /* ------------------------------------------------------------------------------------------- *
@@ -532,11 +533,16 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
- * `prefersReducedMotion()` OR the viewer's `motion: "reduce"` setting (`settings` defaults to
- * `getFxSettings()`). The setting behaves exactly like the media query (R200, R201).
+ * `prefersReducedMotion()` OR the settings panel's "Reduce motion" switch (settings/store.ts) OR the
+ * effects store's `motion: "reduce"` (`settings` defaults to `getFxSettings()`). Either setting
+ * behaves exactly like the media query (R200, R201).
  */
 export function reducedMotionNow(settings?: Pick<FxSettings, "motion">): boolean {
-  return prefersReducedMotion() || (settings ?? getFxSettings()).motion === "reduce";
+  return (
+    prefersReducedMotion() ||
+    readPanelSettings().reduceMotion ||
+    (settings ?? getFxSettings()).motion === "reduce"
+  );
 }
 
 /** Resolves one event's element against a view, without the caller narrowing the union itself. */
@@ -829,7 +835,7 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
     enqueue(events, view) {
       // Read live, so a change in the settings panel applies from the next action on (R201).
       const settings = readSettings();
-      const reduced = reducedMotion || settings.motion === "reduce";
+      const reduced = reducedMotion || settings.motion === "reduce" || readPanelSettings().reduceMotion;
       const entries = planEntries(events, view, reduced).map((entry) => {
         const durationMs = scaleForSpeed(entry.durationMs, settings.speed);
         return durationMs === entry.durationMs ? entry : { ...entry, durationMs };

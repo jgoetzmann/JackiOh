@@ -179,6 +179,91 @@
   min-height: 44px;
 }
 
+/* A choice among a few (controls.tsx: effects speed and intensity): the platform's own picker. */
+.settings-select {
+  flex: 0 0 auto;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.settings-select:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 0;
+}
+
+/* Task 2's AudioControls inside the Audio section: the section's heading already says "Audio",
+   so the fieldset's own frame and legend give way (the legend stays for a screen reader). */
+.settings-slot .settings-audio {
+  padding: 0 0 6px;
+  border: 0;
+  background: none;
+}
+
+.settings-slot .settings-audio > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Its two checkboxes read as the panel's switches: the label first, the switch at the row's end. */
+.settings-slot .settings-audio .audio-controls__row--check {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-slot .settings-audio .audio-controls__row--check > label {
+  grid-row: 1;
+  grid-column: 1;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.settings-slot .settings-audio .audio-controls__row--check > input[type="checkbox"] {
+  grid-row: 1;
+  grid-column: 2;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 56px;
+  height: 44px;
+  margin: 0;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 15px / 22px;
+  background-color: var(--line-bright);
+  background-image: radial-gradient(circle closest-side, var(--text-dim) 0 calc(100% - 4px), transparent calc(100% - 3px));
+  background-repeat: no-repeat;
+  background-size: 30px 30px;
+  background-origin: content-box;
+  background-clip: content-box;
+  background-position: left center;
+  cursor: pointer;
+  transition:
+    background-position calc(140ms * var(--anim-scale)) ease-out,
+    background-color calc(140ms * var(--anim-scale)) ease-out;
+}
+
+.settings-slot .settings-audio .audio-controls__row--check > input[type="checkbox"]:checked {
+  background-color: color-mix(in srgb, var(--legal) 78%, var(--bg));
+  background-image: radial-gradient(circle closest-side, #fff 0 calc(100% - 4px), transparent calc(100% - 3px));
+  background-position: right center;
+}
+
+.settings-slot .settings-audio .audio-controls__row--check > input[type="checkbox"]:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 0;
+}
+
 /* The switch: a 44 px tall input whose visible track is the 30 px content box. The asymmetric
    radius (15px horizontal, 22px vertical) leaves the content box a true pill once the 7 px of
    vertical padding is taken off, and the knob is a background layer, so no pseudo-element is

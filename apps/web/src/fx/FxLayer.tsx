@@ -50,6 +50,7 @@ import { planStage } from "./stage.ts";
 import { capacityFor, createFxDirector, type FxDirector } from "./director.ts";
 import { createFxMemory } from "./memory.ts";
 import { useFxSettings } from "./settings.ts";
+import { useSetting } from "../settings/store.ts";
 import { createSurface, type FxSurface } from "./surface.ts";
 import type {
   FxAnchor,
@@ -129,8 +130,11 @@ function removeSqueeze(root: HTMLElement | null): void {
 
 export function FxLayer({ queue, view, seams }: FxLayerProps): ReactElement {
   const [settings] = useFxSettings();
-  const enabled = !reducedMotionNow(settings) && settings.intensity !== "off";
-  const settingReduces = settings.motion === "reduce";
+  // The settings panel's "Reduce motion" is read through its hook so a change re-renders the layer;
+  // `reducedMotionNow` reads the same switch for callers outside React.
+  const panelReduces = useSetting("reduceMotion");
+  const enabled = !panelReduces && !reducedMotionNow(settings) && settings.intensity !== "off";
+  const settingReduces = settings.motion === "reduce" || panelReduces;
   const intensity: number = FX_INTENSITY_SCALE[settings.intensity];
   const lookup = useContext(CatalogContext);
 

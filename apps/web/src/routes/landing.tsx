@@ -24,6 +24,7 @@ import { landingFanCardTestid, landingStepTestid, landingTestid } from "../auth/
 import { useAccount, type Account } from "../net/gate.ts";
 import { paths } from "../net/navigate.ts";
 import { readSession } from "../net/session.ts";
+import { useSetting } from "../settings/store.ts";
 import { followInApp } from "./nav.tsx";
 
 import "../auth/tavern.css";
@@ -42,11 +43,13 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * `data-motion` on the root. The CSS also honours the media query directly, so this attribute is
- * what a test (and a future settings toggle) can see and set, not the only thing stopping motion.
+ * `data-motion` on the root: the media query, or the settings panel's "Reduce motion". The CSS also
+ * honours the media query and the setting's `<html>` attribute directly (index.css), so this
+ * attribute is what a test can see, not the only thing stopping motion.
  */
 function useMotion(): LandingMotion {
   const [reduced, setReduced] = useState(prefersReducedMotion);
+  const settingReduces = useSetting("reduceMotion");
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return undefined;
@@ -62,7 +65,7 @@ function useMotion(): LandingMotion {
     };
   }, []);
 
-  return reduced ? "reduced" : "full";
+  return reduced || settingReduces ? "reduced" : "full";
 }
 
 function accountState(account: Account): LandingAccountState {
