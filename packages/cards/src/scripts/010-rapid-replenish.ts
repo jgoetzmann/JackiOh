@@ -18,6 +18,11 @@
 //
 // It is read per player: `ctx.controller`'s own turn log, which is the only per-turn record there
 // is, so a card the opponent cast during this turn counts on their log and not on this one.
+//
+// R195, the yellow glow: `conditionMet` answers the same question from the hand, before the card is
+// played. `playedEarlier` answers it there too: a card still in hand has not been played, so every
+// play this turn is earlier than the one it would be. One reader for both, so the glow and the draw
+// cannot disagree.
 
 import { playedEarlier, type Script } from "@jackioh/engine";
 import { draw } from "@jackioh/engine/effects";
@@ -38,6 +43,9 @@ function rapidReplenish(count: number): Script {
       const earlier = playedEarlier(ctx.state, ctx.controller, ctx.self);
       return earlier >= COMBO ? [draw({ count })] : [];
     },
+    // R195: hand only. The condition is about a play; a Spell never sits on the field. In hand,
+    // `playedEarlier` is every play this turn.
+    conditionMet: (ctx) => ctx.zone === "hand" && playedEarlier(ctx.state, ctx.controller, ctx.self) >= COMBO,
   };
 }
 

@@ -5,6 +5,11 @@
 // (BUILD M5-T4) — and nothing else about the rules. Whether a card may be played here is
 // `props.highlight.legal`, which came from the engine's `legalActions`; an empty unlocked zone
 // with no highlight is greyed out, because "nothing is offered" is the safe default.
+//
+// Polish task 7: the zone glows (`data-glow="ready"`) when its testid is in `highlight.glow`, the
+// green "you can put it here" of a play in flight. It takes no HTML5 drop any more: drag to play
+// is pointer events in game/drag/DragLayer.tsx, which hit-tests this zone by its testid and
+// reports the same `zone` click a tap does, so the zone needs no drag handler of its own.
 
 import type { ReactElement } from "react";
 
@@ -22,8 +27,9 @@ function flagAt(flags: { units: boolean[]; backrow: boolean[] } | undefined, row
 }
 
 import Backrow from "./Backrow.tsx";
-import Card, { allowDrop, completeDrop, cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
+import Card, { cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
 import { laneIndex, sideView, testid, type AnimatingMap, type ClickTarget, type Highlight, type Side } from "./contract.ts";
+import { glowAttr } from "./glow.ts";
 
 export type ZoneProps = {
   view: PlayerView;
@@ -63,6 +69,7 @@ export default function Zone(props: ZoneProps): ReactElement {
       data-locked={locked ? "true" : undefined}
       data-reserved={reserved ? "true" : undefined}
       data-legal={legalAttr(legal)}
+      data-glow={glowAttr(props.highlight, testId)}
       data-selected={selected ? "true" : undefined}
       data-animating={props.animating?.get(testId)}
       aria-disabled={legal ? undefined : "true"}
@@ -78,8 +85,6 @@ export default function Zone(props: ZoneProps): ReactElement {
         if (!legal) return;
         props.onClick?.(target);
       }}
-      onDragOver={allowDrop}
-      onDrop={(event) => completeDrop(event, target, props.onClick)}
     >
       {locked && <span className="lock-icon" aria-label="Locked zone" title="Locked zone" />}
       {reserved && !locked && <span className="lock-icon reserved-icon" aria-label="Reserved zone" title="Held for a Reborn unit" />}
@@ -89,7 +94,6 @@ export default function Zone(props: ZoneProps): ReactElement {
           card={unit}
           unit={unit}
           switchTarget
-          draggable
           target={{ on: "unit", instanceId: unit.instanceId, side, lane }}
           highlight={props.highlight}
           animating={props.animating}

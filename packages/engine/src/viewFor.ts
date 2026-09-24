@@ -16,6 +16,8 @@
 //     it is open and whose it is, nothing more.
 //   - R97: the event stream is redacted, not truncated. An event that names a card the viewer may
 //     not read keeps its type and its animation fields and shows `HIDDEN_ID` for that card.
+//   - R227: a card set face-down took a fresh id, so the events that named its old id follow it to
+//     its zone through the `formerId` that set it, and `formerId` itself travels only with the card.
 //   - R177: more fields follow R97 — a prompt option offering a face-down card names it by id only,
 //     a `costChanged` on an unreadable card hides its cost and a `buffed` one its amounts, and a
 //     `transformed` whose new card is unreadable hides the card it replaced, as does one whose old
@@ -50,6 +52,7 @@ import type {
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf, findDef } from "./catalog";
 import { hasExertion } from "./combat";
+import { conditionActive } from "./condition";
 import { heroArmorOf } from "./damage";
 import { echoGrantOf } from "./echo";
 import { statsWithBuffs, unitView as unitLayers } from "./layers";
@@ -63,6 +66,7 @@ import {
   type PlayerState,
   type PromptOption,
 } from "./state";
+import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
 import { returnedAwaitingShuffle } from "./setup";
 import { isReserved, slotsOf } from "./zones";
@@ -143,6 +147,13 @@ function replacementsOf(events: readonly GameEvent[], state?: GameState): Replac
         if (id !== event.resultInstanceId) replacedBy.set(id, event.resultInstanceId);
       }
     }
+    // R227: a card set face-down took a fresh id. It is the same card, so the events that named it
+    // by its old id are judged by where it is now, exactly as they were before it moved: its draw
+    // stays hidden while the trap is face-down and reads once the trap is public (R97). No
+    // `hiddenFrom` is kept, since nothing ceased to exist.
+    if ((event.type === "cardPlayed" || event.type === "summoned") && event.formerId !== undefined) {
+      replacedBy.set(event.formerId, event.instanceId);
+    }
   }
   return { replacedBy, hiddenFrom, ...(toLibrary === undefined || toLibrary.size === 0 ? {} : { toLibrary }) };
 }
@@ -218,15 +229,23 @@ function handCardView(state: GameState, card: CardInstance): CardView {
 }
 
 /**
+ * R195, §10.8: the yellow glow rides on a card view as `conditionActive: true` or not at all — the
+ * key is never `false`, so a card with no condition met looks exactly as it did before R195.
+ */
+function withCondition<T extends CardView>(view: T, active: boolean): T {
+  return active ? { ...view, conditionActive: true } : view;
+}
+
+/**
  * The card that acts in a unit zone: the top of the pile (§3.2). `buried` is how many dormant cards
  * sit under it (R13) — a count, so no buried identity reaches either player.
  */
-function unitViewOf(state: GameState, pile: Pile): UnitView | null {
+function unitViewOf(state: GameState, pile: Pile, viewer: PlayerId): UnitView | null {
   const top = pile[0];
   if (top === undefined) return null;
   const layers = unitLayers(state, top);
   return {
-    ...cardView(state, top),
+    ...withCondition(cardView(state, top), conditionActive(state, top, viewer, "field")),
     owner: top.owner,
     controller: top.controller,
     attack: layers.attack,
@@ -268,7 +287,7 @@ function backrowView(state: GameState, card: CardInstance | null, viewer: Player
   if (!backrowIsPublic(state, card, viewer)) return { faceDown: true };
   const grade = card.counters.grade;
   return {
-    ...cardView(state, card),
+    ...withCondition(cardView(state, card), conditionActive(state, card, viewer, "field")),
     faceDown: false,
     type: defOf(state, card.defId).type,
     counters: grade === undefined ? {} : { grade },
@@ -404,14 +423,17 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     modifiers: modifierViews(state, player),
     mana: { current: side.mana.current, max: side.mana.max },
     // §10.8: the viewer's own hand in full, the opponent's as a count.
-    hand: player === viewer ? side.hand.map((card) => handCardView(state, card)) : { count: side.hand.length },
+    hand:
+      player === viewer
+        ? side.hand.map((card) => withCondition(handCardView(state, card), conditionActive(state, card, viewer, "hand")))
+        : { count: side.hand.length },
     // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
     libraryCount: side.library.length,
     graveyard: side.graveyard.map((card) => cardView(state, card)),
     exile: side.exile.map((card) => cardView(state, card)),
     // §10.5 step 4, R98: a Spell between its play and its graveyard. Playing it was public.
     resolving: side.resolving.map((card) => cardView(state, card)),
-    units: side.units.map((pile) => (pile === null ? null : unitViewOf(state, pile))),
+    units: side.units.map((pile) => (pile === null ? null : unitViewOf(state, pile, viewer))),
     backrow: side.backrow.map((card) => backrowView(state, card, viewer)),
     locks: { units: [...side.locks.units], backrow: [...side.locks.backrow] },
     reserved: reservedMask(state, player),
@@ -522,11 +544,15 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     }
 
     // R119's `arrivedDuring` and the exit mark on a play's step-4 pair are the engine's bookkeeping,
-    // as on `cardResolved`.
+    // as on `cardResolved`. R227: `formerId` is the id a card set face-down had, and it goes with the
+    // card's identity — shown to a viewer who may read the card, never to one who may not, or the old
+    // id would name the face-down card after all (R177).
     case "cardPlayed":
     case "summoned": {
       const { arrivedDuring: _arrivals, exitsFrom: _mark, ...shown } = event;
-      return hidden(event.instanceId) ? { ...shown, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : shown;
+      if (!hidden(event.instanceId)) return shown;
+      const { formerId: _former, ...rest } = shown;
+      return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
     case "enteredGraveyard":
@@ -702,6 +728,7 @@ function recentEvents(state: GameState, viewer: PlayerId): GameEvent[] {
  * caller passes the number in and it is `null` whenever nobody is counting.
  */
 export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | null = null): PlayerView {
+  syncFusedScripts(state);
   const view: PlayerView = {
     viewer: playerId,
     turn: state.turn,

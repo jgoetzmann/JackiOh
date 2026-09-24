@@ -10,9 +10,20 @@
 // happened. The runner owns timing only: it holds the event stream at one entry at a time so the
 // board can swap to the next view once the motion for that event has finished, and publishes the
 // `AnimatingMap` the board turns into `data-animating="<eventType>"`.
+//
+// The effects layer (`apps/web/src/fx`, docs/polish/1-animations.md) decorates this stream and
+// paces nothing (R200). Each row may name the recipe that decorates it (`fx`), each entry keeps
+// the view it was planned against, and the runner reports its lifecycle through
+// `subscribeSignals`. The viewer's effects speed scales the table and the burst budget (R201), and
+// the viewer's "reduce" motion setting collapses every duration exactly as
+// `prefers-reduced-motion` does. At the default settings the runner schedules exactly what it did
+// before the effects layer existed.
 
 import type { GameEvent, GameEventType, PlayerId, PlayerView, Zone } from "@jackioh/shared";
 
+import type { FxDescriptor } from "../fx/types.ts";
+import { getFxSettings, normalizeSpeed, type FxSettings } from "../fx/settings.ts";
+import { readSettings as readPanelSettings } from "../settings/store.ts";
 import { type AnimatingMap, type Side, sideOf, testid } from "./contract";
 
 /* ------------------------------------------------------------------------------------------- *
@@ -59,6 +70,8 @@ export type AnimationSpec = {
    * `<side>` the viewer-relative side. `target` resolves it against a real event and view.
    */
   testid: string;
+  /** The effect recipe that decorates this row (docs/polish/1-animations.md, S7). Absent: no effect. */
+  fx?: FxDescriptor;
 };
 
 /** Resolves the element for one event type; `null` when this seat shows nothing for it. */
@@ -143,13 +156,15 @@ function zoneOfCard(view: PlayerView, zone: Zone, instanceId: string): string {
 export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
   // Card lifts from hand and lands in the zone (unit) or flashes centre then to GY (spell).
   // Only the viewer's own hand renders cards, so an opponent's play animates the hand region.
+  // A card set face-down took a fresh id (R227): the hand card still carries `formerId`.
   cardPlayed: {
     animation: "jk-card-played",
     durationMs: 400,
     testid: "hand-card-<instanceId>",
+    fx: { recipe: "cast" },
     target: (e, view) =>
       sideOf(view, e.player) === "you"
-        ? (locateInstance(view, e.instanceId) ?? testid.handCard(e.instanceId))
+        ? (locateInstance(view, e.formerId ?? e.instanceId) ?? testid.handCard(e.formerId ?? e.instanceId))
         : animTestid.hand("opponent"),
   },
   // Card scales in at the zone. Collapsed into one motion with the `cardPlayed` that precedes it
@@ -158,6 +173,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-summon-scale",
     durationMs: 250,
     testid: "zone-<side>-<row>-<lane>",
+    fx: { recipe: "summon" },
     target: (e, view) => zoneTestid(view, e.player, e.row, e.lane),
   },
   // Red number pops on the target, target shakes; a hero portrait shakes.
@@ -165,6 +181,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-damage-shake",
     durationMs: 300,
     testid: "card-<targetId> | hero-<side>",
+    fx: { recipe: "impact" },
     target: (e, view) => {
       const side = heroSide(view, e.targetId);
       return side !== null ? testid.hero(side) : locateInstance(view, e.targetId);
@@ -175,6 +192,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-loss-pop",
     durationMs: 300,
     testid: "hero-<side>",
+    fx: { recipe: "drain" },
     target: (e, view) => testid.hero(sideOf(view, e.player)),
   },
   // Green number pops.
@@ -182,6 +200,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-heal-pop",
     durationMs: 300,
     testid: "card-<targetId> | hero-<side>",
+    fx: { recipe: "heal" },
     target: (e, view) => {
       const side = heroSide(view, e.targetId);
       return side !== null ? testid.hero(side) : locateInstance(view, e.targetId);
@@ -192,6 +211,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-shield-shatter",
     durationMs: 250,
     testid: "card-<instanceId>",
+    fx: { recipe: "shieldBreak" },
     target: (e, view) => locateInstance(view, e.instanceId),
   },
   // Card dissolves, then slides to the GY count. A card destroyed off the board (R89 carries
@@ -200,6 +220,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-dissolve",
     durationMs: 350,
     testid: "card-<instanceId>",
+    fx: { recipe: "death" },
     target: (e, view) =>
       instanceOrPile(view, e.instanceId, animTestid.graveyard(sideOf(view, e.owner))),
   },
@@ -227,6 +248,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-exile-fade",
     durationMs: 350,
     testid: "card-<instanceId>",
+    fx: { recipe: "void" },
     target: (e, view) => instanceOrPile(view, e.instanceId, animTestid.exile(sideOf(view, e.owner))),
   },
   // Card flies to its owner's hand.
@@ -234,6 +256,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-bounce-to-hand",
     durationMs: 350,
     testid: "card-<instanceId>",
+    fx: { recipe: "bounce" },
     target: (e, view) => instanceOrPile(view, e.instanceId, animTestid.hand(sideOf(view, e.owner))),
   },
   // Card flips face-up above the hand and burns away. Burned cards come off the library, so they
@@ -242,6 +265,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-burn-away",
     durationMs: 400,
     testid: "hand-<side>",
+    fx: { recipe: "burn" },
     target: (e, view) => animTestid.hand(sideOf(view, e.owner)),
   },
   // Card drops from hand to GY.
@@ -249,6 +273,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-discard-drop",
     durationMs: 300,
     testid: "hand-card-<instanceId>",
+    fx: { recipe: "discard" },
     target: (e, view) => instanceOrPile(view, e.instanceId, animTestid.hand(sideOf(view, e.owner))),
   },
   // Card slides from library to hand (own) or back to the hand count (opponent). The motion
@@ -257,6 +282,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-draw-slide",
     durationMs: 250,
     testid: "library-<side>",
+    fx: { recipe: "draw" },
     target: (e, view) => animTestid.library(sideOf(view, e.player)),
   },
   // Card appears at the hand edge (own) or the hand count bumps (opponent).
@@ -264,6 +290,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-hand-edge",
     durationMs: 250,
     testid: "hand-<side>",
+    fx: { recipe: "handGlint" },
     target: (e, view) => animTestid.hand(sideOf(view, e.player)),
   },
   // Card flies into the library, library pulses.
@@ -271,6 +298,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-shuffle-in",
     durationMs: 300,
     testid: "library-<side>",
+    fx: { recipe: "shuffle" },
     target: (e, view) => animTestid.library(sideOf(view, e.player)),
   },
   // Stat numbers flash and tick to their new values.
@@ -278,6 +306,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-stat-tick",
     durationMs: 250,
     testid: "card-<instanceId>",
+    fx: { recipe: "buff" },
     target: (e, view) => locateInstance(view, e.instanceId),
   },
   // Keyword icon pops in.
@@ -285,6 +314,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-icon-pop",
     durationMs: 200,
     testid: "card-<instanceId>",
+    fx: { recipe: "keyword" },
     target: (e, view) => locateInstance(view, e.instanceId),
   },
   // Counter badge ticks.
@@ -292,6 +322,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-badge-tick",
     durationMs: 200,
     testid: "card-<instanceId>",
+    fx: { recipe: "counter" },
     target: (e, view) => locateInstance(view, e.instanceId),
   },
   // Cost gem flashes and ticks to the new value. A discount usually lands on a card in hand.
@@ -299,6 +330,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-gem-tick",
     durationMs: 200,
     testid: "card-<instanceId> | hand-card-<instanceId>",
+    fx: { recipe: "glint" },
     target: (e, view) => locateInstance(view, e.instanceId),
   },
   // Player modifier badge appears or fades by the hero.
@@ -306,6 +338,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-badge-fade",
     durationMs: 200,
     testid: "modifiers-<side>",
+    fx: { recipe: "glint" },
     target: (e, view) => animTestid.modifiers(sideOf(view, e.player)),
   },
   // Gold glow pulse, stats swap. The `zone` payload says where the card is standing.
@@ -313,6 +346,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-radiant-pulse",
     durationMs: 400,
     testid: "card-<instanceId>",
+    fx: { recipe: "radiant" },
     target: (e, view) => zoneOfCard(view, e.zone, e.instanceId),
   },
   // Card spins and shows its new face. Pre-update the old instance is the one on the board.
@@ -320,6 +354,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-spin-face",
     durationMs: 400,
     testid: "card-<instanceId>",
+    fx: { recipe: "smoke" },
     target: (e, view) =>
       locateInstance(view, e.instanceId) ?? locateInstance(view, e.newInstanceId),
   },
@@ -328,6 +363,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-fuse-merge",
     durationMs: 500,
     testid: "card-<instanceIds[0]>",
+    fx: { recipe: "fuse" },
     target: (e, view) => {
       for (const id of e.instanceIds) {
         const found = locateInstance(view, id);
@@ -348,6 +384,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-cross-centre",
     durationMs: 450,
     testid: "zone-<side>-<row>-<lane>",
+    fx: { recipe: "mindControl" },
     target: (e, view) => zoneTestid(view, e.controller, e.row, e.lane),
   },
   // All cards slide one lane.
@@ -369,6 +406,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-chain-close",
     durationMs: 250,
     testid: "zone-<side>-<row>-<lane>",
+    fx: { recipe: "lock" },
     target: (e, view) => zoneTestid(view, e.player, e.row, e.lane),
   },
   // Backrow card flips face-up, holds, then dissolves (or stays, for a Field Trap). R154 gives the
@@ -381,6 +419,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-trap-flip",
     durationMs: 700,
     testid: "card-<instanceId>",
+    fx: { recipe: "trap" },
     target: (e, view) =>
       locateInstance(view, e.instanceId) ?? zoneTestid(view, e.controller, e.row, e.lane),
   },
@@ -389,6 +428,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-lunge",
     durationMs: 350,
     testid: "card-<attackerId>",
+    fx: { recipe: "lunge" },
     target: (e, view) => locateInstance(view, e.attackerId),
   },
   // Attacker snaps back with a "Cancelled" tag.
@@ -396,6 +436,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-snap-back",
     durationMs: 350,
     testid: "card-<attackerId>",
+    fx: { recipe: "fizzle" },
     target: (e, view) => locateInstance(view, e.attackerId),
   },
   // Crystals fill/empty.
@@ -403,6 +444,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-crystal-fill",
     durationMs: 150,
     testid: "mana-<side>",
+    fx: { recipe: "mana" },
     target: (e, view) => animTestid.mana(sideOf(view, e.player)),
   },
   // Banner "Your turn" / "Opponent's turn".
@@ -410,6 +452,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-banner",
     durationMs: 600,
     testid: "turn-banner",
+    fx: { recipe: "banner" },
     target: () => testid.banner,
   },
   // End-turn button greys out.
@@ -424,6 +467,7 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     animation: "jk-banner",
     durationMs: 600,
     testid: "turn-banner",
+    fx: { recipe: "banner" },
     target: () => testid.banner,
   },
   // Modal fades in. Only the seat holding the prompt has a modal; the other shows a wait notice
@@ -489,6 +533,19 @@ export function prefersReducedMotion(): boolean {
   }
 }
 
+/**
+ * `prefersReducedMotion()` OR the settings panel's "Reduce motion" switch (settings/store.ts) OR the
+ * effects store's `motion: "reduce"` (`settings` defaults to `getFxSettings()`). Either setting
+ * behaves exactly like the media query (R200, R201).
+ */
+export function reducedMotionNow(settings?: Pick<FxSettings, "motion">): boolean {
+  return (
+    prefersReducedMotion() ||
+    readPanelSettings().reduceMotion ||
+    (settings ?? getFxSettings()).motion === "reduce"
+  );
+}
+
 /** Resolves one event's element against a view, without the caller narrowing the union itself. */
 export function targetFor(event: GameEvent, view: PlayerView): string | null {
   const resolve = ANIMATIONS[event.type].target as (e: GameEvent, v: PlayerView) => string | null;
@@ -515,6 +572,8 @@ export type AnimationEntry = {
    * one span of time. Empty when this seat renders nothing for the event.
    */
   frames: ReadonlyMap<string, GameEventType>;
+  /** The view this entry was planned against: the board as it stood before its events. */
+  view: PlayerView;
 };
 
 function frameMap(entries: readonly (readonly [string | null, GameEventType])[]): Map<string, GameEventType> {
@@ -559,6 +618,7 @@ export function planEntries(
           [targetFor(event, view), event.type],
           [targetFor(next, view), next.type],
         ]),
+        view,
       });
       i += 1;
       continue;
@@ -568,6 +628,7 @@ export function planEntries(
       type: event.type,
       durationMs: durationFor(event.type, reducedMotion),
       frames: frameMap([[targetFor(event, view), event.type]]),
+      view,
     });
   }
   return out;
@@ -596,7 +657,23 @@ export type AnimationQueue = {
   reset(): void;
   /** Called on every change to `animating()`; returns its own unsubscribe. */
   subscribe(listener: () => void): () => void;
+  /** Lifecycle signals for the effects layer. Synchronous; returns its own unsubscribe. */
+  subscribeSignals(listener: (signal: RunnerSignal) => void): () => void;
 };
+
+/**
+ * What the effects layer hears from the runner (docs/polish/1-animations.md, S4). It listens and
+ * never answers: no signal listener can hold, extend or reschedule an entry (R200).
+ */
+export type RunnerSignal =
+  | { kind: "start"; entry: AnimationEntry } // an entry went in flight (durationMs > 0 only)
+  | { kind: "idle" } // emitted each time the pump fires onSettled
+  /**
+   * drain() ran. `entries` are the ones it cut short, in order: the entry in flight, then every one
+   * still waiting. A drained game over never plays its killing blow, so the effects layer replays it.
+   */
+  | { kind: "drain"; entries: readonly AnimationEntry[] }
+  | { kind: "reset" }; // reset() ran
 
 export type AnimationQueueOptions = {
   now?: () => number;
@@ -609,6 +686,8 @@ export type AnimationQueueOptions = {
   /** Overrides for the burst budget below; the defaults are what the client ships with. */
   burstBudgetMs?: number;
   minEntryMs?: number;
+  /** Read at every enqueue (R201). Defaults to `getFxSettings`. */
+  settings?: () => Pick<FxSettings, "speed" | "motion">;
 };
 
 const EMPTY_ANIMATING: AnimatingMap = new Map<string, GameEventType>();
@@ -628,6 +707,18 @@ const EMPTY_ANIMATING: AnimatingMap = new Map<string, GameEventType>();
  */
 export const BURST_BUDGET_MS = 2_400;
 export const MIN_ENTRY_MS = 120;
+
+/**
+ * R201: the viewer's effects speed divides every non-zero duration, never below `MIN_ENTRY_MS`.
+ * 0 stays 0 (reduced motion, `gameOver`), and a speed of 1 returns the table value untouched, so
+ * the default setting schedules exactly BUILD M5-T4's durations. The speed is clamped to
+ * [FX_SPEED_MIN, FX_SPEED_MAX] first.
+ */
+export function scaleForSpeed(durationMs: number, speed: number): number {
+  const s = normalizeSpeed(speed);
+  if (durationMs <= 0 || s === 1) return durationMs;
+  return Math.max(MIN_ENTRY_MS, Math.round(durationMs / s));
+}
 
 /** Two events are the same occurrence when every field of them is. Order-stable by construction. */
 function sameEvent(a: GameEvent | undefined, b: GameEvent | undefined): boolean {
@@ -669,6 +760,7 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
       setTimeout(fn, ms);
     });
   const reducedMotion = options.reducedMotion ?? prefersReducedMotion();
+  const readSettings = options.settings ?? getFxSettings;
   const onSettled = options.onSettled;
   const burstBudgetMs = options.burstBudgetMs ?? BURST_BUDGET_MS;
   const minEntryMs = options.minEntryMs ?? MIN_ENTRY_MS;
@@ -682,22 +774,29 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
   let epoch = 0;
   let owed = false;
   const listeners = new Set<() => void>();
+  const signalListeners = new Set<(signal: RunnerSignal) => void>();
 
   function notify(): void {
     for (const listener of [...listeners]) listener();
   }
 
-  function settle(): void {
-    if (!owed) return;
+  function signal(value: RunnerSignal): void {
+    for (const listener of [...signalListeners]) listener(value);
+  }
+
+  /** Fires `onSettled` if a batch is owed one; reports whether it did. */
+  function settle(): boolean {
+    if (!owed) return false;
     owed = false;
     onSettled?.();
+    return true;
   }
 
   /** Squeeze what is still waiting so the whole backlog fits the burst budget. See the note above. */
-  function fitBudget(): void {
+  function fitBudget(budgetMs: number): void {
     const total = queue.reduce((sum, entry) => sum + entry.durationMs, 0);
-    if (total <= burstBudgetMs) return;
-    const factor = burstBudgetMs / total;
+    if (total <= budgetMs) return;
+    const factor = budgetMs / total;
     for (let i = 0; i < queue.length; i += 1) {
       const entry = queue[i];
       if (entry === undefined || entry.durationMs <= 0) continue;
@@ -714,13 +813,16 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
       const next = queue.shift();
       if (next === undefined) {
         notify();
-        settle();
+        if (settle()) signal({ kind: "idle" });
         return;
       }
       if (next.durationMs <= 0) continue;
       current = next;
       notify();
+      // Captured before the signal, so a listener that drains or resets inside `start` leaves this
+      // entry's timer a no-op instead of ending whatever runs next.
       const mine = epoch;
+      signal({ kind: "start", entry: next });
       schedule(() => {
         if (mine !== epoch) return;
         current = null;
@@ -732,10 +834,16 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
 
   return {
     enqueue(events, view) {
-      const entries = planEntries(events, view, reducedMotion);
+      // Read live, so a change in the settings panel applies from the next action on (R201).
+      const settings = readSettings();
+      const reduced = reducedMotion || settings.motion === "reduce" || readPanelSettings().reduceMotion;
+      const entries = planEntries(events, view, reduced).map((entry) => {
+        const durationMs = scaleForSpeed(entry.durationMs, settings.speed);
+        return durationMs === entry.durationMs ? entry : { ...entry, durationMs };
+      });
       if (entries.length > 0) queue.push(...entries);
       owed = true;
-      fitBudget();
+      fitBudget(burstBudgetMs / normalizeSpeed(settings.speed));
       pump();
     },
     animating() {
@@ -752,10 +860,12 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
     },
     drain() {
       epoch += 1;
+      const cut = current === null ? [...queue] : [current, ...queue];
       queue.length = 0;
       current = null;
       notify();
       settle();
+      signal({ kind: "drain", entries: cut });
     },
     reset() {
       epoch += 1;
@@ -763,11 +873,18 @@ export function createAnimationQueue(options: AnimationQueueOptions = {}): Anima
       current = null;
       owed = false;
       notify();
+      signal({ kind: "reset" });
     },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    subscribeSignals(listener) {
+      signalListeners.add(listener);
+      return () => {
+        signalListeners.delete(listener);
       };
     },
   };

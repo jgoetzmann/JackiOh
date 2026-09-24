@@ -35,6 +35,26 @@ describe("purity lint ban (M1-T2)", () => {
     expect(await bannedText(code, "packages/cards/src/scripts/000-fixture.ts")).toEqual(["no-restricted-properties"]);
   });
 
+  // CLAUDE.md rule 4 names packages/ai as pure too (SPEC §9.9: "pure and seeded like the engine").
+  it("applies the same ban under packages/ai", async () => {
+    const code = [
+      'import { readFileSync } from "node:fs";',
+      "export const pick = (): number => Math.random();",
+      "export const now = (): number => Date.now();",
+      "export const later = () => setTimeout(() => undefined, 1);",
+      "export async function think(): Promise<void> {}",
+      "export const read = readFileSync;",
+      "",
+    ].join("\n");
+    expect(await bannedText(code, "packages/ai/src/fixture.ts")).toEqual([
+      "no-restricted-imports",
+      "no-restricted-properties",
+      "no-restricted-properties",
+      "no-restricted-globals",
+      "no-restricted-syntax",
+    ]);
+  });
+
   it("bans I/O, timers and async in engine and card sources", async () => {
     const code = [
       'import { readFileSync } from "node:fs";',

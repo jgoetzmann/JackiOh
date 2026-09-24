@@ -177,8 +177,12 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
       const returned = hand.slice(1);
 
       // §2.1 / R9: the picked cards are the ones KEPT; the rest are returned, replacements are
-      // drawn first and only then are the returned cards shuffled back in.
-      cy.answerPrompt("mulligan", { cards: kept, submit: true });
+      // drawn first and only then are the returned cards shuffled back in. The picker opens with
+      // every card kept (Hearthstone's default), so the cards clicked are the ones sent back.
+      cy.get(promptOf("mulligan"))
+        .find('[aria-pressed="true"]')
+        .should("have.length", hand.length);
+      cy.answerPrompt("mulligan", { cards: returned, submit: true });
 
       // NOT `pickerAnswered("mulligan")`: `answerMulligan` opens the FAR seat's mulligan in the
       // same reduction (§2.1, R9), and both pickers carry `data-prompt-kind="mulligan"` while the

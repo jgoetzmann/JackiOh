@@ -1,5 +1,6 @@
 // SPEC §11, every row: the single index BUILD's M3 gate asks for and REVIEW's B4 check greps by
-// name. One `it("R<n> …")` per §11 row, R1 to R170, in order.
+// name. One `it("R<n> …")` per §11 row, in ascending order: the same ids, in the same order, as
+// SPEC §11's table, gaps included (`pnpm rulings:coverage` compares the two).
 //
 // Two kinds of test live here. A row whose ruling is a number asserts that number against
 // `config.ts` — the seven "decide" rows (R1, R2, R4, R5, R14, R26, R39) among them, which B4
@@ -172,6 +173,23 @@ const CARDS_PAUSED_SEQUENCES_TEST = "../../cards/test/paused-sequences.test.ts";
 const CARDS_TURN_STAGES_TEST = "../../cards/test/turn-stages.test.ts";
 /** R243's proof beside hidden-information.test.ts's, and R46's: the hunt's tenth round. */
 const CARDS_VANILLA_AND_POSITIONS_TEST = "../../cards/test/vanilla-and-positions.test.ts";
+/** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
+const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
+const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
+const AI_DECIDE_TEST = "../../ai/test/decide.test.ts";
+const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
+/** R203's and R204's proofs (SPEC §10.11): the client's sound cue table, and the director that plays it. */
+const WEB_AUDIO_CUES_TEST = "../../../apps/web/src/audio/cues.test.ts";
+const WEB_AUDIO_DIRECTOR_TEST = "../../../apps/web/src/audio/director.test.ts";
+/** The effects layer's proofs (R200 to R202): the cue planner, the director, the layer and the runner. */
+const WEB_FX_CUES_TEST = "../../../apps/web/src/fx/cues.test.ts";
+const WEB_FX_DIRECTOR_TEST = "../../../apps/web/src/fx/director.test.ts";
+const WEB_FX_LAYER_TEST = "../../../apps/web/src/fx/FxLayer.test.tsx";
+const WEB_FX_STAGE_TEST = "../../../apps/web/src/fx/stage.test.tsx";
+const WEB_FX_CSS_TEST = "../../../apps/web/src/fx/css.test.ts";
+const WEB_FX_CANVAS_TEST = "../../../apps/web/src/fx/canvasFx.test.ts";
+const WEB_FX_PARTICLES_TEST = "../../../apps/web/src/fx/particles.test.ts";
+const WEB_ANIMATIONS_FX_TEST = "../../../apps/web/src/game/animations.fx.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -188,7 +206,7 @@ function serverConstant(file: string, name: string): string | null {
   return found?.[1]?.trim() ?? null;
 }
 
-describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
+describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by rulings-a.test.ts "R1 fires Cry only on a play from hand or a cast, never on a summon, Recruit
   // or Transform"; effects-summon.test.ts "R1 fires no Cry".
   it("R1 fires Cry only on a play from hand or a cast", () => {
@@ -1587,9 +1605,241 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(178, CARDS_ECHO_AND_EXILE_TEST);
   });
 
-  // Proved by fuse-registry.test.ts's "R179 …" test: two matches, one process, one fusion slot.
+  // Proved by the cards package's fuse-registry.test.ts "R179 …" (two matches, one process, one
+  // fusion slot, with #85) and by this package's fuse-registry.test.ts "R179 …" (the scripts rebuilt
+  // from the id alone after a JSON round trip or a wholesale re-registration, and a fusion of a
+  // fusion's parenthesised id read back one way).
   it("R179 names a fused definition's ingredients in its id, so matches in one process never share one", () => {
-    provenIn(179, CARDS_FUSE_REGISTRY_TEST);
+    provenIn(179, CARDS_FUSE_REGISTRY_TEST, "fuse-registry.test.ts");
+  });
+
+  // R180 to R184 are the practice handicap (§9.9), proved by handicap.test.ts against createGame,
+  // beginGame, reduce and fold directly. R180's numbers are §9.9's table, so they are asserted here
+  // against `config.ts` as the "decide" rows' are.
+  it("R180 gives each seat an optional handicap, stores none equal to a human's, and folds it", () => {
+    expect(config.HUMAN_HANDICAP).toEqual({
+      deckSize: config.DECK_SIZE,
+      manaBonus: 0,
+      manaCap: config.MAX_MANA,
+      extraOpeningCards: 0,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.DIFFICULTIES).toEqual(["easy", "medium", "hard"]);
+    expect(config.AI_DIFFICULTY.easy).toEqual(config.HUMAN_HANDICAP);
+    expect(config.AI_DIFFICULTY.medium).toEqual({
+      deckSize: 25,
+      manaBonus: 1,
+      manaCap: 5,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 0,
+    });
+    expect(config.AI_DIFFICULTY.hard).toEqual({
+      deckSize: 30,
+      manaBonus: 1,
+      manaCap: 7,
+      extraOpeningCards: 1,
+      extraDrawsPerTurn: 1,
+    });
+    provenIn(180, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R181 …": Medium refreshes to 2 on its first turn and 5 from its
+  // fourth, Hard to 7 from its sixth, Hinder and next-turn gains still apply on top.
+  it("R181 caps a handicapped seat's max mana at min(turns + bonus, cap), modifiers on top", () => {
+    provenIn(181, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R182 …": the mulligan sees 5 cards for a Medium or Hard p2 and 4
+  // for p1, and a Quickdraw card replaces one of those draws.
+  it("R182 adds a handicap's extra opening cards to §2.1's table entry", () => {
+    provenIn(182, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R183 …": two `drawn` events, fatigue N then N + 1, and a
+  // cast-on-draw prompt in the first draw owing the second to `state.work`.
+  it("R183 makes a handicap's extra draws separate §2.4 draws, each with its own chain and fatigue", () => {
+    expect(config.DRAWS_PER_TURN).toBe(1);
+    provenIn(183, "handicap.test.ts");
+  });
+
+  // Proved by handicap.test.ts "R184 …": a 30-card Hard p2 deck is accepted, and a wrong size,
+  // a duplicate or a Token is refused naming the seat.
+  it("R184 holds a handicapped seat's deck to its handicap's deck size and §2.6's other rules", () => {
+    provenIn(184, "handicap.test.ts");
+  });
+
+  // Proved by packages/ai observe.test.ts "R185 …": redact hashes identically across hidden-card
+  // differences, determinize loses nothing the seat can see, and decide does not move.
+  it("R185 lets the AI decide only from what its seat may know, simulating on determinizations", () => {
+    provenIn(185, AI_OBSERVE_TEST);
+  });
+
+  // Proved by packages/ai shadowBan.test.ts "R186 …": every entry is a real card with a sweep flag,
+  // and no AI deck is dealt one.
+  it("R186 keeps the AI's shadow ban to its own deck-building, each entry with a sweep reason", () => {
+    provenIn(186, AI_SHADOW_BAN_TEST);
+  });
+
+  // Proved by apps/web practice/core.test.ts "R187 …": a practice game folds from
+  // `(seed, decks, handicaps, log)` to the worker's hash at every difficulty.
+  it("R187 runs practice in the browser's worker, recording nothing and replaying exactly", () => {
+    provenIn(187, WEB_PRACTICE_CORE_TEST);
+  });
+
+  // Proved by packages/ai decide.test.ts "R188 …": an unanswered offer is declined at once, and no
+  // match log holds a concede, an offer or an accepting answer from the AI.
+  it("R188 has the AI decline every draw offer at once and never concede or offer one", () => {
+    provenIn(188, AI_DECIDE_TEST);
+  });
+
+  // R190 to R194 are sign-in and invite-code rulings (polish task 5, docs/polish/5-sign-in.md). Like
+  // R157 to R170 their proofs live outside the engine, in the server, the shared package and the web
+  // client, so each index row names the files and asserts each still carries a test named after it.
+  const SERVER_CLIENT_ADDRESS_TEST = "../../../apps/server/test/api/client-address.test.ts";
+  const SERVER_CODE_INPUT_PARITY_TEST = "../../../apps/server/test/api/code-input-parity.test.ts";
+  const SERVER_REDEEM_FEEDBACK_TEST = "../../../apps/server/test/api/redeem-feedback.test.ts";
+  const SHARED_CODES_TEST = "../../shared/test/codes.test.ts";
+  const WEB_CODE_FIELD_TEST = "../../../apps/web/src/auth/CodeField.test.tsx";
+  const WEB_AUTH_FLOWS_TEST = "../../../apps/web/src/net/auth-flows.test.ts";
+  const WEB_REDIRECT_TEST = "../../../apps/web/src/auth/redirect.test.ts";
+  const WEB_LOGIN_FLOWS_TEST = "../../../apps/web/src/routes/login-flows.test.tsx";
+  const WEB_GATE_REFRESH_TEST = "../../../apps/web/src/net/gate-refresh.test.tsx";
+  const WEB_GATE_SESSION_CHANGES_TEST = "../../../apps/web/src/net/gate-session-changes.test.tsx";
+  const WEB_INVITE_FEEDBACK_TEST = "../../../apps/web/src/routes/invite-feedback.test.tsx";
+  const WEB_RESET_PASSWORD_TEST = "../../../apps/web/src/routes/reset-password.test.tsx";
+  const WEB_SHELL_GATE_TEST = "../../../apps/web/src/routes/shell-gate.test.tsx";
+
+  // Proved by client-address.test.ts's "R190 …" rows: `clientAddress` takes the rightmost trusted
+  // hop and never CF-Connecting-IP or X-Real-IP, requests with different leftmost entries share one
+  // per-IP bucket, too few entries fall back to the peer address, the default trusts no hop,
+  // `loadEnv` bounds TRUSTED_PROXY_HOPS, an IPv6 client is keyed by its /56, and `api.forwarded_for`
+  // reports the fewest entries seen, never an address.
+  it("R190 keys a per-IP limit on the rightmost trusted X-Forwarded-For hop, then the peer", () => {
+    provenIn(190, SERVER_CLIENT_ADDRESS_TEST);
+  });
+
+  // Proved by the shared table in codes.test.ts (the reading itself), code-input-parity.test.ts
+  // (the server redeems every row the table calls canonical and answers R145's identical error for
+  // the rest) and CodeField.test.tsx (the field refuses an excluded character instead of dropping it).
+  it("R191 reads a typed or pasted code one way on both sides, never dropping or mapping a character", () => {
+    provenIn(191, SHARED_CODES_TEST, SERVER_CODE_INPUT_PARITY_TEST, WEB_CODE_FIELD_TEST);
+  });
+
+  // Proved by redeem-feedback.test.ts (§9.4 steps 2 and 3 and R109's limit answer 429 with
+  // `Retry-After` and `details.retryAfterMs`, next to the unchanged `invalid_code` bytes, and the
+  // status says when an account's tries come back), auth-flows.test.ts (a provider 429 is a rate
+  // limit, and resend and recover stay neutral for every answer that could name an account),
+  // login-flows.test.tsx (the per-address interval, a sign-up's included) and
+  // invite-feedback.test.tsx (the screen shows each wait and lifts by itself when it runs out).
+  it("R192 reports a rate limit as a rate limit, with its wait, never as the identical error", () => {
+    provenIn(192, SERVER_REDEEM_FEEDBACK_TEST, WEB_AUTH_FLOWS_TEST, WEB_LOGIN_FLOWS_TEST, WEB_INVITE_FEEDBACK_TEST);
+  });
+
+  // Proved by redirect.test.ts (a link is parsed once and scrubbed, error text is never read, a held
+  // recovery session lives in this tab's memory and sessionStorage, never localStorage, and one
+  // abandoned after its access token expired is renewed, then revoked), login-flows.test.tsx (no
+  // confirmation link signs this browser in, not even for the sign-up it started; a link is renewed
+  // before it is checked, so the refresh token in its URL is spent; a recovery link is held at once
+  // for a reset this browser asked for, and otherwise only once the player types the address it was
+  // sent to; nothing from a link is shown or filled into a form; and a link's session that is not
+  // kept is revoked), reset-password.test.tsx (the reset screen says when it replaces another
+  // account's session, asks before its exits spend the link, and abandons it when left) and
+  // shell-gate.test.tsx (a link on any path is scrubbed and handed to /login).
+  it("R193 reads an emailed auth link once, scrubs it, and never signs this browser in from a confirmation", () => {
+    provenIn(193, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST, WEB_RESET_PASSWORD_TEST, WEB_SHELL_GATE_TEST);
+  });
+
+  // Proved by gate-refresh.test.tsx (renewal near expiry and on a 401, and the expired sign-in
+  // screen), gate-session-changes.test.tsx (a renewal the device outlived, and a renewal of the same
+  // session, here or in another tab, keeps an open match socket), auth-flows.test.ts (single-flight
+  // refresh, and revocation on sign-out, an expired session renewed first), invite-feedback.test.tsx
+  // (a redemption refused as unauthorised is renewed and sent again), reset-password.test.tsx (a
+  // recovery session that runs out while the form is open is renewed before the new password is
+  // sent) and the server's auth.test.ts (the API honours a token only while the provider still has
+  // its session, remembering a live answer for AUTH_SESSION_LIVE_CACHE_SECONDS, and an unreachable
+  // provider signs nobody out).
+  it("R194 renews a session once near expiry or on a 401, revokes it on sign-out, and the API honours only a live one", () => {
+    provenIn(
+      194,
+      WEB_GATE_REFRESH_TEST,
+      WEB_GATE_SESSION_CHANGES_TEST,
+      WEB_AUTH_FLOWS_TEST,
+      WEB_INVITE_FEEDBACK_TEST,
+      WEB_RESET_PASSWORD_TEST,
+      SERVER_AUTH_TEST,
+    );
+  });
+
+  // Proved by conditionActive.test.ts's "R195 …" tests (a test-only `conditionMet` hook: the
+  // viewer's hand in their own main phase only, their units and backrow on either turn, never a
+  // card they don't control, never a card with no hook, the hook never called outside those) and by
+  // the cards package's condition-active.test.ts, which checks the five §8 cards that implement the
+  // hook (#10, #53, #68, #71, #93) against the branch each card's own resolution then takes.
+  it("R195 surfaces a met printed condition as conditionActive on the viewer's own cards only", () => {
+    provenIn(195, "conditionActive.test.ts", "../../cards/test/condition-active.test.ts");
+  });
+
+  // Proved by conditionActive.test.ts's "R196 …" tests, which fuse test-only hooked cards through
+  // the real R77 `fuse` (in hand and on the field), and by the cards package's
+  // condition-active.test.ts, which crafts #53 Reno with #68 Twisted Sorcerer and checks the glow
+  // against the branches the fused Cry then takes.
+  it("R196 lights a fused card when any ingredient's printed condition holds", () => {
+    provenIn(196, "conditionActive.test.ts", "../../cards/test/condition-active.test.ts");
+  });
+
+  // Proved in each part of the layer. cues.test.ts "R200 …" bounds every planned cue inside its entry
+  // plus FX_MAX_TAIL_MS for every recipe and duration, and bounds the killing blow's replay;
+  // director.test.ts "R200 …" fires cues on frames and leaves nothing behind after D +
+  // FX_MAX_TAIL_MS, even across a stalled frame; canvasFx.test.ts and particles.test.ts "R200 …" age
+  // on real time; FxLayer.test.tsx "R200 …" shows mounting the layer changes no `schedule` call, the
+  // reduce setting zeroes --anim-scale and the killing blow plays before the result; stage.test.tsx
+  // "R200 …" bounds the stage effects (a stand-in, a hidden card, an aimed lunge) by the entry and
+  // FX_HOLD_MAX_MS; css.test.ts "R200 …" draws the Divine Shield cocoon only while the layer is on.
+  it("R200 keeps the effects layer from pacing anything: effects decorate the table and trail off within its tail", () => {
+    provenIn(
+      200,
+      WEB_FX_CUES_TEST,
+      WEB_FX_DIRECTOR_TEST,
+      WEB_FX_LAYER_TEST,
+      WEB_FX_STAGE_TEST,
+      WEB_FX_CSS_TEST,
+      WEB_FX_CANVAS_TEST,
+      WEB_FX_PARTICLES_TEST,
+    );
+  });
+
+  // Proved by animations.fx.test.ts "R201 …": the runner's `schedule` spy at speeds 2, 0.5 and 5.
+  it("R201 scales the animation table and the burst budget by the viewer's effects speed", () => {
+    provenIn(201, WEB_ANIMATIONS_FX_TEST);
+  });
+
+  // Proved by cues.test.ts "R202 …": hidden ids and defIds plan identical cues, and no cue carries a
+  // defId or a card name.
+  it("R202 draws effects from the redacted stream only", () => {
+    provenIn(202, WEB_FX_CUES_TEST);
+  });
+
+  // R203 and R204 are client rulings (SPEC §10.11): the engine makes neither, and the proofs live in
+  // `apps/web/src/audio`, where the cue table and the director are. Neither changes a rule.
+
+  // Proved by apps/web cues.test.ts's "R203 …" tests (an event whose defId is R97's sentinel gives
+  // no voice cue, the viewer's own trap set gives the generic `trapSet` and never speaks, and a
+  // `trapFired` speaks its cast line only where R154 leaves its identity readable), and by
+  // director.test.ts's "R203 …" tests (the first view, and any view whose `viewer` differs from the
+  // last, voice nothing and drop every owed event, so a hotseat hand-over plays nothing; and a real
+  // #41 Sheepish, set and fired through the engine's own `viewFor`, speaks only on its controller's
+  // seat).
+  it("R203 lets sound reveal nothing the viewer's PlayerView does not, so a hidden card never speaks", () => {
+    provenIn(203, WEB_AUDIO_CUES_TEST, WEB_AUDIO_DIRECTOR_TEST);
+  });
+
+  // Proved by apps/web cues.test.ts's "R204 …" tests: a readable unit's `cardPlayed` gives its play
+  // line and a Spell's or Field Spell's its cast line, a unit's `destroyed` gives its death line
+  // (R89's defId), a defId the table lacks gives no line, a unit summoned without a play speaks at
+  // the lowest priority while a played one's `summoned` adds nothing, `bounced`, `exiled`,
+  // `transformed` and `fused` never speak, and death and trap lines outrank play and cast lines.
+  it("R204 speaks a play line on cardPlayed, a death line on destroyed, and a trap's line when it fires", () => {
+    provenIn(204, WEB_AUDIO_CUES_TEST);
   });
 
   // Proved by lasting-effects.test.ts's "R209 …" tests: Twinspell bounced, bounced and replayed,
@@ -1705,6 +1955,13 @@ describe("SPEC §11 rulings R1–R167 (BUILD M3 gate, REVIEW B4)", () => {
   // a card, answered with the card being played, leaves that card in the graveyard alone.
   it("R226 plays no card that left its owner's hand before §10.5 step 4", () => {
     provenIn(226, CARDS_PAUSED_SEQUENCES_TEST);
+  });
+
+  // Proved by turn-clock-and-legality.test.ts "R227 …": a Sheepish p1 saw in p2's graveyard, returned
+  // and set again, is named by `legalActions` only under a fresh id; hidden-information.test.ts's
+  // "R227 …" tests pin `formerId` on both seats, and effects-summon.test.ts's the Recruit path.
+  it("R227 gives a card set face-down a fresh id, so no id seen while it was public names it", () => {
+    provenIn(227, CARDS_TURN_CLOCK_TEST);
   });
 
   // Proved by turn-stages.test.ts "R240 …": a fatigue draw Going Long's Armor absorbs whole is

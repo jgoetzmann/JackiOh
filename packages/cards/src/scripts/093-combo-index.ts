@@ -27,6 +27,13 @@
 // E→new grade in order, S is terminal), R60 (a random "becomes Radiant" pick only considers
 // non-Radiant cards), R85 (grade A's 8 damage has Lifesteal of its own without #93 gaining the
 // keyword) and R86 (grade E's pool skips cards that have ceased to exist).
+//
+// R195, the yellow glow: on the field, during its controller's turn, the card glows exactly when
+// the end of this turn would raise the grade — the cards played reach the grade and it is not at S.
+// `conditionMet` reads the subsystem's own `gradeRises`, the predicate `comboIndexEndOfTurn` checks,
+// so the glow and the rise cannot disagree; `yourTurn` stands for "the end of turn that fires
+// `endOfTurn` is this one" without the card reading `state.active`. In hand it never glows: the
+// grade is a counter on a card in play.
 
 import type { Script } from "@jackioh/engine";
 import { subsystems } from "@jackioh/engine";
@@ -49,11 +56,16 @@ const cry: Script["cry"] = () => [subsystems.startGrade()];
 const endOfTurn: Script["endOfTurn"] = (ctx) =>
   ctx.self === null ? [] : subsystems.comboIndexEndOfTurn(ctx, ctx.self);
 
-export const base: Script = { cry, endOfTurn };
+/** R195: field only, on its controller's turn, when `endOfTurn` would raise the grade now. */
+const conditionMet: Script["conditionMet"] = (ctx) =>
+  ctx.zone === "field" && ctx.yourTurn && subsystems.gradeRises(ctx.state, ctx.self);
+
+export const base: Script = { cry, endOfTurn, conditionMet };
 
 export const radiant: Script = {
   cry,
   endOfTurn,
+  conditionMet,
   // "Start of turn: add a Combo-Fodder to your hand". A full hand burns it (§2.4, R4), which
   // `addToHand` already does.
   startOfTurn: () => [addToHand({ defId: COMBO_FODDER })],

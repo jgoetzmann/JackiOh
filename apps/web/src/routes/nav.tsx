@@ -5,9 +5,10 @@
 // none of them offered any way to leave except the browser's own Back button — which does not
 // exist on a screen opened from a link, and is not obvious on a phone.
 
-import type { ReactElement } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 
 import { navigate, paths } from "../net/navigate.ts";
+import { SettingsButton } from "../settings/index.ts";
 
 export const navTestid = {
   back: "nav-back",
@@ -18,13 +19,32 @@ export type BackLinkProps = {
   /** Where "back" goes. Defaults to the landing page, which every screen can reach. */
   to?: string;
   label?: string;
+  /** Runs before the move: a screen that holds something it must let go of when left. */
+  onLeave?: () => void;
+  /**
+   * Replaces the move: the screen decides what a press does (the reset screen asks before it
+   * spends a one-time link). Without it, a press runs `onLeave` and goes to `to`.
+   */
+  onPress?: () => void;
+  /**
+   * What a screen keeps in its top bar between Back and the gear (the invite screen's "Signed in
+   * as"), so the gear is the top-right control on every screen. On a phone it takes a row of its
+   * own under them (settings.css).
+   */
+  children?: ReactNode;
 };
 
 /**
  * `navigate`, not `history.back()`: a player who opened this URL directly has no history entry to
  * go back to, and would either sit still or leave the site entirely.
  */
-export function BackLink({ to = paths.landing, label = "← Back" }: BackLinkProps): ReactElement {
+export function BackLink({
+  to = paths.landing,
+  label = "← Back",
+  onLeave,
+  onPress,
+  children,
+}: BackLinkProps): ReactElement {
   return (
     <nav className="row screen-nav">
       <button
@@ -32,11 +52,35 @@ export function BackLink({ to = paths.landing, label = "← Back" }: BackLinkPro
         className="link-button"
         data-testid={navTestid.back}
         onClick={() => {
+          if (onPress !== undefined) {
+            onPress();
+            return;
+          }
+          onLeave?.();
           navigate(to);
         }}
       >
         {label}
       </button>
+      {children === undefined ? null : <div className="screen-nav__extra">{children}</div>}
+      <SettingsButton placement="nav" />
     </nav>
   );
+}
+
+/**
+ * The click handler for an `<a href={to}>` that should move in place instead of reloading the page.
+ *
+ * Only a plain left click is taken over. A middle click, a modified click (new tab, new window,
+ * download) or a click something else already handled keeps the browser's own behaviour, which is
+ * why these links are anchors with a real `href` and not buttons.
+ */
+export function followInApp(to: string): (event: MouseEvent<HTMLAnchorElement>) => void {
+  return (event) => {
+    if (event.defaultPrevented) return;
+    if (event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(to);
+  };
 }

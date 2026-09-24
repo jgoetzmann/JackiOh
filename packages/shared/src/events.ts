@@ -4,6 +4,11 @@
 import type { Keyword, PlayerId, PromptKind, Row, Zone } from "./catalog-types";
 
 export type GameEvent =
+  /**
+   * `formerId` (R227): the id the card had until this moment, set only when the play put it
+   * face-down into a backrow, which gives it a fresh id. Its controller's client finds the hand card
+   * by it; a view that hides the card hides this too (R97).
+   */
   | {
       type: "cardPlayed";
       player: PlayerId;
@@ -12,6 +17,7 @@ export type GameEvent =
       costPaid: number;
       x?: number;
       embiggened?: boolean;
+      formerId?: string;
       /**
        * R119: the permanents that arrived on the field during this play before §10.5 step 4
        * announced it — a tributed unit's Death at step 2 (#22's copies) — which do not answer it, as
@@ -75,6 +81,8 @@ export type GameEvent =
       defId: string;
       row: Row;
       lane: number;
+      /** `formerId` (R227): as on `cardPlayed`, when this summon put an existing card face-down. */
+      formerId?: string;
       /** R119: on a played card's step-4 `summoned`, as on its `cardPlayed`. A view never forwards it. */
       arrivedDuring?: string[];
       /** R174, R212: on a played card's step-4 `summoned`, as on its `cardPlayed`. A view never forwards it. */

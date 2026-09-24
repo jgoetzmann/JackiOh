@@ -187,6 +187,29 @@ export type StaticFlags = {
   heroArmor?: boolean | number;
 };
 
+/** R195: where `viewFor` is asking about a card. */
+export type ConditionZone = "hand" | "field";
+
+/**
+ * R195, §10.9: the argument of the Hearthstone "yellow glow" predicate. A hook is a PURE READ — it
+ * never writes, never draws from `rng`, never returns effects — and must agree with the branch the
+ * card's own resolution would take if it resolved now.
+ */
+export type ConditionContext = {
+  state: GameState;
+  self: CardInstance;
+  /** The card's controller. R195 only ever asks about the viewer's own cards, so this is the viewer. */
+  controller: PlayerId;
+  /** Whether the Radiant face is the one running (§5.2). */
+  radiant: boolean;
+  /** "hand": as if played now. "field": as the card on the field reads it now. */
+  zone: ConditionZone;
+  /** `state.active === controller`, so a card file never reads `state.active` itself. */
+  yourTurn: boolean;
+};
+
+export type ConditionHook = (ctx: ConditionContext) => boolean;
+
 export type Script = {
   /** Ceaseless Void's computed cost (R55); everything else uses the printed cost. */
   cost?: (args: { state: GameState; instance: CardInstance }) => number;
@@ -214,6 +237,8 @@ export type Script = {
   /** The play-time choices this card declares (R81). */
   targets?: TargetDecl[];
   modes?: ModeDecl[];
+  /** R195: the condition `viewFor` surfaces as `conditionActive` (§10.8). */
+  conditionMet?: ConditionHook;
 };
 
 export type CardScripts = { base: Script; radiant: Script };

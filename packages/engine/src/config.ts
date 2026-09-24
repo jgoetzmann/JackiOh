@@ -48,9 +48,11 @@ export const DRAW_OFFERS_PER_TURN = 1;
 /** §2.5, R36: a declined offer blocks that player for this many of their turns. */
 export const DRAW_OFFER_BLOCK_TURNS = 3;
 /**
- * §2.5, R79: the most prompts one `timeout` answers for the active player before it ends the turn.
- * A chain of prompts is a handful (KY's Private Tutor asks three times); this only bounds a card
- * that would keep asking, so a timeout always finishes.
+ * §2.5, R79: the most prompts one `timeout` answers for the active player. A chain of prompts is a
+ * handful (KY's Private Tutor asks three times), after which the turn ends. This only bounds a card
+ * that would keep asking, so one `timeout` always returns: if a prompt is still open after this many
+ * answers, the timeout stops there with the turn still running, and the next expiry carries on. No
+ * Core card can reach it.
  */
 export const TIMEOUT_ANSWER_CAP = 500;
 
@@ -106,3 +108,47 @@ export const AI_END_TURN_PROBABILITY = 0.1;
 export const MAX_CHOICE_COMBINATIONS = 64;
 /** §9.3: how many answered nonces the state remembers for dedupe. */
 export const NONCE_HISTORY = 64;
+
+/** §2.4: the draws each start of turn makes before any handicap (R183). */
+export const DRAWS_PER_TURN = 1;
+
+/**
+ * §9.9, R180: the resources one seat plays with. Every field is a non-negative integer. The type
+ * lives here because `config.ts` imports nothing; `state.ts` stores it on a `PlayerState`.
+ */
+export type Handicap = {
+  /** R184: exactly how many cards `createGame` requires in this seat's deck. */
+  readonly deckSize: number;
+  /** R181: crystals added to the turns-started count before the cap. */
+  readonly manaBonus: number;
+  /** R181: the most max mana a refresh gives, before persistent modifiers. */
+  readonly manaCap: number;
+  /** R182: cards added to §2.1's opening draw. */
+  readonly extraOpeningCards: number;
+  /** R183: separate draws after DRAWS_PER_TURN at each start of turn. */
+  readonly extraDrawsPerTurn: number;
+};
+
+/** R180: this spec's own resources. A seat with no handicap plays with these. */
+export const HUMAN_HANDICAP: Handicap = {
+  deckSize: DECK_SIZE,
+  manaBonus: 0,
+  manaCap: MAX_MANA,
+  extraOpeningCards: 0,
+  extraDrawsPerTurn: 0,
+};
+
+/** §9.9: the three practice tiers. */
+export type Difficulty = "easy" | "medium" | "hard";
+export const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"];
+
+/**
+ * §9.9's table (R180): the AI seat's handicap per tier. The AI itself is identical at every tier;
+ * only these resources differ. Easy is a human's resources exactly, so an Easy game stores no
+ * handicap and hashes like any other game.
+ */
+export const AI_DIFFICULTY: Readonly<Record<Difficulty, Handicap>> = {
+  easy: HUMAN_HANDICAP,
+  medium: { deckSize: 25, manaBonus: 1, manaCap: 5, extraOpeningCards: 1, extraDrawsPerTurn: 0 },
+  hard: { deckSize: 30, manaBonus: 1, manaCap: 7, extraOpeningCards: 1, extraDrawsPerTurn: 1 },
+};

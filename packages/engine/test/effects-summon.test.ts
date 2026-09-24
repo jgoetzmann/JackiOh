@@ -296,6 +296,33 @@ describe("recruit (§6.3, M3-T1)", () => {
     expect(state.players.p1.library.map((c) => c.defId)).toEqual(["fx-1"]);
   });
 
+  it("R227 a recruited Trap takes a fresh id as it goes face-down, and its summoned event names the old one", () => {
+    const state = game();
+    const [, held] = setLibrary(state, "p1", ["fx-1", trap.id]).map((card) => card.id);
+    const next = `c${state.nextId}`;
+
+    const events = run(state, recruit({ filter: { type: "Trap" } }));
+
+    const set = cardAt(state, slot("p1", "backrow", 1));
+    expect(set?.defId).toBe(trap.id);
+    expect(set?.id).toBe(next);
+    expect(set?.id).not.toBe(held);
+    expect(eventsOfType(events, "summoned")).toEqual([
+      { type: "summoned", player: "p1", instanceId: next, defId: trap.id, row: "backrow", lane: 1, formerId: held },
+    ]);
+  });
+
+  it("R227 a recruited Unit or Field Spell keeps its id: only a card going face-down takes a fresh one", () => {
+    const state = game();
+    const [unitId, fieldId] = setLibrary(state, "p1", ["fx-1", fieldSpell.id]).map((card) => card.id);
+
+    const events = [...run(state, recruit()), ...run(state, recruit({ filter: { type: "Field Spell" } }))];
+
+    expect(cardAt(state, slot("p1", "units", 1))?.id).toBe(unitId);
+    expect(cardAt(state, slot("p1", "backrow", 1))?.id).toBe(fieldId);
+    expect(eventsOfType(events, "summoned").some((e) => e.formerId !== undefined)).toBe(false);
+  });
+
   it("§3.2 summons nothing when no permanent matches, and nothing leaves the library", () => {
     const state = game();
     setLibrary(state, "p1", [spell.id, spell.id]);

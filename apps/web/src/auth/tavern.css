@@ -1,0 +1,898 @@
+/* The tavern: the look the way in shares. The landing (routes/landing.tsx), sign-in, reset, the
+   invite-code screen and the account screen all put `.tavern` on their root, so a player walks from
+   the landing's hearth into a sign-in form that belongs to the same room rather than a bare
+   developer form.
+
+   SCOPED ON PURPOSE. Every token and rule is under `.tavern`; nothing is added to :root or
+   index.css, whose rules the board's pixel-measured layout depends on (index.css's header). The
+   screens still render index.css's `.app-shell`, `.panel`, `.notice`, `.form-card`,
+   `.link-button` and `.affix-button`; the rules below re-skin them only inside `.tavern`, with one
+   more class of specificity than the rule they replace. No image and no web font: gradients,
+   shadows and the system's serif. */
+
+.tavern {
+  --tavern-night: #120b07;
+  --tavern-wood-deep: #2b170c;
+  --tavern-wood: #5a341b;
+  --tavern-wood-light: #8a5a33;
+  --tavern-brass: #c9953f;
+  --tavern-gold: #f3c969;
+  --tavern-gold-pale: #fbe7b0;
+  --tavern-ember: #ff7a2f;
+  --tavern-flame: #ffb347;
+  --tavern-parchment: #efe0bf;
+  --tavern-ink: #24160c;
+  --tavern-teal: #3fb6a8;
+
+  /* Derived: a problem, a dimmed line of prose, the sunken well a field sits in. */
+  --tavern-danger: #e8664f;
+  --tavern-danger-text: #ffab96;
+  --tavern-text-dim: color-mix(in srgb, var(--tavern-parchment) 72%, transparent);
+  --tavern-well: #0e0905;
+
+  --tavern-serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --tavern-gutter: 16px;
+  --tavern-content: 1120px;
+
+  color-scheme: dark;
+}
+
+/* ============================================================================================
+   The auth screens: the page, its corner controls and the framed board the form sits on.
+   ============================================================================================ */
+
+.tavern.app-shell {
+  position: relative;
+  isolation: isolate;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 14px var(--tavern-gutter) 56px;
+  gap: 14px;
+  overflow-x: hidden;
+  overflow-x: clip;
+  color: var(--tavern-parchment);
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 100%, rgba(255, 150, 60, 0.2), transparent 70%),
+    radial-gradient(ellipse 90% 55% at 50% 0%, rgba(90, 52, 27, 0.38), transparent 70%),
+    linear-gradient(180deg, #1c110a 0%, var(--tavern-night) 55%, #0c0704 100%);
+}
+
+/* The table the board rests on: planks laid away from the viewer, fading into the dark. */
+.tavern.app-shell::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -20%;
+  right: -20%;
+  bottom: 0;
+  height: min(42vh, 360px);
+  pointer-events: none;
+  transform: perspective(700px) rotateX(58deg);
+  transform-origin: 50% 100%;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.5) 0 3px, transparent 3px 12.5%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 17px),
+    linear-gradient(180deg, var(--tavern-wood-deep) 0%, var(--tavern-wood) 60%, var(--tavern-wood-light) 100%);
+  opacity: 0.55;
+  -webkit-mask-image: linear-gradient(0deg, #000 25%, transparent 100%);
+  mask-image: linear-gradient(0deg, #000 25%, transparent 100%);
+}
+
+.tavern.app-shell > * {
+  width: 100%;
+  max-width: var(--tavern-content);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.tavern.app-shell p {
+  color: var(--tavern-text-dim);
+}
+
+.tavern.app-shell strong {
+  color: var(--tavern-gold-pale);
+}
+
+/* ---- the corner: the way back, as the landing's corner pill ------------------------------- */
+
+.tavern.app-shell .screen-nav {
+  margin-bottom: 0;
+}
+
+.tavern.app-shell .screen-nav .link-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 999px;
+  background: rgba(18, 11, 7, 0.65);
+  color: var(--tavern-gold-pale);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.15), 0 4px 14px rgba(0, 0, 0, 0.45);
+  transition: background-color 140ms, border-color 140ms, box-shadow 140ms;
+}
+
+.tavern.app-shell .screen-nav .link-button:hover {
+  color: var(--tavern-gold-pale);
+  border-color: var(--tavern-gold);
+  background: rgba(90, 52, 27, 0.75);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.2), 0 0 18px rgba(243, 201, 105, 0.3);
+}
+
+/* The settings gear at the bar's far end, a round brass button like the landing's (landing.css):
+   the same control in the same corner on every screen, not a wood square beside a pill. */
+/* Written long enough to outrank the wood button rule below, which every other button here takes. */
+.tavern.app-shell .screen-nav button.settings-gear.settings-gear--nav:not(.link-button):not(.button-primary) {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 50%;
+  background: rgba(18, 11, 7, 0.65);
+  color: var(--tavern-gold-pale);
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.15), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.tavern.app-shell .screen-nav button.settings-gear.settings-gear--nav:not(.link-button):not(.button-primary):hover:not(:disabled) {
+  border-color: var(--tavern-gold);
+  background: rgba(90, 52, 27, 0.75);
+  color: var(--tavern-gold-pale);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.2), 0 0 18px rgba(243, 201, 105, 0.3);
+}
+
+/* ---- the board ----------------------------------------------------------------------------- */
+
+/* Framed like the landing's call-to-action panel: brass trim, a dark inner line, wood below and a
+   brass stud in each corner. */
+.tavern.app-shell .panel--auth {
+  position: relative;
+  max-width: 440px;
+  /* Lower on a tall screen, snug on a short one; never centred, so a notice appearing above the
+     form does not make the whole board jump. */
+  margin-top: clamp(4px, calc(12vh - 40px), 120px);
+  /* Clear of the corner studs on every side. */
+  padding: 28px 26px 30px;
+  gap: 14px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse 90% 40% at 50% 0%, rgba(255, 190, 110, 0.1), transparent 70%),
+    linear-gradient(180deg, rgba(52, 30, 16, 0.96), rgba(22, 13, 7, 0.97));
+  box-shadow:
+    inset 0 0 0 3px rgba(18, 11, 7, 0.9),
+    inset 0 0 0 4px rgba(201, 149, 63, 0.4),
+    inset 0 1px 0 4px rgba(251, 231, 176, 0.06),
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 90px rgba(255, 150, 60, 0.08);
+}
+
+.tavern.app-shell .panel--auth::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  pointer-events: none;
+  border-radius: 12px;
+  --stud: radial-gradient(circle at 42% 38%, #fff3c4 0 1px, #e3b35a 2px, #8a5a1f 4px, #2a1709 4.6px, transparent 5.2px);
+  background:
+    var(--stud) 0 0 / 11px 11px no-repeat,
+    var(--stud) 100% 0 / 11px 11px no-repeat,
+    var(--stud) 0 100% / 11px 11px no-repeat,
+    var(--stud) 100% 100% / 11px 11px no-repeat;
+}
+
+/* A board in two parts (sign-in, reset, the code screen): what is going on, then the form. One
+   column everywhere but a phone held sideways (foot of file), so the parts are not boxes of their
+   own here: their children sit in the board's column exactly as if the parts were not there. */
+.tavern.app-shell .panel--split > .auth-board__head,
+.tavern.app-shell .panel--split > .auth-board__body {
+  display: contents;
+}
+
+/* The account this browser already holds, set apart from the form it would be replaced by. */
+.tavern.app-shell .auth-signed-in {
+  padding: 11px 14px;
+  border: 1px solid rgba(201, 149, 63, 0.3);
+  border-radius: 10px;
+  background: rgba(239, 224, 191, 0.05);
+}
+
+/* The wordmark, as the landing's: gold leaf with a dark engraved edge and hearth glow. */
+.tavern.app-shell .brand {
+  justify-content: center;
+}
+
+.tavern.app-shell .brand h1 {
+  font-family: var(--tavern-serif);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  padding: 0 0.06em 0.06em;
+  background: linear-gradient(
+    180deg,
+    var(--tavern-gold-pale) 0%,
+    #ffe39a 22%,
+    var(--tavern-gold) 44%,
+    var(--tavern-brass) 64%,
+    #9b6423 84%,
+    #d9a44c 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1px #3a1f0c;
+  filter: drop-shadow(0 0 10px rgba(255, 170, 60, 0.35)) drop-shadow(0 2px 0 #3a1f0c);
+}
+
+/* The screen's title, set between two brass rules. */
+.tavern.app-shell .panel--auth > h2,
+.tavern.app-shell .panel--auth > .auth-board__head > h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: -4px;
+  font-family: var(--tavern-serif);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--tavern-gold-pale);
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+}
+
+.tavern.app-shell .panel--auth > h2::before,
+.tavern.app-shell .panel--auth > h2::after,
+.tavern.app-shell .panel--auth > .auth-board__head > h2::before,
+.tavern.app-shell .panel--auth > .auth-board__head > h2::after {
+  content: "";
+  flex: 1 1 24px;
+  min-width: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--tavern-brass));
+}
+
+.tavern.app-shell .panel--auth > h2::after,
+.tavern.app-shell .panel--auth > .auth-board__head > h2::after {
+  background: linear-gradient(270deg, transparent, var(--tavern-brass));
+}
+
+/* ---- notices: gold for a message, ember for a problem -------------------------------------- */
+
+.tavern.app-shell .notice {
+  max-width: none;
+  border: 1px solid rgba(201, 149, 63, 0.3);
+  border-left: 3px solid var(--tavern-brass);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(201, 149, 63, 0.12), rgba(201, 149, 63, 0.04));
+  color: color-mix(in srgb, var(--tavern-parchment) 90%, transparent);
+  line-height: 1.45;
+}
+
+.tavern.app-shell .notice p {
+  color: inherit;
+}
+
+/* An address is one long word: it breaks rather than run out of a narrow notice. */
+.tavern.app-shell .notice strong {
+  overflow-wrap: anywhere;
+}
+
+.tavern.app-shell .notice--error,
+.tavern.app-shell .notice[role="alert"],
+.tavern.app-shell [role="alert"] > .notice {
+  border-color: rgba(232, 102, 79, 0.35);
+  border-left-color: var(--tavern-danger);
+  background: linear-gradient(90deg, rgba(232, 102, 79, 0.16), rgba(232, 102, 79, 0.05));
+  color: var(--tavern-parchment);
+}
+
+.tavern.app-shell .notice:focus {
+  outline: none;
+}
+
+.tavern.app-shell .notice:focus-visible {
+  outline: 2px solid var(--tavern-gold);
+  outline-offset: 2px;
+}
+
+/* ---- the form ------------------------------------------------------------------------------ */
+
+.tavern.app-shell .form-card {
+  gap: 6px;
+}
+
+.tavern.app-shell .form-card label {
+  margin-top: 8px;
+  color: color-mix(in srgb, var(--tavern-parchment) 80%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input) {
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(201, 149, 63, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0b0704, var(--tavern-well));
+  color: var(--tavern-parchment);
+  caret-color: var(--tavern-gold);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(251, 231, 176, 0.05);
+  transition: border-color 140ms, box-shadow 140ms;
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input)::placeholder {
+  color: color-mix(in srgb, var(--tavern-parchment) 35%, transparent);
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input):hover {
+  border-color: rgba(243, 201, 105, 0.7);
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input):focus,
+.tavern.app-shell .form-card input:not(.code-field__input):focus-visible {
+  outline: none;
+  border-color: var(--tavern-gold);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.65),
+    0 0 0 3px rgba(243, 201, 105, 0.22),
+    0 0 16px rgba(243, 201, 105, 0.18);
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input)[aria-invalid="true"] {
+  border-color: var(--tavern-danger);
+}
+
+.tavern.app-shell .form-card input:not(.code-field__input)[aria-invalid="true"]:focus {
+  border-color: var(--tavern-danger);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.65),
+    0 0 0 3px rgba(232, 102, 79, 0.25);
+}
+
+.tavern.app-shell .auth-field-error {
+  color: var(--tavern-danger-text);
+}
+
+.tavern.app-shell .auth-hint {
+  color: var(--tavern-text-dim);
+}
+
+/* Show / Hide: a small wood key set into the field's edge. The same width either way, so the field
+   does not jump when it is pressed. */
+.tavern.app-shell .affix-button {
+  min-width: 68px;
+  border: 1px solid rgba(201, 149, 63, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #3b2213, #24140a);
+  color: var(--tavern-gold-pale);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.15);
+}
+
+.tavern.app-shell .affix-button:hover {
+  border-color: var(--tavern-gold);
+  background: linear-gradient(180deg, #4a2c18, #2b180c);
+  color: var(--tavern-gold-pale);
+}
+
+/* ---- buttons ------------------------------------------------------------------------------- */
+
+/* The screen's one call to action, as the landing's: gold, lit, pressed down on click. */
+.tavern.app-shell .form-card button[type="submit"],
+.tavern.app-shell button.button-primary,
+.tavern.app-shell a.button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 10px 20px;
+  border: 2px solid #6b4212;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff0bf 0%, var(--tavern-gold) 42%, #dc9b33 58%, #a86a1f 100%);
+  color: var(--tavern-ink);
+  font-family: var(--tavern-serif);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-shadow: 0 1px 0 rgba(255, 246, 214, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.2),
+    0 4px 0 #4a2a0e,
+    0 10px 20px rgba(0, 0, 0, 0.5),
+    0 0 22px rgba(243, 201, 105, 0.25);
+  transition: transform 90ms ease-out, box-shadow 140ms ease-out, filter 140ms ease-out;
+}
+
+.tavern.app-shell .form-card button[type="submit"] {
+  margin-top: 16px;
+}
+
+.tavern.app-shell .form-card button[type="submit"]:hover:not(:disabled),
+.tavern.app-shell button.button-primary:hover:not(:disabled),
+.tavern.app-shell a.button-primary:hover {
+  border-color: #6b4212;
+  background: linear-gradient(180deg, #fff0bf 0%, var(--tavern-gold) 42%, #dc9b33 58%, #a86a1f 100%);
+  color: var(--tavern-ink);
+  filter: brightness(1.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.2),
+    0 4px 0 #4a2a0e,
+    0 10px 20px rgba(0, 0, 0, 0.5),
+    0 0 32px rgba(255, 179, 71, 0.5);
+}
+
+.tavern.app-shell .form-card button[type="submit"]:active:not(:disabled),
+.tavern.app-shell button.button-primary:active:not(:disabled),
+.tavern.app-shell a.button-primary:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 1px 0 #4a2a0e,
+    0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Not ready yet: the same button, unlit. Still legible, so its label says what it is waiting for. */
+.tavern.app-shell .form-card button[type="submit"]:disabled,
+.tavern.app-shell button.button-primary:disabled {
+  opacity: 1;
+  border-color: #3a2410;
+  background: linear-gradient(180deg, #5d4a33, #3f2f1f);
+  color: color-mix(in srgb, var(--tavern-parchment) 55%, transparent);
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.12), 0 2px 0 #1f1008;
+  cursor: not-allowed;
+}
+
+/* Any other button (Try again, Check again): a wood one, secondary to the gold. */
+.tavern.app-shell button:not(.link-button):not(.affix-button):not(.button-primary):not([type="submit"]) {
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--tavern-wood-light), var(--tavern-wood) 55%, var(--tavern-wood-deep));
+  color: var(--tavern-parchment);
+  font-family: var(--tavern-serif);
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.3), 0 3px 0 #1f1008, 0 6px 12px rgba(0, 0, 0, 0.45);
+}
+
+.tavern.app-shell button:not(.link-button):not(.affix-button):not(.button-primary):not([type="submit"]):hover:not(:disabled) {
+  border-color: var(--tavern-gold);
+  color: var(--tavern-gold-pale);
+}
+
+/* A link that reads as a button (the shell panels' "Home"): the same wood. */
+.tavern.app-shell a.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--tavern-wood-light), var(--tavern-wood) 55%, var(--tavern-wood-deep));
+  color: var(--tavern-parchment);
+  font-family: var(--tavern-serif);
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.3), 0 3px 0 #1f1008, 0 6px 12px rgba(0, 0, 0, 0.45);
+}
+
+.tavern.app-shell a.button-secondary:hover {
+  border-color: var(--tavern-gold);
+  background: linear-gradient(180deg, var(--tavern-wood-light), var(--tavern-wood) 55%, var(--tavern-wood-deep));
+  color: var(--tavern-gold-pale);
+}
+
+/* The text-like ways on and out (forgot, the mode toggle, back to sign in, sign out). No padding
+   of their own, so they line up with the form's left edge, and one underline, never two. */
+.tavern.app-shell .link-button,
+.tavern.app-shell a.link-button {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--tavern-gold);
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(201, 149, 63, 0.55);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  box-shadow: none;
+}
+
+.tavern.app-shell .link-button:hover:not(:disabled),
+.tavern.app-shell a.link-button:hover {
+  border: none;
+  background: none;
+  color: var(--tavern-gold-pale);
+  text-decoration-color: var(--tavern-gold-pale);
+}
+
+.tavern.app-shell .link-button:disabled {
+  color: color-mix(in srgb, var(--tavern-parchment) 45%, transparent);
+  text-decoration: none;
+  opacity: 1;
+}
+
+/* Touch targets (task 7's 44 px floor). The text-like ways on and out measured 17 to 22 px tall at
+   390 px wide and on a phone on its side (integration QA), so on a touch screen, or one sized like a
+   phone either way up, each gets a finger's height with its words on the centre line. An anchor in
+   running prose ("play vs AI") keeps its line and grows a hit area round it instead, as the deck
+   builder's "+" does. Here rather than in auth.css because every tavern screen loads this file and
+   the invite and account screens do not load that one. */
+@media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
+  .tavern.app-shell .link-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* The 44 px boxes space a wrapped column of links on their own. */
+  .tavern.app-shell .auth-links,
+  .tavern.app-shell .auth-actions {
+    row-gap: 0;
+  }
+
+  .tavern.app-shell p a:not(.link-button):not(.button-primary):not(.button-secondary) {
+    position: relative;
+  }
+
+  .tavern.app-shell p a:not(.link-button):not(.button-primary):not(.button-secondary)::before {
+    content: "";
+    position: absolute;
+    inset: -14px -6px;
+  }
+}
+
+/* A row of ways on: a link beside a button sits on the button's centre line. */
+.tavern.app-shell .auth-actions > .link-button,
+.tavern.app-shell .row > .link-button {
+  align-self: center;
+}
+
+/* An anchor in prose ("play vs AI"). */
+.tavern.app-shell a:not(.link-button):not(.button-primary):not(.button-secondary) {
+  color: var(--tavern-gold);
+  border-bottom: 1px solid rgba(201, 149, 63, 0.55);
+}
+
+.tavern.app-shell a:not(.link-button):not(.button-primary):not(.button-secondary):hover {
+  color: var(--tavern-gold-pale);
+  border-bottom-color: var(--tavern-gold-pale);
+}
+
+.tavern.app-shell :where(button, a):focus-visible {
+  outline: 2px solid var(--tavern-gold);
+  outline-offset: 3px;
+}
+
+/* The links under the form, set apart from it by a brass hairline. */
+.tavern.app-shell .panel--auth > .auth-links,
+.tavern.app-shell .panel--auth > .auth-board__body > .auth-links {
+  padding-top: 14px;
+  border-top: 1px solid rgba(201, 149, 63, 0.22);
+}
+
+/* ---- the shell's own panels (main.tsx): the gate's waits and refusals, the 404 --------------- */
+
+.tavern.shell-panel .panel--auth {
+  margin-top: clamp(24px, 14vh, 140px);
+}
+
+/* In a row of ways on, the gold one keeps its colour but takes its neighbours' size. */
+.tavern.app-shell .row .button-primary {
+  min-height: 44px;
+  padding: 8px 18px;
+  font-size: 16px;
+}
+
+.tavern.app-shell .notice code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--tavern-well);
+  color: var(--tavern-gold-pale);
+}
+
+/* A wait: a brass ring turning beside the sentence, so a slow server looks busy, not broken. */
+.tavern.app-shell .shell-panel__loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tavern.app-shell .shell-panel__loading::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(201, 149, 63, 0.3);
+  border-top-color: var(--tavern-gold);
+  animation: tavern-spin 900ms linear infinite;
+}
+
+@keyframes tavern-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- the account screen (routes/account.tsx) ------------------------------------------------ */
+
+/* Who is signed in: the address large, the status as a brass tag under it. */
+.tavern.app-shell .account-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(201, 149, 63, 0.3);
+  border-radius: 10px;
+  background: rgba(239, 224, 191, 0.05);
+}
+
+.tavern.app-shell .account-label {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tavern.app-shell .account-email {
+  color: var(--tavern-gold-pale);
+  font-family: var(--tavern-serif);
+  font-size: 19px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.tavern.app-shell .account-status {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 999px;
+  background: rgba(201, 149, 63, 0.14);
+  color: var(--tavern-gold-pale);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tavern.app-shell .account-status[data-status="active"] {
+  border-color: var(--tavern-teal);
+  background: rgba(63, 182, 168, 0.14);
+}
+
+.tavern.app-shell .account-status[data-status="banned"] {
+  border-color: var(--tavern-danger);
+  background: rgba(232, 102, 79, 0.14);
+  color: var(--tavern-danger-text);
+}
+
+.tavern.app-shell .account-heading {
+  margin: 4px 0 0;
+  font-family: var(--tavern-serif);
+  font-size: 17px;
+  color: var(--tavern-gold-pale);
+}
+
+/* The record's four tiles as two rows of two at every width: `auto-fit` made three and left Played
+   alone on a second row (integration QA), and the card, about 400 px inside at its widest, has no
+   room for four tiles once a record reads like "112–97–6". */
+.tavern.app-shell.account-screen .stat-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* The record: the stat tiles set in the board's wells. */
+.tavern.app-shell .stat {
+  border-color: rgba(201, 149, 63, 0.3);
+  background: var(--tavern-well);
+}
+
+.tavern.app-shell .stat-value {
+  color: var(--tavern-gold-pale);
+  font-family: var(--tavern-serif);
+}
+
+.tavern.app-shell .stat-label {
+  color: var(--tavern-text-dim);
+}
+
+/* The account card's actions, each the card's full width like the auth forms' own buttons: the gold
+   one for the way on (Redeem an invite code), the wood one for Sign out (integration QA: they were
+   shrink-wrapped, a second button style in the same card). */
+.tavern.app-shell .account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tavern.app-shell .account-actions > .button-primary,
+.tavern.app-shell .account-actions > button {
+  width: 100%;
+}
+
+/* Signing out, set apart from the account above by a brass hairline. */
+.tavern.app-shell .account-session {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(201, 149, 63, 0.22);
+}
+
+/* ---- wider screens ------------------------------------------------------------------------- */
+
+@media (min-width: 900px) {
+  .tavern {
+    --tavern-gutter: 32px;
+  }
+}
+
+/* A phone held upright: the board close under Back. The keyboard takes the lower half of the
+   screen as soon as a field is tapped, so the fields belong high, not a tall screen's drop below. */
+@media (max-width: 560px) {
+  .tavern.app-shell:not(.shell-panel) .panel--auth {
+    margin-top: clamp(4px, calc(5vh - 12px), 32px);
+  }
+}
+
+@media (max-width: 400px) {
+  .tavern.app-shell .panel--auth {
+    padding: 24px 20px 28px;
+  }
+
+  .tavern.app-shell .brand h1 {
+    font-size: 38px;
+  }
+}
+
+/* A phone on its side: the form needs the height more than the frame does. */
+@media (max-height: 500px) {
+  .tavern.app-shell .panel--auth {
+    margin-top: 0;
+    padding-top: 20px;
+  }
+
+  .tavern.app-shell .brand h1 {
+    font-size: 34px;
+  }
+}
+
+/* A phone on its side, the board in two parts: the wordmark, the title and any notice on the left,
+   the form on the right, so the button is on the first screen (390 px tall) instead of one scroll
+   down. The on-screen keyboard covers most of that height, so every pixel above the field counts.
+   Sign-in and reset also move Back beside the board rather than above it; the code screen keeps its
+   top bar, which also says who is signed in. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  .tavern.app-shell.auth-screen,
+  .tavern.app-shell.invite-screen {
+    padding-top: 8px;
+    padding-bottom: 20px;
+    gap: 8px;
+  }
+
+  .tavern.app-shell.auth-screen {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 600px) 1fr;
+    column-gap: 12px;
+    align-items: start;
+  }
+
+  /* Back in the left margin and the gear in the right one, the board between them: the nav spans
+     the row and the board sits over its middle, so the gear keeps the top-right corner it has on
+     every other screen instead of wrapping under Back in a narrow column (integration QA). */
+  .tavern.app-shell.auth-screen > .screen-nav {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: stretch;
+    width: auto;
+    margin: 0;
+  }
+
+  .tavern.app-shell.auth-screen > .panel--auth {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Both parts start at the top: a refusal appearing under the button lengthens the form's part
+     without moving the title beside it (the same reason the board is never centred). */
+  .tavern.app-shell .panel--split {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+    column-gap: 24px;
+    max-width: 640px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 18px 24px 20px;
+  }
+
+  .tavern.app-shell .panel--split > .auth-board__head,
+  .tavern.app-shell .panel--split > .auth-board__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  /* A brass seam between the two parts. */
+  .tavern.app-shell .panel--split > .auth-board__body {
+    padding-left: 24px;
+    border-left: 1px solid rgba(201, 149, 63, 0.25);
+  }
+
+  .tavern.app-shell .panel--split > .auth-board__head {
+    padding-top: 4px;
+  }
+
+  .tavern.app-shell .panel--split .brand h1 {
+    font-size: 36px;
+  }
+
+  /* The title in a narrow column may take two lines, so its brass rules go under it, as one short
+     rule, rather than squeezing to nothing on either side. */
+  .tavern.app-shell .panel--split > .auth-board__head > h2 {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 0;
+    font-size: 19px;
+    text-wrap: balance;
+  }
+
+  .tavern.app-shell .panel--split > .auth-board__head > h2::before {
+    display: none;
+  }
+
+  .tavern.app-shell .panel--split > .auth-board__head > h2::after {
+    flex: none;
+    width: 72px;
+    background: linear-gradient(90deg, transparent, var(--tavern-brass), transparent);
+  }
+
+  .tavern.app-shell .panel--split .form-card label {
+    margin-top: 4px;
+  }
+
+  .tavern.app-shell .panel--split .form-card input:not(.code-field__input) {
+    min-height: 44px;
+  }
+
+  .tavern.app-shell .panel--split .form-card button[type="submit"] {
+    margin-top: 10px;
+    min-height: 46px;
+  }
+
+  .tavern.app-shell .panel--split > .auth-board__body > .auth-links {
+    padding-top: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern.app-shell *,
+  .tavern.app-shell *::before {
+    transition: none !important;
+    animation: none !important;
+  }
+}

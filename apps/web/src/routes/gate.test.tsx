@@ -133,6 +133,11 @@ describe("redirectFor", () => {
     expect(redirectFor({ kind: "anonymous" }, true)).toBe("/login");
   });
 
+  it("sends a session the provider refused to renew to /login?reason=expired, and nothing else in the query", () => {
+    expect(redirectFor({ kind: "anonymous", reason: "expired" }, false)).toBe("/login?reason=expired");
+    expect(redirectFor({ kind: "anonymous", reason: "expired" }, true)).toBe("/login?reason=expired");
+  });
+
   it("sends a pending account to the code screen (§9.4)", () => {
     const pending = { kind: "ready", token: "t", me: meBody("pending") } as const;
     expect(redirectFor(pending, false)).toBe("/invite");
@@ -251,7 +256,7 @@ describe("the route table", () => {
   it("an unknown path is a 404 panel, not a redirect", async () => {
     at("/nope");
     render(<App />);
-    expect(await screen.findByText(/no route for/i, undefined, SLOW)).toBeInTheDocument();
+    expect(await screen.findByText(/that page doesn.t exist/i, undefined, SLOW)).toBeInTheDocument();
     expect(pathname()).toBe("/nope");
   });
 });

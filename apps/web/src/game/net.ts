@@ -52,7 +52,7 @@
 // and reports in `legalSource` when neither has ever arrived — which `routes/match.tsx` renders as
 // a visible notice rather than as a silently dead board.
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { ActionBody, PlayerId, PlayerView, PromptKind } from "@jackioh/shared";
 
@@ -355,6 +355,12 @@ export type MatchClient = {
   close: () => void;
   /** The URL the next socket will open, for a diagnostic panel. */
   url: () => string;
+  /**
+   * The token the NEXT socket opens with. The open socket is left alone: the server checks a token
+   * only at the handshake, so a renewed token (R194) changes nothing for a socket already up, and
+   * reopening it would start the opponent's disconnect grace for nothing.
+   */
+  setToken: (token: string) => void;
 };
 
 export type MatchClientOptions = {
@@ -407,7 +413,8 @@ export function createMatchClient(options: MatchClientOptions): MatchClient {
   const timers = options.timers ?? defaultTimers;
   const monotonic = options.monotonic ?? defaultMonotonic;
   const base = options.baseUrl ?? matchSocketUrl();
-  const url = socketUrlFor(base, options.token, options.matchId);
+  /** The latest token handed in (`setToken`): every socket opened from now on carries it. */
+  let token = options.token;
 
   const listeners = new Set<() => void>();
   let snapshot: MatchSnapshot = INITIAL;
@@ -478,7 +485,7 @@ export function createMatchClient(options: MatchClientOptions): MatchClient {
 
     let created: SocketLike;
     try {
-      created = factory(url);
+      created = factory(socketUrlFor(base, token, options.matchId));
     } catch (cause) {
       patch({
         connection: "reconnecting",
@@ -498,7 +505,7 @@ export function createMatchClient(options: MatchClientOptions): MatchClient {
       // §9.5: the actor reads `hello` as "push me a fresh full view", which is what a reconnected
       // socket needs and what a first socket gets anyway.
       try {
-        created.send(JSON.stringify({ type: "hello", token: options.token, matchId: options.matchId }));
+        created.send(JSON.stringify({ type: "hello", token, matchId: options.matchId }));
       } catch {
         // The peer went away between `onopen` and here; `onclose` is about to run.
       }
@@ -585,7 +592,10 @@ export function createMatchClient(options: MatchClientOptions): MatchClient {
       }
       patch({ connection: "closed" });
     },
-    url: () => url,
+    url: () => socketUrlFor(base, token, options.matchId),
+    setToken: (next) => {
+      token = next;
+    },
   };
 }
 
@@ -696,24 +706,38 @@ export type UseMatchResult = MatchSnapshot & {
 };
 
 /**
- * One socket per (matchId, token), opened on mount and closed on unmount. The snapshot is external
- * mutable state, so it is read through `useSyncExternalStore` rather than mirrored into React state.
+ * One socket per match, opened on mount and closed on unmount. The snapshot is external mutable
+ * state, so it is read through `useSyncExternalStore` rather than mirrored into React state.
+ *
+ * A new `token` does not reopen the socket. The gate renews a session shortly before its token
+ * expires and hands the new token down (R194), and the server reads a token only at the handshake,
+ * so closing a healthy socket to open it again with the new one gained nothing and started the
+ * opponent's disconnect grace. The token is handed to the client for its next socket instead (a
+ * reconnect). A route that must open a new socket for another session remounts this hook.
  */
 export function useMatch(options: UseMatchOptions): UseMatchResult {
   const { matchId, token, baseUrl, socketFactory, timers, monotonic } = options;
+  // The client is made with the token it first sees; later ones reach it through `setToken`.
+  const [firstToken] = useState(token);
 
   const client = useMemo(
     () =>
       createMatchClient({
         matchId,
-        token,
+        token: firstToken,
         ...(baseUrl === undefined ? {} : { baseUrl }),
         ...(socketFactory === undefined ? {} : { socketFactory }),
         ...(timers === undefined ? {} : { timers }),
         ...(monotonic === undefined ? {} : { monotonic }),
       }),
-    [matchId, token, baseUrl, socketFactory, timers, monotonic],
+    [matchId, firstToken, baseUrl, socketFactory, timers, monotonic],
   );
+
+  // Before the connect effect below (effects run in order), so a client made for a new match id
+  // opens its first socket with the current token rather than the first one.
+  useEffect(() => {
+    client.setToken(token);
+  }, [client, token]);
 
   useEffect(() => {
     client.connect();

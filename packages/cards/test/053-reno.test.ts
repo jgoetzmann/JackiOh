@@ -1,4 +1,7 @@
 // #53 Reno (SPEC §8.3, §6.3 Heal, §3, R19; BUILD M4-T4 row 53: "12 → 30; 35 stays 35; radiant 60").
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
@@ -22,6 +25,14 @@ describe("#53 Reno — base", () => {
   it("a hero exactly at 30 is untouched, and 29 goes up by 1", () => {
     scenario({ p1: { hand: ["core-053"], health: 30 } }).play("core-053").expectHealth("p1", 30);
     scenario({ p1: { hand: ["core-053"], health: 29 } }).play("core-053").expectHealth("p1", 30);
+  });
+
+  it("the Cry is gated on 'below 30', the branch its yellow glow reports: at exactly 30 no heal is emitted", () => {
+    const s = scenario({ p1: { hand: ["core-053"], health: 30 } });
+    expect(s.view("p1").you.hand).toEqual([expect.not.objectContaining({ conditionActive: true })]);
+
+    s.play("core-053").expectHealth("p1", 30);
+    expect(s.lastEvents.filter((event) => event.type === "healed")).toHaveLength(0);
   });
 
   it("§8 Conventions 'your' means the controller: the enemy hero is not raised", () => {

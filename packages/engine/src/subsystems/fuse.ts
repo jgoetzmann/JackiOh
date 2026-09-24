@@ -11,8 +11,16 @@
 //
 // Second, the scripts are code, which no JSON state can hold. The concatenated pair therefore joins
 // the script registry under the new def id, exactly as `packages/cards` and the test fixtures
-// register theirs (`scripts.ts`): static data keyed by a deterministic id, so a replay of the same
-// action list rebuilds the same id and registers the same scripts (§9.3).
+// register theirs (`scripts.ts`). The registry is the process's — every match on a server, and every
+// world the practice AI simulates beside the real game in its worker — so the id is what keeps it
+// right: R179's id names the ingredients (`t-<n>:<a>+<b>`), and the fused scripts are a function of
+// the ingredients' ids and nothing else (`fusedScript`), so one id means one pair of scripts in every
+// state that can mint it, and no fusion replaces another state's. Because the id names them, the
+// pair can also be rebuilt from the id alone (`fusedIngredients`): `syncFusedScripts` registers any
+// of a state's fused scripts the registry lacks — a state that came through JSON into a process
+// that never ran its Fuse, or a registry some package re-registered wholesale — and the engine calls
+// it wherever it is entered (`reduce`, `legalActions`, `viewFor`), so a replay of the same action
+// list runs the same scripts (§9.3).
 //
 // Third, R77 keeps an ingredient's *instance* when one of them is a target already on the field:
 // the fused card is that card, with its zone, damage, exertion, counters and memory intact, and the
@@ -30,7 +38,7 @@ import type { EngineSink } from "../resolve";
 import { activeTargetDecls, selectionsPerDeclaration, storedDeclarationSlices } from "../playChoices";
 import { runStartOfGame } from "../prompts";
 import { lazyPart } from "../resolve";
-import type { AuraHook, Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
+import type { AuraHook, CardScripts, Effect, EffectContext, Hook, Script, TriggerDef } from "../script";
 import {
   INGREDIENTS_KEY,
   asIngredient,
@@ -51,15 +59,18 @@ export const FUSE_MIN_INGREDIENTS = 2;
 export const CRAFTED_CARD_COST = 0;
 
 /**
- * The two `Script` members that are functions but return no list, so the generic concatenation
+ * The three `Script` members that are functions but return no list, so the generic concatenation
  * below cannot combine them and each is handled on its own: `cost` is dropped, because R77 fixes
- * the fused cost at min(sum, 4), and `setStat` is summed like every other stat R77 sums. A new
- * member of `Script` that returns something other than a list belongs in this pair.
+ * the fused cost at min(sum, 4); `setStat` is summed like every other stat R77 sums; and
+ * `conditionMet`, R195's yellow glow, answers a boolean, so the ingredients' hooks are or-ed
+ * (R196). A new member of `Script` that returns something other than a list belongs in this set:
+ * left to `combineValues`, two such hooks become one that returns an array of their answers.
  */
 const COST_KEY = "cost";
 /** The `Script` key of the step table a continuation re-enters (`prompts.RESUME_HOOK`). */
 const RESUME_KEY = "resume";
 const SET_STAT_KEY = "setStat";
+const CONDITION_MET_KEY = "conditionMet";
 
 /** The script keys whose entries carry an `id` that has to stay unique across the ingredients. */
 const TRIGGER_KEYS = ["triggers", "handTriggers"] as const;
@@ -202,7 +213,9 @@ function rarestOf(defs: readonly CardDef[]): Rarity {
 /**
  * The id a transient def gets (R102, R179): `t-<n>`, where n depends only on how many transient defs
  * the state already holds, so the same action list always produces the same id (§9.3) — followed by
- * the ids of the ingredients it was fused from, `t-<n>:<a>+<b>`.
+ * the ids of the ingredients it was fused from, `t-<n>:<a>+<b>`. An ingredient that is itself a
+ * fused card is written in parentheses, `t-2:(t-1:<a>+<b>)+<c>`, so the id reads back one way:
+ * without them `t-2:t-1:a+b+c+d` could be `t-1:a+b` fused with c and d, or `t-1:a+b+c` with d.
  *
  * The suffix is what keeps the script registry right. A def is match state, but its scripts are code
  * and live in the process-wide registry under the def's id (see this file's header), and one server
@@ -217,7 +230,38 @@ function nextTransientId(state: GameState, defs: readonly CardDef[]): string {
     Object.keys(state.transientDefs).some((id) => id === `t-${n}` || id.startsWith(`t-${n}:`));
   let n = Object.keys(state.transientDefs).length + 1;
   while (taken(n)) n += 1;
-  return `t-${n}:${defs.map((def) => def.id).join("+")}`;
+  return `t-${n}:${defs.map((def) => ingredientName(def.id)).join("+")}`;
+}
+
+const FUSED_ID = /^t-\d+:/;
+
+/** An ingredient's id as a fused id writes it: in parentheses when it is itself a fused card (R179). */
+function ingredientName(defId: string): string {
+  return FUSED_ID.test(defId) ? `(${defId})` : defId;
+}
+
+/**
+ * R179: the ingredient ids a fused def's id names, in ingredient order, or null for an id no Fuse
+ * minted (a catalog card's, or a bare `t-<n>`). The inverse of `nextTransientId`: the list is split
+ * at the `+` signs outside parentheses, and a parenthesised ingredient loses its parentheses.
+ */
+export function fusedIngredients(defId: string): string[] | null {
+  const head = FUSED_ID.exec(defId);
+  if (head === null) return null;
+  const parts: string[] = [];
+  let depth = 0;
+  let start = head[0].length;
+  for (let at = start; at <= defId.length; at += 1) {
+    const char = defId[at];
+    if (char === "(") depth += 1;
+    else if (char === ")") depth -= 1;
+    else if ((char === "+" && depth === 0) || at === defId.length) {
+      const part = defId.slice(start, at);
+      parts.push(part.startsWith("(") && part.endsWith(")") ? part.slice(1, -1) : part);
+      start = at + 1;
+    }
+  }
+  return parts.length >= FUSE_MIN_INGREDIENTS && parts.every((part) => part.length > 0) ? parts : null;
 }
 
 function buildDef(
@@ -427,6 +471,7 @@ function scriptRecord(script: Script, defId: string, index: number): Record<stri
   const out: Record<string, unknown> = { ...script };
   delete out[COST_KEY];
   delete out[SET_STAT_KEY];
+  delete out[CONDITION_MET_KEY];
   for (const key of TRIGGER_KEYS) {
     const list = out[key];
     if (!Array.isArray(list)) continue;
@@ -544,23 +589,70 @@ function cutSlices(selections: readonly Selection[], lengths: readonly number[])
   });
 }
 
-function fusedScript(defs: readonly CardDef[], radiant: boolean): Script {
-  const faces: Face[] = defs.map((def) => {
-    const pair = scriptsFor(def.id);
-    return { defId: def.id, script: radiant ? pair.radiant : pair.base };
+/**
+ * R196: a fusion's yellow glow. Its Cry, Death and triggers run every ingredient's list, so each
+ * ingredient's printed condition still picks its own branch when the fused card resolves, and the
+ * fused card glows when any of them holds. Each hook is asked with the fused card's own context
+ * (the fused instance as `self`, the face it runs), and only an answer of exactly `true` counts,
+ * as `conditionActive` counts it. One hooked ingredient's hook is the fusion's unchanged.
+ */
+function fusedConditionMet(scripts: readonly Script[]): Script["conditionMet"] | undefined {
+  const hooks = scripts.flatMap((script) => (script.conditionMet === undefined ? [] : [script.conditionMet]));
+  if (hooks.length === 0) return undefined;
+  if (hooks.length === 1) return hooks[0];
+  return (ctx) => hooks.some((hook) => hook(ctx) === true);
+}
+
+function fusedScript(defIds: readonly string[], radiant: boolean): Script {
+  const faces: Face[] = defIds.map((defId) => {
+    const pair = scriptsFor(defId);
+    return { defId, script: radiant ? pair.radiant : pair.base };
   });
+  const scripts = faces.map((face) => face.script);
   const combined = combineObjects(
     faces.map((face, index) => scriptRecord(face.script, face.defId, index)),
   ) as Script;
-  const setStat = fusedSetStat(faces.map((face) => face.script));
+  const setStat = fusedSetStat(scripts);
+  const conditionMet = fusedConditionMet(scripts);
   const cry = fusedCry(faces);
   const aura = fusedAura(faces);
   return {
     ...combined,
     ...(setStat === undefined ? {} : { setStat }),
+    ...(conditionMet === undefined ? {} : { conditionMet }),
     ...(aura === undefined ? {} : { aura }),
     ...(cry === undefined ? {} : { cry }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Keeping the process's registry in step with the state being run.
+// ---------------------------------------------------------------------------
+
+/**
+ * R179: register the scripts a fused id names, and those of every fused ingredient it names, unless
+ * the registry already holds them. An entry that is there is right whoever wrote it, since the id
+ * names its scripts; one that is missing is rebuilt from the id. `seen` stops a malformed id that
+ * names itself.
+ */
+function ensureFused(defId: string, seen: ReadonlySet<string> = new Set()): void {
+  if (registeredScripts()[defId] !== undefined || seen.has(defId)) return;
+  const from = fusedIngredients(defId);
+  if (from === null) return;
+  const inside = new Set([...seen, defId]);
+  for (const ingredient of from) ensureFused(ingredient, inside);
+  const scripts: CardScripts = { base: fusedScript(from, false), radiant: fusedScript(from, true) };
+  registerScripts({ ...registeredScripts(), [defId]: scripts });
+}
+
+/**
+ * Register any of this state's fused scripts the process's registry lacks (§9.3, R77, R179): a state
+ * that came through JSON into a process that never ran its Fuse, or a registry that was replaced
+ * wholesale. Cheap when nothing is missing: a state with no transient defs does nothing, and a
+ * registered id is left alone.
+ */
+export function syncFusedScripts(state: GameState): void {
+  for (const defId of Object.keys(state.transientDefs)) ensureFused(defId);
 }
 
 // ---------------------------------------------------------------------------
@@ -682,12 +774,9 @@ export function fuse(sink: EngineSink, args: FuseArgs): CardInstance | null {
   const targetDef = target === null ? null : defOf(state, target.defId);
   const def = buildDef(state, ingredients, defs, targetDef);
 
-  // The def is match state; the scripts are static data the registry holds, like the catalog.
+  // The def is match state; its id names the scripts, which join the process's registry (R179).
   state.transientDefs[def.id] = def;
-  registerScripts({
-    ...registeredScripts(),
-    [def.id]: { base: fusedScript(defs, false), radiant: fusedScript(defs, true) },
-  });
+  ensureFused(def.id);
 
   let result: CardInstance;
   if (target !== null) {

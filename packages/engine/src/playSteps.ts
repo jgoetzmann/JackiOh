@@ -84,6 +84,8 @@ import { beginWorkCascade, drainWork, dropWork, paused, pausedOf, pushWork, regi
 import {
   cardAt,
   firstFreeZone,
+  freshFaceDownId,
+  landsFaceDown,
   placeOnField,
   releaseZone,
   removeFromAnyZone,
@@ -520,7 +522,8 @@ function giftedProgramStep(sink: EngineSink, run: PlayRun): void {
 // Step 4 — move the card and announce the play (§10.5 step 4)
 // ---------------------------------------------------------------------------
 
-function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void {
+function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance, formerId: string | undefined): void {
+  const former = formerId === undefined ? {} : { formerId };
   // R119: what has already arrived on the field during the play — a tributed unit's Death at step 2
   // (#22's copies of a Sheepish) — does not answer it, which the step-4 pair names, as step 7's does.
   const arrived = arrivedDuring(sink.state, run);
@@ -536,6 +539,7 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
     costPaid: run.costPaid,
     ...(card.x === undefined ? {} : { x: card.x }),
     ...(card.embiggened === undefined ? {} : { embiggened: card.embiggened }),
+    ...former,
     ...arrivals,
     exitsFrom,
   });
@@ -547,6 +551,7 @@ function playedEvents(sink: EngineSink, run: PlayRun, card: CardInstance): void 
       defId: card.defId,
       row: run.zone.row,
       lane: run.zone.lane,
+      ...former,
       ...(arrived.length === 0 ? {} : { arrivedDuring: [...arrived] }),
       exitsFrom,
     });
@@ -671,6 +676,15 @@ function placeCard(sink: EngineSink, run: PlayRun): boolean {
     side.hand.splice(at, 1);
   }
 
+  // R227: a Trap or Field Trap set face-down takes a fresh id before anything names it on the field,
+  // so no player can link the face-down card to an id they saw while it was public (R177). The run
+  // follows the card, and the events that place it carry the id it had (`formerId`).
+  let formerId: string | undefined;
+  if (run.zone !== null && landsFaceDown(state, card, run.zone.row)) {
+    formerId = freshFaceDownId(state, card);
+    run.instanceId = card.id;
+  }
+
   // §3.2/§6.2 Stack: step 1 already accepted an occupied unit zone for a Stack card, so the
   // placement is the one that builds the pile — the arriving card goes on top and the card beneath
   // stops acting (R13). Every other card needs the zone empty, which is what `stack: false` keeps
@@ -700,7 +714,7 @@ function placeCard(sink: EngineSink, run: PlayRun): boolean {
   state.counters.played += 1;
   run.radiant = card.radiant;
 
-  playedEvents(sink, run, card);
+  playedEvents(sink, run, card, formerId);
   // §6.2 Echo, R30: the Spell GAINS its Echo as it is played — "the next Spell you play gains Echo
   // +1" — so the grant is taken here, from the player who played it, and not at step 6 after the
   // Spell's own text has run. Taken later, a Spell that moves Twinspell to the other side (#87's

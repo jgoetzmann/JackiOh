@@ -144,6 +144,32 @@ export function placeOnField(
 }
 
 /**
+ * R227: whether a card placed in this row lands face-down — a Trap or a Field Trap in a backrow
+ * (§3.2, R33). A Field Spell lands face-up, and a Unit never reaches the backrow.
+ */
+export function landsFaceDown(state: GameState, instance: CardInstance, row: Row): boolean {
+  if (row !== "backrow") return false;
+  const type = defOf(state, instance.defId).type;
+  return type === "Trap" || type === "Field Trap";
+}
+
+/**
+ * R227: a card going face-down takes a fresh instance id, so the one handle the action protocol has
+ * for a face-down card — a play's target, a prompt option's answer (R177) — is an id no player has
+ * seen before, and an id seen while the card was public never names it again. The id is the next
+ * number, as a new card's is; whether a card goes face-down is public (§10.8 shows the zone
+ * occupied), so the number it takes says nothing either. Called on a card that is in no pile, just
+ * before it is placed. Returns the id the card had, which the `cardPlayed` or `summoned` that
+ * places it carries as `formerId` for the views to follow (R97).
+ */
+export function freshFaceDownId(state: GameState, instance: CardInstance): string {
+  const former = instance.id;
+  instance.id = `c${state.nextId}`;
+  state.nextId += 1;
+  return former;
+}
+
+/**
  * §6.3 Replace on the field: the new card takes the old one's place — the same zone, and the same
  * place in a Stack pile — under the same controller. That is no summon, so §3.2's Lock ("the zone
  * accepts no summons … the current occupant is unaffected") and R64's reservation do not refuse it:

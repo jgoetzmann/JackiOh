@@ -12,9 +12,17 @@
 // R19 is why this is a legal target at all ("a heal may name any unit or hero"), and the target is
 // named, not chosen: "your hero" is `{ of: "selfHero" }`, the controller's hero (§8 Conventions,
 // "'Your' means the controller"), so there is no prompt and no play-time declaration here (R81).
+//
+// R195, the yellow glow: in hand, Reno glows exactly when its Cry would raise the hero, which is the
+// clause's own "if your hero is below 30" (60 radiant). `belowFloor` is that one predicate, read by
+// both the Cry and `conditionMet`, so the glow and the heal cannot disagree. Gating the Cry on it
+// changes nothing on the board: `healHeroUpTo` already leaves a hero at or above the floor alone and
+// emits no `healed` event for it. The condition is about the play, so a Reno on the field never
+// glows.
 
-import type { Script } from "@jackioh/engine";
+import { heroOf, type GameState, type Script } from "@jackioh/engine";
 import { heal } from "@jackioh/engine/effects";
+import type { PlayerId } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-053");
@@ -23,10 +31,18 @@ export const def = cardDef("core-053");
 const BASE_FLOOR = 30;
 const RADIANT_FLOOR = 60;
 
+/** "If your hero is below `floor`": strictly below, read through the engine's `heroOf`. */
+function belowFloor(state: GameState, controller: PlayerId, floor: number): boolean {
+  return heroOf(state, controller).health < floor;
+}
+
 /** The two faces differ only in the number, so one builder writes both (§8 Conventions). */
 function reno(floor: number): Script {
   return {
-    cry: () => [heal({ target: { of: "selfHero" }, upTo: floor })],
+    cry: (ctx) =>
+      belowFloor(ctx.state, ctx.controller, floor) ? [heal({ target: { of: "selfHero" }, upTo: floor })] : [],
+    // R195: hand only — the glow asks whether playing Reno now would set the hero to the floor.
+    conditionMet: (ctx) => ctx.zone === "hand" && belowFloor(ctx.state, ctx.controller, floor),
   };
 }
 

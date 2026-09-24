@@ -28,7 +28,7 @@ import { createHashes, systemIds } from "./api/crypto";
 import { consoleLogger, defaultConfig, defaultLimits } from "./api/deps";
 import { createE2EAuth, seedE2EFixtures } from "./api/e2e";
 import { createE2EStore, type E2EStore } from "./api/e2e-store";
-import { createRouter, type Route } from "./api/http";
+import { createRouter, type RequestContext, type Route } from "./api/http";
 import { createLoadoutRoutes } from "./api/loadouts";
 import { sharedLoadoutValidator } from "./api/loadout-validator";
 import type { Logger, ServerDeps, Store } from "./api/ports";
@@ -216,6 +216,8 @@ export async function createRuntime(
       stop: async () => {},
     },
     log,
+    // R190: how many `X-Forwarded-For` entries, from the right, this deployment's proxies wrote.
+    trustedProxyHops: env.TRUSTED_PROXY_HOPS,
   };
 
   const registry = createMatchRegistry({
@@ -270,9 +272,18 @@ export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningSe
   const router = createRouter(allRoutes(), deps);
   // The browser and the API are separate origins (§9.2); without this every `fetch` from
   // `apps/web` is blocked before a handler runs. Preflights never reach the router.
-  const handler = withCors((request: Request) => router(request), { origins, log: deps.log });
+  const handler = withCors(
+    (request: Request, context?: RequestContext) => router(request, context),
+    { origins, log: deps.log },
+  );
 
-  const server = serve({ fetch: handler, port: env.PORT });
+  // R190: the socket's peer address travels with the request, because a request that did not come
+  // through the trusted proxy chain is keyed on it rather than on anything the caller wrote.
+  const server = serve({
+    fetch: (request, bindings) =>
+      handler(request, { peerAddress: bindings?.incoming?.socket?.remoteAddress ?? null }),
+    port: env.PORT,
+  });
   // SPEC §9.2: one WebSocket per player, upgraded on the same listener the API serves.
   const sockets = attachWebSocketServer(server, deps, registry, {
     path: WS_PATH,
@@ -283,6 +294,7 @@ export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningSe
     catalogVersion: deps.catalog.version,
     origins,
     e2e: env.E2E,
+    trustedProxyHops: deps.trustedProxyHops,
   });
 
   // §9.5: pairing runs on enqueue plus a sweeper, and a reaper resolves anything past the ceiling.

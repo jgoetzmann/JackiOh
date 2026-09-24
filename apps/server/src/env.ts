@@ -2,9 +2,11 @@
 // Supabase secret key, the raw Postgres connection string, the invite-code/IP-hash pepper —
 // that bypass every RLS policy. SPEC §9.1 makes the server the sole writer of collection,
 // loadouts and matches; that guarantee only holds if these values never reach a browser bundle.
-// `apps/server` is not yet a workspace package (see config.ts's header), so this file imports
-// nothing: it reads only the `Record<string, string | undefined>` handed to it and Node's
-// ambient `process` global (typed via the `node` entry in `apps/server/tsconfig.json`).
+// It imports only `./config` (which itself imports nothing), for R190's two proxy-hop bounds, and
+// otherwise reads only the `Record<string, string | undefined>` handed to it and Node's ambient
+// `process` global (typed via the `node` entry in `apps/server/tsconfig.json`).
+
+import { DEFAULT_TRUSTED_PROXY_HOPS, MAX_TRUSTED_PROXY_HOPS } from "./config";
 
 /** The server's fully validated, typed environment (SPEC §9.1, §9.4, §9.5). */
 export type ServerEnv = {
@@ -30,6 +32,12 @@ export type ServerEnv = {
   readonly E2E: boolean;
   /** Catalog version this server accepts; must match `cards.catalog_version` and the client's (§9.4). */
   readonly CATALOG_VERSION: string;
+  /**
+   * SPEC §11 R190: how many `X-Forwarded-For` entries, counted from the right, this deployment's own
+   * proxies wrote. 0 to `MAX_TRUSTED_PROXY_HOPS`; defaults to `DEFAULT_TRUSTED_PROXY_HOPS`; 0 ignores
+   * the header and keys every request on the socket's peer address.
+   */
+  readonly TRUSTED_PROXY_HOPS: number;
 };
 
 // The client-visible half of the environment contract (`apps/web`, via Vite's `VITE_` prefix
@@ -58,6 +66,7 @@ export const SERVER_ONLY_ENV_VARS: readonly string[] = [
   "NODE_ENV",
   "E2E",
   "CATALOG_VERSION",
+  "TRUSTED_PROXY_HOPS",
 ];
 
 const MIN_CODE_PEPPER_LENGTH = 32;
@@ -129,6 +138,26 @@ function parseE2E(value: string | undefined, problems: string[]): boolean {
       "Set by the e2e test runner, never by a production deploy.",
   );
   return false;
+}
+
+function parseTrustedProxyHops(value: string | undefined, problems: string[]): number {
+  if (!isNonEmpty(value)) {
+    return DEFAULT_TRUSTED_PROXY_HOPS;
+  }
+  const trimmed = value.trim();
+  const parsed = Number(trimmed);
+  if (!/^\d+$/u.test(trimmed) || parsed > MAX_TRUSTED_PROXY_HOPS) {
+    problems.push(
+      "TRUSTED_PROXY_HOPS: how many X-Forwarded-For entries, counted from the right, this " +
+        "deployment's own proxies write (R190; Render's edge is 1). Must be an integer from 0 to " +
+        `${MAX_TRUSTED_PROXY_HOPS} (got ${JSON.stringify(value)}). Optional; defaults to ` +
+        `${DEFAULT_TRUSTED_PROXY_HOPS}. 0 ignores the header and keys every request on its peer ` +
+        "address. The api.forwarded_for log lines report the fewest entries any request carried; " +
+        "this must not be more than that.",
+    );
+    return DEFAULT_TRUSTED_PROXY_HOPS;
+  }
+  return parsed;
 }
 
 function parsePublicOrigins(value: string | undefined, problems: string[]): readonly string[] {
@@ -245,6 +274,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   const nodeEnv = parseNodeEnv(source.NODE_ENV, problems);
   const e2e = parseE2E(source.E2E, problems);
   const publicOrigins = parsePublicOrigins(source.PUBLIC_ORIGINS, problems);
+  const trustedProxyHops = parseTrustedProxyHops(source.TRUSTED_PROXY_HOPS, problems);
 
   if (e2e && nodeEnv === "production") {
     problems.push(
@@ -285,6 +315,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     NODE_ENV: nodeEnv,
     E2E: e2e,
     CATALOG_VERSION: catalogVersion,
+    TRUSTED_PROXY_HOPS: trustedProxyHops,
   };
 }
 

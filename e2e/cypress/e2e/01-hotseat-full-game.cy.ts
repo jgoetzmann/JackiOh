@@ -201,7 +201,8 @@ describe("BUILD M8 01 — a seeded hotseat game played to completion through the
       if (result === null) return;
       const shown = result.winner === "draw" ? "Draw" : result.winner === handle.seat ? "Win" : "Loss";
       cy.get(ts(RESULT_OVERLAY)).should("contain.text", shown);
-      cy.get(ts(RESULT_OVERLAY)).should("contain.text", result.reason);
+      // The engine's reason travels in `data-reason`; the text says it as a sentence (Result.tsx).
+      cy.get(ts(RESULT_OVERLAY)).should("have.attr", "data-reason", result.reason);
     });
 
     // "final state hash equals the vitest replay of the recorded actions": `cy.replayCheck` hands

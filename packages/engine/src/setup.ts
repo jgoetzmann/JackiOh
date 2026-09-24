@@ -8,7 +8,15 @@ import { draw } from "./draw";
 import type { EngineSink } from "./resolve";
 import { flagsOf } from "./scripts";
 import { closePrompt, runStartOfGame } from "./prompts";
-import { findInstance, newInstance, type CardInstance, type GameState, type PendingChoice, type WorkItem } from "./state";
+import {
+  findInstance,
+  handicapOf,
+  newInstance,
+  type CardInstance,
+  type GameState,
+  type PendingChoice,
+  type WorkItem,
+} from "./state";
 import { clearReturnFlags, startTurn } from "./turn";
 import { owe, paused, registerWorkHandler } from "./work";
 import { moveToZone } from "./zones";
@@ -20,6 +28,15 @@ function seatOf(player: PlayerId): number {
 /** §2.1: the Nth seat draws N+2, so the table is the source of truth, not two constants. */
 export function openingDrawFor(player: PlayerId): number {
   return OPENING_DRAW[seatOf(player)] ?? seatOf(player) + 3;
+}
+
+/**
+ * §2.1, R182: the seat's opening-draw table entry plus its handicap's extra cards. Quickdraw cards
+ * replace draws out of this total, so it is the size of the hand the mulligan sees. Hard carries
+ * Medium's one extra card rather than a second one of its own.
+ */
+export function openingHandSize(state: GameState, player: PlayerId): number {
+  return openingDrawFor(player) + handicapOf(state.players[player]).extraOpeningCards;
 }
 
 function mulliganPrompt(sink: EngineSink, player: PlayerId): PendingChoice {
@@ -105,7 +122,8 @@ function dealFrom(sink: EngineSink, seat: number): void {
     const quickdraw = shuffled.filter(isQuickdraw);
     side.library = [...shuffled.filter((card) => !isQuickdraw(card)), ...quickdraw];
 
-    draw(sink, player, Math.max(0, openingDrawFor(player) - quickdraw.length));
+    // R182: a handicapped seat's extra opening cards are part of the same total Quickdraw replaces.
+    draw(sink, player, Math.max(0, openingHandSize(state, player) - quickdraw.length));
     // A cast the opening draw made is asking (R158: the draw has owed its own remainder), so this
     // seat's Quickdraw cards, the seats after it and the mulligan wait behind it.
     if (paused(sink)) {

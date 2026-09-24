@@ -15,6 +15,10 @@
 //     `x`, `embiggen`, `zone`, `tribute` and `direction` prompt kinds for later sets, so both
 //     routes render the same picker with the same `data-prompt-kind`.
 //
+// `data-prompt-source` says which route opened the modal ("engine" or "play"), for layout only:
+// prompt.css turns a play's board picks into a slim bar on a phone while drag to play is on
+// (polish task 7), because their answers already glow on the board.
+//
 // No rule is applied here either. `min` and `max` gate the confirm button, and both came from the
 // engine — from `PendingView` on route 1 and from the candidate `play`s on route 2. The options
 // likewise: a prompt's options are the engine's, and a play's choices are read off the
@@ -38,8 +42,10 @@ import {
   type PlayBuild,
   type PlayNeed,
 } from "./actions.ts";
+import { CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
 import { useCardInfo } from "./catalog.ts";
 import { sideOf } from "./contract.ts";
+import { modeText } from "./modeText.ts";
 import "./prompt.css";
 
 export type PromptProps = {
@@ -70,10 +76,16 @@ type PickerItem = {
   /** Set when the option names a card, so the picker can show its real name (`catalog.ts`). */
   defId?: string;
   radiant?: boolean;
+  /** The card's cost as the view carries it (`CardView.cost`), for its face's gem. */
+  cost?: number;
+  /** Where the card sits ("Enemy unit, lane 2"), which tells two copies of one card apart. */
+  where?: string;
   /** The row a zone option sits in, so the zone grid can group by it without parsing keys. */
   group?: string;
   /** Which arrow a direction option draws. Never read off the key, which is the engine's. */
   arrow?: "left" | "right";
+  /** A "Choose one" option's line of detail under its label (modeText.ts). */
+  detail?: string;
 };
 
 type Submitted = { action?: ActionBody; interaction?: Interaction };
@@ -82,11 +94,15 @@ type Picker = {
   /** Which picker to draw, and the `data-prompt-kind` value M5-T4 animates on. */
   chrome: PromptKind;
   title: string;
+  /** The card asking, when the picker knows it: its name heads the title ("Pocket Chaos: choose one"). */
+  sourceDefId?: string;
   items: PickerItem[];
   min: number;
   max: number;
   /** A one-of-N picker sends as soon as an option is clicked. */
   immediate: boolean;
+  /** What is chosen before the player touches anything: every card, for a mulligan. */
+  initial?: readonly string[];
   submit: (keys: readonly string[]) => Submitted;
 };
 
@@ -94,34 +110,58 @@ type Picker = {
 // Labels. Read out of the view, never computed.
 // ---------------------------------------------------------------------------------------------
 
-type CardRef = { defId: string; radiant: boolean };
+type CardRef = { defId: string; radiant: boolean; cost: number };
 
 /** Where an instance id sits in the viewer's own view, for a picker label. */
 function cardRefFor(view: PlayerView, instanceId: string): CardRef | null {
   for (const side of [view.you, view.opponent]) {
     for (const pile of side.units) {
-      if (pile !== null && pile.instanceId === instanceId) return { defId: pile.defId, radiant: pile.radiant };
+      if (pile !== null && pile.instanceId === instanceId) return { defId: pile.defId, radiant: pile.radiant, cost: pile.cost };
     }
     for (const slot of side.backrow) {
       if (slot !== null && slot.faceDown === false && slot.instanceId === instanceId) {
-        return { defId: slot.defId, radiant: slot.radiant };
+        return { defId: slot.defId, radiant: slot.radiant, cost: slot.cost };
       }
     }
     const piles = [Array.isArray(side.hand) ? side.hand : [], side.graveyard, side.exile];
     for (const pile of piles) {
       for (const card of pile) {
-        if (card.instanceId === instanceId) return { defId: card.defId, radiant: card.radiant };
+        if (card.instanceId === instanceId) return { defId: card.defId, radiant: card.radiant, cost: card.cost };
       }
     }
   }
   return null;
 }
 
+/**
+ * Where an instance sits, as a player would say it, for a list picker's label: a target or a
+ * Tribute is told apart from another copy of the same card by its place, never by its instance id.
+ */
+function whereOf(view: PlayerView, instanceId: string): string | null {
+  for (const side of [view.you, view.opponent]) {
+    const whose = side === view.you ? "Your" : "Enemy";
+    const unitAt = side.units.findIndex((pile) => pile !== null && pile.instanceId === instanceId);
+    if (unitAt >= 0) return `${whose} unit, lane ${String(unitAt + 1)}`;
+    const backrowAt = side.backrow.findIndex(
+      (slot) => slot !== null && slot.faceDown === false && slot.instanceId === instanceId,
+    );
+    if (backrowAt >= 0) return `${whose} backrow, lane ${String(backrowAt + 1)}`;
+    const hand = Array.isArray(side.hand) ? side.hand : [];
+    if (hand.some((card) => card.instanceId === instanceId)) return `${whose} hand`;
+    if (side.graveyard.some((card) => card.instanceId === instanceId)) return `${whose} graveyard`;
+    if (side.exile.some((card) => card.instanceId === instanceId)) return `${whose} exile`;
+  }
+  return null;
+}
+
 function itemForInstance(view: PlayerView, instanceId: string, fallback: string): PickerItem {
   const ref = cardRefFor(view, instanceId);
-  return ref === null
+  const where = whereOf(view, instanceId);
+  const item: PickerItem = ref === null
     ? { key: instanceId, label: fallback }
-    : { key: instanceId, label: fallback, defId: ref.defId, radiant: ref.radiant };
+    : { key: instanceId, label: fallback, defId: ref.defId, radiant: ref.radiant, cost: ref.cost };
+  if (where !== null) item.where = where;
+  return item;
 }
 
 /** Lanes are 1-based, as `contract.ts` and the engine's `zones.ts` have them. */
@@ -162,7 +202,10 @@ function pickerForPending(
       if (ref !== null) {
         base.defId = ref.defId;
         base.radiant = ref.radiant;
+        base.cost = ref.cost;
       }
+      const where = whereOf(view, option.instanceId);
+      if (where !== null) base.where = where;
     }
     // The engine prefixes a direction key (`mode:left`), so the arrow comes off the label or the
     // key's tail, never off the whole key: `data-testid="direction-left"` is the M5-T2 contract.
@@ -179,6 +222,10 @@ function pickerForPending(
     max: pending.max,
     // The mulligan is per-card toggles plus a confirm, whatever its max.
     immediate: pending.kind !== "mulligan" && pending.max <= 1,
+    // R9's answer names the cards KEPT, and Hearthstone keeps the whole hand until a card is
+    // marked to go back, so a mulligan opens with every card kept: Confirm alone keeps the hand,
+    // and a tap marks a card for a redraw.
+    ...(pending.kind === "mulligan" ? { initial: items.slice(0, pending.max).map((item) => item.key) } : {}),
     submit: (keys) => ({ action: answerAction(pending, keys, view, legal) }),
   };
 }
@@ -275,7 +322,11 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
           const label = selectionLabel(view, selection);
           if (selection.pick !== "instance") return { key, label };
           const ref = cardRefFor(view, selection.instanceId);
-          return ref === null ? { key, label } : { key, label, defId: ref.defId, radiant: ref.radiant };
+          const where = whereOf(view, selection.instanceId);
+          const item: PickerItem =
+            ref === null ? { key, label } : { key, label, defId: ref.defId, radiant: ref.radiant, cost: ref.cost };
+          if (where !== null) item.where = where;
+          return item;
         }),
         submit: (keys) => {
           const targets = keys.flatMap((key) => {
@@ -286,17 +337,29 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
         },
       };
     }
-    case "mode":
-      return {
+    case "mode": {
+      // The card being played is the one asking; its options read as that card's words, on the face
+      // it is played with (#24's radiant "Uses X+1").
+      const played = interaction.stage === "playing" ? cardRefFor(view, interaction.instanceId) : null;
+      const source = played?.defId ?? undefined;
+      const radiant = played?.radiant === true;
+      const picker: Picker = {
         ...common,
         chrome: isDirection(need.options) ? "direction" : "mode",
         title: isDirection(need.options) ? "Choose a direction" : "Choose one",
-        items: need.options.map((option) => {
+        items: need.options.map((option): PickerItem => {
           const arrow = DIRECTIONS.find((d) => d === option);
-          return arrow === undefined ? { key: option, label: option } : { key: option, label: option, arrow };
+          if (arrow !== undefined) return { key: option, label: option, arrow };
+          const text = modeText(source, option, radiant);
+          return text.detail === undefined
+            ? { key: option, label: text.label }
+            : { key: option, label: text.label, detail: text.detail };
         }),
         submit: (keys) => play({ modes: [...keys] }),
       };
+      if (source !== undefined) picker.sourceDefId = source;
+      return picker;
+    }
   }
 }
 
@@ -304,30 +367,72 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
 // The modal.
 // ---------------------------------------------------------------------------------------------
 
+// Polish 6 (a minimal edit to task 7's file, flagged in the PR): a card option draws the card's face,
+// the one the hand and the deck builder draw, with the same hover preview and long-press sheet, in
+// whatever box prompt.css gives it. An option that names no card keeps its name and text.
 function CardOption(props: {
   item: PickerItem;
   pressed: boolean;
+  /** A mulligan's options say what Confirm will do to each card. */
+  verdicts?: boolean;
   onPick: () => void;
 }) {
   const info = useCardInfo(props.item.defId ?? "", props.item.radiant === true);
   const name = props.item.defId === undefined ? props.item.label : info.name;
+  const radiant = props.item.radiant === true;
+  const cost = props.item.cost;
+  const face =
+    props.item.defId === undefined
+      ? null
+      : faceModel({
+          defId: props.item.defId,
+          def: info.def,
+          name: info.name,
+          radiant,
+          ...(cost === undefined ? {} : { liveCost: cost }),
+        });
+  const testId = `prompt-option-${props.item.key}`;
+  const inspect = useInspectTrigger(face === null ? null : { key: testId, face }, { prefer: "above" });
+  const verdict = props.verdicts === true ? (props.pressed ? "keep" : "redraw") : undefined;
+  // The name, then the cost the gem shows, so a screen reader hears what a sighted player reads.
+  const label = face === null ? undefined : `${name}, costs ${face.cost.text}`;
   return (
-    <button
-      type="button"
-      className="prompt-card"
-      data-testid={`prompt-option-${props.item.key}`}
-      aria-pressed={props.pressed}
-      onClick={props.onPick}
-    >
-      <span className="prompt-card-name">{name}</span>
-      {info.text === "" ? null : <span className="prompt-card-text">{info.text}</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        className="prompt-card"
+        data-testid={testId}
+        data-verdict={verdict}
+        aria-pressed={props.pressed}
+        aria-label={label}
+        onClick={props.onPick}
+        {...inspect.handlers}
+      >
+        {face === null ? (
+          <>
+            <span className="prompt-card-name">{name}</span>
+            {info.text === "" ? null : <span className="prompt-card-text">{info.text}</span>}
+          </>
+        ) : (
+          <span className="cf-option">
+            <CardFace face={face} layout="full" />
+          </span>
+        )}
+        {verdict === undefined ? null : (
+          <span className="prompt-card-verdict" aria-hidden="true">
+            {verdict === "keep" ? "Keep" : "Redraw"}
+          </span>
+        )}
+      </button>
+      {inspect.overlay}
+    </>
   );
 }
 
 function ListOption(props: { item: PickerItem; pressed: boolean; onPick: () => void }) {
   const info = useCardInfo(props.item.defId ?? "", props.item.radiant === true);
-  const name = props.item.defId === undefined ? props.item.label : `${info.name} — ${props.item.label}`;
+  const name =
+    props.item.defId === undefined ? props.item.label : `${info.name} — ${props.item.where ?? props.item.label}`;
   return (
     <li>
       <button
@@ -346,24 +451,46 @@ function PlainOption(props: { item: PickerItem; pressed: boolean; onPick: () => 
   return (
     <button
       type="button"
+      className={props.item.detail === undefined ? undefined : "prompt-mode"}
       data-testid={`prompt-option-${props.item.key}`}
       aria-pressed={props.pressed}
       onClick={props.onPick}
     >
-      {props.item.label}
+      {props.item.detail === undefined ? (
+        props.item.label
+      ) : (
+        <>
+          <span className="prompt-mode-label">{props.item.label}</span>
+          <span className="prompt-mode-detail">{props.item.detail}</span>
+        </>
+      )}
     </button>
+  );
+}
+
+/** The picker's heading: the asking card's name before it, when the picker knows the card. */
+function PickerTitle(props: { title: string; sourceDefId: string | undefined }) {
+  const info = useCardInfo(props.sourceDefId ?? "", false);
+  if (props.sourceDefId === undefined) return <p className="prompt-title">{props.title}</p>;
+  return (
+    <p className="prompt-title">
+      <span className="prompt-title-source">{info.name}</span>
+      <span className="prompt-title-ask">{props.title}</span>
+    </p>
   );
 }
 
 function PromptModal(props: {
   picker: Picker;
+  /** Which route opened it: an engine prompt (`view.pending`) or a play still being built (R81). */
+  source: "engine" | "play";
   boardTestids: readonly string[];
   onAction: (body: ActionBody) => void;
   onInteraction?: (next: Interaction) => void;
   onCancel?: () => void;
 }) {
   const { picker } = props;
-  const [selected, setSelected] = useState<readonly string[]>([]);
+  const [selected, setSelected] = useState<readonly string[]>(() => picker.initial ?? []);
   /**
    * What is typed in the X field, which is not the same thing as what has been chosen: a field
    * being cleared, or holding a number the engine did not offer, stages nothing. `null` means
@@ -509,7 +636,13 @@ function PromptModal(props: {
       return (
         <div className="prompt-cards">
           {items.map((item) => (
-            <CardOption key={item.key} item={item} pressed={pressed(item.key)} onPick={() => pick(item.key)} />
+            <CardOption
+              key={item.key}
+              item={item}
+              pressed={pressed(item.key)}
+              verdicts={picker.chrome === "mulligan"}
+              onPick={() => pick(item.key)}
+            />
           ))}
         </div>
       );
@@ -542,6 +675,7 @@ function PromptModal(props: {
         className={`prompt prompt-${picker.chrome}`}
         data-testid="prompt-modal"
         data-prompt-kind={picker.chrome}
+        data-prompt-source={props.source}
         /* The board cells this prompt has blessed, so a `target` pick can be made on the board
            too (BUILD M5-T2). Derived by `highlightFor`, which reads only `legalActions` and the
            prompt's own options. */
@@ -550,7 +684,7 @@ function PromptModal(props: {
         aria-modal="true"
         aria-label={picker.title}
       >
-        <p className="prompt-title">{picker.title}</p>
+        <PickerTitle title={picker.title} sourceDefId={picker.sourceDefId} />
         <p className="prompt-count">
           Choose {range} — {selected.length} chosen
         </p>
@@ -580,7 +714,11 @@ function PromptModal(props: {
   );
 }
 
-/** §10.6, §10.8: the other seat learns that a choice is open and nothing else about it. */
+/**
+ * §10.6, §10.8: the other seat learns that a choice is open and nothing else about it. The chooser
+ * is always the viewer's opponent (a prompt for the viewer is `forYou`), so the line names the
+ * opponent rather than a seat id: in practice that is the AI, which the HUD already shows thinking.
+ */
 function Waiting(props: { pendingFor: PlayerId }) {
   return (
     <div className="prompt-scrim" data-testid="prompt-scrim">
@@ -588,12 +726,13 @@ function Waiting(props: { pendingFor: PlayerId }) {
         className="prompt prompt-waiting"
         data-testid="prompt-modal"
         data-prompt-waiting={WAITING_FLAG}
+        data-pending-for={props.pendingFor}
         role="dialog"
         aria-modal="true"
         aria-label="Waiting for choice"
       >
         <p className="prompt-title">Waiting for choice</p>
-        <p className="prompt-sub">{props.pendingFor} is choosing.</p>
+        <p className="prompt-sub">Your opponent is choosing.</p>
       </div>
     </div>
   );
@@ -614,6 +753,7 @@ export default function Prompt(props: PromptProps) {
     return (
       <PromptModal
         key={pending.choiceId}
+        source="engine"
         picker={pickerForPending(pending, props.view, props.legal ?? [])}
         boardTestids={boardTestids}
         onAction={props.onAction}
@@ -630,6 +770,7 @@ export default function Prompt(props: PromptProps) {
   return (
     <PromptModal
       key={needKey(need)}
+      source="play"
       picker={pickerForNeed(need, interaction, props.view)}
       boardTestids={boardTestids}
       onAction={props.onAction}

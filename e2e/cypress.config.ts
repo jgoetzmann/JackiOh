@@ -1,5 +1,5 @@
 // BUILD M8: Cypress runs against apps/web in `E2E=1` mode (the hotseat route plus a test server
-// with fixture accounts). Twelve specs, every one seeded, no fixed waits.
+// with fixture accounts). Sixteen specs, every one seeded, no fixed waits.
 
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "cypress";
@@ -12,8 +12,11 @@ export default defineConfig({
     specPattern: "cypress/e2e/**/*.cy.ts",
     supportFile: "support/e2e.ts",
     fixturesFolder: "fixtures",
-    screenshotsFolder: "artifacts/screenshots",
-    videosFolder: "artifacts/videos",
+    // E2E_ARTIFACTS moves the screenshots and videos (and E2E_KEEP_ASSETS=1 stops the trash at the
+    // start of a run), so two runs on one machine never delete each other's evidence (e2e/README.md).
+    screenshotsFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/screenshots`,
+    videosFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/videos`,
+    trashAssetsBeforeRuns: process.env.E2E_KEEP_ASSETS !== "1",
     downloadsFolder: "artifacts/downloads",
     video: false,
     screenshotOnRunFailure: true,
@@ -70,7 +73,7 @@ export default defineConfig({
   // it mounts `apps/web/src/test/fixtures.ts` `fullBoardView()` — the very fixture the acceptance
   // describes — in a browser, at both viewports. This block is separate from `e2e` in every way
   // that matters to M8: its own `specPattern`, its own support file, its own index page. The e2e
-  // suite stays at twelve files and `cypress run` (no flag) still runs exactly those twelve.
+  // suite stays at sixteen files and `cypress run` (no flag) still runs exactly those sixteen.
   component: {
     devServer: {
       framework: "react",
@@ -112,8 +115,9 @@ export default defineConfig({
     // NOT the e2e run's `artifacts/screenshots`: Cypress trashes its screenshots folder at the
     // start of every run, so sharing one would mean a component run silently deleting the
     // evidence a red e2e run had just left behind.
-    screenshotsFolder: "artifacts/component/screenshots",
-    videosFolder: "artifacts/component/videos",
+    screenshotsFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/component/screenshots`,
+    videosFolder: `${process.env.E2E_ARTIFACTS ?? "artifacts"}/component/videos`,
+    trashAssetsBeforeRuns: process.env.E2E_KEEP_ASSETS !== "1",
     video: false,
     screenshotOnRunFailure: true,
     // BUILD M5-T1's first viewport, matching the e2e block above. Nothing measured depends on it:

@@ -623,10 +623,10 @@ were needed; every other finding was already a rule SPEC states.
 | `turn-clock-and-legality.test.ts` | `timeout` acted for the wrong player and stopped after one prompt; a declined draw offer could still be accepted; `activatePower` accepted unreachable ping targets and a forged Discover answer; Heroic Power offered and recorded a chosen X; "this turn" read the opponent's last turn | R79, R36, R103, R43, §6.2 |
 | `hidden-information.test.ts` | Prompt options named face-down traps; `transformed` named cards replaced in hidden zones; `costChanged` gave away hidden costs and library order | R177 |
 
-One finding is kept as an expected failure rather than fixed: `legalActions` names a face-down trap
-by its instance id, which a player who saw that id while the card was public can read. Ids are the
-action protocol's only handle for a face-down target, so closing it is a protocol change (a
-per-viewer alias, or a fresh id on entering a hidden zone), not an edge-case fix.
+One finding was kept as an expected failure rather than fixed here: `legalActions` named a face-down
+trap by its instance id, which a player who saw that id while the card was public could read. Ids are
+the action protocol's only handle for a face-down target. The integration's fix stage closed it
+(R227): a card set face-down takes a fresh id, and the test now passes as an ordinary `it`.
 
 The recorded hotseat game's hash moved once, deliberately: the other player's turn log is emptied at
 each turn start (§6.2's "this turn"), and that log is in the hashed state. The log itself replays
@@ -1666,7 +1666,10 @@ would keep the two from drifting apart.
   plays `jk-icon-pop` (`animations.ts`, `animations.css`), the icon popping in, where it should play
   as the icon going. The animation table keys a row by event type and the board sets
   `data-animating="<eventType>"` (`contract.ts`), so a variant for `lost` is task 7's change, and
-  BUILD M5-T4's `keywordGranted` row ("icon present") should gain the `lost` case with it.
+  BUILD M5-T4's `keywordGranted` row ("icon present") should gain the `lost` case with it. On main
+  the effects layer and the sound treat it as a grant too: `fx/cues.ts` plays the keyword's grant
+  recipe (a dust ring for Taunt) and `audio/cues.ts` the `buff` sound, where a loss would read as
+  `buffed`'s negative case does (the `debuff` sound, arrows down).
 
 ### SPEC and BUILD outside §4.1 and the new §11 rows
 
@@ -1741,17 +1744,26 @@ stripped the same way, and `keywordGranted` an optional `lost` (R46), which does
 `view.ts` gained optional fields only (`CardView.attack`, `health`, `power`, `UnitView.vanilla`,
 `PlayerView.defs`, R243).
 
+Rounds 9 and 10 reached main after the integration branch (#10), which took R227 and none of this
+branch's numbers. Where the two met: `cardPlayed` and `summoned` carry integration's `formerId`
+beside `arrivedDuring` and `exitsFrom`, and `redactEvent` strips the bookkeeping for both seats and
+`formerId` as well for a seat that may not read the card. A hand card is `handCardView` (R243) with
+R195's `conditionActive` on top. `viewFor` registers the state's fused scripts (R179) before it
+builds the view, and then adds `defs`. A Fuse imports `CardScripts` for integration's
+`syncFusedScripts` and `runStartOfGame` for the Heroic Power roll (R151). R177 keeps this branch's
+R242 split and integration's closing of the face-down id channel.
+
 ---
 
 ## Known limits
 
-- **A face-down card's id in `legalActions`** (R177's last sentences). The action protocol names a
-  face-down card by its instance id, and a card keeps its id across zones. So a player who saw the
-  id while the card was public can recognise the trap, for example one returned from a graveyard to
-  hand and set again. An `it.fails` in `turn-clock-and-legality.test.ts` pins it, so the change that
-  closes it has to flip that test. Closing it needs a per-viewer alias, or a fresh id whenever a card
-  enters a hidden zone. Either is a change to the action protocol the server, the client and the e2e
-  specs share. The gap predates this branch. The PR should open a tracked issue for it.
+- **A face-down card's id in `legalActions`** (R177's last sentences), **closed at integration by
+  R227.** The action protocol names a face-down card by its instance id, and a card kept its id
+  across zones, so a player who saw the id while the card was public could recognise the trap, for
+  example one returned from a graveyard to hand and set again. A card set face-down (played, cast or
+  recruited) now takes a fresh id; the `cardPlayed` and `summoned` that set it carry the old one as
+  `formerId`, which only a viewer who may read the card receives. The action protocol itself did
+  not change. The `it.fails` in `turn-clock-and-legality.test.ts` is now an ordinary `it("R227 …")`.
 - **The hunt is not finished** (see "Hunt status"): it was halted after round 8 and continued at the
   user's request for rounds 9 and 10; in round 10 seven of the ten lenses still found something.
 - **No sleep marker** for a sick unit, and a lost keyword animates as a pop (see the seams under

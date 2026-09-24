@@ -22,6 +22,12 @@ export type CardView = {
    * Its X is the card's cost, which does not name it: four of the seven powers cost the same.
    */
   power?: string;
+  /**
+   * R195, §10.8: Hearthstone's yellow glow. Present, and `true`, only on the viewer's own card
+   * whose printed condition holds now. Absent otherwise: never `false`, never on the opponent's
+   * cards. `UnitView` and the public `BackrowView` inherit it.
+   */
+  conditionActive?: true;
 };
 
 export type UnitView = CardView & {

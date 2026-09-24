@@ -87,8 +87,24 @@ export const inviteCodes = {
  * Cypress retries against the DOM instead of sleeping.
  */
 export const timeouts = {
-  /** An animation must have drained. The slowest row in BUILD M5-T4 is `trapFired` at 700 ms. */
-  animation: 4_000,
+  /**
+   * One action's animations must have drained (`cy.settled()`), started (`cy.expectAnimating()`)
+   * or closed their prompt (`cy.noPrompt()`).
+   *
+   * This covers a whole BURST, not one row. The slowest row in BUILD M5-T4 is `trapFired` at
+   * 700 ms, but one action can hand the runner many entries at once, and `cy.settled()` waits for
+   * all of them. The runner squeezes a long burst into `BURST_BUDGET_MS` (2.4 s) but never below
+   * `MIN_ENTRY_MS` (120 ms) an entry (apps/web/src/game/animations.ts), and a view carries at most
+   * `VIEW_EVENT_LIMIT` (32) events, one entry each at most, so one action can plan up to
+   * 32 × 120 = 3.84 s before any timer slips. Spec 08 comes close: p2's mulligan answer lets R82
+   * auto-end turns 1 to 4, 29 entries, and the burst measured 3.91–3.98 s in Chrome on the
+   * integrated polish branch, both at full speed and under a 4x CPU throttle. The old 4 s left that
+   * burst under 100 ms of slack, and PR #3's CI runs failed spec 08 there when a little extra
+   * main-thread work landed inside it. 8 s (the `defaultCommandTimeout`) covers the longest burst a
+   * view can plan with room for a slow runner. Waiting longer weakens no assertion: an animation
+   * that never ends, or a prompt that never closes, still fails.
+   */
+  animation: 8_000,
   /** A view push from the server (M6-T4) or a seat handover. */
   view: 10_000,
   /** A whole seeded game to run out in spec 01 / 08. */

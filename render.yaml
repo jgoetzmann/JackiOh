@@ -39,6 +39,16 @@ services:
       # R105's Core-set version. Must equal what db:seed-catalog stamped on public.cards.
       - key: CATALOG_VERSION
         value: core-1
+      # SPEC §11 R190: how many X-Forwarded-For entries this deployment's own proxies append; the
+      # per-IP limits key on the entry that many places from the right, never on what the caller
+      # wrote to its left. The server's default is 0 (no proxy), so this must be set. 1 is a safe
+      # STARTING POINT, not a verified count: Render's edge adds one entry, and a CDN in front of it
+      # (Cloudflare) would add another, and too few trusted hops only over-groups. Calibrate it after
+      # the first deploy: send a request of your own with no X-Forwarded-For, read the
+      # `fewestEntries` its `api.forwarded_for` log line shows, and set this to exactly that
+      # (docs/architecture.md §10, step 8). Never set it above the lowest count any request showed.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
       # PORT is injected by Render and read by src/env.ts; do not set it here.
       #
       # `sync: false` means "prompt me, never store it in git". The four secrets plus the origin

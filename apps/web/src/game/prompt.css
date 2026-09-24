@@ -21,6 +21,10 @@
 }
 
 .prompt-scrim {
+  /* The picker sits outside `.board`, so it restates the board's ice-blue selection: the global
+     token is gold, and yellow on the table only ever means "condition met". */
+  --selected: #7dd3fc;
+
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -28,6 +32,20 @@
   place-items: center;
   padding: 12px;
   background: rgb(7 9 14 / 45%);
+}
+
+/* The other seat's choice is a notice, not a form: a compact card around its two lines rather than
+   a 560 px panel with nothing in it, over a lighter dim (the board is still the thing to watch). */
+.prompt-scrim:has(> .prompt-waiting) {
+  background: rgb(7 9 14 / 30%);
+}
+
+.prompt.prompt-waiting {
+  width: auto;
+  max-width: min(360px, 100%);
+  align-items: center;
+  padding: 14px 22px;
+  text-align: center;
 }
 
 .prompt {
@@ -46,8 +64,10 @@
 
 .prompt-title {
   margin: 0;
+  color: var(--text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
 .prompt-count,
@@ -57,28 +77,117 @@
   font-size: 11px;
 }
 
+/* The picker renders inside `.app-shell`, whose `p` rule (src/index.css) dims every paragraph and
+   caps it at 64ch. That turned the title grey, level with the count under it, and on a sheet the
+   width of a phone held landscape it pinned both lines to the left while the cards and buttons sat
+   in the middle. The panel is the title's measure, and the title is the brightest line in it. */
+.prompt > .prompt-title,
+.prompt > .prompt-count,
+.prompt > .prompt-sub,
+.prompt > .prompt-board-note {
+  max-width: none;
+}
+
+.prompt > .prompt-title {
+  color: var(--text);
+}
+
 /* --- option shapes ------------------------------------------------------------------------- */
 
+/* The cards on offer stand in the middle of the picker, the way Hearthstone lays out a mulligan
+   or a Discover, rather than hugging its left edge. */
 .prompt-cards {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--gap);
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 0 4px;
 }
 
 .prompt-card {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  width: var(--card-w);
+  width: calc(var(--card-w) * 1.2);
   min-height: var(--card-h);
   padding: 6px;
   text-align: left;
-  background: var(--bg-sunken);
+  border-color: #3f4964;
+  border-radius: 9px;
+  background: linear-gradient(165deg, #2b3349 0%, #1b2030 55%, #151925 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%), 0 3px 8px rgb(0 0 0 / 45%);
+  transition:
+    transform calc(140ms * var(--anim-scale)) ease,
+    border-color calc(140ms * var(--anim-scale)) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .prompt-card:hover {
+    transform: translateY(-3px);
+    border-color: #5b6788;
+  }
+}
+
+/* A picked card lifts and takes the selection ring, so what is kept reads at a glance. */
+.prompt-card[aria-pressed="true"] {
+  transform: translateY(-4px);
+}
+
+/* A mulligan says on each card what Confirm will do to it (Prompt.tsx CardOption): a stamp across
+   the foot of the art window, clear of the cost gem and the stats, so the option keeps the box the
+   face fills. A card going back dims. */
+.prompt-card[data-verdict] {
+  position: relative;
+}
+
+.prompt-card-verdict {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.prompt-card[data-verdict="keep"] .prompt-card-verdict {
+  background: color-mix(in srgb, var(--legal) 85%, #000);
+  color: #04130a;
+}
+
+.prompt-card[data-verdict="redraw"] .prompt-card-verdict {
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+
+.prompt-card[data-verdict="redraw"] .cf-option {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+/* Confirm is the one primary action: filled in End turn's amber (index.css --primary-*), so the
+   game has a single "go" colour rather than a blue one beside a gold one. */
+.prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]) {
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
+  font-weight: 800;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+  box-shadow: var(--primary-shadow);
+}
+
+.prompt [data-testid="prompt-submit"]:not([aria-disabled="true"]):hover {
+  background: var(--primary-face-hover);
 }
 
 .prompt-card-name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  font-weight: 650;
+  overflow-wrap: break-word;
 }
 
 .prompt-card-text {
@@ -104,6 +213,51 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--gap);
+}
+
+/* A "Choose one" option that says what it does (modeText.ts): its label over a line of detail,
+   one option per row so the details read as a list. */
+.prompt-modes:has(> .prompt-mode) {
+  flex-direction: column;
+}
+
+.prompt-modes > .prompt-mode {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.prompt-mode-label {
+  font-weight: 750;
+}
+
+.prompt-mode-detail {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 1.3;
+}
+
+.prompt-modes > .prompt-mode[aria-pressed="true"] .prompt-mode-detail {
+  color: inherit;
+}
+
+/* The card asking, over what it asks ("Pocket Chaos" / "Choose one"). */
+.prompt-title-source {
+  display: block;
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.prompt-title-ask {
+  display: block;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .prompt-zones {
@@ -212,6 +366,42 @@
   font-size: 10px;
 }
 
+/* A card picker on a big screen (a mulligan, a Discover, a card from your hand) shows its cards at
+   hand size, and the modal wraps them instead of leaving half of itself empty. */
+@media (min-width: 761px) and (min-height: 501px) {
+  .prompt:has(> .prompt-cards) {
+    width: fit-content;
+    min-width: min(420px, 100%);
+    max-width: min(760px, 100%);
+    padding: 18px 20px;
+  }
+
+  .prompt > .prompt-cards .prompt-card {
+    width: 124px;
+    min-height: 168px;
+    padding: 8px;
+    font-size: 14px;
+  }
+
+  .prompt > .prompt-cards .prompt-card-text {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .prompt:has(> .prompt-cards) > .prompt-title,
+  .prompt:has(> .prompt-cards) > .prompt-count {
+    text-align: center;
+  }
+
+  .prompt:has(> .prompt-cards) > .prompt-actions {
+    justify-content: center;
+  }
+
+  .prompt:has(> .prompt-cards) > .prompt-actions button {
+    min-width: 112px;
+  }
+}
+
 @media (width <= 480px) {
   .prompt {
     width: 100%;
@@ -220,5 +410,275 @@
 
   .prompt-zones {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* --- phones: a bottom sheet (polish task 7, docs/polish/7-mobile-ux.md S11, B32) ------------- */
+
+/* On a phone, portrait or landscape, the picker is a sheet docked to the bottom edge: full width,
+   top corners rounded, never taller than 85% of the screen, and padded clear of the home
+   indicator (index.html sets viewport-fit=cover). Every control in it is at least 44px tall, the
+   touch-target floor (WCAG 2.5.5). The scrim stays click-through exactly as above, so a board
+   pick is still possible while the sheet is up. Prompt.tsx is untouched: this is layout only. */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .prompt-scrim {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .prompt {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    border-bottom: 0;
+    border-radius: calc(var(--radius) * 1.6) calc(var(--radius) * 1.6) 0 0;
+  }
+
+  .prompt button,
+  .prompt input,
+  .prompt [role="button"],
+  .prompt [data-testid^="prompt-option-"] {
+    min-height: 44px;
+  }
+
+  /* The direction picker's option label is a span inside its arrow; a span only takes a height
+     once it is a box. */
+  .prompt-arrow [data-testid^="prompt-option-"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .prompt-actions button {
+    flex: 1 1 0;
+  }
+}
+
+/* --- small pickers: never on top of the board (polish task 7) -------------------------------- */
+
+/* A zone, a target or a tribute is answered ON THE BOARD, where the answers already glow green,
+   and a play in flight can still have a zone glowing on the board while it asks for a direction, a
+   mode, an X or a price. A picker in the middle of the screen would sit on exactly the cells being
+   asked about, so every small picker docks out of the way instead: down the right-hand sidebar on
+   a desktop, low on a tablet, as the usual short sheet on a phone held upright, and down the right
+   edge of a phone on its side. The scrim does not dim the board for them, because the board is the
+   thing to look at. The card pickers (mulligan, discover, a card from your hand) need the room and
+   keep the centred modal and the sheet above. Selected by `data-prompt-kind`, the M5-T4 contract,
+   because `.prompt-direction` is also the name of the direction picker's own row of arrows. */
+.prompt-scrim:has(
+    > [data-prompt-kind="zone"],
+    > [data-prompt-kind="target"],
+    > [data-prompt-kind="tribute"],
+    > [data-prompt-kind="direction"],
+    > [data-prompt-kind="mode"],
+    > [data-prompt-kind="x"],
+    > [data-prompt-kind="embiggen"]
+  ) {
+  background: transparent;
+}
+
+/* The board picks wear the green of the cells they are asking about. */
+.prompt[data-prompt-kind="zone"],
+.prompt[data-prompt-kind="target"],
+.prompt[data-prompt-kind="tribute"] {
+  border-color: color-mix(in srgb, var(--glow-ready, #4ade80) 45%, var(--line-bright));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow-ready, #4ade80) 20%, transparent),
+    0 18px 50px rgb(0 0 0 / 60%);
+}
+
+@media (min-width: 1025px), (min-width: 900px) and (orientation: landscape) and (min-height: 501px) {
+  .prompt-scrim:has(
+      > [data-prompt-kind="zone"],
+      > [data-prompt-kind="target"],
+      > [data-prompt-kind="tribute"],
+      > [data-prompt-kind="direction"],
+      > [data-prompt-kind="mode"],
+      > [data-prompt-kind="x"],
+      > [data-prompt-kind="embiggen"]
+    ) {
+    place-items: center end;
+    padding: 16px;
+  }
+
+  .prompt[data-prompt-kind="zone"],
+  .prompt[data-prompt-kind="target"],
+  .prompt[data-prompt-kind="tribute"],
+  .prompt[data-prompt-kind="direction"],
+  .prompt[data-prompt-kind="mode"],
+  .prompt[data-prompt-kind="x"],
+  .prompt[data-prompt-kind="embiggen"] {
+    width: min(262px, 100%);
+  }
+
+  .prompt[data-prompt-kind="zone"] .prompt-zones {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 601px) and (max-width: 899px) and (min-height: 501px),
+  (min-width: 900px) and (max-width: 1024px) and (min-height: 501px) and (orientation: portrait) {
+  .prompt-scrim:has(
+      > [data-prompt-kind="zone"],
+      > [data-prompt-kind="target"],
+      > [data-prompt-kind="tribute"],
+      > [data-prompt-kind="direction"],
+      > [data-prompt-kind="mode"],
+      > [data-prompt-kind="x"],
+      > [data-prompt-kind="embiggen"]
+    ) {
+    place-items: end center;
+    /* Docked above the turn plate and the control bar (about 120 px at the foot of a tablet), not
+       over End turn: the picker covers the hand the play came from instead. */
+    padding-bottom: calc(env(safe-area-inset-bottom) + 132px);
+  }
+}
+
+@media (max-width: 600px) {
+  .prompt[data-prompt-kind="zone"],
+  .prompt[data-prompt-kind="target"],
+  .prompt[data-prompt-kind="tribute"] {
+    gap: 6px;
+    padding-top: 10px;
+  }
+
+  /* All five lanes in one row: the sheet stays short enough to leave the field in view. */
+  .prompt[data-prompt-kind="zone"] .prompt-zones {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .prompt[data-prompt-kind="zone"] .prompt-zones button {
+    padding: 4px 2px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  /* With drag to play on, a play's zone, target or tribute pick on a phone held upright is a slim
+     bar along the bottom edge, over the control bar: its title, Confirm and Cancel, and no list.
+     The answers already glow on the board and are picked there by a tap (click-click) or a drop,
+     and a sheet of options covered the card that had just been tapped up to be read, and the rest
+     of the hand. With drag to play off the full picker is the way to choose, so it stays. An
+     engine prompt (`data-prompt-source="engine"`) keeps its sheet either way. */
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    ) {
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 8px;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    )
+    > :is(.prompt-count, .prompt-zones, .prompt-list, .prompt-board-note) {
+    display: none;
+  }
+
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    )
+    > .prompt-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    )
+    > .prompt-actions {
+    flex: 0 0 auto;
+  }
+
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    )
+    > .prompt-actions
+    button {
+    flex: 0 0 auto;
+    padding-inline: 12px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .prompt-scrim:has(
+      > [data-prompt-kind="zone"],
+      > [data-prompt-kind="target"],
+      > [data-prompt-kind="tribute"],
+      > [data-prompt-kind="direction"],
+      > [data-prompt-kind="mode"],
+      > [data-prompt-kind="x"],
+      > [data-prompt-kind="embiggen"]
+    ) {
+    place-items: stretch end;
+  }
+
+  .prompt[data-prompt-kind="zone"],
+  .prompt[data-prompt-kind="target"],
+  .prompt[data-prompt-kind="tribute"],
+  .prompt[data-prompt-kind="direction"],
+  .prompt[data-prompt-kind="mode"],
+  .prompt[data-prompt-kind="x"],
+  .prompt[data-prompt-kind="embiggen"] {
+    /* No wider than the board's right-hand column, so lane 5 stays uncovered. */
+    width: min(186px, 40vw);
+    max-height: 100%;
+    gap: 6px;
+    padding: 10px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) 10px;
+    border-bottom: 1px solid var(--line-bright);
+    border-right: 0;
+    border-radius: 14px 0 0 14px;
+  }
+
+  .prompt[data-prompt-kind="zone"] .prompt-zones {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prompt[data-prompt-kind="zone"] .prompt-zones button {
+    padding: 4px;
+    font-size: 11px;
+  }
+
+  .prompt[data-prompt-kind] .prompt-actions button {
+    padding-inline: 6px;
+  }
+
+  /* A card picker's sheet is the phone's whole width, and its two buttons sharing that width were
+     400px slabs under three small cards. Centred under the cards at a thumb's width, with the title
+     centred over them, the sheet reads as one group, as the desktop modal does. */
+  .prompt:has(> .prompt-cards) > .prompt-title,
+  .prompt:has(> .prompt-cards) > .prompt-count {
+    text-align: center;
+  }
+
+  .prompt:has(> .prompt-cards) > .prompt-actions {
+    justify-content: center;
+  }
+
+  .prompt:has(> .prompt-cards) > .prompt-actions button {
+    flex: 0 1 180px;
+  }
+}
+
+/* Touch sizing (task 7's 44 px floor): Confirm and Cancel on every picker, the mulligan's included. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .prompt .prompt-actions button {
+    min-height: 44px;
   }
 }

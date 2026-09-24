@@ -13,7 +13,16 @@ import type {
 } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
 import type { GameEvent, GameOverReason } from "@jackioh/shared";
-import { BACKROW_ZONES, DECK_SIZE, HERO_HEALTH, SETUP_TURN, UNIT_ZONES } from "./config";
+import {
+  BACKROW_ZONES,
+  DECK_SIZE,
+  HERO_HEALTH,
+  HUMAN_HANDICAP,
+  LIBRARY_CAP,
+  SETUP_TURN,
+  UNIT_ZONES,
+  type Handicap,
+} from "./config";
 import { registerCatalog, registeredCatalog } from "./catalog";
 import { createRng } from "./rng";
 
@@ -237,6 +246,11 @@ export type PlayerState = {
   turnsStarted: number;
   /** My Pawn: the AI policy plays out the rest of this turn (R44). */
   aiTurn: boolean;
+  /**
+   * R180: this seat's handicap. Absent means HUMAN_HANDICAP, and createGame never stores one equal
+   * to it, so a game without handicaps hashes exactly as it did before this field existed.
+   */
+  handicap?: Handicap;
 };
 
 export type GameState = {
@@ -345,12 +359,63 @@ export type CreateGameOptions = {
   decks: [string[], string[]];
   /** Registers the catalog for this process; omit when it is already registered. */
   catalog?: CardDefs;
+  /** R180: per-seat handicaps. An omitted seat, or one equal to HUMAN_HANDICAP, stores nothing. */
+  handicaps?: Partial<Record<PlayerId, Handicap>>;
 };
 
-/** §2.6 and §9.4 L2, L3, L6: the rules a deck must satisfy before a game exists. */
-export function validateDeck(deck: readonly string[], catalog: CardDefs, label: string): void {
-  if (deck.length !== DECK_SIZE) {
-    throw new Error(`${label}: deck must hold exactly ${DECK_SIZE} cards (§2.6 L2), got ${deck.length}`);
+/** The five fields of a handicap, in §9.9's order, so every reader walks the same list. */
+const HANDICAP_FIELDS = [
+  "deckSize",
+  "manaBonus",
+  "manaCap",
+  "extraOpeningCards",
+  "extraDrawsPerTurn",
+] as const satisfies readonly (keyof Handicap)[];
+
+/** R180: the handicap a seat plays with. A seat that stores none has this spec's resources. */
+export function handicapOf(side: PlayerState): Handicap {
+  return side.handicap ?? HUMAN_HANDICAP;
+}
+
+/** R180: whether a handicap is exactly a human's, which is what `createGame` declines to store. */
+function isHumanHandicap(handicap: Handicap): boolean {
+  return HANDICAP_FIELDS.every((field) => handicap[field] === HUMAN_HANDICAP[field]);
+}
+
+/**
+ * R180, R184: a handicap is five non-negative integers, and its deck size is one a library can
+ * hold (R80's LIBRARY_CAP). Throws naming the seat and the field, as `validateDeck` does.
+ */
+export function validateHandicap(handicap: Handicap, label: string): void {
+  for (const field of HANDICAP_FIELDS) {
+    const value: unknown = handicap[field];
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      throw new Error(`${label}: handicap ${field} must be a non-negative integer (R180), got ${String(value)}`);
+    }
+  }
+  if (handicap.deckSize < 1 || handicap.deckSize > LIBRARY_CAP) {
+    throw new Error(
+      `${label}: handicap deckSize must be between 1 and ${LIBRARY_CAP} (R184), got ${handicap.deckSize}`,
+    );
+  }
+}
+
+/**
+ * §2.6 and §9.4 L2, L3, L6: the rules a deck must satisfy before a game exists. `size` is the
+ * seat's handicap deck size (R184) and defaults to DECK_SIZE, whose message is §2.6's own; any
+ * other size is the handicap's, and the message says so.
+ */
+export function validateDeck(
+  deck: readonly string[],
+  catalog: CardDefs,
+  label: string,
+  size: number = DECK_SIZE,
+): void {
+  if (deck.length !== size) {
+    if (size === DECK_SIZE) {
+      throw new Error(`${label}: deck must hold exactly ${DECK_SIZE} cards (§2.6 L2), got ${deck.length}`);
+    }
+    throw new Error(`${label}: deck must hold exactly ${size} cards (its handicap, R184), got ${deck.length}`);
   }
   const seen = new Set<string>();
   for (const defId of deck) {
@@ -397,13 +462,25 @@ export function newInstance(
 /**
  * A game in phase `setup`: libraries hold the decks in list order, and `setup.ts` (M1-T5)
  * shuffles them with the match rng and deals the opening hands.
+ *
+ * R180: each seat's handicap is validated first, so a bad deck size is named as the handicap's
+ * fault; then each deck is checked against its seat's deck size (R184). A handicap is stored on the
+ * seat only when it differs from a human's, so a game with none — or with Easy's, which *is* a
+ * human's — carries no `handicap` key and hashes and replays exactly as before the field existed.
  */
 export function createGame(options: CreateGameOptions): GameState {
   if (options.catalog !== undefined) registerCatalog(options.catalog);
   const catalog = registeredCatalog();
 
-  validateDeck(options.decks[0], catalog, "p1");
-  validateDeck(options.decks[1], catalog, "p2");
+  const handicaps: Partial<Record<PlayerId, Handicap>> = options.handicaps ?? {};
+  for (const player of PLAYER_IDS) {
+    const handicap = handicaps[player];
+    if (handicap !== undefined) validateHandicap(handicap, player);
+  }
+
+  PLAYER_IDS.forEach((player, seat) => {
+    validateDeck(options.decks[seat] ?? [], catalog, player, handicaps[player]?.deckSize ?? DECK_SIZE);
+  });
 
   const state: GameState = {
     seed: options.seed,
@@ -444,6 +521,18 @@ export function createGame(options: CreateGameOptions): GameState {
     side.library.forEach((card, at) => {
       card.id = ids[at] ?? card.id;
     });
+
+    // R180: a copy of the five fields and nothing else, so no stray key reaches the state or its hash.
+    const handicap = handicaps[player];
+    if (handicap !== undefined && !isHumanHandicap(handicap)) {
+      side.handicap = {
+        deckSize: handicap.deckSize,
+        manaBonus: handicap.manaBonus,
+        manaCap: handicap.manaCap,
+        extraOpeningCards: handicap.extraOpeningCards,
+        extraDrawsPerTurn: handicap.extraDrawsPerTurn,
+      };
+    }
   });
 
   return state;

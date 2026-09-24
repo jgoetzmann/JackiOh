@@ -1,113 +1,790 @@
-/* The loadout editor (BUILD M6-T3). Tokens come from src/index.css; nothing here is a rule.
+/* The loadout editor (BUILD M6-T3), rebuilt as a browse grid beside a deck sidebar
+   (docs/polish/6-cards.md, Surface D). Tokens come from src/index.css, and the rarity colours reuse
+   the `--rarity-*` tokens that cards/cards.css defines (with fallbacks, so this file never depends
+   on load order). Nothing here is a rule.
+
    `[data-legal="false"]` is M5-T2's vocabulary, reused for a pool card the builder will not put in
-   the open deck because another deck already holds it. */
+   the open deck because a deck already holds it.
+
+   Two constraints from the design notes:
+   - Nothing on /decks is sticky or fixed in position, except the status toast, which has
+     `pointer-events: none`, and the sidebar of a phone on its side, which sticks in its own
+     column and so never covers a pool card. Cypress scrolls a click or drag target to the top of
+     the viewport and fails on anything covering it; `elementFromPoint`, which it asks, skips the
+     toast.
+   - A hidden deck panel stays `display: none`: an author `display` rule beats the UA's `[hidden]`,
+     so `.db-deck[hidden]` says it again.
+
+   Every rule for a <button> here is scoped `.deckbuilder.app-shell …`. index.css styles
+   `.app-shell button` (0,1,1) and its :hover / :active (0,3,1); a bare class loses to both, which
+   gave every chip, tile and card button index.css's 9px 16px padding and hover slab. Two classes
+   on the builder's own root outrank them without touching index.css. */
 
 .deckbuilder {
   gap: 12px;
 }
 
-.db-tabs {
-  display: flex;
-  gap: var(--gap);
-  flex-wrap: wrap;
+/* The screen's backdrop: two faint pools of light over the app's navy, warm from the upper left
+   and cool from the upper right, so the page has depth behind the cards rather than a flat fill. */
+.deckbuilder.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(70% 420px at 18% -80px, rgb(255 196 92 / 0.08), transparent 70%),
+    radial-gradient(55% 380px at 100% -60px, rgb(110 140 255 / 0.07), transparent 70%);
 }
 
-.db-tabs button[data-active="true"] {
+/* --- the title bar ------------------------------------------------------------------------------ */
+
+/* The way back and the title share one row, over a gold hairline. */
+.db-header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 2px 2px 10px;
+}
+
+.db-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(240 194 74 / 0.55) 18%, rgb(240 194 74 / 0.2) 70%, transparent);
+}
+
+.db-header .screen-nav {
+  margin: 0;
+}
+
+.deckbuilder.app-shell .db-header .link-button {
+  padding: 5px 12px 5px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.03);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.deckbuilder.app-shell .db-header .link-button:hover {
+  border-color: var(--text-dim);
+  background: rgb(255 255 255 / 0.07);
+  color: var(--text);
+}
+
+.deckbuilder.app-shell .db-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.db-title-brand {
+  color: #c9a24a;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* The dash stays in the text (the heading reads "JackiOh — decks" everywhere) as a small diamond. */
+.db-title-sep {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  overflow: hidden;
+  align-self: center;
+  rotate: 45deg;
+  background: linear-gradient(135deg, #fff1b8, #d9a531);
+  color: transparent;
+  font-size: 0;
+}
+
+.db-title-page {
+  background: linear-gradient(180deg, #fff6d2 0%, #f4cf6a 48%, #b9801f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 28px;
+  text-transform: capitalize;
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.7)) drop-shadow(0 0 10px rgb(240 190 70 / 0.18));
+}
+
+/* --- rarity colour, per element that carries data-rarity --------------------------------------- */
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Common"] {
+  --db-rarity: var(--rarity-common, #d4d8e1);
+}
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Rare"] {
+  --db-rarity: var(--rarity-rare, #3b8cff);
+}
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Epic"] {
+  --db-rarity: var(--rarity-epic, #a855f7);
+}
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Legendary"] {
+  --db-rarity: var(--rarity-legendary, #f59e0b);
+}
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Mythic"] {
+  --db-rarity: var(--rarity-mythic, #f472b6);
+}
+
+:where(.db-chip, .db-card, .db-tile, .db-tile-pip)[data-rarity="Token"] {
+  --db-rarity: var(--rarity-token, #9aa1b8);
+}
+
+/* --- the two columns ---------------------------------------------------------------------------- */
+
+.db-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  grid-template-areas: "browse sidebar";
+  gap: 14px;
+  align-items: start;
+}
+
+.db-browse {
+  grid-area: browse;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.db-sidebar {
+  grid-area: sidebar;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: calc(var(--radius) + 3px);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) 85%, #2a2f44), var(--bg-sunken));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+/* --- the filter bar ----------------------------------------------------------------------------- */
+
+.db-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  min-width: 0;
+}
+
+.db-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+/* The chip rows, as one block the phone layout can fold away. */
+.db-filter-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Only the one-column layout shows the fold toggle (see the widths section). */
+.deckbuilder.app-shell .db-filter-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.deckbuilder.app-shell .db-filter-toggle[data-active="true"] {
+  border-color: var(--you);
+  color: #fff;
+}
+
+.deckbuilder.app-shell .db-filter-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--you) 30%, var(--bg-raised));
+}
+
+/* The result count and Clear close the top row, pushed to its right end. */
+.db-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.db-search {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  padding: 7px 14px;
+}
+
+.db-search:focus {
+  outline: none;
+  border-color: var(--you);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--you) 35%, transparent);
+}
+
+.db-owned,
+.db-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.db-sort-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.db-owned input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--you);
+}
+
+.db-owned:has(input:disabled) {
+  opacity: 0.5;
+}
+
+.db-sort-select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+}
+
+.deckbuilder.app-shell .db-sort-dir {
+  min-width: 34px;
+  padding: 5px 8px;
+  font-weight: 700;
+}
+
+.db-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.db-group-label {
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.deckbuilder.app-shell .db-chip {
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border-color: var(--line-bright);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.deckbuilder.app-shell .db-chip:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.deckbuilder.app-shell .db-chip[aria-pressed="true"] {
+  color: #fff;
+  border-color: var(--you);
+  background: color-mix(in srgb, var(--you) 45%, var(--bg-raised));
+}
+
+/* Cost chips read as little mana crystals. */
+.deckbuilder.app-shell .db-chip--cost {
+  min-width: 30px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuilder.app-shell .db-chip--cost[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--mana) 55%, #fff);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--mana) 60%, #fff), var(--mana) 60%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+}
+
+.deckbuilder.app-shell .db-chip--rarity::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--db-rarity, var(--text-dim));
+  vertical-align: 0;
+}
+
+.deckbuilder.app-shell .db-chip--rarity[aria-pressed="true"] {
+  border-color: var(--db-rarity, var(--you));
+  background: color-mix(in srgb, var(--db-rarity, var(--you)) 30%, var(--bg-raised));
+}
+
+.db-result-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuilder.app-shell .db-filter-clear {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* --- the pool grid ------------------------------------------------------------------------------ */
+
+/* Cards about 200 px wide, four to a row on a desktop the way Hearthstone's collection pages
+   them, where rules text still reads at a glance; never narrower than half the pool, so a phone
+   keeps two columns. */
+.db-pool {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(196px, calc(50% - 5px)), 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(90% 260px at 50% 0, rgb(120 140 210 / 0.1), transparent 75%),
+    var(--bg-sunken);
+  box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.45);
+  min-width: 0;
+}
+
+.db-pool:empty {
+  display: none;
+}
+
+.db-item {
+  position: relative;
+  min-width: 0;
+}
+
+/* The card button is the card: no chrome of its own, the face is the whole look. */
+.deckbuilder.app-shell .db-card {
+  position: relative;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+.deckbuilder.app-shell .db-card-face {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  /* A card that lands in a deck dims over a moment rather than blinking grey. */
+  transition:
+    opacity 180ms ease,
+    filter 180ms ease;
+}
+
+.deckbuilder.app-shell .db-card:hover {
+  border-color: transparent;
+  background: transparent;
+  transform: translateY(-3px);
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 0.6));
+}
+
+.deckbuilder.app-shell .db-card:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 3px;
+}
+
+/* Held by a deck: the face dims, but the "Deck N" badge stays crisp, so the button itself is not
+   faded the way index.css fades every aria-disabled button. */
+.deckbuilder.app-shell .db-card[aria-disabled="true"] {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.deckbuilder.app-shell .db-card[data-legal="false"] .db-card-face {
+  opacity: 0.58;
+  filter: saturate(0.35) brightness(0.92);
+}
+
+.deckbuilder.app-shell .db-card[data-legal="false"]:hover {
+  transform: none;
+  filter: none;
+}
+
+.deckbuilder.app-shell .db-card[data-owned="false"] .db-card-face {
+  filter: grayscale(0.9) brightness(0.72);
+}
+
+.deckbuilder.app-shell .db-card[data-refused="true"] {
+  outline: 2px solid var(--opponent);
+  outline-offset: 3px;
+}
+
+.db-held {
+  position: absolute;
+  z-index: 1;
+  top: 7%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--you) 85%, #000);
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.65);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The "+" that adds the card to the open deck in one tap. It is drawn 28 px round in the card's
+   top-right corner, and its ::before widens the hit area to 44 px (task 7's touch-target floor)
+   without covering more of the face. */
+.deckbuilder.app-shell .db-add {
+  position: absolute;
+  z-index: 1;
+  top: 2.5%;
+  right: 3%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.45);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--legal) 70%, #fff 10%), color-mix(in srgb, var(--legal) 55%, #000));
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.65);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.6);
+}
+
+.deckbuilder.app-shell .db-add::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+}
+
+.deckbuilder.app-shell .db-add:hover,
+.deckbuilder.app-shell .db-add:focus-visible {
+  border-color: #fff;
+  background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--legal) 80%, #fff 20%), var(--legal));
+}
+
+.deckbuilder.app-shell .db-add:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
+}
+
+/* A held card's "+" says it is off, as the card itself does; a press still gets the refusal. */
+.deckbuilder.app-shell .db-add[aria-disabled="true"] {
+  opacity: 0.35;
+  filter: grayscale(0.8);
+}
+
+/* The status toast: what the last add or removal did, at the foot of the screen, gone after a
+   moment (Deckbuilder.tsx). Fixed so a phone deep in the pool still sees it, and blind to the
+   pointer so it can never cover a card. */
+.db-deck-status {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--legal) 60%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-raised) 92%, #000);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  translate: -50% 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+/* Beside the sidebar it centres on the browse column, so it never lies over the verdicts under
+   Save (the sidebar is 340 px, 280 px on a tablet, and 14 px of gap). */
+@media (min-width: 761px) {
+  .db-deck-status {
+    left: calc(50% - 177px);
+    max-width: calc(100vw - 420px);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .db-deck-status {
+    left: calc(50% - 147px);
+    max-width: calc(100vw - 340px);
+  }
+}
+
+.db-deck-status:empty {
+  opacity: 0;
+  padding: 0;
+  border: 0;
+}
+
+.db-empty {
+  margin: 0;
+  padding: 24px 12px;
+  border: 1px dashed var(--line-bright);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* --- the deck sidebar --------------------------------------------------------------------------- */
+
+/* One row of equal tabs, however many decks the loadout has: a third tab wrapping onto its own
+   line read as a different kind of control. */
+.db-tabs {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px;
+}
+
+.deckbuilder.app-shell .db-tabs button {
+  min-width: 0;
+  padding: 7px 4px;
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deckbuilder.app-shell .db-tabs button[data-active="true"] {
   border-color: var(--you);
   background: color-mix(in srgb, var(--you) 22%, var(--bg-raised));
 }
 
 .db-count {
-  margin-left: 8px;
+  margin-left: 5px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.db-panes {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-
-.db-pool,
 .db-deck {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 220px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
-}
-
-.db-pool {
-  flex: 1 1 260px;
-}
-
-.db-deck {
-  flex: 1 1 260px;
-  border-color: var(--line-bright);
-}
-
-.db-deck[data-active="true"] {
-  border-color: var(--you);
-}
-
-.db-card {
-  display: flex;
-  justify-content: space-between;
   gap: 8px;
-  text-align: left;
-  padding: 4px 8px;
+  min-height: 120px;
+  min-width: 0;
 }
 
-.db-card[data-legal="false"] {
-  opacity: 0.45;
-  border-color: var(--locked);
+.db-deck[hidden] {
+  display: none;
 }
 
-.db-card[data-refused="true"] {
-  border-color: var(--opponent);
+.db-deck-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 8px;
+  font-weight: 650;
 }
 
-.db-card-cost {
-  color: var(--mana);
+.db-deck-title {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3e3b3;
+}
+
+/* A thin bar under the title that fills toward a full deck, green once it is full. */
+.db-deck-meter {
+  flex: 1 0 100%;
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.6);
+}
+
+.db-deck-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mana) 70%, #000), color-mix(in srgb, var(--mana) 70%, #fff));
+  transition: width 200ms ease;
+}
+
+.db-deck-meter[data-full="true"] .db-deck-meter-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--legal) 70%, #000), color-mix(in srgb, var(--legal) 75%, #fff));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--legal) 60%, transparent);
+}
+
+.db-deck-size {
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.db-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.db-saved {
+.db-deck-size[data-full="true"] {
   color: var(--legal);
 }
 
-.db-errors {
-  list-style: none;
+/* The phone's list toggle (DeckSidebar). Only the one-column layout shows it; see the widths. */
+.deckbuilder.app-shell .db-deck-fold {
+  display: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.db-deck-hint {
   margin: 0;
-  padding: 0;
+  padding: 14px 8px;
+  border: 1px dashed var(--line-bright);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* The mana curve: one bar per bucket, 0–5, 6+, X. Each bar is a glassy column of mana over a
+   small crystal naming its cost, the way the deck list's tiles and the cards wear it. */
+.db-curve {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  align-items: end;
+  gap: 5px;
+  height: 88px;
+  padding: 6px 4px 0;
+  border: 1px solid rgb(255 255 255 / 0.05);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.25), rgb(0 0 0 / 0.1));
+}
+
+.db-bar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-width: 80ch;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 100%;
+  min-width: 0;
 }
 
-.db-errors li {
-  border: 1px solid var(--opponent);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  padding: 6px 10px;
+.db-bar-count {
+  min-height: 11px;
+  color: #cfe0ff;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
-.db-errors:empty {
-  display: none;
+.db-bar-track {
+  display: flex;
+  align-items: flex-end;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 22px;
+  border-radius: 4px 4px 1px 1px;
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.03);
+}
+
+.db-bar-fill {
+  display: block;
+  width: 100%;
+  border-radius: 4px 4px 1px 1px;
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 0.28), transparent 45%, rgb(0 0 0 / 0.2)),
+    linear-gradient(180deg, color-mix(in srgb, var(--mana) 45%, #fff), var(--mana) 55%, color-mix(in srgb, var(--mana) 60%, #000));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--mana) 55%, transparent);
+  transition: height 160ms ease;
+}
+
+.db-bar[data-count="0"] .db-bar-fill {
+  box-shadow: none;
+}
+
+.db-bar-label {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 20px;
+  clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
+  background:
+    radial-gradient(circle at 36% 26%, #d8ecff 0 9%, transparent 32%),
+    radial-gradient(circle at 45% 40%, #6aa7ff, var(--mana) 50%, #173a80 88%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 2px #000, 0 1px 1px #000;
 }
 
 .db-deck-list {
@@ -117,12 +794,547 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+/* The ends a long list has scrolled past fade out (DeckSidebar's useScrollEdges sets data-more),
+   so a list that scrolls says so instead of cutting its last tile off. */
+.db-deck-list[data-more="bottom"] {
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 30px), transparent);
+}
+
+.db-deck-list[data-more="top"] {
+  -webkit-mask-image: linear-gradient(0deg, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(0deg, #000 calc(100% - 30px), transparent);
+}
+
+.db-deck-list[data-more="both"] {
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 30px, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 30px, #000 calc(100% - 30px), transparent);
 }
 
 .db-deck-list > li {
   display: flex;
+  min-width: 0;
 }
 
-.db-deck-list .db-card {
+/* A Hearthstone-style list tile: the cost gem, the name over a strip of the card's art, and a
+   rarity pip. A click takes the card out, so hover hints at removal. */
+.deckbuilder.app-shell .db-tile {
+  position: relative;
   flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px 0 3px;
+  overflow: hidden;
+  border: 1px solid #2f3547;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1b1f2d, #10131c);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  font-weight: 400;
+  text-align: left;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* A card joining the deck slides into its place in the list with a brief glint of mana. */
+.deckbuilder.app-shell .db-tile {
+  animation: db-tile-in 260ms ease-out;
+}
+
+@keyframes db-tile-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 0 0 1px color-mix(in srgb, var(--mana) 80%, #fff),
+      0 0 14px color-mix(in srgb, var(--mana) 70%, transparent);
+  }
+  60% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.deckbuilder.app-shell .db-tile:hover {
+  border-color: color-mix(in srgb, var(--opponent) 70%, var(--line-bright));
+  background: linear-gradient(180deg, #252a3b, #151925);
+}
+
+/* Drawn inside the tile: the list scrolls, and an outline outside the tile was clipped by it to a
+   hairline top and bottom. */
+.deckbuilder.app-shell .db-tile:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: -2px;
+}
+
+/* The same mana crystal the card faces wear, small. */
+.db-tile-cost {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 28px;
+  clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
+  background:
+    radial-gradient(circle at 36% 26%, #d8ecff 0 9%, transparent 32%),
+    radial-gradient(circle at 45% 40%, #6aa7ff, var(--mana) 50%, #173a80 88%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1;
+  text-shadow:
+    0 0 2px #000,
+    0 1px 2px #000;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ceaseless Void's 100 steps down to stay inside the crystal. */
+.db-tile-cost[data-digits="3"] {
+  font-size: 10px;
+  letter-spacing: -0.04em;
+}
+
+.db-tile-name {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #f3f4f8;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow:
+    0 1px 2px #000,
+    0 0 6px rgb(0 0 0 / 0.85);
+}
+
+.db-tile-art {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  width: 60%;
+  opacity: 0.9;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 55%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 55%);
+}
+
+.db-tile-pip {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--db-rarity, var(--text-dim));
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.65),
+    0 0 6px var(--db-rarity, transparent);
+}
+
+.db-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.deckbuilder.app-shell .db-actions button {
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  border-color: var(--legal);
+  background: color-mix(in srgb, var(--legal) 22%, var(--bg-raised));
+  font-weight: 650;
+}
+
+.db-saved {
+  color: var(--legal);
+}
+
+/* --- verdicts ----------------------------------------------------------------------------------- */
+
+/* Under Save, in the sidebar (Deckbuilder.tsx): a refused save is explained where the eye already
+   is. Two tones. `hint` is the client's own verdict before the server has spoken about this draft:
+   progress, like the 0/20 beside each tab, so an amber dot and dim text rather than an alarm. `error`
+   is a refused save: the server's verdict, in red. */
+.db-errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.db-errors:focus {
+  outline: none;
+}
+
+.db-errors:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
+}
+
+.db-errors li {
+  position: relative;
+  padding: 6px 10px 6px 28px;
+  border: 1px solid color-mix(in srgb, var(--opponent) 55%, var(--line));
+  border-left: 3px solid var(--opponent);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--opponent) 14%, var(--bg-raised)), var(--bg-raised) 60%);
+}
+
+/* A small warning mark, drawn, so the verdict's own text stays exactly the validator's. */
+.db-errors li::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  width: 12px;
+  height: 11px;
+  translate: 0 -50%;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: var(--opponent);
+}
+
+.db-errors[data-tone="hint"] li {
+  padding: 3px 6px 3px 20px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+}
+
+.db-errors[data-tone="hint"] li::before {
+  left: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  clip-path: none;
+  background: #e0a93b;
+}
+
+.db-errors:empty {
+  display: none;
+}
+
+.db-save-error {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* --- the detail view's slots (CardDetail draws the dialog itself) ------------------------------ */
+
+.db-detail-meta {
+  color: var(--text-dim);
+}
+
+.db-detail-add {
+  padding: 8px 14px;
+  border-color: var(--you);
+  background: color-mix(in srgb, var(--you) 35%, var(--bg-raised));
+  font-weight: 650;
+}
+
+/* --- widths ------------------------------------------------------------------------------------- */
+
+/* A tablet, or a phone on its side: the sidebar gives up 60 px so the pool keeps two roomy
+   columns (three on a short screen, below) and the chip rows stop wrapping one chip at a time. A
+   280 px tile still fits "Unlicensed Experimentation" beside its gem and pip. */
+@media (min-width: 761px) and (max-width: 1024px) {
+  .db-layout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  /* "Deck 1 18/20" no longer fits a third of 280 px on one line, so the count sits under the
+     name rather than being cut to "Deck 1 18…". */
+  .deckbuilder.app-shell .db-tabs button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 5px 4px;
+    line-height: 1.15;
+  }
+
+  .db-tabs .db-count {
+    margin-left: 0;
+    font-size: 11px;
+  }
+}
+
+/* A phone on its side is only about 390 px tall, where a 200 px card is 280 px of it: the pool
+   takes three narrower cards to a row, so a whole row shows at once. */
+@media (min-width: 761px) and (max-height: 500px) {
+  .db-pool {
+    grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* The page scrolls here, so the sidebar sticks in its column while the pool scrolls past, and
+     scrolls inside itself: the deck stays in sight instead of leaving a blank strip. It shares
+     no column with a pool card, so it never covers one. */
+  .db-sidebar {
+    position: sticky;
+    top: 8px;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Nothing in it shrinks to fit (the deck list would be squeezed to one tile): the sidebar
+     scrolls instead, and the list keeps its own scroller. */
+  .db-sidebar > *,
+  .db-deck > * {
+    flex-shrink: 0;
+  }
+}
+
+/* Desktop: the builder is exactly one screen tall, and the pool scrolls inside its column from its
+   own top to the screen's foot, so its bottom edge and scrollbar are on screen and the deck list
+   beside it stays in view, without anything being sticky. (A max-height from the viewport ran the
+   pool 90 px past a 720 px screen's foot, under the filters' height.) The deck list fills what
+   the sidebar has left. A screen under 501 px tall keeps one page scroll instead: an inner
+   scroller there would show a row of cards at most. */
+@media (min-width: 761px) and (min-height: 501px) {
+  .deckbuilder.app-shell {
+    box-sizing: border-box;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .db-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .db-browse {
+    min-height: 0;
+  }
+
+  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them: the card
+     width follows the screen's height (the page above the pool, with the chip rows folded, is
+     about 220 px), within a range where rules text still reads. The columns keep that width and
+     centre, rather than stretching every card back to one tall row. */
+  .db-pool {
+    --db-card-w: clamp(150px, calc((100dvh - 220px) * 5 / 14), 220px);
+    flex: 1 1 auto;
+    min-height: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    grid-template-columns: repeat(auto-fill, min(var(--db-card-w), calc(50% - 5px)));
+    justify-content: center;
+  }
+
+  .db-sidebar {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .db-deck:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .db-deck-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+}
+
+/* Phone and narrow tablet: one column, the sidebar first. The pool drops its frame so two
+   columns fit in a 390 px viewport even with a classic scrollbar. */
+@media (max-width: 760px) {
+  .db-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "sidebar"
+      "browse";
+  }
+
+  .db-pool {
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .db-filters {
+    padding: 8px 10px;
+  }
+
+  /* An empty deck's curve is eight empty columns; on a phone they would push the pool a further
+     100px down, so the hint alone stands in for them until the first card lands. */
+  .db-deck:has(> .db-deck-hint) .db-curve {
+    display: none;
+  }
+
+  /* The desktop's minimum drop-target height, which here only left a dead gap under the hint. */
+  .db-deck {
+    min-height: 0;
+  }
+
+
+  .db-filter-row {
+    gap: 6px 10px;
+  }
+
+  /* The deck sits above the pool here, so a full deck's list scrolls in about eight tiles rather
+     than twelve, and the pool starts within a thumb's reach of the top. */
+  .db-deck-list {
+    max-height: 36vh;
+  }
+
+  /* …and the curve and the tiles fold behind "Show list" (DeckSidebar), closed at first: the tabs,
+     the count, the meter and Save stay, and the pool's first row is on the first screen. */
+  .deckbuilder.app-shell .db-deck-fold {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .db-deck[data-list-open="false"] .db-curve,
+  .db-deck[data-list-open="false"] .db-deck-list {
+    display: none;
+  }
+
+  .db-deck-head {
+    align-items: center;
+  }
+}
+
+/* On a phone the filter block keeps to three rows (search and Owned; sort, Filters and Clear; the
+   cost chips), so a first screen still reaches the pool: the Sort and Cost labels go (the select
+   and the crystals say what they are), the result count is kept for a screen reader only, and the
+   eight cost chips share one row. */
+@media (max-width: 760px) {
+  .db-sort .db-group-label,
+  .db-filter-row--cost .db-group-label {
+    display: none;
+  }
+
+  .db-result-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .db-filter-row--cost .db-chip-group {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+  }
+
+  .deckbuilder.app-shell .db-filter-row--cost .db-chip {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 0;
+  }
+
+  /* Eight crystals share one row, so at 390 px each is drawn 40 px wide. Its hit area reaches half
+     the group's 4 px gap on each side, as the card's "+" widens its own, which makes it the 44 px a
+     finger needs without pushing X onto a second row (integration QA). */
+  .deckbuilder.app-shell .db-filter-row--cost .db-chip::before {
+    content: "";
+    position: absolute;
+    inset: 0 -2px;
+  }
+}
+
+/* The type, tag and rarity rows fold behind the "Filters" toggle wherever they would crowd the
+   first screen: a phone, a tablet (a 450 px browse column wraps them into five rows), a phone on
+   its side (two columns but only about 390 px tall), and a desktop under about 860 px tall, where
+   three chip rows left one row of cards. The cost chips never fold (FilterBar). */
+@media (max-width: 1024px), (max-height: 860px) {
+  .deckbuilder.app-shell .db-filter-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .db-filters[data-expanded="false"] .db-filter-chips {
+    display: none;
+  }
+}
+
+/* Touch sizing: every control a finger hits is at least 44 px, the floor task 7 set for the board
+   (board.css B29). The "+" on a card already widens its hit area with ::before. */
+@media (max-width: 760px), (max-height: 500px), (pointer: coarse) {
+  .deckbuilder.app-shell .db-chip,
+  .deckbuilder.app-shell .db-filter-toggle,
+  .deckbuilder.app-shell .db-filter-clear,
+  .deckbuilder.app-shell .db-sort-dir,
+  .deckbuilder.app-shell .db-deck-fold,
+  .deckbuilder.app-shell .db-actions button,
+  .deckbuilder.app-shell .db-header .link-button,
+  .db-sort-select {
+    min-height: 44px;
+  }
+
+  .deckbuilder.app-shell .db-chip,
+  .deckbuilder.app-shell .db-sort-dir {
+    min-width: 44px;
+  }
+
+  .deckbuilder.app-shell .db-tabs button {
+    min-height: 44px;
+  }
+
+  .deckbuilder.app-shell .db-tile {
+    height: 44px;
+  }
+
+  /* The label is the checkbox's hit area, so the whole "Owned only" row answers a tap. */
+  .db-owned {
+    min-height: 44px;
+    padding: 0 4px;
+  }
+
+  .db-owned input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .db-search {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deckbuilder.app-shell .db-tile {
+    animation: none;
+  }
+
+  .deckbuilder.app-shell .db-card,
+  .deckbuilder.app-shell .db-card-face,
+  .db-bar-fill,
+  .db-deck-meter-fill {
+    transition: none;
+  }
+
+  .deckbuilder.app-shell .db-card:hover {
+    transform: none;
+  }
 }

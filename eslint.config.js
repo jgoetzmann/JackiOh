@@ -4,8 +4,8 @@ import tseslint from "typescript-eslint";
 
 // The engine and the card scripts must be pure (SPEC §9.3, CLAUDE.md rule 4):
 // every random draw goes through `rng` in state and time only arrives as action data.
-const PURE_PACKAGES = ["packages/engine/**/*.ts", "packages/cards/**/*.ts"];
-const PURE_SOURCES = ["packages/engine/src/**/*.ts", "packages/cards/src/**/*.ts"];
+const PURE_PACKAGES = ["packages/engine/**/*.ts", "packages/cards/**/*.ts", "packages/ai/**/*.ts"];
+const PURE_SOURCES = ["packages/engine/src/**/*.ts", "packages/cards/src/**/*.ts", "packages/ai/src/**/*.ts"];
 
 const RNG_MESSAGE = "Use the seeded rng in state (engine/src/rng.ts), never Math.random.";
 const CLOCK_MESSAGE = "The engine never reads the clock; timestamps arrive as action data.";

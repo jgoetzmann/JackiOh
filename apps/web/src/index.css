@@ -22,6 +22,14 @@
   --mana: #3d7bd4;
   --locked: #6b7280;
 
+  /* The one primary button: End turn's Hearthstone amber. The prompt's Confirm and the result
+     panel's first action wear it too, so a screen never shows two kinds of "go". */
+  --primary-edge: #fde68a;
+  --primary-face: linear-gradient(180deg, #fcd34d, #d4a017 55%, #a16207);
+  --primary-face-hover: linear-gradient(180deg, #fde68a, #e3b12a 55%, #b7791f);
+  --primary-ink: #2b1800;
+  --primary-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 2px 0 #713f12, 0 4px 12px rgb(0 0 0 / 45%);
+
   --card-w: 82px;
   --card-h: 112px;
   --gap: 6px;
@@ -35,6 +43,25 @@
   :root {
     --anim-scale: 0;
   }
+}
+
+/* The settings panel's "Reduce motion" (settings/store.ts puts the attribute on <html>) stops what
+   the media query stops, on every screen: the landing, sign-in, deck builder and card foil too,
+   whose own blocks name only the media query, and before any settings or game CSS has loaded.
+   The rule is animations.css's media block, keyed on the attribute (R200). */
+:root[data-reduce-motion="true"] {
+  --anim-scale: 0;
+}
+
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
 }
 
 * {
@@ -172,11 +199,6 @@ button:disabled {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-.brand .tagline {
-  color: var(--text-dim);
-  font-size: 13px;
 }
 
 /* --- surfaces ------------------------------------------------------------------------------ */
@@ -319,6 +341,16 @@ button:disabled {
   background: none;
 }
 
+/* A way back is a finger's target on a touch screen (task 7's 44 px floor), and so is the hotseat's
+   Hand over, which measured 38 px tall on a touch phone (integration QA). */
+@media (pointer: coarse), (max-width: 600px) {
+  .app-shell .screen-nav .link-button,
+  .hotseat-bar .link-button,
+  .hotseat-bar > button {
+    min-height: 44px;
+  }
+}
+
 :where(button, input, a):focus-visible {
   outline: 2px solid var(--radiant);
   outline-offset: 2px;
@@ -383,39 +415,10 @@ button:disabled {
   padding: 3vh 0 6px;
 }
 
-.hero .lede {
-  font-size: 17px;
-  color: var(--text-dim);
-  max-width: 54ch;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px;
-}
-
-.card-grid .panel {
-  gap: 8px;
-}
-
-.card-grid h2 {
-  font-size: 16px;
-}
-
-.card-grid p {
-  font-size: 13px;
-  flex: 1;
-}
-
 /* --- screen nav ---------------------------------------------------------------------------- */
 
 .screen-nav {
   margin-bottom: -4px;
-}
-
-.screen-nav--end {
-  justify-content: flex-end;
 }
 
 /* --- an input with a control inside it (the password reveal) --------------------------------- */
@@ -508,6 +511,26 @@ button:disabled {
 
 .match-bar code {
   color: var(--text);
+}
+
+/* `/dev/hotseat`'s strip: Back, the seed and seat line, and Hand over, on one row. The line gives
+   way with an ellipsis rather than wrapping a lone "p2" beside the button on a phone. */
+.hotseat-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hotseat-bar > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hotseat-bar > button {
+  flex: none;
 }
 
 @media (max-width: 560px) {

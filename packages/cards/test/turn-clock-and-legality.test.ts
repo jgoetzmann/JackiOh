@@ -265,17 +265,12 @@ describe("§10.6: a prompt's options can each be picked through the view", () =>
 });
 
 describe("§9.1: legalActions and a face-down trap's instance id", () => {
-  // KNOWN GAP, kept as an expected failure (R177's last sentences): an instance id is the only
-  // handle the action protocol has for a face-down target (the play action's targets, a prompt
-  // option, `activatePower`), so `legalActions` names one whenever a card may target a face-down
-  // trap. The id itself says nothing — but a card keeps its id across zones, so a player who saw
-  // the id while the card was public (here, in p2's graveyard) can read the face-down card off it.
-  // Closing that needs a handle the viewer cannot link — a per-viewer alias for a face-down zone,
-  // or a fresh id whenever a card enters a hidden zone — which changes the action protocol the
-  // server, the client and the e2e specs share: a design change of its own, not an edge-case fix.
-  // R97 and R177 keep every other channel (events, prompt labels and definitions) closed. The
-  // change that closes it makes this test pass, which `it.fails` reports, so it cannot go unnoticed.
-  it.fails("R177 known limit: legalActions never names a face-down trap by an id its viewer saw while the card was public", () => {
+  // R177's last channel, closed by R227: an instance id is the only handle the action protocol has
+  // for a face-down target (a play's targets, a prompt option, `activatePower`), so `legalActions`
+  // names one whenever a card may target a face-down trap. A card set face-down takes a fresh id, so
+  // a player who saw the id while the card was public (here, in p2's graveyard) finds it nowhere
+  // once the card is set again: not in the actions, not in the view, not in the events.
+  it("R227 legalActions never names a face-down trap by an id its viewer saw while the card was public (R177)", () => {
     const g = scenario({
       active: "p2",
       p1: { hand: [MAGIC_JAMMED, RENO], mana: 4 },
@@ -286,14 +281,21 @@ describe("§9.1: legalActions and a face-down trap's instance id", () => {
 
     g.play(REMINISCE);
     g.answer(SHEEPISH);
-    g.play(must(g.state.players.p2.hand.find((card) => card.defId === SHEEPISH), "Sheepish back in hand"));
+    const back = must(g.state.players.p2.hand.find((card) => card.defId === SHEEPISH), "Sheepish back in hand");
+    expect(back.id).toBe(trapId);
+    g.play(back);
     g.endTurn();
     expect(g.state.active).toBe("p1");
-    expect(g.backrow("p2", 1)?.id).toBe(trapId);
+    const set = must(g.backrow("p2", 1), "Sheepish set in p2's backrow lane 1");
+    expect(set.defId).toBe(SHEEPISH);
+    expect(set.id).not.toBe(trapId);
     expect(JSON.stringify(g.view("p1"))).not.toContain(`"${trapId}"`);
+    expect(JSON.stringify(g.view("p1"))).not.toContain(`"${set.id}"`);
 
-    const naming = legalActions(g.state, "p1").filter((a) => JSON.stringify(a).includes(`"${trapId}"`));
-    expect(naming).toEqual([]);
+    // Magic Jammed can target the face-down trap: the action names it by the fresh id only.
+    const actions = legalActions(g.state, "p1");
+    expect(actions.filter((a) => JSON.stringify(a).includes(`"${trapId}"`))).toEqual([]);
+    expect(actions.some((a) => JSON.stringify(a).includes(`"${set.id}"`))).toBe(true);
   });
 });
 

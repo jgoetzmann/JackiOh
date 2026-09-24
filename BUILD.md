@@ -111,6 +111,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `DRAW_OFFERS_PER_TURN` | 1 | §2.5, R36 |
 | `DRAW_OFFER_BLOCK_TURNS` | 3 | §2.5, R36 |
 | `CALL_TO_CHAOS_CHAIN_CAP` | 20 | R28 |
+| `TIMEOUT_ANSWER_CAP` | 500 | §2.5, R79 |
 | `CAST_ON_DRAW_CHAIN_CAP` | 20 | R58 |
 | `LIBRARY_CAP` | 60 | R80 |
 | `ANTI_ONESHOT_CAP` | `{ base: 5, radiant: 3 }` | §8 #73 |
@@ -119,6 +120,9 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `FUSE_COST_CAP` | 4 | §6.3 |
 | `MULLIGAN_ORDER` | "draw-then-shuffle" | R9 |
 | `AI_END_TURN_PROBABILITY` | 0.1 | §10.7 |
+| `DRAWS_PER_TURN` | 1 | §2.4, R183 |
+| `HUMAN_HANDICAP` | `{ deckSize: DECK_SIZE, manaBonus: 0, manaCap: MAX_MANA, extraOpeningCards: 0, extraDrawsPerTurn: 0 }` | §9.9, R180 |
+| `AI_DIFFICULTY` | easy = `HUMAN_HANDICAP`; medium `{ 25, +1, cap 5, +1 opening, +0 draws }`; hard `{ 30, +1, cap 7, +1 opening, +1 draw }` (fields in `Handicap` order) | §9.9, R180–R184 |
 
 Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
 
@@ -427,49 +431,51 @@ Acceptance: a Cypress smoke (`e2e/01`) plays to completion; the same seed and ac
 **M5-T4 Animations.** Files: `web/src/game/animations.ts`.
 A table `eventType → { animation, durationMs, testid }` with exactly one row per event type in SPEC §10.3. Animations are CSS/Framer transitions triggered by the event stream; the state view updates after the animation for that event completes; a `data-animating="<eventType>"` attribute is set on the affected element for the duration so tests can await it. `prefers-reduced-motion` collapses every duration to 0.
 
-| Event | Animation | Duration | Acceptance |
-| --- | --- | --- | --- |
-| `cardPlayed` | Card lifts from hand and lands in zone (unit) or flashes centre then to GY (spell) | 400 ms | element gains `data-animating` then appears in the target zone |
-| `cardResolved` | Brief settle flash on the resolved card, or on its graveyard pile when it has already left | 150 ms | element gains `data-animating="cardResolved"`; fires once per play, after the Cry and any Echo repeats (§10.5 step 7, R17) |
-| `summoned` | Card scales in at zone | 250 ms | same; a permanent played from hand emits `cardPlayed` then `summoned` for the same card, and the client plays the pair as one motion |
-| `attackDeclared` | Attacker lunges toward target and back | 350 ms | attacker translates ≥ 20 px toward target |
-| `damage` | Red number pops on target, target shakes; hero portrait shakes | 300 ms | `.damage-pop` text equals amount |
-| `healed` | Green number pops | 300 ms | `.heal-pop` text equals amount |
-| `destroyed` | Card dissolves, then slides to GY count | 350 ms | GY counter increments after animation |
-| `exiled` | Card fades to black and shrinks | 350 ms | exile counter increments |
-| `bounced` | Card flies to owner's hand | 350 ms | hand count increments |
-| `drawn` | Card slides from library to hand (own) or back to hand count (opponent) | 250 ms | hand length or count increments |
-| `radiantSet` | Gold glow pulse, stats swap | 400 ms | card has class `radiant` afterwards |
-| `positionSwitched` | Rotate 90° / back | 250 ms | transform contains rotate(90deg) for DEF |
-| `controlChanged` | Card slides across the centre line to the new zone | 450 ms | card testid now under the other side's zone |
-| `trapFired` | Backrow card flips face-up, holds, then dissolves (or stays for Field Trap) | 700 ms | trap name visible during hold |
-| `promptOpened` | Modal fades in | 150 ms | modal has `data-prompt-kind` |
-| `manaChanged` | Crystals fill/empty | 150 ms | crystal count equals mana |
-| `turnStarted` | Banner "Your turn" / "Opponent's turn" | 600 ms | banner text |
-| `divineShieldLost` | Shield shatter | 250 ms | shield icon removed |
-| `fused` | Two cards merge into one | 500 ms | one card remains with summed stats |
-| `rotated` | All cards slide one lane | 500 ms | every card's zone testid changed by one step |
-| `gameOver` | Result overlay | — | overlay text Win / Loss / Draw |
-| `healthLost` | Purple number pops on the hero, no shake | 300 ms | `.loss-pop` text equals amount |
-| `enteredGraveyard` | GY pile pulses | 150 ms | GY counter equals graveyard length |
-| `burned` | Card flips face-up above the hand and burns away | 400 ms | card name visible during the burn, then GY counter increments |
-| `discarded` | Card drops from hand to GY | 300 ms | hand length decrements |
-| `addedToHand` | Card appears at the hand edge (own) or the hand count bumps (opponent) | 250 ms | hand length or count increments |
-| `shuffledIn` | Card flies into the library, library pulses | 300 ms | library count increments |
-| `buffed` | Stat numbers flash and tick to their new values | 250 ms | shown stats equal the view |
-| `keywordGranted` | Keyword icon pops in | 200 ms | icon present |
-| `counterChanged` | Counter badge ticks | 200 ms | badge text equals the counter |
-| `transformed` | Card spins and shows its new face | 400 ms | card name equals the new definition |
-| `swapped` | Swapped health, boards or library counts cross the centre line together | 500 ms | the swapped values are exchanged |
-| `locked` | Chain icon closes over the zone | 250 ms | zone has `data-locked="true"` |
-| `attackCancelled` | Attacker snaps back with a "Cancelled" tag | 350 ms | attacker back in its zone, tag visible |
-| `turnEnded` | End-turn button greys out | 150 ms | `end-turn` disabled |
-| `turnAutoEnded` | Banner "No moves left — turn ended" | 600 ms | banner text |
-| `promptAnswered` | Modal fades out | 150 ms | no element with `data-prompt-kind` |
-| `drawOffered` | Offer toast on the opponent's seat | 150 ms | toast visible to the opponent's seat only |
-| `drawAnswered` | Toast resolves to Accepted or Declined | 300 ms | toast text |
-| `costChanged` | Cost gem flashes and ticks to the new value | 200 ms | cost gem text equals the view's cost |
-| `modifierChanged` | Player modifier badge appears or fades by the hero | 200 ms | badge list equals the view's modifiers |
+| Event | Animation | Duration | Acceptance | FX |
+| --- | --- | --- | --- | --- |
+| `cardPlayed` | Card lifts from hand and lands in zone (unit) or flashes centre then to GY (spell) | 400 ms | element gains `data-animating` then appears in the target zone | `cast`: arcane burst and ring at the played card |
+| `cardResolved` | Brief settle flash on the resolved card, or on its graveyard pile when it has already left | 150 ms | element gains `data-animating="cardResolved"`; fires once per play, after the Cry and any Echo repeats (§10.5 step 7, R17) | — |
+| `summoned` | Card scales in at zone | 250 ms | same; a permanent played from hand emits `cardPlayed` then `summoned` for the same card, and the client plays the pair as one motion | `summon`: dust slam and ring, shake by stats; Legendary and Mythic rays |
+| `attackDeclared` | Attacker lunges toward target and back | 350 ms | attacker translates ≥ 20 px toward target | `lunge`: dust kick under the attacker |
+| `damage` | Red number pops on target, target shakes; hero portrait shakes | 300 ms | `.damage-pop` text equals amount | `impact`: projectile if non-combat, spark burst, red splat, shake by amount |
+| `healed` | Green number pops | 300 ms | `.heal-pop` text equals amount | `heal`: holy rays, sparkles, green splat |
+| `destroyed` | Card dissolves, then slides to GY count | 350 ms | GY counter increments after animation | `death`: crack, embers, smoke |
+| `exiled` | Card fades to black and shrinks | 350 ms | exile counter increments | `void`: void ring and wisps |
+| `bounced` | Card flies to owner's hand | 350 ms | hand count increments | `bounce`: smoke and a card-back ghost to the hand |
+| `drawn` | Card slides from library to hand (own) or back to hand count (opponent) | 250 ms | hand length or count increments | `draw`: card-back ghost from library to hand |
+| `radiantSet` | Gold glow pulse, stats swap | 400 ms | card has class `radiant` afterwards | `radiant`: gold sheen, gold burst, rays on a field card |
+| `positionSwitched` | Rotate 90° / back | 250 ms | transform contains rotate(90deg) for DEF | — |
+| `controlChanged` | Card slides across the centre line to the new zone | 450 ms | card testid now under the other side's zone | `mindControl`: arcane motes stream to the new zone |
+| `trapFired` | Backrow card flips face-up, holds, then dissolves (or stays for Field Trap) | 700 ms | trap name visible during hold | `trap`: arcane ring and burst, small shake |
+| `promptOpened` | Modal fades in | 150 ms | modal has `data-prompt-kind` | — |
+| `manaChanged` | Crystals fill/empty | 150 ms | crystal count equals mana | `mana`: a sparkle per crystal that fills |
+| `turnStarted` | Banner "Your turn" / "Opponent's turn" | 600 ms | banner text | `banner`: "Your turn" with rays, or "Opponent's turn" |
+| `divineShieldLost` | Shield shatter | 250 ms | shield icon removed | `shieldBreak`: gold ring and shards |
+| `fused` | Two cards merge into one | 500 ms | one card remains with summed stats | `fuse`: smoke and arcane motes into the survivor |
+| `rotated` | All cards slide one lane | 500 ms | every card's zone testid changed by one step | — |
+| `gameOver` | Result overlay | — | overlay text Win / Loss / Draw | — (the result sequence runs off the view) |
+| `healthLost` | Purple number pops on the hero, no shake | 300 ms | `.loss-pop` text equals amount | `drain`: void wisps, violet splat |
+| `enteredGraveyard` | GY pile pulses | 150 ms | GY counter equals graveyard length | — |
+| `burned` | Card flips face-up above the hand and burns away | 400 ms | card name visible during the burn, then GY counter increments | `burn`: fire and embers over the hand |
+| `discarded` | Card drops from hand to GY | 300 ms | hand length decrements | `discard`: card-back ghost to the graveyard, embers |
+| `addedToHand` | Card appears at the hand edge (own) or the hand count bumps (opponent) | 250 ms | hand length or count increments | `handGlint`: sparkles over the hand |
+| `shuffledIn` | Card flies into the library, library pulses | 300 ms | library count increments | `shuffle`: card-back ghost into the library |
+| `buffed` | Stat numbers flash and tick to their new values | 250 ms | shown stats equal the view | `buff`: green arrows up or red arrows down |
+| `keywordGranted` | Keyword icon pops in | 200 ms | icon present | `keyword`: per keyword (shield ring, poison cloud, Taunt ring, motes) |
+| `counterChanged` | Counter badge ticks | 200 ms | badge text equals the counter | `counter`: poison cloud (plague) or sparkle (grade) |
+| `transformed` | Card spins and shows its new face | 400 ms | card name equals the new definition | `smoke`: smoke puff and motes |
+| `swapped` | Swapped health, boards or library counts cross the centre line together | 500 ms | the swapped values are exchanged | — |
+| `locked` | Chain icon closes over the zone | 250 ms | zone has `data-locked="true"` | `lock`: dust ring over the zone |
+| `attackCancelled` | Attacker snaps back with a "Cancelled" tag | 350 ms | attacker back in its zone, tag visible | `fizzle`: smoke puff |
+| `turnEnded` | End-turn button greys out | 150 ms | `end-turn` disabled | — |
+| `turnAutoEnded` | Banner "No moves left — turn ended" | 600 ms | banner text | `banner`: muted "No moves left" |
+| `promptAnswered` | Modal fades out | 150 ms | no element with `data-prompt-kind` | — |
+| `drawOffered` | Offer toast on the opponent's seat | 150 ms | toast visible to the opponent's seat only | — |
+| `drawAnswered` | Toast resolves to Accepted or Declined | 300 ms | toast text | — |
+| `costChanged` | Cost gem flashes and ticks to the new value | 200 ms | cost gem text equals the view's cost | `glint`: arcane glint |
+| `modifierChanged` | Player modifier badge appears or fades by the hero | 200 ms | badge list equals the view's modifiers | `glint`: arcane glint when added |
+
+The FX column names the effect recipe that decorates each row (`ANIMATIONS[type].fx`), specified with its cues in `docs/polish/1-animations.md`. Effects run on the `apps/web/src/fx` layer, start with their row's entry and pace nothing: the durations and acceptance cells above are unchanged, no effect carries a `data-animating` of its own, whatever trails an entry is gone within `FX_MAX_TAIL_MS` of its end, and the stage effects (a stand-in for a moved card, a hidden card, an aimed lunge) last no longer than the view swap (R200). The viewer's effects speed scales the durations (R201), and effects read only the redacted stream (R202).
 
 Acceptance: `animations.test.ts` asserts every `GameEvent["type"]` has a row (fail on a missing one); with `prefers-reduced-motion` every duration is 0 and a full game's event queue drains synchronously.
 
@@ -527,8 +533,12 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `10-invite-gate.cy.ts` | Pending account | code screen shown; bad code error identical for three failure kinds; good code activates |
 | `11-radiant.cy.ts` | Glowy Jelly Bean on a hand card, Knockoff Temu on a field unit | glow animation; stats swap on the field card keeping damage |
 | `12-rotation-and-swaps.cy.ts` | Silly Silas, Pocket Chaos board swap | every card testid moves one lane; board swap flips sides |
+| `13-practice-vs-ai.cy.ts` | Anonymous `/practice` against the AI (§9.9), no server; Easy and Hard, seated p2, `?pace=fast` | setup shows with no account; the think indicator shows while the AI mulligans and plays; human turns end with no action error; the browser hash equals the replay of `(seed, decks, handicaps, log)` (R187); concede shows Loss; Hard's AI shows max mana 2 on its first turn (R181); no request reaches `/api` or a WebSocket |
+| `14-landing-and-sign-in.cy.ts` | The landing page and the way in (§9.4, R191–R193), against a built client with every API call stubbed: no server and no auth provider | the landing's CTAs link to `/practice`, `/play` and `/decks`; a code typed or pasted in any form fills the four groups, and an excluded character is refused and named; a rate-limited redemption shows its wait with submit off, never R145's error; an emailed link is scrubbed and signs nothing in; the reset screen refuses a short or mismatched password; every gate panel, the 404 included, offers a way out |
+| `15-audio.cy.ts` | Hotseat with the two `01-aggro` decks and sound on (§10.11, R204); a unit played from hand | no audio context exists before the first gesture, and one click creates exactly one that is not locked; the unit played from hand logs its play voice line; the mute toggle survives a reload and the next play logs nothing; a shipped voice file answers 200 as audio |
+| `16-drag-to-play.cy.ts` | Spec 04's seeded hotseat game (§10.8, R195), played with pointer drags; drag to play on by default | a glowing hand card dragged onto a glowing zone is played; a unit dragged onto the enemy hero attacks it; a drag released outside the board cancels and the card stays in hand; with drag to play turned off in the settings panel, still off after a reload, click-click plays a card |
 
-**M8 gate.** All twelve specs green in CI on Chrome and Electron.
+**M8 gate.** All sixteen specs green in CI on Chrome and Electron.
 
 ## 4. Test strategy summary
 
@@ -538,7 +548,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 - Rulings: `rulings.test.ts` has one named test per §11 row; the review greps for `R<n>` coverage.
 - Catalog: `catalog.test.ts` diffs `catalog.json` against a fixture transcribed from SPEC §8.
 - Coverage floor: 90% lines in `packages/engine` and `packages/cards`; 100% of card script files have a test file.
-- E2E: the twelve specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
+- E2E: the sixteen specs above, run headless in CI, plus a nightly run of `01` over 20 seeds.
 
 ## 5. Definition of done
 

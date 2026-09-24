@@ -1,0 +1,536 @@
+/* The code field (R191) and the invite screen's own layout.
+ *
+ * Everything is scoped under `.code-field` or `.invite-screen`; nothing is added to `:root` or
+ * `index.css`, whose tokens (--bg-sunken, --line-bright, --you, --legal, --opponent, --radiant,
+ * --text, --text-dim) are read, never redefined.
+ *
+ * THE INPUT STAYS VISIBLE. It sits on top of the segments with transparent text and a transparent
+ * caret, and the segments draw both. It is never `opacity: 0`, `visibility: hidden` or zero-sized:
+ * Cypress types into it and asserts `be.visible` on it (spec 10), and a hidden input would also
+ * lose the browser's own paste, autofill and screen-reader handling that one real input keeps. */
+
+.code-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.code-field__box {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.code-field__segments {
+  display: grid;
+  grid-template-columns: repeat(var(--code-field-groups, 4), minmax(0, 1fr));
+  gap: 10px;
+  pointer-events: none;
+}
+
+.code-field__segment {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 4px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: clamp(15px, 4.2vw, 19px);
+  font-weight: 600;
+  line-height: 1;
+  transition: border-color 120ms, box-shadow 120ms, background-color 120ms;
+}
+
+/* The separator between groups is drawn, not typed. */
+.code-field__segment:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  width: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line-bright);
+}
+
+.code-field__segment[data-state="partial"] {
+  border-color: color-mix(in srgb, var(--you) 55%, var(--line-bright));
+}
+
+.code-field__segment[data-state="complete"] {
+  border-color: color-mix(in srgb, var(--legal) 70%, var(--line-bright));
+  background: color-mix(in srgb, var(--legal) 8%, var(--bg-sunken));
+}
+
+.code-field__segment[data-active="true"] {
+  border-color: var(--you);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--you) 35%, transparent);
+}
+
+.code-field[data-problem] .code-field__segment[data-active="true"] {
+  border-color: var(--opponent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--opponent) 35%, transparent);
+}
+
+.code-field__cell {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  width: 1.05ch;
+  min-height: 1.2em;
+  align-items: center;
+}
+
+/* An empty slot shows a dot drawn by CSS, so a segment's text is only the characters it holds. */
+.code-field__cell[data-filled="false"]::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--line-bright);
+}
+
+/* The drawn caret: the input's own caret is transparent and would sit in the wrong place. */
+.code-field__cell[data-caret]::after {
+  content: "";
+  position: absolute;
+  top: 5%;
+  bottom: 5%;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--radiant);
+  animation: code-field-blink 1s steps(1, end) infinite;
+}
+
+.code-field__cell[data-caret="before"]::after {
+  left: -1.5px;
+}
+
+.code-field__cell[data-caret="after"]::after {
+  right: -1.5px;
+}
+
+/* A selection: the input's own highlight is transparent (its text is), so the cells draw it, and
+   the next keystroke visibly replaces what is marked. */
+.code-field__cell[data-selected="true"] {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--you) 45%, transparent);
+  color: var(--text);
+}
+
+@keyframes code-field-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* `.form-card input` styles every input in a form; this one is the transparent layer. The
+   specificity (two classes) is what lets it win over that rule. */
+.code-field .code-field__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: transparent;
+  font: inherit;
+  font-size: 16px; /* 16px keeps iOS from zooming the page on focus */
+  cursor: text;
+  outline: none;
+  box-shadow: none;
+}
+
+.code-field .code-field__input::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.code-field .code-field__input::selection {
+  background: transparent;
+}
+
+.code-field .code-field__input:focus,
+.code-field .code-field__input:focus-visible {
+  outline: none;
+  border: 0;
+}
+
+/* Focus is shown on the segments instead, since the input draws nothing. */
+.code-field:focus-within .code-field__segments {
+  border-radius: 10px;
+  outline: 2px solid color-mix(in srgb, var(--radiant) 55%, transparent);
+  outline-offset: 4px;
+}
+
+.code-field[data-disabled="true"] .code-field__segment {
+  opacity: 0.6;
+}
+
+.code-field[data-disabled="true"] .code-field__input {
+  cursor: not-allowed;
+}
+
+.code-field__progress {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.code-field__hint {
+  border-left: 3px solid var(--opponent);
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--opponent) 10%, var(--bg-sunken));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* `.app-shell p` sets a dim colour and a max width on every paragraph; the hint is a warning. */
+.app-shell .code-field__hint {
+  color: var(--text);
+  max-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-field__cell[data-caret]::after {
+    animation: none;
+  }
+
+  .code-field__segment {
+    transition: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .code-field__segments {
+    gap: 8px;
+  }
+
+  .code-field__segment {
+    padding: 8px 2px;
+    gap: 1px;
+  }
+
+  .code-field__segment:not(:last-child)::after {
+    right: -6px;
+    width: 4px;
+  }
+}
+
+/* --- the invite screen ------------------------------------------------------------------------ */
+
+/* The top bar is BackLink's nav: Back, then who is signed in and Sign out, then the gear at the far
+   end (settings.css places the slot, and moves it under Back and the gear on a phone). */
+.invite-screen__top > .screen-nav {
+  width: 100%;
+}
+
+.invite-screen__account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* The address is the point of the line, so it is never cut: a long one wraps, anywhere. */
+.invite-screen__who {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invite-screen__email {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.invite-screen .invite-screen__account .link-button {
+  align-self: center;
+}
+
+.invite-screen__form {
+  gap: 8px;
+}
+
+.invite-screen__attempts {
+  font-size: 13px;
+}
+
+.invite-screen__attempts[data-remaining="0"] {
+  color: var(--text);
+}
+
+.invite-screen__help {
+  font-size: 13px;
+}
+
+/* The field's label, for a screen reader only: the screen's title ("Enter your invite code") sits
+   right above the field and says the same thing on screen. Clipped, never display: none, so the
+   input keeps its accessible name. */
+.invite-screen .invite-screen__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Where a code comes from, under Redeem and set apart by a hairline like the sign-in board's
+   links: help for whoever has no code, never in the way of whoever has one. */
+.invite-screen__where {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* "play vs AI" is one link: never "play vs" on one line and "AI" on the next. */
+.invite-screen__where a {
+  white-space: nowrap;
+}
+
+/* An unconfirmed email: what to do, and the two ways on (check again, resend). */
+.invite-screen__unverified {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invite-screen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+/* --- in the tavern (auth/tavern.css): the invite screen's skin -------------------------------- */
+/* Slots cut into dark wood, brass-edged. A group that is full glows teal, the colour of the
+   landing's gems; the group the caret is in is lit gold, which is also how focus shows. */
+
+.tavern .code-field__segments {
+  gap: 12px;
+}
+
+.tavern .code-field__segment {
+  min-height: 54px;
+  border: 1px solid rgba(201, 149, 63, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0b0704, var(--tavern-well));
+  color: var(--tavern-gold-pale);
+  font-size: clamp(16px, 4.4vw, 21px);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(251, 231, 176, 0.05);
+  transition: border-color 140ms, box-shadow 140ms, background-color 140ms;
+}
+
+.tavern .code-field__segment:not(:last-child)::after {
+  right: -9px;
+  background: var(--tavern-brass);
+}
+
+.tavern .code-field__segment[data-state="partial"] {
+  border-color: rgba(243, 201, 105, 0.65);
+}
+
+.tavern .code-field__segment[data-state="complete"] {
+  border-color: color-mix(in srgb, var(--tavern-teal) 85%, black);
+  background:
+    linear-gradient(180deg, rgba(63, 182, 168, 0.18), rgba(63, 182, 168, 0.05)),
+    var(--tavern-well);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 12px rgba(63, 182, 168, 0.25);
+}
+
+.tavern .code-field__segment[data-active="true"] {
+  border-color: var(--tavern-gold);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.65),
+    0 0 0 2px rgba(243, 201, 105, 0.3),
+    0 0 16px rgba(243, 201, 105, 0.25);
+}
+
+.tavern .code-field[data-problem] .code-field__segment[data-active="true"] {
+  border-color: var(--tavern-danger);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.65),
+    0 0 0 2px rgba(232, 102, 79, 0.3),
+    0 0 16px rgba(232, 102, 79, 0.25);
+}
+
+.tavern .code-field__cell[data-filled="false"]::before {
+  background: rgba(201, 149, 63, 0.5);
+}
+
+.tavern .code-field__cell[data-caret]::after {
+  background: var(--tavern-gold);
+}
+
+.tavern .code-field__cell[data-selected="true"] {
+  background: rgba(243, 201, 105, 0.35);
+  color: var(--tavern-parchment);
+}
+
+/* The lit group is the focus ring here; a second ring around all four is noise. */
+.tavern .code-field:focus-within .code-field__segments {
+  outline: none;
+}
+
+.tavern.app-shell .code-field__progress {
+  color: color-mix(in srgb, var(--tavern-parchment) 60%, transparent);
+}
+
+.tavern.app-shell .code-field__hint {
+  border-left-color: var(--tavern-danger);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(232, 102, 79, 0.16), rgba(232, 102, 79, 0.05));
+  color: var(--tavern-parchment);
+}
+
+@media (max-width: 400px) {
+  .tavern .code-field__segments {
+    gap: 9px;
+  }
+
+  .tavern .code-field__segment {
+    min-height: 50px;
+  }
+
+  .tavern .code-field__segment:not(:last-child)::after {
+    right: -7px;
+    width: 5px;
+  }
+}
+
+.tavern.app-shell .invite-screen__account {
+  color: var(--tavern-text-dim);
+}
+
+.tavern.app-shell .invite-screen__email {
+  color: var(--tavern-gold-pale);
+  font-weight: 600;
+}
+
+.tavern.app-shell .invite-screen__help {
+  color: color-mix(in srgb, var(--tavern-parchment) 62%, transparent);
+}
+
+.tavern.app-shell .invite-screen__where {
+  padding-top: 14px;
+  border-top: 1px solid rgba(201, 149, 63, 0.22);
+  color: color-mix(in srgb, var(--tavern-parchment) 66%, transparent);
+}
+
+/* A phone: who is signed in and Sign out take their own row under Back and the gear (settings.css),
+   the address first and wrapping where it must, Sign out at the row's end. At 390 px the address
+   used to share Back's row and ran off the screen mid-string (integration QA). */
+@media (max-width: 560px) {
+  .invite-screen__account {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
+  .invite-screen__who {
+    flex: 1 1 auto;
+  }
+
+  .invite-screen .invite-screen__account .link-button {
+    flex: none;
+  }
+}
+
+/* A phone on its side: the slots give up a little height so Redeem stays on the first screen. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  .tavern .code-field__segment {
+    min-height: 46px;
+    font-size: 18px;
+  }
+
+  .tavern.app-shell .invite-screen__attempts {
+    margin-top: 0;
+  }
+
+  .tavern.app-shell .invite-screen__where {
+    padding-top: 10px;
+  }
+}
+
+/* The tries left: a small teal gem, ember once none are left. */
+.tavern.app-shell .invite-screen__attempts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--tavern-parchment) 85%, transparent);
+  font-weight: 600;
+}
+
+.tavern.app-shell .invite-screen__attempts::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border: 1px solid #1d3b37;
+  background: radial-gradient(circle at 35% 30%, #c6fff6, var(--tavern-teal) 55%, #1d5b54);
+  box-shadow: 0 0 8px rgba(63, 182, 168, 0.5);
+}
+
+.tavern.app-shell .invite-screen__attempts[data-remaining="0"] {
+  color: var(--tavern-danger-text);
+}
+
+.tavern.app-shell .invite-screen__attempts[data-remaining="0"]::before {
+  border-color: #5a1d14;
+  background: radial-gradient(circle at 35% 30%, #ffc2b2, var(--tavern-danger) 55%, #6d1a16);
+  box-shadow: 0 0 8px rgba(232, 102, 79, 0.5);
+}
+
+/* A refusal and its wait read as one message: what happened, then how long. */
+.invite-screen__refusal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tavern.app-shell .invite-screen__refusal {
+  gap: 4px;
+  padding: 11px 14px;
+  border: 1px solid rgba(232, 102, 79, 0.35);
+  border-left: 3px solid var(--tavern-danger);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(232, 102, 79, 0.16), rgba(232, 102, 79, 0.05));
+}
+
+.tavern.app-shell .invite-screen__refusal > .notice {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+
+.tavern.app-shell .invite-screen__refusal > .invite-screen__wait {
+  color: var(--tavern-gold-pale);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

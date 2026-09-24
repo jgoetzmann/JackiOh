@@ -1,69 +1,143 @@
-/* Board layout (BUILD M5-T1). Tokens live in src/index.css; only geometry lives here.
-   The whole board must fit 1280x720 and 390x844 with nothing clipped, so every column is
-   `minmax(0, 1fr)`, no element carries a min-width wider than a phone, and the two media
-   queries below shrink --card-w / --card-h instead of letting anything overflow.
-   The real pixel check is the Cypress spec's; jsdom has no layout engine. */
+/* Board layout and look (BUILD M5-T1, polish task 7). Colour tokens live in src/index.css; this
+   file owns geometry and the board's own surfaces. The whole board must fit 1280x720, 844x390,
+   768x1024 and 390x844 with nothing clipped (e2e/cypress/component/board-layout.cy.tsx), so every
+   column is `minmax(0, …)`, no element carries a width or min-width wider than a phone, and the
+   media queries at the end shrink --card-w / --card-h instead of letting anything overflow. jsdom
+   has no layout engine, so the real pixel checks are the Cypress component specs'.
+
+   The board is a grid whose children keep their DOM order (opponent seat, opponent hand, field,
+   your seat, your hand, controls, log); only their grid placement changes per screen
+   (docs/polish/7-mobile-ux.md S11):
+     - desktop (1025px and up, and a tablet held landscape): the play area on the left, and a
+       sidebar on the right holding the opponent's hand (top), End turn at the height of the centre
+       line, and the log (bottom);
+     - tablet portrait: one column, with the controls and the log sharing the last row;
+     - phone portrait: one column, the opponent's hand beside the opponent's seat;
+     - phone landscape: seats on the left, the field in the middle, the opponent's hand and the
+       controls on the right, and your hand along the bottom.
+
+   The whole game screen is budgeted, not only the board ("the game screen", at the end): on a
+   route the shell is exactly the visible viewport tall, the route's own bar takes what it needs,
+   and the board is a size container whose height is what is left. Every layout derives the card
+   height from that (`cqh`): `(100cqh - the layout's fixed parts) / the card heights it stacks`,
+   so a match bar, a turn banner or a phone's browser toolbar shrinks the cards instead of pushing
+   End turn or your hand off the screen. Whatever height is spare goes to the field, the one row
+   that is `1fr`, whose lanes stay centred in it.
+
+   Green is not painted here. `data-legal="true"` only means "clickable" (a pointer and full
+   opacity); the green glow is `data-glow="ready"`, styled by highlights.css, which Board.tsx
+   imports after this file. Selection is ice blue on the board (`--selected` below), so it can never
+   be mistaken for the yellow of a met condition. */
 
 .board {
-  /* Card height comes off the viewport height, because that is the budget four field rows, two
-     seats, two hands, the controls and the log have to share; card width is only a cap, since
-     the lane columns are `minmax(0, 1fr)` and shrink the card themselves on a narrow screen. */
+  /* Card height comes off the board's height, because that is the budget four field rows, two
+     seats, two hands and the controls have to share; card width is only a cap, since the lane
+     columns are `minmax(0, 1fr)` and shrink the card themselves on a narrow screen. Here (a
+     single column 601-760px wide) the board stacks the field's four rows, your hand (1.3) and the
+     opponent's backs (0.58). With no size container round the board, `cqh` is the small viewport
+     height, which is the same budget; the `vh` line is for a browser with neither. */
   --card-h: clamp(60px, 11vh, 112px);
+  --card-h: clamp(60px, calc((100cqh - 330px) / 5.88), 112px);
   --card-w: calc(var(--card-h) * 0.74);
+  /* Your hand is drawn bigger than the field, as in Hearthstone: it is what you read most. */
+  --hand-card-h: calc(var(--card-h) * 1.3);
+  --hand-card-w: calc(var(--hand-card-h) * 0.72);
+  --selected: #7dd3fc;
+  --seat-radius: 12px;
 
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: 8px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   padding: 8px;
-  background: var(--bg);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 70% at 50% 45%, rgb(40 56 84 / 28%), transparent 70%),
+    var(--bg);
   color: var(--text);
+}
+
+/* Keyboard focus on the board is ice blue like the selection, not src/index.css's gold: yellow on
+   the board only ever means "condition met". */
+.board :focus-visible {
+  outline-color: var(--selected);
 }
 
 /* ---------------------------------------------------------------------------------- seats --- */
 
 .seat {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-}
-
-.seat-you {
-  border-color: color-mix(in srgb, var(--you) 55%, var(--line));
-}
-
-.seat-opponent {
-  border-color: color-mix(in srgb, var(--opponent) 55%, var(--line));
-}
-
-.hero {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--line-bright);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--seat-radius);
+  background: var(--bg-raised);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 30%);
+  transition:
+    border-color calc(200ms * var(--anim-scale)) ease,
+    box-shadow calc(200ms * var(--anim-scale)) ease;
 }
 
+.seat-you {
+  border-color: color-mix(in srgb, var(--you) 40%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--you) 16%, var(--bg-raised)), var(--bg-raised) 55%);
+}
+
+.seat-opponent {
+  border-color: color-mix(in srgb, var(--opponent) 40%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--opponent) 16%, var(--bg-raised)), var(--bg-raised) 55%);
+}
+
+/* Whose turn it is, at a glance: the active seat's plate lights up in its colour. */
+.board[data-active="you"] .seat-you {
+  border-color: color-mix(in srgb, var(--you) 80%, white);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent),
+    0 0 18px color-mix(in srgb, var(--you) 30%, transparent);
+}
+
+.board[data-active="opponent"] .seat-opponent {
+  border-color: color-mix(in srgb, var(--opponent) 80%, white);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--opponent) 45%, transparent),
+    0 0 18px color-mix(in srgb, var(--opponent) 28%, transparent);
+}
+
+/* `flex-direction` and `flex-wrap` are stated because src/index.css has a landing-page `.hero`
+   (a column) that would otherwise leak into the board's hero; a row that wraps is what fits a
+   phone-width seat without pushing the badges past its edge. */
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--line-bright);
+  /* Round at a pill's height, but a hero whose power and badges wrap to a second line stays a
+     rounded plate instead of swelling into a capsule. */
+  border-radius: 22px;
+  background: var(--bg-sunken);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 1px 4px rgb(0 0 0 / 40%);
+}
+
+/* Clickable, not green: the glow is highlights.css's `data-glow`. */
 .hero[data-legal="true"] {
-  border-color: var(--legal);
-  box-shadow: 0 0 0 1px var(--legal);
   cursor: pointer;
+  opacity: 1;
 }
 
 .hero[data-legal="false"] {
-  opacity: 0.82;
+  opacity: 0.9;
 }
 
 .hero[data-selected="true"] {
@@ -72,18 +146,24 @@
 }
 
 .hero-you {
-  background: color-mix(in srgb, var(--you) 16%, var(--bg-sunken));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--you) 30%, #121826), #0d1220);
 }
 
 .hero-opponent {
-  background: color-mix(in srgb, var(--opponent) 16%, var(--bg-sunken));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--opponent) 30%, #1a1216), #140d10);
+}
+
+/* The health gem sits first, the way a portrait's health does. */
+.hero-health {
+  order: -1;
 }
 
 .hero-seat {
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--text) 78%, transparent);
   text-transform: uppercase;
-  font-size: 0.8em;
-  letter-spacing: 0.06em;
+  font-size: 0.78em;
+  font-weight: 650;
+  letter-spacing: 0.08em;
 }
 
 .hero-health,
@@ -91,19 +171,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  padding: 1px 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 5px;
   border-radius: 999px;
+  color: #fff;
+  font-size: 1.08em;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 1px 3px rgb(0 0 0 / 60%);
 }
 
 .hero-health {
-  background: #7f1d1d;
+  border: 1px solid rgb(254 202 202 / 55%);
+  background: radial-gradient(circle at 35% 30%, #f87171, #b91c1c 55%, #7f1d1d);
 }
 
 .hero-armor {
-  background: #334155;
+  border: 1px solid rgb(203 213 225 / 50%);
+  background: radial-gradient(circle at 35% 30%, #94a3b8, #475569 60%, #334155);
 }
 
 .power-button,
@@ -116,8 +203,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.85em;
-  padding: 3px 7px;
-  border-radius: var(--radius);
+  padding: 3px 8px;
+  border-radius: 999px;
 }
 
 .power-tag {
@@ -130,11 +217,11 @@
 }
 
 .power-button[data-legal="true"] {
-  border-color: var(--legal);
+  cursor: pointer;
 }
 
 .power-x {
-  color: var(--mana);
+  color: #93c5fd;
   font-weight: 700;
 }
 
@@ -149,9 +236,12 @@
   min-width: 0;
 }
 
+/* A block, not a flex box: `text-overflow` never draws its ellipsis in a flex container, so a long
+   label ("Next Spell gains …") was cut mid-word with nothing to say it went on. */
 .modifier-badge {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1.35;
   max-width: 18ch;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -169,57 +259,91 @@
 .mana {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 
 .crystals {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 2px;
-  max-width: 90px;
+  gap: 3px;
+  max-width: 110px;
 }
 
 .mana-crystal {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
-  border: 1px solid var(--mana);
+  border: 1px solid color-mix(in srgb, var(--mana) 80%, white);
+  background: #0b1224;
   transform: rotate(45deg);
-  transition: background calc(150ms * var(--anim-scale)) linear;
+  transition:
+    background calc(150ms * var(--anim-scale)) linear,
+    box-shadow calc(150ms * var(--anim-scale)) linear;
 }
 
 .mana-crystal[data-filled="true"] {
-  background: var(--mana);
+  background: radial-gradient(circle at 40% 35%, #bfdbfe, #3b82f6 55%, #1d4ed8);
+  box-shadow: 0 0 6px rgb(96 165 250 / 70%);
 }
 
 .mana-text {
-  color: var(--text-dim);
+  color: #bfdbfe;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .piles {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
 .pile {
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-  padding: 2px 5px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 5px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 30%);
+}
+
+/* A small drawn icon per pile, so the count still says what it counts once the words are gone
+   on a phone. Masked, so it takes the text colour. */
+.pile::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  background: currentColor;
+  opacity: 0.7;
+  -webkit-mask: var(--pile-icon) center / contain no-repeat;
+  mask: var(--pile-icon) center / contain no-repeat;
+}
+
+.pile[data-testid^="library-"] {
+  --pile-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='5' y='1' width='9' height='12' rx='1.6' opacity='.55'/%3E%3Crect x='2' y='3' width='9' height='12' rx='1.6'/%3E%3C/svg%3E");
+}
+
+.pile[data-testid^="graveyard-"] {
+  --pile-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 14V7a4 4 0 0 1 8 0v7z'/%3E%3Crect x='2' y='13.5' width='12' height='2' rx='.6'/%3E%3C/svg%3E");
+}
+
+.pile[data-testid^="exile-"] {
+  --pile-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l1.8 4.6L14.5 7 9.8 8.6 8 15 6.2 8.6 1.5 7l4.7-1.4z'/%3E%3C/svg%3E");
+}
+
+.hand .pile {
+  --pile-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='3' width='7' height='10' rx='1.4' transform='rotate(-14 5 8)' opacity='.55'/%3E%3Crect x='7.5' y='3' width='7' height='10' rx='1.4' transform='rotate(14 11 8)'/%3E%3C/svg%3E");
 }
 
 .pile-label {
   color: var(--text-dim);
-  font-size: 0.78em;
+  font-size: 0.74em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .pile-n {
@@ -235,29 +359,173 @@
   gap: 8px;
   min-width: 0;
   padding: 4px 6px;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--seat-radius);
 }
 
+.hand-opponent {
+  background: linear-gradient(180deg, rgb(0 0 0 / 22%), transparent);
+}
+
+/* Room above your fan for a lifted card (translateY(-8px) on desktop), so a lift stays inside
+   the hand and never covers `hero-you` or `power` in the seat above it. */
+.hand-you {
+  position: relative;
+  padding-top: 10px;
+  background: linear-gradient(0deg, color-mix(in srgb, var(--you) 12%, transparent), transparent 80%);
+}
+
+/* Your hand count is a badge riding the hand's top edge at the right, not a column of its own: as a
+   column it stood alone at the far left of the hand and took width the fan could use. Top right,
+   because top left sat on the first card's cost gem and the right end of the seat above is empty. */
+.hand-you > .pile {
+  position: absolute;
+  top: -7px;
+  right: 6px;
+  z-index: 3;
+  padding: 0 6px 0 4px;
+  background: var(--bg-sunken);
+  pointer-events: none;
+}
+
+/* The fan. Hand.tsx puts the hand size on `.hand-cards` as `--n` and each slot's index as `--i`.
+   Slots sit side by side `--slot-w` wide and `--gap` apart until they run out of room; after
+   that they overlap with the step that makes exactly `n` of them fit the row:
+     step = min(slot + gap, (available - slot) / (n - 1))
+   `100%` in `--fan-step` is resolved where it is used, in a slot's `margin-left`, and a flex
+   item's percentage margin is a share of the container's content width: the available width. */
 .hand-cards {
+  --slot-w: var(--card-w);
+  --fan-step: min(calc(var(--slot-w) + var(--gap)), calc((100% - var(--slot-w)) / max(var(--n, 1) - 1, 1)));
+
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: var(--gap);
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  justify-content: safe center;
+  gap: 0;
   min-width: 0;
 }
 
+.hand-you .hand-cards {
+  --slot-w: var(--hand-card-w);
+}
+
+/* Backs are sized off the card height, so they stay upright cards when a wide lane makes the field
+   cards square. */
+.hand-opponent .hand-cards {
+  --slot-w: calc(var(--card-h) * 0.42);
+}
+
+.hand-slot {
+  position: relative;
+  flex: 0 0 var(--slot-w);
+  width: var(--slot-w);
+  transform-origin: 50% 100%;
+  transition: transform calc(160ms * var(--anim-scale)) ease;
+}
+
+.hand-slot + .hand-slot {
+  margin-left: calc(var(--fan-step) - var(--slot-w));
+}
+
+/* Tap-to-lift (Hand.tsx `data-lifted`, B26), and the selected card, which is always lifted. A
+   lifted card is read, so it covers the count badge rather than the other way round, and it is
+   drawn at full strength even when it cannot be played: faded, it let the seat under it show
+   through its rules text. A card keyboard focus is on rises the same way, or a covered card in the
+   fan would take the focus ring under its neighbour. The layouts below say how far each lifts. */
+.hand-you .hand-slot[data-lifted="true"],
+.hand-you .hand-slot:has(> .card:focus-visible) {
+  z-index: 4;
+  transform: translateY(-8px);
+}
+
+.hand-you .hand-slot[data-lifted="true"] > .card {
+  opacity: 1;
+}
+
+/* The card a drop has just played (drag/landing.ts): it is drawn where it landed while the board
+   catches up with the play, so it is not in the fan meanwhile. */
+.hand-you .hand-slot[data-landing="true"] {
+  visibility: hidden;
+}
+
+/* Your hero glowing as a target sits above a lifted card, so the lift can never hide it. Only the
+   hero: raising its whole seat hid the name of a card lifted over the seat's empty lower half. */
+.board .hero[data-glow="ready"] {
+  z-index: 5;
+}
+
+.hand-you .card-hand {
+  max-width: var(--hand-card-w);
+  height: var(--hand-card-h);
+}
+
+/* A hand card is tall enough for a three-line name, so a two-word name whose first word dropped
+   under the cost gem is never cut short. */
+.hand-you .card-hand .card-name {
+  max-height: 3.45em;
+}
+
 .hand-opponent .card-hand {
-  height: calc(var(--card-h) * 0.5);
+  height: calc(var(--card-h) * 0.58);
+}
+
+/* Once the opponent's backs run out of room they overlap, and each back but the last shows only
+   its left strip, `min(slot, (available - slot) / (n - 1))` wide: the fan's step, capped at the
+   card. A centred diamond there was cut in half into a "<", which read as a glyph rather than a
+   card. So on a covered back the diamond moves to the middle of the strip and shrinks to fit it.
+   `.hand-cards` is a size container here so `100cqi` is the available width in any layout. */
+.hand-opponent .hand-cards {
+  container-type: inline-size;
+}
+
+.hand-opponent .hand-slot:not(:last-child) .card-back-mark {
+  --strip: min(var(--slot-w), calc((100cqi - var(--slot-w)) / max(var(--n, 1) - 1, 1)));
+  /* A strip under 16px (a full hand in a narrow column) has no room for a diamond, and a row of
+     shrunken ones read as a dotted line. There the mark and its border are 0 wide, and the striped
+     edges alone read as a stack; the `* 99` makes that a switch, not a fade through tiny dots. */
+  width: clamp(0px, calc((var(--strip) - 16px) * 99), min(34%, calc(var(--strip) * 0.46)));
+  border-width: clamp(0px, calc((var(--strip) - 16px) * 99), 2px);
+  translate: calc((var(--strip) - var(--slot-w)) / 2) 0;
 }
 
 /* --------------------------------------------------------------------------------- field --- */
 
+/* The playmat: one framed surface for all four rows, with the line between the two sides. */
 .field {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* The field's row is the board's `1fr`, so it may be taller than its lanes: they stay centred,
+     with the spare height as mat above and below them. */
+  align-content: center;
   gap: var(--gap);
   min-width: 0;
+  padding: 6px;
+  border: 1px solid #2a3448;
+  border-radius: 16px;
+  background:
+    radial-gradient(110% 80% at 50% 50%, rgb(58 82 118 / 32%), transparent 72%),
+    linear-gradient(180deg, #161c2a, #10151f 50%, #161c2a);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 3%),
+    inset 0 12px 28px rgb(0 0 0 / 40%),
+    0 8px 22px rgb(0 0 0 / 35%);
+}
+
+/* The centre line. The padding and the gaps are symmetric, so 50% is the middle gap exactly. */
+.field::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  translate: 0 -50%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgb(148 197 255 / 38%) 20%, rgb(255 255 255 / 45%) 50%, rgb(148 197 255 / 38%) 80%, transparent);
+  pointer-events: none;
 }
 
 /* Fixed rows, not `minmax(0, …)`: each lane is its own grid, so an empty zone must still hold
@@ -269,32 +537,86 @@
   min-width: 0;
 }
 
+/* Wherever the board has the room (a desktop, a tablet held upright), the unit rows take height
+   from the backrow rows, which hold a trap's back or a field card and are mostly empty: minions
+   were a third of their lane, 57 px wide in a 188 px zone. The four rows still sum to four card
+   heights, so nothing else on the board moves, and a unit fills its taller row as a broad oval,
+   the way Hearthstone's minions sit on its board. A phone keeps equal rows: its backrow is already
+   at the 44 px touch floor. */
+@media (min-width: 761px) and (min-height: 501px) {
+  .lane {
+    --unit-row: calc(var(--card-h) * 1.2);
+    --back-row: calc(var(--card-h) * 0.8);
+
+    grid-template-rows: var(--back-row) var(--unit-row) var(--unit-row) var(--back-row);
+  }
+
+  .zone[data-row="units"] > .card.cf-host--minion {
+    max-width: min(100%, calc(var(--unit-row) * 0.86));
+  }
+
+  .zone[data-row="backrow"] > .card {
+    max-width: calc(var(--back-row) * 0.74);
+  }
+}
+
 .zone {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
+  border: 1px solid rgb(148 163 184 / 13%);
+  border-radius: 10px;
+  background: rgb(30 41 59 / 30%);
+  transition:
+    background-color calc(150ms * var(--anim-scale)) ease,
+    box-shadow calc(150ms * var(--anim-scale)) ease;
 }
 
-.zone[data-side="opponent"] {
-  border-top-color: color-mix(in srgb, var(--opponent) 40%, var(--line));
+/* The backrow is the trap row: darker and dashed, so it never reads as a place for units. */
+.zone[data-row="backrow"] {
+  border-style: dashed;
+  border-color: rgb(148 163 184 / 12%);
+  background: rgb(4 6 11 / 45%);
 }
 
 .zone[data-side="opponent"][data-row="units"] {
-  border-bottom: 2px solid color-mix(in srgb, var(--opponent) 55%, var(--line));
+  border-bottom: 2px solid color-mix(in srgb, var(--opponent) 45%, transparent);
 }
 
 .zone[data-side="you"][data-row="units"] {
-  border-top: 2px solid color-mix(in srgb, var(--you) 55%, var(--line));
+  border-top: 2px solid color-mix(in srgb, var(--you) 50%, transparent);
+}
+
+/* An empty zone shows where a card goes: an oval pad for a unit, a card-shaped outline in the
+   backrow. It never takes a hit, and it goes away once something stands in the zone. */
+.zone::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(calc(var(--card-w) * 0.92), calc(100% - 8px));
+  height: calc(100% - 10px);
+  translate: -50% -50%;
+  border: 1px dashed rgb(148 163 184 / 16%);
+  border-radius: 8px;
+  pointer-events: none;
+  transition: border-color calc(150ms * var(--anim-scale)) ease;
+}
+
+.zone[data-row="units"]::before {
+  border-style: solid;
+  border-color: rgb(148 163 184 / 10%);
+  border-radius: 50% / 46%;
+  background: radial-gradient(closest-side, rgb(148 163 184 / 9%), transparent);
+}
+
+.zone:has(> .card)::before {
+  display: none;
 }
 
 .zone[data-legal="true"] {
-  border-color: var(--legal);
-  box-shadow: inset 0 0 0 1px var(--legal);
   cursor: pointer;
 }
 
@@ -303,14 +625,14 @@
 }
 
 .zone-locked {
-  background: repeating-linear-gradient(45deg, var(--bg-sunken), var(--bg-sunken) 5px, #15171f 5px, #15171f 10px);
+  background: repeating-linear-gradient(45deg, rgb(11 13 19 / 80%), rgb(11 13 19 / 80%) 5px, #15171f 5px, #15171f 10px);
   border-color: var(--locked);
 }
 
 .lock-icon {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 3px;
+  left: 3px;
   width: 9px;
   height: 9px;
   border: 2px solid var(--locked);
@@ -351,13 +673,24 @@
   width: 100%;
   max-width: var(--card-w);
   height: var(--card-h);
-  padding: 3px 4px;
-  border: 1px solid var(--line-bright);
-  border-radius: var(--radius);
-  background: linear-gradient(160deg, #232839, #171a24);
+  padding: 4px 5px;
+  border: 1px solid #3f4964;
+  border-radius: 8px;
+  background: linear-gradient(165deg, #2b3349 0%, #1b2030 55%, #151925 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 7%),
+    0 2px 6px rgb(0 0 0 / 45%);
   overflow: hidden;
   font-size: 0.85em;
-  transition: transform calc(250ms * var(--anim-scale)) ease;
+  transition:
+    transform calc(250ms * var(--anim-scale)) ease,
+    box-shadow calc(150ms * var(--anim-scale)) ease;
+}
+
+/* Spells, traps and field cards are violet, units steel blue: the type reads before the text. */
+.card-spell {
+  border-color: #4a4270;
+  background: linear-gradient(165deg, #2f2a4c 0%, #1e1a33 55%, #17142a 100%);
 }
 
 /* In a zone the card fills the row it was given (`box-sizing: border-box` from index.css keeps
@@ -367,47 +700,115 @@
 }
 
 .card[data-legal="true"] {
-  border-color: var(--legal);
-  box-shadow: 0 0 0 1px var(--legal);
   cursor: pointer;
+  opacity: 1;
 }
 
 .card[data-legal="false"] {
-  opacity: 0.78;
+  opacity: 0.8;
 }
 
 .card[data-selected="true"] {
   border-color: var(--selected);
-  box-shadow: 0 0 0 2px var(--selected);
+  box-shadow:
+    0 0 0 2px var(--selected),
+    0 0 14px color-mix(in srgb, var(--selected) 55%, transparent);
 }
 
+/* Radiant is foil inside the frame: a pale gold border and an inner sheen, and no outer halo. An
+   outer yellow glow on the board means only "condition met" (highlights.css), so a Radiant card
+   must not wear one of its own. */
 .card.radiant {
-  border-color: var(--radiant);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--radiant) 70%, transparent);
-  background: linear-gradient(160deg, #3a3018, #1d1a12);
+  border-color: #eadcb0;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 240 196 / 28%),
+    inset 0 0 12px rgb(255 210 74 / 22%),
+    0 2px 6px rgb(0 0 0 / 45%);
+  background:
+    linear-gradient(120deg, transparent 30%, rgb(255 244 214 / 10%) 45%, transparent 60%),
+    linear-gradient(160deg, #4a3c1a, #2a2312 55%, #1d1a12);
 }
 
+/* The selection ring wins over the foil (it was the other way round, by source order). */
+.card.radiant[data-selected="true"] {
+  border-color: var(--selected);
+  box-shadow:
+    0 0 0 2px var(--selected),
+    0 0 14px color-mix(in srgb, var(--selected) 55%, transparent);
+}
+
+/* A back: deep blue with a gold diamond, never anything a player could read as a number. */
 .card-back {
-  background: repeating-linear-gradient(135deg, #1e2233, #1e2233 6px, #262b3e 6px, #262b3e 12px);
-  border-style: solid;
+  border-color: #3b4a78;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(99 102 241 / 28%), transparent 60%),
+    repeating-linear-gradient(135deg, #1b2140, #1b2140 5px, #222a4d 5px, #222a4d 10px);
 }
 
 .card-back-mark {
   margin: auto;
-  width: 40%;
-  height: 40%;
-  border: 1px solid var(--line-bright);
-  border-radius: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  border: 2px solid rgb(250 204 21 / 55%);
+  border-radius: 3px;
+  background: radial-gradient(circle, rgb(250 204 21 / 25%), transparent 70%);
+  transform: rotate(45deg);
 }
 
+/* The cost gem sits top left, as on a Hearthstone card. It is exactly one line of the name tall
+   (1.15em of the card's type at its own 0.8em), level with that line, and the name flows round it
+   (the float below), so a long first word drops under the gem instead of being cut in half. */
+.cost-gem {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.44em;
+  height: 1.44em;
+  border: 1px solid rgb(219 234 254 / 80%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #7fb2ff, #2563eb 60%, #1e3a8a);
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 60%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 55%);
+}
+
+/* Two lines at most. A block, not a line-clamped box, so the float below can shape the first
+   line; the price is a clean cut at two lines instead of an ellipsis. */
 .card-name {
-  font-weight: 600;
-  line-height: 1.15;
+  display: block;
+  flex: 0 0 auto;
+  max-height: 2.3em;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  word-break: break-word;
+  font-weight: 700;
+  line-height: 1.15;
+  /* Whole words: a first word too long to sit beside the gem drops to the line under it rather
+     than being split ("Stockpil / e"). A long word (ten letters or more: "Experimentation",
+     "Transmogulate", "Carnivorous") may be hyphenated at a syllable instead, because on a phone
+     tile or in the hand it is wider than the card, and the alternative was its end cut off where
+     nobody could see it had been. `index.html` sets `lang="en"`, which hyphenation needs. A
+     browser with no hyphenation dictionary (headless Chrome has none) ends such a word with an
+     ellipsis instead, so the cut at least shows. */
+  overflow-wrap: normal;
+  word-break: normal;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  hyphenate-limit-chars: 10 4 4;
+  text-overflow: ellipsis;
+}
+
+.card-name::before {
+  content: "";
+  float: left;
+  width: calc(1.15em + 2px);
+  height: 1.15em;
 }
 
 .card-type,
@@ -418,78 +819,129 @@
   overflow: hidden;
 }
 
-.cost-gem {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--mana);
-  color: #fff;
-  font-size: 0.8em;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+/* The type line never shrinks: `overflow: hidden` would otherwise let the flex column squeeze it
+   to half a line when the text below runs long. The text is what gives way. */
+.card-type {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, #c4b5fd 70%, var(--text-dim));
+  font-size: 0.74em;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+.card-text {
+  display: -webkit-box;
+  flex: 0 1 auto;
+  min-height: 0;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+/* A face-up card in a zone has three lines of rules text under a two-line name before its tile
+   runs out, so it ends on a whole line with an ellipsis rather than half a line of glyphs. */
+.zone .card-text {
+  -webkit-line-clamp: 3;
+}
+
+/* A unit on the field is a minion: its name, its keywords and its stats. The rules text is the
+   hand's and the inspect view's to show; at this size it only ever clipped. The cost is gone for
+   the same reason, so the name takes the whole top line. */
+.zone .card-unit .card-text,
+.zone .card-unit .cost-gem {
+  display: none;
+}
+
+/* The name may take three lines, and gives way before the stats do (they are what a tile is
+   for). The switch button (⟳) sits top right, so only the first line steps round it: the float
+   that makes room for the cost gem in the hand moves to the right-hand side here. */
+.zone .card-unit .card-name {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 3.45em;
+}
+
+.zone .card-unit .card-name::before {
+  float: right;
+  width: 14px;
+}
+
+/* The numbers sit on the card's bottom edge, under the keywords, as a minion's do. */
 .stats {
+  order: 3;
   display: flex;
-  gap: 3px;
+  align-items: flex-end;
+  gap: 2px;
   margin-top: auto;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .stat {
-  padding: 0 3px;
-  border-radius: 3px;
-  background: #0f1119;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 1.05em;
+  line-height: 1.4;
+  text-align: center;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 75%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 1px 2px rgb(0 0 0 / 60%);
 }
 
 .stat-attack {
-  color: #f59e0b;
+  background: radial-gradient(circle at 35% 30%, #fcd34d, #d97706 60%, #92400e);
 }
 
 .stat-health {
-  color: #f87171;
+  margin-left: auto;
+  background: radial-gradient(circle at 35% 30%, #fca5a5, #dc2626 60%, #7f1d1d);
 }
 
 .stat-armor {
-  color: #93c5fd;
+  background: radial-gradient(circle at 35% 30%, #cbd5e1, #64748b 60%, #334155);
 }
 
+/* ATK is the default and says nothing; DEF is already a sideways card, and keeps its tag. */
 .position-tag {
   position: absolute;
   bottom: 2px;
-  right: 3px;
+  left: 50%;
+  translate: -50% 0;
   color: var(--text-dim);
-  font-size: 0.7em;
-  letter-spacing: 0.04em;
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.card[data-position="ATK"] .position-tag {
+  display: none;
 }
 
 .keywords {
   display: flex;
   flex-wrap: wrap;
-  gap: 1px;
+  gap: 2px;
   font-size: 0.64em;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .keyword {
-  padding: 0 2px;
-  border: 1px solid var(--line-bright);
-  border-radius: 2px;
-  color: var(--text-dim);
+  padding: 0 3px;
+  border: 1px solid rgb(148 163 184 / 35%);
+  border-radius: 3px;
+  background: rgb(0 0 0 / 28%);
+  color: #cbd5e1;
+  font-weight: 700;
 }
 
 .shield-icon {
   position: absolute;
   inset: 0;
   border: 2px solid #bfdbfe;
-  border-radius: var(--radius);
+  border-radius: 8px;
+  box-shadow: inset 0 0 10px rgb(191 219 254 / 45%);
   pointer-events: none;
 }
 
@@ -529,14 +981,39 @@
   font-weight: 700;
 }
 
-.switch-button {
+/* On a unit the attack and health own the bottom edge, and the counters sat on top of the attack
+   gem, hiding the number a player reads first. They ride on the line just above the numbers. */
+.zone .card-unit .counter {
+  bottom: 22px;
+}
+
+/* A Stack pile's depth badge sat top left, over the first letter of the unit's name ("3ointmaster").
+   On a unit it rides the counters' line instead, at the right, over the health. */
+.zone .card-unit .buried-badge {
+  top: auto;
+  right: 4px;
+  bottom: 22px;
+  left: auto;
+}
+
+/* The in-card switch (⟳): a small round button in the top-right corner, clear of the stats.
+   `.board` outranks src/index.css's `.app-shell button` padding, which would otherwise make it
+   bigger than the card's name. */
+.board .switch-button {
   position: absolute;
-  bottom: 1px;
-  left: 1px;
-  padding: 0 3px;
-  font-size: 0.72em;
-  line-height: 1.3;
-  border-radius: 3px;
+  top: 2px;
+  right: 2px;
+  bottom: auto;
+  left: auto;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* ----------------------------------------------------------------------- animation layers --- */
@@ -585,9 +1062,185 @@
   min-width: 0;
 }
 
+.control {
+  max-width: 100%;
+}
+
+/* The log's own place on the board is enough everywhere but a phone (below). */
+.log-toggle {
+  display: none;
+}
+
+/* End turn is the one big button, Hearthstone's amber. It glows green (highlights.css) once
+   nothing else is left to do. `:not(:disabled)` outranks src/index.css's `.app-shell button`
+   hover and active rules, which would otherwise repaint it grey. */
+.board .control.control-end-turn {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.board .control.control-end-turn:not(:disabled) {
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+  box-shadow: var(--primary-shadow);
+}
+
+.board .control.control-end-turn:not(:disabled):hover {
+  background: var(--primary-face-hover);
+}
+
+/* "Confirm end turn" (B25): the first click armed it, the second ends the turn. */
+.control[data-confirm="armed"] {
+  border-color: var(--selected);
+  outline: 2px solid color-mix(in srgb, var(--selected) 70%, transparent);
+  outline-offset: 1px;
+}
+
 .clock {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* Whose turn, on a plate at the top of the controls wherever they have a column of their own: the
+   desktop sidebar, a tablet's controls beside the log, and the right-hand column of a phone held
+   landscape. On a phone held upright the control bar is one row of buttons with no room for it,
+   and the shell's banner says it instead (below). */
+.turn-plate {
+  display: none;
+}
+
+@media (min-width: 761px) and (min-height: 501px), (orientation: landscape) and (max-height: 500px) {
+  .turn-plate {
+    display: flex;
+    flex: 1 1 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent), var(--bg-sunken);
+  }
+
+  .turn-plate-number {
+    color: var(--text-dim);
+    font-size: 0.74em;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .turn-plate-whose {
+    font-size: 1.05em;
+    font-weight: 750;
+  }
+
+  .turn-plate[data-side="you"] {
+    border-color: color-mix(in srgb, var(--you) 45%, var(--line));
+  }
+
+  .turn-plate[data-side="opponent"] {
+    border-color: color-mix(in srgb, var(--opponent) 45%, var(--line));
+  }
+
+  .turn-plate[data-side="you"] .turn-plate-whose {
+    color: color-mix(in srgb, var(--you) 55%, white);
+  }
+
+  .turn-plate[data-side="opponent"] .turn-plate-whose {
+    color: color-mix(in srgb, var(--opponent) 60%, white);
+  }
+}
+
+/* The engine's refusal of the last action (Game.tsx, `action-error`): a toast in the opponent's
+   red across the top of the screen, over the board rather than pushing it down, and blind to the
+   pointer. It was a line of bare text above the board's top-left corner. */
+.game > .game-error {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 45;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 8px 16px;
+  translate: -50% 0;
+  border: 1px solid color-mix(in srgb, var(--opponent) 70%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--opponent) 18%, var(--bg-raised));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+  pointer-events: none;
+  /* It says its piece and fades; the next refusal is a new element (keyed by its text) and shows.
+     Reduced motion zeroes every delay, which would fade it at once, so there it simply stays. */
+  animation: game-error-fade 400ms ease-in 4s forwards;
+}
+
+@keyframes game-error-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game > .game-error {
+    animation: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .game > .game-error {
+  animation: none;
+}
+
+/* The shell's turn banner (Game.tsx, `turn-banner`): the live region that announces the turn, and
+   the element the `turnStarted` animation plays on. Left unstyled it was a loose line of body text
+   above the board, taking height a phone does not have. Where the turn plate shows, the banner
+   leaves the layout but stays in the accessibility tree (the visually-hidden pattern, not
+   `display: none`, so its animation still runs and ends); on a phone held upright it is a slim pill
+   over the board in the colour of the side whose turn it is. */
+.game > .turn-banner {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 6px;
+  padding: 3px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 0.8em;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.game:has(> .board[data-active="you"]) > .turn-banner {
+  border-color: color-mix(in srgb, var(--you) 55%, var(--line));
+  color: color-mix(in srgb, var(--you) 55%, white);
+}
+
+.game:has(> .board[data-active="opponent"]) > .turn-banner {
+  border-color: color-mix(in srgb, var(--opponent) 55%, var(--line));
+  color: color-mix(in srgb, var(--opponent) 60%, white);
+}
+
+@media (min-width: 761px) and (min-height: 501px), (orientation: landscape) and (max-height: 500px) {
+  .game > .turn-banner {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
+  }
 }
 
 .log {
@@ -596,8 +1249,8 @@
   max-height: clamp(56px, 12vh, 160px);
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
+  border-radius: var(--seat-radius);
+  background: rgb(0 0 0 / 28%);
   color: var(--text-dim);
   font-size: 0.86em;
   list-style: decimal;
@@ -607,21 +1260,116 @@
   line-height: 1.3;
 }
 
+/* Log.tsx keeps the newest line in view, so the older ones fade out under the top edge rather
+   than being cut in half by it. */
+.board > .log {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22px);
+  mask-image: linear-gradient(to bottom, transparent, #000 22px);
+}
+
 /* ---------------------------------------------------------------------- responsive sizing --- */
 
-/* 1280x720: a short viewport gets a hard ceiling on the card height on top of the 11vh above,
-   so the four field rows cannot push the hand and the controls off the bottom. */
-@media (max-height: 820px) {
+/* The single column's rows: the field is the one that takes the spare height. */
+.board {
+  grid-template-rows: auto auto 1fr;
+}
+
+/* Desktop, 1025px and up, and a tablet held landscape (900px and up): the play area on the left
+   and a sidebar on the right, so the four rows, both seats and a big hand fit 720px of height. The
+   opponent's hand sits top right beside their seat, End turn at the height of the centre line
+   (where Hearthstone puts it), and the log below it beside your seat and hand. A landscape tablet
+   got the one-column portrait board before, which is 1024px wide and 768px tall: End turn ended up
+   below the screen. */
+@media (min-width: 1025px), (min-width: 900px) and (orientation: landscape) and (min-height: 501px) {
   .board {
-    --card-h: clamp(58px, 11vh, 92px);
+    /* Four field rows and your hand (1.48) stacked. */
+    --card-h: clamp(56px, 11.5vh, 92px);
+    --card-h: clamp(56px, calc((100cqh - 215px) / 5.48), 112px);
+    /* A lane here is three or four cards wide, so a field card takes a square of it: the name
+       fits on a line and a backrow card's text has room. The hand keeps its tall cards. */
+    --card-w: var(--card-h);
+    /* The hand is what you read most, so it takes the height the turn banner gave back (the plate
+       in the sidebar says whose turn it is) and the width the hand count gave back (a badge now):
+       at 1280x720 ten of these still sit side by side without overlapping (B30). */
+    --hand-card-h: calc(var(--card-h) * 1.48);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 250px);
+    grid-template-rows: auto 1fr auto auto;
+    column-gap: 12px;
+  }
+
+  .board > .seat-opponent {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  /* Across the seat's row and down into the field's, so the backs can be drawn card-sized (the
+     seat row alone is only a plate tall) without making that row any taller. */
+  .board > .hand-opponent {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: start;
+  }
+
+  .hand-opponent .hand-cards {
+    --slot-w: calc(var(--card-h) * 0.6);
+  }
+
+  .hand-opponent .card-hand {
+    height: calc(var(--card-h) * 0.84);
+  }
+
+  .board > .field {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .board > .control-bar {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+  }
+
+  .board > .seat-you {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .board > .hand-you {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  /* `contain: size` gives the log no height of its own, so it fills the two rows beside your seat
+     and hand instead of growing them. */
+  .board > .log {
+    grid-column: 2;
+    grid-row: 3 / 5;
+    align-self: stretch;
+    max-height: none;
+    contain: size;
+  }
+
+  .board .control-bar .control-end-turn {
+    flex: 1 1 100%;
+    min-height: 58px;
+    font-size: 1.2em;
+    border-radius: 14px;
+  }
+
+  /* Offer draw and Concede share a row, and the mute and the gear the one below (integration):
+     at 40% each, the mute cannot squeeze in beside them and leave the gear on a row of its own. */
+  .board .control-bar .control-offer-draw,
+  .board .control-bar .control-concede {
+    flex: 1 1 40%;
+    padding-inline: 8px;
+    white-space: nowrap;
   }
 }
 
-/* 390x844: five lanes across 390px minus padding and gaps leaves about 70px a lane, so the
-   cards come down a size and the labels that do not fit step aside. */
+/* 390x844 and tablets: five lanes across a narrow screen leave about 70px a lane, so the cards
+   come down a size and the labels that do not fit step aside. */
 @media (max-width: 760px) {
   .board {
-    --card-h: clamp(56px, 10vh, 84px);
     --card-w: calc(var(--card-h) * 0.72);
     --gap: 4px;
     font-size: 0.92em;
@@ -629,7 +1377,7 @@
   }
 
   .crystals {
-    max-width: 60px;
+    max-width: 70px;
   }
 
   .card {
@@ -638,5 +1386,683 @@
 
   .pile-label {
     display: none;
+  }
+}
+
+/* On a desktop proper the card height also keeps ten hand cards side by side without overlap in
+   the play area left of the 250px sidebar (B30): ten cards 1.07 card heights wide, nine gaps. A
+   landscape tablet's fan overlaps instead, which is what it is for, rather than every card on the
+   board shrinking to fit ten of them across 1024px. */
+@media (min-width: 1025px) {
+  .board {
+    --card-h: clamp(56px, min(calc((100cqh - 215px) / 5.48), calc((100cqw - 334px) / 10.66)), 112px);
+  }
+}
+
+/* Tablet portrait (761-1024px wide, and 761-899px held either way): one column, with the
+   opponent's hand beside their seat and the controls and the log sharing the last row. The
+   opponent's hand had a row of its own, a wide dark band holding four small backs; beside the seat
+   it costs no height, and the field and your hand take what it gave back. The seats show their
+   piles as icons, as on a phone, so the opponent's plate fits beside the hand. */
+@media (min-width: 761px) and (max-width: 899px) and (min-height: 501px),
+  (min-width: 900px) and (max-width: 1024px) and (min-height: 501px) and (orientation: portrait) {
+  .board {
+    /* Four field rows and your hand (1.3) stacked. */
+    --card-h: clamp(60px, 11vh, 112px);
+    --card-h: clamp(60px, calc((100cqh - 355px) / 5.3), 113px);
+    --card-w: calc(var(--card-h) * 0.9);
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, 200px);
+    grid-template-rows: auto 1fr auto auto auto;
+  }
+
+  .board > * {
+    grid-column: 1 / -1;
+  }
+
+  .board > .seat-opponent {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+
+  .board > .hand-opponent {
+    position: relative;
+    grid-column: 3;
+    grid-row: 1;
+    padding: 4px;
+  }
+
+  .hand-opponent .card-hand {
+    height: calc(var(--card-h) * 0.5);
+  }
+
+  .hand-opponent > .pile {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    z-index: 3;
+    padding: 0 5px 0 3px;
+  }
+
+  .pile-label {
+    display: none;
+  }
+
+  .board > .control-bar {
+    grid-column: 1;
+    align-self: start;
+  }
+
+  /* The buttons fill the width the turn plate above them sets, End turn the most. */
+  .board .control-bar .control,
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
+    flex: 1 1 auto;
+  }
+
+  .board .control-bar .control-end-turn {
+    flex-grow: 2;
+  }
+
+  .board > .log {
+    grid-column: 2 / -1;
+    max-height: 104px;
+  }
+}
+
+/* Desktop and tablet: a seat is a long plate, so the hero stands in the middle of it, as a
+   Hearthstone portrait does, with the piles to its left and the mana to its right. A card
+   mid-resolution shows beside the mana, in the same row, so the plate never changes height. */
+@media (min-width: 761px) and (min-height: 501px) {
+  /* The side columns never go narrower than what they hold, so the piles stay on one line; when
+     the plate is too short for both halves to be equal, the hero gives up being exactly central. */
+  .seat {
+    display: grid;
+    grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .seat > .piles {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .seat > .hero {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 3px 14px 3px 4px;
+  }
+
+  .seat > .mana {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .seat > .resolving {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .seat .hero-health,
+  .seat .hero-armor {
+    min-width: 32px;
+    height: 32px;
+    font-size: 1.2em;
+  }
+
+  /* Your hand's cards are drawn 1.3 to 1.5 times the field's here, so their type comes up to
+     match: at the field's size the rules text was 9px in a card with room to spare. */
+  .hand-you .card-hand {
+    padding: 5px;
+    font-size: 0.94em;
+  }
+}
+
+/* Hover previews (the `hoverPreviews` setting, B27): with a mouse, hovering your hand lifts the
+   card under the pointer the way a tap does. */
+@media (hover: hover) and (pointer: fine) {
+  .hand-you[data-hover-preview="on"] .hand-slot:hover {
+    z-index: 4;
+    transform: translateY(-8px);
+  }
+}
+
+/* Phones and tablets (every layout but the desktop one): a small arc tilt across your fan, at most
+   about 3deg at either end whatever the hand size (6deg spread over n cards). `padding-inline` is
+   the room the end cards' tilted corners swing into, so they stay inside `hand-you`. A tablet's
+   hand cards are already big, so a lifted one rises a little and barely grows; the phone layouts
+   below lift further. The desktop keeps the flat fan and the 8px lift above. */
+@media (max-width: 899px), (max-width: 1024px) and (orientation: portrait) {
+  .hand-you .hand-cards {
+    padding-inline: 4px;
+  }
+
+  .hand-you .hand-slot {
+    transform: rotate(calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 6deg / max(var(--n, 1), 1)));
+  }
+
+  .hand-you .hand-slot[data-lifted="true"],
+  .hand-you .hand-slot:has(> .card:focus-visible) {
+    transform: translateY(calc(var(--hand-card-h) * -0.12)) scale(1.08);
+  }
+}
+
+/* Touch sizing (B29): every control a finger has to hit is at least 44x44px (WCAG 2.5.5, Apple
+   HIG). `.board .control` outranks src/index.css's `.app-shell button` padding. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .board .control,
+  .board .control-bar button,
+  .board [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle,
+  .board .power-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .board .control {
+    padding: 6px 12px;
+  }
+
+  .board .hero {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .board .zone {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The switch (⟳) stays a small glyph in the card's corner, but a finger gets a hit area round
+     it: 14px of the card to its left and below. The card clips it (`overflow: hidden`), so it is
+     about 32x32 in all; a bigger one would take most of a phone tile, and the rest of the tile is
+     the card's own tap (attack) and drag. */
+  .board .switch-button::before {
+    content: "";
+    position: absolute;
+    inset: -2px -2px -16px -16px;
+  }
+}
+
+/* Both phone shapes, portrait and landscape: safe-area padding (index.html sets
+   viewport-fit=cover), no log (there is no room for it, and nothing needs it to play), and compact
+   seats. */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .board {
+    --gap: 4px;
+    gap: 6px;
+    padding: 6px max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom))
+      max(6px, env(safe-area-inset-left));
+    font-size: 0.92em;
+    border-radius: 12px;
+  }
+
+  .board {
+    position: relative;
+  }
+
+  .log {
+    display: none;
+  }
+
+  /* `log-toggle` opens the log over the top of the board, opaque, as a sheet the height of the
+     opponent's side; pressing it again closes it. */
+  .board[data-log="open"] > .log {
+    position: absolute;
+    top: 6px;
+    right: max(6px, env(safe-area-inset-right));
+    left: max(6px, env(safe-area-inset-left));
+    z-index: 20;
+    display: block;
+    max-height: min(46%, 340px);
+    padding: 10px 10px 10px 30px;
+    border-color: var(--line-bright);
+    background: var(--bg-raised);
+    color: var(--text);
+    font-size: 0.95em;
+    box-shadow: 0 14px 40px rgb(0 0 0 / 60%);
+    /* It opens at its newest line (Log.tsx), so the older ones fade under the top edge rather than
+       being cut in half by it. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
+    mask-image: linear-gradient(to bottom, transparent, #000 18px);
+  }
+
+  /* A square icon button, like the gear beside it, so the control bar stays one row. */
+  .board .control-bar .log-toggle {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .log-toggle-icon {
+    width: 18px;
+    height: 18px;
+    background: currentColor;
+    -webkit-mask: var(--log-icon) center / contain no-repeat;
+    mask: var(--log-icon) center / contain no-repeat;
+    --log-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='2' width='2.4' height='2.4' rx='.6'/%3E%3Crect x='5' y='2.4' width='10' height='1.6' rx='.8'/%3E%3Crect x='1' y='6.8' width='2.4' height='2.4' rx='.6'/%3E%3Crect x='5' y='7.2' width='10' height='1.6' rx='.8'/%3E%3Crect x='1' y='11.6' width='2.4' height='2.4' rx='.6'/%3E%3Crect x='5' y='12' width='10' height='1.6' rx='.8'/%3E%3C/svg%3E");
+  }
+
+  .board[data-log="open"] .control-bar .log-toggle {
+    border-color: var(--selected);
+    color: var(--selected);
+  }
+
+  .pile-label {
+    display: none;
+  }
+
+  .seat {
+    gap: 5px 7px;
+    padding: 4px 6px;
+  }
+
+  .hero {
+    gap: 5px;
+    padding: 2px 8px 2px 3px;
+  }
+
+  .hero-health,
+  .hero-armor {
+    min-width: 26px;
+    height: 26px;
+  }
+
+  .modifier-badge {
+    max-width: 12ch;
+  }
+
+  .crystals {
+    max-width: 60px;
+  }
+
+  .card {
+    font-size: 0.78em;
+    padding: 3px 4px;
+  }
+
+  /* On a phone every field card is a name and its numbers; the text is too small to read. The
+     name gets the tile's whole width and a hair less tracking, so an eleven-letter word fits. */
+  .zone .card-text {
+    display: none;
+  }
+
+  .zone .card {
+    padding-inline: 3px;
+  }
+
+  .zone .card-name {
+    letter-spacing: -0.015em;
+  }
+
+  .stat {
+    min-width: 15px;
+    padding: 0 3px;
+    font-size: 0.98em;
+  }
+
+  .zone .card-unit .counter,
+  .zone .card-unit .buried-badge {
+    bottom: 18px;
+  }
+
+  .board .switch-button {
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+  }
+
+  .field {
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .hand {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .hand-you {
+    padding-top: 8px;
+  }
+
+  .hand-you > .pile {
+    padding: 0 5px 0 3px;
+  }
+}
+
+/* Phone portrait, 390x844: one column, the opponent's hand beside their seat, and a card height
+   that gives the field and your hand the rest of the screen. */
+@media (max-width: 600px) {
+  /* The control bar is one row here, and a sixth button squeezed End turn to a stub: the mute
+     steps aside, and the gear beside it holds Mute with the rest of the sound controls. */
+  .board .control-bar .audio-toggle {
+    display: none;
+  }
+
+  .board {
+    /* Four field rows and your hand (1.24) stacked; the opponent's hand sits beside their seat.
+       The 90px cap keeps each card of a seven-card fan 44px wide at 390px (B30). */
+    --card-h: clamp(44px, 10.6vh, 92px);
+    --card-h: clamp(44px, calc((100cqh - 312px) / 5.24), 90px);
+    --card-w: calc(var(--card-h) * 0.72);
+    /* Your hand takes the height a phone held upright still has spare under the controls, so its
+       cards read without a tap; B30's strips still hold for a 7- and a 10-card hand. */
+    --hand-card-h: calc(var(--card-h) * 1.24);
+    --hand-card-w: calc(var(--hand-card-h) * 0.68);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 34%);
+    grid-template-rows: auto 1fr auto auto auto;
+  }
+
+  .board > * {
+    grid-column: 1 / -1;
+  }
+
+  .board > .seat-opponent {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .board > .hand-opponent {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    padding: 4px;
+  }
+
+  .hand-opponent > .pile {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    z-index: 3;
+    padding: 0 5px 0 3px;
+  }
+
+  /* One row of controls, End turn taking what the others leave: two rows cost the hand 50px. */
+  .board .control-bar {
+    flex-wrap: nowrap;
+  }
+
+  .board .control-bar .control {
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+
+  .board .control-bar .control-offer-draw,
+  .board .control-bar .control-concede,
+  .board .control-bar [data-testid="settings-open-game"],
+  .board .control-bar .audio-toggle {
+    flex: 0 0 auto;
+  }
+
+  .board .control-bar .control-end-turn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* From seven cards the fan overlaps so far that a covered card shows a strip under 50px wide, and
+     its rules text there was a column of word stubs ("Replac / card i / library") under the name,
+     running into the next card's. A covered card shows its cost and name; the card on top, a
+     lifted one (a tap) and the selected one show their text, as Hearthstone's fan does. */
+  .hand-you .hand-cards:has(> .hand-slot:nth-child(7))
+    > .hand-slot:not(:last-child):not([data-lifted="true"])
+    .card-text {
+    visibility: hidden;
+  }
+
+  /* Reading: a tap on a card that is not the play in flight (or keyboard focus on it) raises it
+     clear of the fan and grows it to be read, 1.6 times, growing away from the screen's edge at
+     either end of the hand. */
+  .hand-you .hand-slot[data-lifted="true"]:not(:has(> .card[data-selected="true"])),
+  .hand-you .hand-slot:has(> .card:focus-visible) {
+    transform-origin: calc((var(--i, 0) + 0.5) / var(--n, 1) * 100%) 100%;
+    transform: translateY(calc(var(--hand-card-h) * -0.3)) scale(1.6);
+  }
+
+  /* Playing: the card being played only steps up out of the fan, so what it is aimed at (a zone,
+     a unit, your own hero just above the hand) stays in sight and in reach. */
+  .hand-you .hand-slot[data-lifted="true"]:has(> .card[data-selected="true"]) {
+    transform: translateY(-10px);
+  }
+}
+
+/* Phone landscape, 844x390: a phone on its side has height for the four field rows and little
+   else, and the route above the board (the turn banner, a match or hotseat bar) takes some of that
+   too. So the seats sit in a left column, the field in the middle, and the opponent's hand (top)
+   and the controls (bottom) on the right, as before; your hand runs along the bottom under the
+   seats and the field, and only its top half shows, as a phone's hand does in Hearthstone: the
+   cost, the name and the first line of text. A tap lifts a card clear to read it, and a drag
+   starts from the part that shows. The board clips the rest, so the whole game fits the screen
+   with the route's bar above it, and a full hand still gets the width of the screen. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .board {
+    /* The field's four rows beside the seats, and under them the peek of your hand (0.73). */
+    --card-h: clamp(40px, 14.5vh, 62px);
+    --card-h: clamp(40px, calc((100cqh - 40px) / 4.73), 62px);
+    /* A lane is about 74px wide and a row 56px tall, so a field card is a tile a little wider than
+       it is tall and fills the lane: at square, one-word names ("Carnivorous", "Pointmaster")
+       did not fit its width. */
+    --card-w: calc(var(--card-h) * 1.25);
+    /* Wider than a portrait card, so a long word ("Replenish", "Jewelosco") fits the line the peek
+       shows instead of being cut at the card's edge; the turn banner's height (hidden here, the
+       turn plate says it) pays for the taller peek. */
+    --hand-card-h: calc(var(--card-h) * 1.4);
+    --hand-card-w: calc(var(--hand-card-h) * 0.8);
+    grid-template-columns: minmax(0, 224px) minmax(0, 1fr) minmax(0, 176px);
+    /* Two equal rows beside the field, one per side of its centre line, and the hand's row. */
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+    row-gap: 6px;
+    overflow: clip;
+  }
+
+  /* Each seat fills its side's half of the field's height, with the hero and piles in its middle:
+     sitting at the top and bottom edges, the two plates left a band of bare board between them that
+     belonged to neither side. */
+  .board > .seat-opponent {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    align-content: center;
+  }
+
+  .board > .seat-you {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: stretch;
+    align-content: center;
+  }
+
+  .board > .field {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .board > .hand-opponent {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: start;
+  }
+
+  /* The backs are drawn as big as the desktop sidebar draws them: at a third of a tile they were
+     slivers with a dot, and the column has the height to spare above the controls. */
+  .hand-opponent .hand-cards {
+    --slot-w: calc(var(--card-h) * 0.6);
+  }
+
+  .hand-opponent .card-hand {
+    height: calc(var(--card-h) * 0.84);
+  }
+
+  .board > .control-bar {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: end;
+    align-content: flex-end;
+  }
+
+  /* End turn and the gear share the first row under the turn plate, Offer draw and Concede the
+     second, so the column is three rows tall instead of four. */
+  .board .control-bar .control-end-turn {
+    flex: 1 1 calc(100% - 56px);
+  }
+
+  .board .control-bar [data-testid="settings-open-game"] {
+    flex: 0 0 auto;
+    order: 1;
+  }
+
+  /* The log toggle sits after Offer draw and Concede, on a row of its own at the column's foot,
+     with the mute beside it (integration: the gear's row is End turn's). */
+  .board .control-bar .log-toggle {
+    order: 3;
+    flex: 1 1 auto;
+  }
+
+  .board .control-bar .audio-toggle {
+    order: 3;
+    flex: 0 0 auto;
+  }
+
+  .board .control-bar .control-offer-draw,
+  .board .control-bar .control-concede {
+    flex: 1 1 40%;
+    order: 2;
+    padding-inline: 6px;
+    white-space: nowrap;
+  }
+
+  .turn-plate {
+    margin-bottom: 0;
+    padding: 5px 8px;
+  }
+
+  /* A tile here is about 56px square, so its numbers come down a size to stay inside it. */
+  .zone .stats {
+    gap: 1px;
+  }
+
+  .zone .stat {
+    min-width: 13px;
+    padding: 0 2px;
+    font-size: 0.86em;
+    letter-spacing: -0.02em;
+  }
+
+  /* The peek: the hand's row is half a card tall, the cards hang from its top edge, and the
+     board's clip hides what is below its bottom edge. */
+  .board > .hand-you {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    height: calc(var(--hand-card-h) * 0.52 + 8px);
+    align-items: flex-start;
+  }
+
+  .board > .hand-you .hand-cards {
+    align-items: flex-start;
+  }
+
+  /* A lifted card rises the height that was hidden, and a little more, so all of it shows. Read
+     (a tap on a card that is not the play in flight), it also grows 1.7 times, away from the edge
+     of the screen at either end; played, it keeps its size so the field stays in sight. */
+  .hand-you .hand-slot[data-lifted="true"]:not(:has(> .card[data-selected="true"])),
+  .hand-you .hand-slot:has(> .card:focus-visible) {
+    transform-origin: calc((var(--i, 0) + 0.5) / var(--n, 1) * 100%) 100%;
+    transform: translateY(calc(var(--hand-card-h) * -0.5 - 8px)) scale(1.7);
+  }
+
+  .hand-you .hand-slot[data-lifted="true"]:has(> .card[data-selected="true"]) {
+    transform: translateY(calc(var(--hand-card-h) * -0.5 - 8px));
+  }
+}
+
+/* ------------------------------------------------------------------------ the game screen --- */
+
+/* A route that hosts a game (routes/dev/hotseat.tsx, routes/match.tsx) is `.app-shell--wide`
+   holding its own chrome (BackLink's nav, the match or hotseat bar, a notice) and `.game`. The
+   screen is budgeted as a whole: the shell is exactly the visible viewport tall (`dvh`, so a
+   phone's browser toolbars are not counted as room), BackLink's nav and the match bar share one
+   row, a notice takes a row of its own, and `.game` gets what is left. Inside it the board is a
+   size container filling the rest of the column under the turn banner, and the layouts above
+   size the cards off its height. The last row is the game's; the rows before it are empty (and
+   so take no height) on a route with less chrome. Without this, the match bar and the nav pushed
+   End turn, and on a phone held landscape your whole hand, below the screen.
+
+   Only the top edge is padded for a notch here: the board pads its own sides and bottom
+   (`env(safe-area-inset-*)`, the phone layouts above), and the chrome row is inset to match. */
+.app-shell.app-shell--wide:has(> .game) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0 8px;
+  height: 100vh;
+  height: 100dvh;
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+.app-shell--wide:has(> .game) > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0 0 8px;
+}
+
+.app-shell--wide:has(> .game) > .screen-nav {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+}
+
+.app-shell--wide:has(> .game) > .screen-nav + .match-bar {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.app-shell--wide:has(> .game) > :not(.game) {
+  margin-inline: max(0px, calc(env(safe-area-inset-left) - 12px)) max(0px, calc(env(safe-area-inset-right) - 12px));
+}
+
+.app-shell--wide > .game {
+  grid-row: 4;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+
+.app-shell--wide > .game > .board {
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: size;
+}
+
+/* Phones: the shell's frame and the chrome row come down to what a thumb needs. The match bar is
+   one line, cut with an ellipsis rather than wrapped into a second. */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .app-shell.app-shell--wide:has(> .game) {
+    padding: max(6px, env(safe-area-inset-top)) 12px 6px;
+  }
+
+  .app-shell--wide:has(> .game) > * {
+    margin-bottom: 6px;
+  }
+
+  .app-shell--wide:has(> .game) > .game {
+    margin-bottom: 0;
+  }
+
+  .app-shell--wide:has(> .game) > .match-bar {
+    flex-wrap: nowrap;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .app-shell--wide:has(> .game) > .match-bar > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
