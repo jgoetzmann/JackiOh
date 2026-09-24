@@ -25,11 +25,15 @@
 // filter that set is never actually empty (a hero is always there), so the fizzle branch is
 // unreachable for this card; `damage` still resolves `{ of: "chosen" }` to null and does nothing if
 // it ever is.
+//
+// R195, the yellow glow: in hand the card glows exactly when its Cry would deal the high number.
+// `heroIsLow` is the one predicate both the Cry and `conditionMet` read, so they cannot drift. The
+// condition is about the play, so a Sorcerer on the field never glows.
 
-import type { Effect, Script } from "@jackioh/engine";
+import type { Effect, GameState, Script } from "@jackioh/engine";
 import { heroOf } from "@jackioh/engine";
 import { damage } from "@jackioh/engine/effects";
-import type { TargetDecl } from "@jackioh/shared";
+import type { PlayerId, TargetDecl } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-068");
@@ -43,6 +47,14 @@ const targets: TargetDecl[] = [
 ];
 
 /**
+ * "If your hero is below 10", strictly. §10.9: a hook may read state to compute an effect's
+ * arguments; it never writes, and R195's `conditionMet` reads the same thing through this function.
+ */
+function heroIsLow(state: GameState, controller: PlayerId): boolean {
+  return heroOf(state, controller).health < LOW_HERO_HEALTH;
+}
+
+/**
  * §10.9: a hook may read state to compute an effect's arguments; it never writes. The read goes
  * through `heroOf` (engine/src/query.ts), the engine's read-only hero block — BUILD M3-T1 wants no
  * card file spelling out the shape of `PlayerState`, so this file names the fact it needs and not
@@ -54,9 +66,11 @@ function sorcerer(low: number, high: number): Script {
   return {
     targets,
     cry: (ctx): Effect[] => {
-      const amount = heroOf(ctx.state, ctx.controller).health < LOW_HERO_HEALTH ? high : low;
+      const amount = heroIsLow(ctx.state, ctx.controller) ? high : low;
       return [damage({ to: { of: "chosen" }, amount })];
     },
+    // R195: hand only — the glow says playing it now deals `high`.
+    conditionMet: (ctx) => ctx.zone === "hand" && heroIsLow(ctx.state, ctx.controller),
   };
 }
 

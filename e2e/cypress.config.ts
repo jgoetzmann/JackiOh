@@ -1,5 +1,5 @@
 // BUILD M8: Cypress runs against apps/web in `E2E=1` mode (the hotseat route plus a test server
-// with fixture accounts). Fifteen specs, every one seeded, no fixed waits.
+// with fixture accounts). Sixteen specs, every one seeded, no fixed waits.
 
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "cypress";
@@ -70,7 +70,7 @@ export default defineConfig({
   // it mounts `apps/web/src/test/fixtures.ts` `fullBoardView()` — the very fixture the acceptance
   // describes — in a browser, at both viewports. This block is separate from `e2e` in every way
   // that matters to M8: its own `specPattern`, its own support file, its own index page. The e2e
-  // suite stays at fifteen files and `cypress run` (no flag) still runs exactly those fifteen.
+  // suite stays at sixteen files and `cypress run` (no flag) still runs exactly those sixteen.
   component: {
     devServer: {
       framework: "react",

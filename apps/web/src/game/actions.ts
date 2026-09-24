@@ -11,7 +11,10 @@
 //     because a candidate names that `targetId`;
 //   * a unit may switch because a `switchPosition` names it;
 //   * `end-turn`, `offer-draw`, `power` and `concede` light up because the matching action type is
-//     in the array.
+//     in the array;
+//   * the green glow (`Highlight.glow`) is a subset of those testids, chosen by action type and
+//     interaction stage alone (see `highlightFor`). The yellow glow is not decided here at all: it
+//     is `CardView.conditionActive`, which the engine computes (R195).
 //
 // `min` and `max` on a picker come from `PendingView`, which the engine built. The engine decides;
 // this module narrows a list it was given.
@@ -429,9 +432,21 @@ export function pendingHighlight(view: PlayerView, pending: PendingView | null):
   return out;
 }
 
+/** `glow` keeps only what `legal` already holds, so the green can never outrun the engine. */
+function withinLegal(glow: ReadonlySet<string>, legalIds: ReadonlySet<string>): Set<string> {
+  return new Set([...glow].filter((id) => legalIds.has(id)));
+}
+
 /**
  * Every `data-testid` the board may light up, plus the selected set. Everything in `legal` got
  * there because an `ActionBody` (or an open prompt's own option list) named it.
+ *
+ * `glow` is the green (Hearthstone's "can act") and is narrower than `legal`: in idle, the hand
+ * cards a `play` names, the units an `attack` names, `power` when `activatePower` is listed and
+ * the open prompt's cells; `end-turn` only once none of those three action types is listed and
+ * no prompt is open. While playing, the remaining candidates' zones, tributes and declared
+ * targets; while attacking, the selected attacker's targets. `switchPosition`, `offerDraw` and
+ * `concede` stay clickable but never glow.
  */
 export function highlightFor(
   view: PlayerView,
@@ -448,6 +463,7 @@ export function highlightFor(
 
   const legalIds = new Set<string>();
   const selected = new Set<string>();
+  const glow = new Set<string>();
 
   // The controls the engine listed stay live through a selection: nothing the player is halfway
   // through building takes `end-turn` or `concede` away from them.
@@ -463,16 +479,27 @@ export function highlightFor(
     for (const body of legal) if (body.type === "play") legalIds.add(testid.handCard(body.instanceId));
     legalIds.add(testid.handCard(interaction.instanceId));
     const remaining = remainingCandidates(interaction);
+    // The glow is where the card in flight can go next: a zone, a Tribute or a declared target.
+    // The other playable hand cards stay clickable (above) but do not glow.
     for (const candidate of remaining) {
       if (candidate.zone !== undefined) {
-        legalIds.add(testid.zone("you", candidate.zone.row, candidate.zone.lane));
+        const zone = testid.zone("you", candidate.zone.row, candidate.zone.lane);
+        legalIds.add(zone);
+        glow.add(zone);
       }
-      for (const id of candidate.tributes ?? []) legalIds.add(testid.card(id));
+      for (const id of candidate.tributes ?? []) {
+        legalIds.add(testid.card(id));
+        glow.add(testid.card(id));
+      }
       for (const selection of candidate.targets ?? []) {
         const where = selectionTestid(view, selection);
-        if (where !== null) legalIds.add(where);
+        if (where !== null) {
+          legalIds.add(where);
+          glow.add(where);
+        }
       }
     }
+    glow.delete(testid.handCard(interaction.instanceId));
     const picked = interaction.picked;
     if (picked.zone !== undefined) selected.add(testid.zone("you", picked.zone.row, picked.zone.lane));
     for (const id of picked.tributes ?? []) selected.add(testid.card(id));
@@ -480,7 +507,7 @@ export function highlightFor(
       const where = selectionTestid(view, selection);
       if (where !== null) selected.add(where);
     }
-    return { legal: legalIds, selected };
+    return { legal: legalIds, selected, glow: withinLegal(glow, legalIds) };
   }
 
   if (interaction.stage === "attacking") {
@@ -488,22 +515,36 @@ export function highlightFor(
     // Any other unit the engine listed as an attacker stays clickable, so the player can switch.
     for (const body of legal) if (body.type === "attack") legalIds.add(testid.card(body.attackerId));
     legalIds.add(testid.card(interaction.attackerId));
+    // Only the selected attacker's targets glow; the other attackers stay clickable but dark.
     for (const candidate of interaction.candidates.filter(isAttack)) {
       if (candidate.attackerId !== interaction.attackerId) continue;
-      legalIds.add(attackTargetTestid(view, candidate.targetId));
+      const where = attackTargetTestid(view, candidate.targetId);
+      legalIds.add(where);
+      glow.add(where);
     }
-    return { legal: legalIds, selected };
+    return { legal: legalIds, selected, glow: withinLegal(glow, legalIds) };
   }
 
+  let canAct = false;
   for (const body of legal) {
     switch (body.type) {
       case "play":
         legalIds.add(testid.handCard(body.instanceId));
+        glow.add(testid.handCard(body.instanceId));
+        canAct = true;
         break;
       case "attack":
         legalIds.add(testid.card(body.attackerId));
+        glow.add(testid.card(body.attackerId));
+        canAct = true;
+        break;
+      case "activatePower":
+        // The control itself was added to `legalIds` above, before the stage split.
+        glow.add(testid.power);
+        canAct = true;
         break;
       case "switchPosition":
+        // Clickable, never glowing: turning a unit sideways is not what Hearthstone lights up.
         legalIds.add(testid.card(body.instanceId));
         legalIds.add(testid.switchPosition(body.instanceId));
         break;
@@ -515,9 +556,16 @@ export function highlightFor(
 
   // With a prompt open `legalActions` offers only that prompt's answers (§10.7), so the board
   // would otherwise go entirely grey; the prompt's own options say which cells may be clicked.
-  for (const where of pendingHighlight(view, view.pending)) legalIds.add(where);
+  for (const where of pendingHighlight(view, view.pending)) {
+    legalIds.add(where);
+    glow.add(where);
+  }
 
-  return { legal: legalIds, selected };
+  // Hearthstone's End Turn lights up once nothing else can be done this turn.
+  const endTurnListed = legal.some((body) => body.type === "endTurn");
+  if (endTurnListed && !canAct && view.pending === null) glow.add(testid.endTurn);
+
+  return { legal: legalIds, selected, glow: withinLegal(glow, legalIds) };
 }
 
 // ---------------------------------------------------------------------------------------------

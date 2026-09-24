@@ -1757,6 +1757,23 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     );
   });
 
+  // Proved by conditionActive.test.ts's "R195 …" tests (a test-only `conditionMet` hook: the
+  // viewer's hand in their own main phase only, their units and backrow on either turn, never a
+  // card they don't control, never a card with no hook, the hook never called outside those) and by
+  // the cards package's condition-active.test.ts, which checks the five §8 cards that implement the
+  // hook (#10, #53, #68, #71, #93) against the branch each card's own resolution then takes.
+  it("R195 surfaces a met printed condition as conditionActive on the viewer's own cards only", () => {
+    provenIn(195, "conditionActive.test.ts", "../../cards/test/condition-active.test.ts");
+  });
+
+  // Proved by conditionActive.test.ts's "R196 …" tests, which fuse test-only hooked cards through
+  // the real R77 `fuse` (in hand and on the field), and by the cards package's
+  // condition-active.test.ts, which crafts #53 Reno with #68 Twisted Sorcerer and checks the glow
+  // against the branches the fused Cry then takes.
+  it("R196 lights a fused card when any ingredient's printed condition holds", () => {
+    provenIn(196, "conditionActive.test.ts", "../../cards/test/condition-active.test.ts");
+  });
+
   // Proved in each part of the layer. cues.test.ts "R200 …" bounds every planned cue inside its entry
   // plus FX_MAX_TAIL_MS for every recipe and duration, and bounds the killing blow's replay;
   // director.test.ts "R200 …" fires cues on frames and leaves nothing behind after D +

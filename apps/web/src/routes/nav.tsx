@@ -8,6 +8,7 @@
 import type { MouseEvent, ReactElement } from "react";
 
 import { navigate, paths } from "../net/navigate.ts";
+import { SettingsButton } from "../settings/index.ts";
 
 export const navTestid = {
   back: "nav-back",
@@ -49,6 +50,7 @@ export function BackLink({ to = paths.landing, label = "← Back", onLeave, onPr
       >
         {label}
       </button>
+      <SettingsButton placement="nav" />
     </nav>
   );
 }

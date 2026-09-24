@@ -100,7 +100,10 @@
   right: 2px;
   bottom: auto;
   left: auto;
-  z-index: 2;
+  /* Above the counters and the buried count (3): on a phone board.css widens the switch's hit
+     area 16 px left and down with an invisible ::before (polish task 7, B29), and a badge drawn
+     under that reach must not take the tap. */
+  z-index: 4;
   display: grid;
   place-items: center;
   width: clamp(14px, 28%, 18px);
@@ -136,8 +139,15 @@
 }
 
 /* 39% from the bottom clears the stat gems and the name plate on every zone shape (their top is
-   35 to 37% up, see `--mf-stat` and `--mf-plate` below). */
-.card.cf-host--minion > .counter {
+   35 to 37% up, see `--mf-stat` and `--mf-plate` below).
+
+   Polish task 7's board.css also places the counters and a Stack's buried count, for the face
+   before this one: on the line above the stats (`.zone .card-unit .counter`, `bottom: 22px`),
+   which on a minion is its name plate. The integration branch keeps the placement here (B21 in
+   card-faces.cy.tsx), so each rule also has a `.zone` form that outranks board.css's on the board,
+   whichever stylesheet loads last. */
+.card.cf-host--minion > .counter,
+.zone .card.cf-host--minion > .counter {
   top: auto;
   bottom: 39%;
   z-index: 3;
@@ -159,9 +169,11 @@
   z-index: 3;
 }
 
-.card.cf-host > .buried-badge {
+.card.cf-host > .buried-badge,
+.zone .card.cf-host > .buried-badge {
   top: 26%;
   right: 1px;
+  bottom: auto;
   left: auto;
   z-index: 3;
 }
@@ -184,8 +196,11 @@
 
 /* index.css's `.app-shell button` pads every button 9px 16px, which squeezed the face to about
    60% of the option box (48 px of an 82 px box at 1280x720). A card option lets its face fill the
-   box prompt.css draws, whatever size that is; an option without a face keeps its padding. */
-.app-shell .prompt-card:has(> .cf-option) {
+   box prompt.css draws, whatever size that is; an option without a face keeps its padding.
+   prompt.css (polish task 7) pads a big screen's card picker 8px for the text option it drew
+   before faces; the `.prompt` form outranks that rule too, whichever stylesheet loads last. */
+.app-shell .prompt-card:has(> .cf-option),
+.app-shell .prompt .prompt-card:has(> .cf-option) {
   padding: 4px;
 }
 
@@ -483,6 +498,22 @@
 }
 
 /* --------------------------------------------------------------------------- name ribbon --- */
+
+/* board.css (polish task 7) floats a spacer at the start of the old face's `.card-name`, to step
+   round a cost gem in its top-left corner (and, on a field tile, round the switch button). A face's
+   name sits in its own ribbon with no gem beside it, and the spacer would push a one-line name
+   onto a second line, so a face has none. It also caps the old name at two or three lines in `em`
+   (`max-height`), which under a shrunk font (useFitText's --cf-fit) is less than one of the
+   ribbon's lines: a face's name box is its ribbon, so it has no cap. `.card.cf-host` outranks
+   board.css's hand and field variants of the cap, whichever stylesheet loads last. */
+.cf .card-name::before {
+  content: none;
+}
+
+.cf .card-name,
+.card.cf-host .cf .card-name {
+  max-height: none;
+}
 
 .cf .card-name {
   position: absolute;

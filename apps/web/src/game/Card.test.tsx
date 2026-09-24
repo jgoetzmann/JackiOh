@@ -347,7 +347,11 @@ describe("B17: everything Card.tsx rendered before, it still renders", () => {
     for (const back of backs(container)) expect(back.getAttribute("style")).toBeNull();
   });
 
-  it("B17 data-legal, aria-disabled, tabIndex, draggable, data-selected and data-animating keep their meaning", () => {
+  // `draggable` is the one attribute that no longer shows on the board: polish task 7 moved drag to
+  // play onto pointer events (docs/polish/7-mobile-ux.md, "In-repo prior art being retired"),
+  // because HTML5 drag never fires on touch and its dragstart cancels a pointer drag, so the board
+  // stopped passing it. Card.tsx still honours it for a caller that does.
+  it("B17 data-legal, aria-disabled, tabIndex, data-selected and data-animating keep their meaning, and the board drags by pointer", () => {
     const view = fullBoardView();
     const legal = yourUnit(view, 1);
     const illegal = yourUnit(view, 2);
@@ -359,7 +363,7 @@ describe("B17: everything Card.tsx rendered before, it still renders", () => {
     expect(root.getAttribute("data-legal")).toBe("true");
     expect(root.hasAttribute("aria-disabled")).toBe(false);
     expect(root.getAttribute("tabindex")).toBe("0");
-    expect(root.getAttribute("draggable")).toBe("true");
+    expect(root.hasAttribute("draggable")).toBe(false);
     expect(root.getAttribute("data-selected")).toBe("true");
     expect(root.getAttribute("data-animating")).toBe("buffed");
 

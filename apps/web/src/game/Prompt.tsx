@@ -15,6 +15,10 @@
 //     `x`, `embiggen`, `zone`, `tribute` and `direction` prompt kinds for later sets, so both
 //     routes render the same picker with the same `data-prompt-kind`.
 //
+// `data-prompt-source` says which route opened the modal ("engine" or "play"), for layout only:
+// prompt.css turns a play's board picks into a slim bar on a phone while drag to play is on
+// (polish task 7), because their answers already glow on the board.
+//
 // No rule is applied here either. `min` and `max` gate the confirm button, and both came from the
 // engine — from `PendingView` on route 1 and from the candidate `play`s on route 2. The options
 // likewise: a prompt's options are the engine's, and a play's choices are read off the
@@ -381,6 +385,8 @@ function PlainOption(props: { item: PickerItem; pressed: boolean; onPick: () => 
 
 function PromptModal(props: {
   picker: Picker;
+  /** Which route opened it: an engine prompt (`view.pending`) or a play still being built (R81). */
+  source: "engine" | "play";
   boardTestids: readonly string[];
   onAction: (body: ActionBody) => void;
   onInteraction?: (next: Interaction) => void;
@@ -566,6 +572,7 @@ function PromptModal(props: {
         className={`prompt prompt-${picker.chrome}`}
         data-testid="prompt-modal"
         data-prompt-kind={picker.chrome}
+        data-prompt-source={props.source}
         /* The board cells this prompt has blessed, so a `target` pick can be made on the board
            too (BUILD M5-T2). Derived by `highlightFor`, which reads only `legalActions` and the
            prompt's own options. */
@@ -638,6 +645,7 @@ export default function Prompt(props: PromptProps) {
     return (
       <PromptModal
         key={pending.choiceId}
+        source="engine"
         picker={pickerForPending(pending, props.view, props.legal ?? [])}
         boardTestids={boardTestids}
         onAction={props.onAction}
@@ -654,6 +662,7 @@ export default function Prompt(props: PromptProps) {
   return (
     <PromptModal
       key={needKey(need)}
+      source="play"
       picker={pickerForNeed(need, interaction, props.view)}
       boardTestids={boardTestids}
       onAction={props.onAction}

@@ -9,6 +9,9 @@
 //
 // Every test gives BOTH sides a playable card in hand, because §2.5/R82 auto-ends a turn with
 // nothing meaningful left on it and would otherwise cascade several turns past the one under test.
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";

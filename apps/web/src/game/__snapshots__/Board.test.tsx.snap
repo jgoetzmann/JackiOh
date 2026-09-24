@@ -4,6 +4,7 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
 <div
   class="board"
   data-active="you"
+  data-drag="on"
   data-phase="main"
   data-testid="board"
   data-turn="3"
@@ -140,6 +141,7 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
   <div
     aria-label="opponent hand"
     class="hand hand-opponent"
+    data-count="6"
     data-side="opponent"
     data-testid="hand-opponent"
   >
@@ -160,372 +162,403 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     </span>
     <div
       class="hand-cards"
+      style="--n: 6;"
     >
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 0;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 1;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 2;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 3;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 4;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
       <div
-        aria-label="Face-down card"
-        class="card card-back card-hand"
-        data-face-down="true"
+        class="hand-slot"
+        style="--i: 5;"
       >
-        <span
-          aria-hidden="true"
-          class="cf-back"
+        <div
+          aria-label="Face-down card"
+          class="card card-back card-hand"
+          data-face-down="true"
         >
-          <svg
-            aria-hidden="true"
-            class="cf-back-emblem"
-            focusable="false"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="44"
-              stroke="#d4af37"
-              stroke-opacity="0.7"
-              stroke-width="3"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="none"
-              r="36"
-              stroke="#d4af37"
-              stroke-dasharray="4 3"
-              stroke-opacity="0.4"
-              stroke-width="1.5"
-            />
-            <path
-              d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
-              fill="#7f6bd0"
-              fill-opacity="0.55"
-              stroke="#e8d28a"
-              stroke-linejoin="round"
-              stroke-width="2"
-            />
-            <path
-              d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
-              fill="#241c44"
-              fill-opacity="0.6"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              fill="#ffd24a"
-              fill-opacity="0.9"
-              r="7"
-            />
-          </svg>
           <span
             aria-hidden="true"
-            class="card-back-mark"
-          />
-        </span>
+            class="cf-back"
+          >
+            <svg
+              aria-hidden="true"
+              class="cf-back-emblem"
+              focusable="false"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="44"
+                stroke="#d4af37"
+                stroke-opacity="0.7"
+                stroke-width="3"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                r="36"
+                stroke="#d4af37"
+                stroke-dasharray="4 3"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+              />
+              <path
+                d="M50 12 L60 40 L88 50 L60 60 L50 88 L40 60 L12 50 L40 40 Z"
+                fill="#7f6bd0"
+                fill-opacity="0.55"
+                stroke="#e8d28a"
+                stroke-linejoin="round"
+                stroke-width="2"
+              />
+              <path
+                d="M50 30 L55 45 L70 50 L55 55 L50 70 L45 55 L30 50 L45 45 Z"
+                fill="#241c44"
+                fill-opacity="0.6"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                fill="#ffd24a"
+                fill-opacity="0.9"
+                r="7"
+              />
+            </svg>
+            <span
+              aria-hidden="true"
+              class="card-back-mark"
+            />
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -2700,6 +2733,8 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
   <div
     aria-label="you hand"
     class="hand hand-you"
+    data-count="4"
+    data-hover-preview="on"
     data-side="you"
     data-testid="hand-you"
   >
@@ -2720,248 +2755,269 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     </span>
     <div
       class="hand-cards"
+      style="--n: 4;"
     >
       <div
-        aria-disabled="true"
-        class="card card-spell cf-host cf-host--full card-hand"
-        data-card-type="Unit"
-        data-def-id="core-002"
-        data-face="full"
-        data-legal="false"
-        data-testid="hand-card-c11"
+        class="hand-slot"
+        style="--i: 0;"
       >
-        <span
-          class="cf cf--full"
+        <div
+          aria-disabled="true"
+          class="card card-spell cf-host cf-host--full card-hand"
           data-card-type="Unit"
-          data-foil="none"
-          data-layout="full"
-          data-name-tier="s"
-          data-text-tier="s"
-          style="--cf-name-scale: 1; --cf-text-scale: 1;"
+          data-def-id="core-002"
+          data-face="full"
+          data-legal="false"
+          data-testid="hand-card-c11"
         >
           <span
-            class="cf-scale"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
             <span
-              class="cost-gem"
-              data-cost="1"
-              data-tone="base"
-            >
-              1
-            </span>
-            <span
-              class="cf-art-frame"
+              class="cf-scale"
             >
               <span
-                aria-hidden="true"
-                class="cf-art cf-art--portrait"
-                data-art="procedural"
-                data-art-theme="unit"
-                data-art-variant="base"
-                style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2238.33%22%20y1%3D%221.38%22%20x2%3D%2261.67%22%20y2%3D%2298.62%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316140c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6e46%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.8%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.36%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2229.01%22%20cy%3D%2250.53%22%20r%3D%2225.09%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-5.87%2025.34A44.86%2044.86%200%201%200%2083.85%2025.34A44.86%2044.86%200%201%200%20-5.87%2025.34ZM-4.09%2025.34A43.09%2043.09%200%201%200%2082.08%2025.34A43.09%2043.09%200%201%200%20-4.09%2025.34ZM6%2025.34A33%2033%200%201%200%2071.99%2025.34A33%2033%200%201%200%206%2025.34ZM7.74%2025.34A31.26%2031.26%200%201%200%2070.25%2025.34A31.26%2031.26%200%201%200%207.74%2025.34ZM17.86%2025.34A21.14%2021.14%200%201%200%2060.13%2025.34A21.14%2021.14%200%201%200%2017.86%2025.34ZM18.98%2025.34A20.01%2020.01%200%201%200%2059.01%2025.34A20.01%2020.01%200%201%200%2018.98%2025.34Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2052.3Q20%2057.32%2030%2056.81Q40%2056.29%2050%2060.34Q60%2064.4%2070%2064.69Q80%2064.97%2090%2063.15L100%2061.33L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.08Q25%2083.12%2037.5%2083.9Q50%2084.67%2062.5%2086.55Q75%2088.43%2087.5%2086.11L100%2083.78L100%20100Z%22%20fill%3D%22%233b3523%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M-0.74%20100C-0.74%2072.56%207.59%2066.56%2021.26%2065.06L24.76%2061.96C14.31%2050.98%2019.17%2037.33%2026.92%2033.33C36.24%2037.33%2043.71%2050.98%2033.26%2061.96L36.76%2065.06C50.43%2066.56%2058.76%2072.56%2058.76%20100ZM21.65%2052.03A6.71%208.54%200%201%200%2035.07%2052.03A6.71%208.54%200%201%200%2021.65%2052.03Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2876.63%2025.79%29%20rotate%285.31%29%20scale%280.77%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%2817.13%29%20scale%280.33%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%202L20.5%205V11.2C20.5%2016.4%2017%2020.1%2012%2022C7%2020.1%203.5%2016.4%203.5%2011.2V5ZM12%205.4L17.4%207.3V11.3C17.4%2014.7%2015.3%2017.2%2012%2018.6Z%22%20fill%3D%22%23ffeda0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.38%22%20cy%3D%2231.92%22%20r%3D%220.96%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2265.42%22%20cy%3D%2242.07%22%20r%3D%220.75%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2286.78%22%20cy%3D%2227.39%22%20r%3D%220.54%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2232.03%22%20cy%3D%2215.55%22%20r%3D%220.87%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%2229.35%22%20cy%3D%2234.14%22%20r%3D%220.74%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%224.02%22%20cy%3D%2257.88%22%20r%3D%221.2%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
-              />
-            </span>
-            <span
-              class="card-name"
-            >
-              core-002
-            </span>
-            <span
-              class="card-type"
-            >
-              Unit
-            </span>
-            <span
-              class="card-text"
-            >
+                class="cost-gem"
+                data-cost="1"
+                data-tone="base"
+              >
+                1
+              </span>
               <span
-                class="cf-text-base"
-              />
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2238.33%22%20y1%3D%221.38%22%20x2%3D%2261.67%22%20y2%3D%2298.62%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316140c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6e46%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.8%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220.36%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeda0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2229.01%22%20cy%3D%2250.53%22%20r%3D%2225.09%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-5.87%2025.34A44.86%2044.86%200%201%200%2083.85%2025.34A44.86%2044.86%200%201%200%20-5.87%2025.34ZM-4.09%2025.34A43.09%2043.09%200%201%200%2082.08%2025.34A43.09%2043.09%200%201%200%20-4.09%2025.34ZM6%2025.34A33%2033%200%201%200%2071.99%2025.34A33%2033%200%201%200%206%2025.34ZM7.74%2025.34A31.26%2031.26%200%201%200%2070.25%2025.34A31.26%2031.26%200%201%200%207.74%2025.34ZM17.86%2025.34A21.14%2021.14%200%201%200%2060.13%2025.34A21.14%2021.14%200%201%200%2017.86%2025.34ZM18.98%2025.34A20.01%2020.01%200%201%200%2059.01%2025.34A20.01%2020.01%200%201%200%2018.98%2025.34Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2052.3Q20%2057.32%2030%2056.81Q40%2056.29%2050%2060.34Q60%2064.4%2070%2064.69Q80%2064.97%2090%2063.15L100%2061.33L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.08Q25%2083.12%2037.5%2083.9Q50%2084.67%2062.5%2086.55Q75%2088.43%2087.5%2086.11L100%2083.78L100%20100Z%22%20fill%3D%22%233b3523%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M-0.74%20100C-0.74%2072.56%207.59%2066.56%2021.26%2065.06L24.76%2061.96C14.31%2050.98%2019.17%2037.33%2026.92%2033.33C36.24%2037.33%2043.71%2050.98%2033.26%2061.96L36.76%2065.06C50.43%2066.56%2058.76%2072.56%2058.76%20100ZM21.65%2052.03A6.71%208.54%200%201%200%2035.07%2052.03A6.71%208.54%200%201%200%2021.65%2052.03Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2876.63%2025.79%29%20rotate%285.31%29%20scale%280.77%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.4L14.1%204.9V15.2H9.9V4.9ZM11.6%205.6H12.4V14.4H11.6ZM5.4%2015.2H18.6V17.2H5.4ZM11%2017.2H13V20.6H11ZM10.6%2022A1.4%201.4%200%201%200%2013.4%2022A1.4%201.4%200%201%200%2010.6%2022Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2084%29%20rotate%2817.13%29%20scale%280.33%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%202L20.5%205V11.2C20.5%2016.4%2017%2020.1%2012%2022C7%2020.1%203.5%2016.4%203.5%2011.2V5ZM12%205.4L17.4%207.3V11.3C17.4%2014.7%2015.3%2017.2%2012%2018.6Z%22%20fill%3D%22%23ffeda0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.38%22%20cy%3D%2231.92%22%20r%3D%220.96%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2265.42%22%20cy%3D%2242.07%22%20r%3D%220.75%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2286.78%22%20cy%3D%2227.39%22%20r%3D%220.54%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Ccircle%20cx%3D%2232.03%22%20cy%3D%2215.55%22%20r%3D%220.87%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%2229.35%22%20cy%3D%2234.14%22%20r%3D%220.74%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%224.02%22%20cy%3D%2257.88%22%20r%3D%221.2%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.76%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-002
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
             </span>
           </span>
-        </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell radiant cf-host cf-host--full card-hand"
-        data-card-type="Unit"
-        data-def-id="core-019"
-        data-face="full"
-        data-legal="false"
-        data-radiant="true"
-        data-testid="hand-card-c12"
+        class="hand-slot"
+        style="--i: 1;"
       >
-        <span
-          class="cf cf--full"
+        <div
+          aria-disabled="true"
+          class="card card-spell radiant cf-host cf-host--full card-hand"
           data-card-type="Unit"
-          data-foil="animated"
-          data-layout="full"
-          data-name-tier="s"
-          data-radiant-face="true"
-          data-text-tier="s"
-          style="--cf-name-scale: 1; --cf-text-scale: 1;"
+          data-def-id="core-019"
+          data-face="full"
+          data-legal="false"
+          data-radiant="true"
+          data-testid="hand-card-c12"
         >
           <span
-            class="cf-scale"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="animated"
+            data-layout="full"
+            data-name-tier="s"
+            data-radiant-face="true"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
             <span
-              class="cost-gem"
-              data-cost="3"
-              data-tone="base"
-            >
-              3
-            </span>
-            <span
-              class="cf-art-frame"
+              class="cf-scale"
             >
               <span
-                aria-hidden="true"
-                class="cf-art cf-art--portrait"
-                data-art="procedural"
-                data-art-theme="unit"
-                data-art-variant="radiant"
-                style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2256.22%22%20y1%3D%220.39%22%20x2%3D%2243.78%22%20y2%3D%2299.61%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238f7125%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23271606%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.82%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.37%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2247.81%22%20cy%3D%2251.23%22%20r%3D%2229.35%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M47.81%2051.23L-53.83%20161.55L-63.95%20151.28Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-102.19%2050.29L-101.6%2037.95Z%22%20opacity%3D%220.33%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-64.72%20-47.95L-55.77%20-57.27Z%22%20opacity%3D%220.2%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L63.2%20-97.98L77.33%20-95.84Z%22%20opacity%3D%220.21%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L154.33%20-54.38L161.42%20-46.71Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L197.81%2051.64L197.4%2062.33Z%22%20opacity%3D%220.34%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L146.88%20163.86L140.66%20169.04Z%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L39.65%20201.01L23.21%20199.2Z%22%20opacity%3D%220.33%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M5.12%20100L5.12%2025.01A11.55%2011.55%200%200%201%2028.21%2025.01L28.21%20100ZM6.85%20100L6.85%2025.01A9.81%209.81%200%200%201%2026.48%2025.01L26.48%20100ZM40.5%20100L40.5%2023.25A9.5%209.5%200%200%201%2059.5%2023.25L59.5%20100ZM41.98%20100L41.98%2023.25A8.02%208.02%200%200%201%2058.02%2023.25L58.02%20100ZM72.93%20100L72.93%2028.69A10.4%2010.4%200%200%201%2093.74%2028.69L93.74%20100ZM74.52%20100L74.52%2028.69A8.82%208.82%200%200%201%2092.15%2028.69L92.15%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2056Q20%2060.66%2030%2064.06Q40%2067.45%2050%2066.06Q60%2064.67%2070%2061.02Q80%2057.37%2090%2060.17L100%2062.97L100%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.49Q25%2086%2037.5%2085.94Q50%2085.88%2062.5%2084.16Q75%2082.45%2087.5%2084.27L100%2086.1L100%20100Z%22%20fill%3D%22%23674316%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M19.21%20100C19.21%2074.33%2027.22%2068.33%2040.05%2066.83L43.55%2063.46C32.36%2051.8%2037.28%2037.27%2045.48%2033.27C55.42%2037.27%2063.27%2051.8%2052.07%2063.46L55.57%2066.83C68.41%2068.33%2076.42%2074.33%2076.42%20100ZM39.96%2052.73A7.13%209.07%200%201%200%2054.21%2052.73A7.13%209.07%200%201%200%2039.96%2052.73Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M42.05%2068.33L37.05%2054.46L32.55%2066.33ZM53.57%2068.33L58.57%2054.46L63.07%2066.33Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2847.81%2078.05%29%20rotate%28-6.08%29%20scale%280.59%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%289.83%29%20scale%280.38%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ffe389%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2251.77%22%20cy%3D%2223.82%22%20r%3D%221.1%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.51%22%2F%3E%3Ccircle%20cx%3D%227.27%22%20cy%3D%2223.77%22%20r%3D%220.78%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%2244.45%22%20r%3D%220.51%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%2251.52%22%20cy%3D%2210.07%22%20r%3D%220.82%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2217.26%22%20cy%3D%2234.31%22%20r%3D%220.81%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%2245.44%22%20r%3D%221.12%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.86%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
-              />
-            </span>
-            <span
-              class="card-name"
-            >
-              core-019
-            </span>
-            <span
-              class="card-type"
-            >
-              Unit
-            </span>
-            <span
-              class="card-text"
-            >
+                class="cost-gem"
+                data-cost="3"
+                data-tone="base"
+              >
+                3
+              </span>
               <span
-                class="cf-text-base"
-              />
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="radiant"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2256.22%22%20y1%3D%220.39%22%20x2%3D%2243.78%22%20y2%3D%2299.61%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%238f7125%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23271606%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.82%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220.37%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffe389%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2247.81%22%20cy%3D%2251.23%22%20r%3D%2229.35%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22%23fff1b0%22%3E%3Cpath%20d%3D%22M47.81%2051.23L-53.83%20161.55L-63.95%20151.28Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-102.19%2050.29L-101.6%2037.95Z%22%20opacity%3D%220.33%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L-64.72%20-47.95L-55.77%20-57.27Z%22%20opacity%3D%220.2%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L63.2%20-97.98L77.33%20-95.84Z%22%20opacity%3D%220.21%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L154.33%20-54.38L161.42%20-46.71Z%22%20opacity%3D%220.23%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L197.81%2051.64L197.4%2062.33Z%22%20opacity%3D%220.34%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L146.88%20163.86L140.66%20169.04Z%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M47.81%2051.23L39.65%20201.01L23.21%20199.2Z%22%20opacity%3D%220.33%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M5.12%20100L5.12%2025.01A11.55%2011.55%200%200%201%2028.21%2025.01L28.21%20100ZM6.85%20100L6.85%2025.01A9.81%209.81%200%200%201%2026.48%2025.01L26.48%20100ZM40.5%20100L40.5%2023.25A9.5%209.5%200%200%201%2059.5%2023.25L59.5%20100ZM41.98%20100L41.98%2023.25A8.02%208.02%200%200%201%2058.02%2023.25L58.02%20100ZM72.93%20100L72.93%2028.69A10.4%2010.4%200%200%201%2093.74%2028.69L93.74%20100ZM74.52%20100L74.52%2028.69A8.82%208.82%200%200%201%2092.15%2028.69L92.15%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.4%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2056Q20%2060.66%2030%2064.06Q40%2067.45%2050%2066.06Q60%2064.67%2070%2061.02Q80%2057.37%2090%2060.17L100%2062.97L100%20100Z%22%20fill%3D%22%23a47430%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.49Q25%2086%2037.5%2085.94Q50%2085.88%2062.5%2084.16Q75%2082.45%2087.5%2084.27L100%2086.1L100%20100Z%22%20fill%3D%22%23674316%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M19.21%20100C19.21%2074.33%2027.22%2068.33%2040.05%2066.83L43.55%2063.46C32.36%2051.8%2037.28%2037.27%2045.48%2033.27C55.42%2037.27%2063.27%2051.8%2052.07%2063.46L55.57%2066.83C68.41%2068.33%2076.42%2074.33%2076.42%20100ZM39.96%2052.73A7.13%209.07%200%201%200%2054.21%2052.73A7.13%209.07%200%201%200%2039.96%2052.73Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M42.05%2068.33L37.05%2054.46L32.55%2066.33ZM53.57%2068.33L58.57%2054.46L63.07%2066.33Z%22%20fill%3D%22%23231305%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2847.81%2078.05%29%20rotate%28-6.08%29%20scale%280.59%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23ffe07a%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2884%2016%29%20rotate%289.83%29%20scale%280.38%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ffe389%22%20stroke%3D%22%236b3f00%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2251.77%22%20cy%3D%2223.82%22%20r%3D%221.1%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.51%22%2F%3E%3Ccircle%20cx%3D%227.27%22%20cy%3D%2223.77%22%20r%3D%220.78%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%2244.45%22%20r%3D%220.51%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.59%22%2F%3E%3Ccircle%20cx%3D%2251.52%22%20cy%3D%2210.07%22%20r%3D%220.82%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2217.26%22%20cy%3D%2234.31%22%20r%3D%220.81%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%2245.44%22%20r%3D%221.12%22%20fill%3D%22%23fff4c2%22%20opacity%3D%220.86%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-019
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
             </span>
           </span>
-        </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell cf-host cf-host--full card-hand"
-        data-card-type="Unit"
-        data-def-id="core-055"
-        data-face="full"
-        data-legal="false"
-        data-testid="hand-card-c13"
+        class="hand-slot"
+        style="--i: 2;"
       >
-        <span
-          class="cf cf--full"
+        <div
+          aria-disabled="true"
+          class="card card-spell cf-host cf-host--full card-hand"
           data-card-type="Unit"
-          data-foil="none"
-          data-layout="full"
-          data-name-tier="s"
-          data-text-tier="s"
-          style="--cf-name-scale: 1; --cf-text-scale: 1;"
+          data-def-id="core-055"
+          data-face="full"
+          data-legal="false"
+          data-testid="hand-card-c13"
         >
           <span
-            class="cf-scale"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
             <span
-              class="cost-gem"
-              data-cost="0"
-              data-tone="base"
-            >
-              0
-            </span>
-            <span
-              class="cf-art-frame"
+              class="cf-scale"
             >
               <span
-                aria-hidden="true"
-                class="cf-art cf-art--portrait"
-                data-art="procedural"
-                data-art-theme="unit"
-                data-art-variant="base"
-                style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2229.97%22%20y1%3D%224.19%22%20x2%3D%2270.03%22%20y2%3D%2295.81%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a5c3d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316140c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.71%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2252.56%22%20cy%3D%2248.03%22%20r%3D%2230.02%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M4.17%2014.85L13.53%2014.85L13.53%2017.45L4.17%2017.45ZM5.57%2017.45L12.13%2017.45L12.13%20100L5.57%20100ZM24.96%2013.51L34.09%2013.51L34.09%2016.11L24.96%2016.11ZM26.36%2016.11L32.69%2016.11L32.69%20100L26.36%20100ZM47.12%2022.73L56.13%2022.73L56.13%2025.33L47.12%2025.33ZM48.52%2025.33L54.73%2025.33L54.73%20100L48.52%20100ZM65.19%2024.38L73.6%2024.38L73.6%2026.98L65.19%2026.98ZM66.59%2026.98L72.2%2026.98L72.2%20100L66.59%20100ZM84.36%2026.73L92.53%2026.73L92.53%2029.33L84.36%2029.33ZM85.76%2029.33L91.13%2029.33L91.13%20100L85.76%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.42%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.11Q20%2054.38%2030%2056.77Q40%2059.16%2050%2061.35Q60%2063.53%2070%2059.04Q80%2054.55%2090%2054.67L100%2054.8L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.25Q25%2080.28%2037.5%2081.78Q50%2083.27%2062.5%2084.74Q75%2086.2%2087.5%2086.55L100%2086.9L100%20100Z%22%20fill%3D%22%233b3423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M21.63%20100C21.63%2071.45%2030.29%2065.45%2043.59%2063.95L47.09%2059.2A12.43%2012.43%200%201%201%2058.02%2059.2L61.52%2063.95C74.82%2065.45%2083.48%2071.45%2083.48%20100Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M45.59%2065.45L40.59%2050.2L36.09%2063.45ZM59.52%2065.45L64.52%2050.2L69.02%2063.45Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.38%2055.74L38.38%2047.41A14.17%2014.67%200%200%201%2066.73%2047.41L66.73%2055.74Q52.56%2060.71%2038.38%2055.74ZM51.36%2033.36Q55.82%2024.36%2065.63%2028.36Q58%2030.36%2053.76%2033.36Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M43.61%2047.13L61.51%2047.13L60.02%2049.03L45.1%2049.03Z%22%20fill%3D%22%23ffeca0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2852.56%2077.26%29%20rotate%280.06%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%2813.93%29%20scale%280.4%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23ffeca0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.9%22%20cy%3D%2219.13%22%20r%3D%221.05%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%226.73%22%20cy%3D%2241.28%22%20r%3D%220.92%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2228.9%22%20cy%3D%2247.4%22%20r%3D%220.91%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.66%22%2F%3E%3Ccircle%20cx%3D%2289.72%22%20cy%3D%2218.62%22%20r%3D%220.42%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.48%22%2F%3E%3Ccircle%20cx%3D%2288.61%22%20cy%3D%2244.31%22%20r%3D%221.13%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%225.93%22%20cy%3D%2218.79%22%20r%3D%221.24%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2289.44%22%20cy%3D%2250.71%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2230.19%22%20cy%3D%2219.76%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2271.61%22%20cy%3D%2248.64%22%20r%3D%220.78%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.57%22%2F%3E%3Ccircle%20cx%3D%224.78%22%20cy%3D%2254.01%22%20r%3D%220.59%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.43%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
-              />
-            </span>
-            <span
-              class="card-name"
-            >
-              core-055
-            </span>
-            <span
-              class="card-type"
-            >
-              Unit
-            </span>
-            <span
-              class="card-text"
-            >
+                class="cost-gem"
+                data-cost="0"
+                data-tone="base"
+              >
+                0
+              </span>
               <span
-                class="cf-text-base"
-              />
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2229.97%22%20y1%3D%224.19%22%20x2%3D%2270.03%22%20y2%3D%2295.81%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a5c3d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2316140c%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.71%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220.32%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffeca0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2252.56%22%20cy%3D%2248.03%22%20r%3D%2230.02%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M4.17%2014.85L13.53%2014.85L13.53%2017.45L4.17%2017.45ZM5.57%2017.45L12.13%2017.45L12.13%20100L5.57%20100ZM24.96%2013.51L34.09%2013.51L34.09%2016.11L24.96%2016.11ZM26.36%2016.11L32.69%2016.11L32.69%20100L26.36%20100ZM47.12%2022.73L56.13%2022.73L56.13%2025.33L47.12%2025.33ZM48.52%2025.33L54.73%2025.33L54.73%20100L48.52%20100ZM65.19%2024.38L73.6%2024.38L73.6%2026.98L65.19%2026.98ZM66.59%2026.98L72.2%2026.98L72.2%20100L66.59%20100ZM84.36%2026.73L92.53%2026.73L92.53%2029.33L84.36%2029.33ZM85.76%2029.33L91.13%2029.33L91.13%20100L85.76%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.42%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.11Q20%2054.38%2030%2056.77Q40%2059.16%2050%2061.35Q60%2063.53%2070%2059.04Q80%2054.55%2090%2054.67L100%2054.8L100%20100Z%22%20fill%3D%22%2361583d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2084.25Q25%2080.28%2037.5%2081.78Q50%2083.27%2062.5%2084.74Q75%2086.2%2087.5%2086.55L100%2086.9L100%20100Z%22%20fill%3D%22%233b3423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M21.63%20100C21.63%2071.45%2030.29%2065.45%2043.59%2063.95L47.09%2059.2A12.43%2012.43%200%201%201%2058.02%2059.2L61.52%2063.95C74.82%2065.45%2083.48%2071.45%2083.48%20100Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M45.59%2065.45L40.59%2050.2L36.09%2063.45ZM59.52%2065.45L64.52%2050.2L69.02%2063.45Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M38.38%2055.74L38.38%2047.41A14.17%2014.67%200%200%201%2066.73%2047.41L66.73%2055.74Q52.56%2060.71%2038.38%2055.74ZM51.36%2033.36Q55.82%2024.36%2065.63%2028.36Q58%2030.36%2053.76%2033.36Z%22%20fill%3D%22%23120f09%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M43.61%2047.13L61.51%2047.13L60.02%2049.03L45.1%2049.03Z%22%20fill%3D%22%23ffeca0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2852.56%2077.26%29%20rotate%280.06%29%20scale%280.61%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M2.8%207.6L7.4%2011.6L12%204.4L16.6%2011.6L21.2%207.6L19.4%2017.8H4.6ZM4.6%2019H19.4V21.6H4.6Z%22%20fill%3D%22%23cccfde%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22nonzero%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%2016%29%20rotate%2813.93%29%20scale%280.4%29%20translate%28-12%20-12%29%22%20opacity%3D%220.8%22%3E%3Cpath%20d%3D%22M5.6%201.8H18.4V4H17.2C17.2%208.2%2014.6%2010.2%2013.3%2012C14.6%2013.8%2017.2%2015.8%2017.2%2020H18.4V22.2H5.6V20H6.8C6.8%2015.8%209.4%2013.8%2010.7%2012C9.4%2010.2%206.8%208.2%206.8%204H5.6ZM9.2%2019.8C9.6%2017.4%2011%2016.1%2012%2015C13%2016.1%2014.4%2017.4%2014.8%2019.8Z%22%20fill%3D%22%23ffeca0%22%20stroke%3D%22%23231f13%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2267.9%22%20cy%3D%2219.13%22%20r%3D%221.05%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.54%22%2F%3E%3Ccircle%20cx%3D%226.73%22%20cy%3D%2241.28%22%20r%3D%220.92%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.38%22%2F%3E%3Ccircle%20cx%3D%2228.9%22%20cy%3D%2247.4%22%20r%3D%220.91%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.66%22%2F%3E%3Ccircle%20cx%3D%2289.72%22%20cy%3D%2218.62%22%20r%3D%220.42%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.48%22%2F%3E%3Ccircle%20cx%3D%2288.61%22%20cy%3D%2244.31%22%20r%3D%221.13%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%225.93%22%20cy%3D%2218.79%22%20r%3D%221.24%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2289.44%22%20cy%3D%2250.71%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.79%22%2F%3E%3Ccircle%20cx%3D%2230.19%22%20cy%3D%2219.76%22%20r%3D%221.08%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.82%22%2F%3E%3Ccircle%20cx%3D%2271.61%22%20cy%3D%2248.64%22%20r%3D%220.78%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.57%22%2F%3E%3Ccircle%20cx%3D%224.78%22%20cy%3D%2254.01%22%20r%3D%220.59%22%20fill%3D%22%23fff5c8%22%20opacity%3D%220.43%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-055
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
             </span>
           </span>
-        </span>
+        </div>
       </div>
       <div
-        aria-disabled="true"
-        class="card card-spell cf-host cf-host--full card-hand"
-        data-card-type="Unit"
-        data-def-id="core-077"
-        data-face="full"
-        data-legal="false"
-        data-testid="hand-card-c14"
+        class="hand-slot"
+        style="--i: 3;"
       >
-        <span
-          class="cf cf--full"
+        <div
+          aria-disabled="true"
+          class="card card-spell cf-host cf-host--full card-hand"
           data-card-type="Unit"
-          data-foil="none"
-          data-layout="full"
-          data-name-tier="s"
-          data-text-tier="s"
-          style="--cf-name-scale: 1; --cf-text-scale: 1;"
+          data-def-id="core-077"
+          data-face="full"
+          data-legal="false"
+          data-testid="hand-card-c14"
         >
           <span
-            class="cf-scale"
+            class="cf cf--full"
+            data-card-type="Unit"
+            data-foil="none"
+            data-layout="full"
+            data-name-tier="s"
+            data-text-tier="s"
+            style="--cf-name-scale: 1; --cf-text-scale: 1;"
           >
             <span
-              class="cost-gem"
-              data-cost="6"
-              data-tone="base"
-            >
-              6
-            </span>
-            <span
-              class="cf-art-frame"
+              class="cf-scale"
             >
               <span
-                aria-hidden="true"
-                class="cf-art cf-art--portrait"
-                data-art="procedural"
-                data-art-theme="unit"
-                data-art-variant="base"
-                style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2239.08%22%20y1%3D%221.21%22%20x2%3D%2260.92%22%20y2%3D%2298.79%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23160d0c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6046%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.87%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2268.3%22%20cy%3D%2257.46%22%20r%3D%2231.18%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L147%2068.1L141.85%2077.91ZM-6%20-6L126.5%20100.51L118.06%20110.23ZM-6%20-6L97.47%20128.89L89.24%20134.82Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.59Q20%2055.47%2030%2058.3Q40%2061.14%2050%2061.64Q60%2062.14%2070%2058.84Q80%2055.54%2090%2057.28L100%2059.02L100%20100Z%22%20fill%3D%22%2361403d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2082.06Q25%2081.23%2037.5%2083.38Q50%2085.52%2062.5%2083.78Q75%2082.03%2087.5%2084L100%2085.97L100%20100Z%22%20fill%3D%22%233b2423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M37.93%20100C37.93%2076.93%2046.43%2070.93%2060.63%2069.43L64.13%2066.18A9.66%209.66%200%201%201%2072.47%2066.18L75.97%2069.43C90.17%2070.93%2098.67%2076.93%2098.67%20100Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M57.28%2063.46L57.28%2056.98A11.02%2011.4%200%200%201%2079.32%2056.98L79.32%2063.46Q68.3%2067.32%2057.28%2063.46ZM67.1%2046.06Q71.45%2037.06%2080.91%2041.06Q73.55%2043.06%2069.5%2046.06Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M61.34%2056.56L75.26%2056.56L74.1%2058.46L62.5%2058.46Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2828.79%2030.88%29%20rotate%280.6%29%20scale%280.67%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ccdbde%22%20stroke%3D%22%23231513%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2282.58%22%20cy%3D%2234.8%22%20r%3D%220.95%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.56%22%2F%3E%3Ccircle%20cx%3D%2245.05%22%20cy%3D%2215.16%22%20r%3D%220.4%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2259.33%22%20cy%3D%2247.95%22%20r%3D%220.78%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.71%22%2F%3E%3Ccircle%20cx%3D%2273.75%22%20cy%3D%2213.35%22%20r%3D%220.69%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%225.95%22%20cy%3D%2212.08%22%20r%3D%221.11%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.69%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
-              />
-            </span>
-            <span
-              class="card-name"
-            >
-              core-077
-            </span>
-            <span
-              class="card-type"
-            >
-              Unit
-            </span>
-            <span
-              class="card-text"
-            >
+                class="cost-gem"
+                data-cost="6"
+                data-tone="base"
+              >
+                6
+              </span>
               <span
-                class="cf-text-base"
-              />
+                class="cf-art-frame"
+              >
+                <span
+                  aria-hidden="true"
+                  class="cf-art cf-art--portrait"
+                  data-art="procedural"
+                  data-art-theme="unit"
+                  data-art-variant="base"
+                  style="background-image: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22s%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%2239.08%22%20y1%3D%221.21%22%20x2%3D%2260.92%22%20y2%3D%2298.79%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23160d0c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%239a6046%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.87%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220.39%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ffada0%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22v%22%20gradientUnits%3D%22userSpaceOnUse%22%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2272%22%3E%3Cstop%20offset%3D%220.6%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.5%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23s%29%22%2F%3E%3Ccircle%20cx%3D%2268.3%22%20cy%3D%2257.46%22%20r%3D%2231.18%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cpath%20d%3D%22M-6%20-6L147%2068.1L141.85%2077.91ZM-6%20-6L126.5%20100.51L118.06%20110.23ZM-6%20-6L97.47%20128.89L89.24%20134.82Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.17%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2058.59Q20%2055.47%2030%2058.3Q40%2061.14%2050%2061.64Q60%2062.14%2070%2058.84Q80%2055.54%2090%2057.28L100%2059.02L100%20100Z%22%20fill%3D%22%2361403d%22%20opacity%3D%220.6%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M0%20100L0%2082.06Q25%2081.23%2037.5%2083.38Q50%2085.52%2062.5%2083.78Q75%2082.03%2087.5%2084L100%2085.97L100%20100Z%22%20fill%3D%22%233b2423%22%20opacity%3D%220.85%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M37.93%20100C37.93%2076.93%2046.43%2070.93%2060.63%2069.43L64.13%2066.18A9.66%209.66%200%201%201%2072.47%2066.18L75.97%2069.43C90.17%2070.93%2098.67%2076.93%2098.67%20100Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M57.28%2063.46L57.28%2056.98A11.02%2011.4%200%200%201%2079.32%2056.98L79.32%2063.46Q68.3%2067.32%2057.28%2063.46ZM67.1%2046.06Q71.45%2037.06%2080.91%2041.06Q73.55%2043.06%2069.5%2046.06Z%22%20fill%3D%22%23120909%22%20opacity%3D%221%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cpath%20d%3D%22M61.34%2056.56L75.26%2056.56L74.1%2058.46L62.5%2058.46Z%22%20fill%3D%22%23ffada0%22%20opacity%3D%220.9%22%20fill-rule%3D%22evenodd%22%2F%3E%3Cg%20transform%3D%22translate%2828.79%2030.88%29%20rotate%280.6%29%20scale%280.67%29%20translate%28-12%20-12%29%22%3E%3Cpath%20d%3D%22M12%201.8C13.6%206%2018.4%208.6%2018.4%2014.4A6.4%206.4%200%200%201%205.6%2014.4C5.6%2010.6%208%208.9%209.2%206.2C10%208.5%2010.9%209.4%2012.2%2010C12.7%207.3%2012.5%204.5%2012%201.8ZM12%2012.8C13.3%2014.5%2014.4%2015.6%2014.4%2017.3A2.4%202.4%200%200%201%209.6%2017.3C9.6%2015.6%2010.7%2014.5%2012%2012.8Z%22%20fill%3D%22%23ccdbde%22%20stroke%3D%22%23231513%22%20stroke-width%3D%221.1%22%20stroke-linejoin%3D%22round%22%20fill-rule%3D%22evenodd%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2282.58%22%20cy%3D%2234.8%22%20r%3D%220.95%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.56%22%2F%3E%3Ccircle%20cx%3D%2245.05%22%20cy%3D%2215.16%22%20r%3D%220.4%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.44%22%2F%3E%3Ccircle%20cx%3D%2259.33%22%20cy%3D%2247.95%22%20r%3D%220.78%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.71%22%2F%3E%3Ccircle%20cx%3D%2273.75%22%20cy%3D%2213.35%22%20r%3D%220.69%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%225.95%22%20cy%3D%2212.08%22%20r%3D%221.11%22%20fill%3D%22%23ffd0c8%22%20opacity%3D%220.69%22%2F%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22url%28%23v%29%22%2F%3E%3C%2Fsvg%3E"); background-size: cover;"
+                />
+              </span>
+              <span
+                class="card-name"
+              >
+                core-077
+              </span>
+              <span
+                class="card-type"
+              >
+                Unit
+              </span>
+              <span
+                class="card-text"
+              >
+                <span
+                  class="cf-text-base"
+                />
+              </span>
             </span>
           </span>
-        </span>
+        </div>
       </div>
     </div>
   </div>
@@ -2969,6 +3025,23 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
     aria-label="Controls"
     class="control-bar"
   >
+    <div
+      aria-hidden="true"
+      class="turn-plate"
+      data-side="you"
+    >
+      <span
+        class="turn-plate-number"
+      >
+        Turn 
+        3
+      </span>
+      <span
+        class="turn-plate-whose"
+      >
+        Your turn
+      </span>
+    </div>
     <button
       aria-disabled="true"
       class="control control-end-turn"
@@ -2998,6 +3071,34 @@ exports[`Board > renders the full board from a PlayerView 1`] = `
       type="button"
     >
       Concede
+    </button>
+    <button
+      aria-expanded="false"
+      aria-label="Show the game log"
+      class="log-toggle"
+      data-testid="log-toggle"
+      title="Game log"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        class="log-toggle-icon"
+      />
+    </button>
+    <button
+      aria-expanded="false"
+      aria-haspopup="dialog"
+      aria-label="Settings"
+      class="settings-gear settings-gear--game"
+      data-testid="settings-open-game"
+      title="Settings"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+      >
+        ⚙
+      </span>
     </button>
   </div>
   <ol

@@ -1,0 +1,126 @@
+/*
+ * The two Hearthstone glows (docs/polish/7-mobile-ux.md S7). Board.tsx imports this file after
+ * board.css, so at equal specificity these rules win.
+ *
+ * Green, `data-glow="ready"`: the element's testid is in `Highlight.glow`, which `highlightFor`
+ * derived from `legalActions` (a playable hand card, a unit that can attack, the power, a valid
+ * target while targeting, the prompt's cells, and End Turn once nothing else is left).
+ *
+ * Yellow, `data-condition-active="true"`: the engine says the card's printed condition holds now
+ * (R195). On a glowing card it replaces the green. On a field or backrow card it shows without the
+ * green. On a hand card that can't be played it shows nothing, as in Hearthstone.
+ *
+ * The contract the component spec measures: a glowing element's FIRST box-shadow layer is
+ * `0 0 0 2px <token>`, unmixed, so its computed value contains rgb(74, 222, 128) or
+ * rgb(250, 204, 21) exactly. The halo after it is mixed with transparent and never serializes as
+ * either plain colour. Nothing here keys off `data-legal`: a legal element without glow gets no
+ * colour. A selected element (`data-selected="true"`) is left to board.css's own selection styling,
+ * which stays on top of both glows.
+ */
+
+:root {
+  --glow-ready: #4ade80;
+  --glow-condition: #facc15;
+}
+
+/* Green: anything the board marks ready. The element-specific selectors outrank a board.css rule
+   such as `.zone .card` or `.control-bar .control` that sets its own shadow. */
+[data-glow="ready"]:not([data-selected="true"]),
+.card[data-glow="ready"]:not([data-selected="true"]),
+.zone[data-glow="ready"]:not([data-selected="true"]),
+.hero[data-glow="ready"]:not([data-selected="true"]),
+.power-button[data-glow="ready"]:not([data-selected="true"]),
+[data-testid="end-turn"][data-glow="ready"]:not([data-selected="true"]) {
+  box-shadow:
+    0 0 0 2px var(--glow-ready),
+    0 0 10px 2px color-mix(in srgb, var(--glow-ready) 55%, transparent);
+}
+
+/* End turn once nothing else is left to do (B15): the button itself turns green, as Hearthstone's
+   does, and rings green like every other ready element. board.css paints it amber with
+   `.board .control.control-end-turn:not(:disabled)`, which outranks the generic rule above, so this
+   one names the same button more specifically. The ring is still the first box-shadow layer. */
+.board .control.control-end-turn[data-glow="ready"]:not(:disabled):not([data-selected="true"]) {
+  border-color: #bbf7d0;
+  background: linear-gradient(180deg, #86efac, #22c55e 55%, #15803d);
+  color: #052e16;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 30%);
+  box-shadow:
+    0 0 0 2px var(--glow-ready),
+    0 0 14px 3px color-mix(in srgb, var(--glow-ready) 55%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 45%),
+    0 2px 0 #14532d;
+}
+
+.board .control.control-end-turn[data-glow="ready"]:not(:disabled):not([data-selected="true"]):hover {
+  background: linear-gradient(180deg, #bbf7d0, #4ade80 55%, #16a34a);
+}
+
+/* An empty slot is mostly background, so a ready zone also takes a faint tint, and its slot mark
+   (board.css's `.zone::before`) turns green: it reads as a drop spot on a phone where the ring
+   alone is thin. */
+.zone[data-glow="ready"]:not([data-selected="true"]) {
+  background-color: color-mix(in srgb, var(--glow-ready) 14%, transparent);
+}
+
+.zone[data-glow="ready"]::before {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--glow-ready) 60%, transparent);
+}
+
+/* A glowing card breathes, so a playable hand is noticed without being stared at. The pulse is
+   the halo's size only; the first layer, the 2px ring the component spec reads, is the same in
+   every frame. An animated box-shadow outranks every plain declaration, so each colour has its own
+   keyframes and the green ones never run on a card whose condition is met. */
+.card[data-glow="ready"]:not([data-selected="true"]):not([data-condition-active="true"]) {
+  animation: glow-breathe-ready calc(1.8s * var(--anim-scale, 1)) ease-in-out infinite alternate;
+}
+
+.card[data-glow="ready"][data-condition-active="true"]:not([data-selected="true"]) {
+  animation: glow-breathe-condition calc(1.4s * var(--anim-scale, 1)) ease-in-out infinite alternate;
+}
+
+@keyframes glow-breathe-ready {
+  from {
+    box-shadow:
+      0 0 0 2px var(--glow-ready),
+      0 0 6px 1px color-mix(in srgb, var(--glow-ready) 45%, transparent);
+  }
+
+  to {
+    box-shadow:
+      0 0 0 2px var(--glow-ready),
+      0 0 14px 3px color-mix(in srgb, var(--glow-ready) 60%, transparent);
+  }
+}
+
+@keyframes glow-breathe-condition {
+  from {
+    box-shadow:
+      0 0 0 2px var(--glow-condition),
+      0 0 8px 2px color-mix(in srgb, var(--glow-condition) 50%, transparent);
+  }
+
+  to {
+    box-shadow:
+      0 0 0 2px var(--glow-condition),
+      0 0 18px 5px color-mix(in srgb, var(--glow-condition) 65%, transparent);
+  }
+}
+
+/* Yellow replaces green on a card that is both ready and conditioned. */
+[data-glow="ready"][data-condition-active="true"]:not([data-selected="true"]),
+.card[data-glow="ready"][data-condition-active="true"]:not([data-selected="true"]) {
+  box-shadow:
+    0 0 0 2px var(--glow-condition),
+    0 0 12px 3px color-mix(in srgb, var(--glow-condition) 55%, transparent);
+}
+
+/* Yellow alone on a field or backrow card (`card-<id>`, never `hand-card-<id>`) whose condition
+   holds, such as Combo-Index reaching its grade or Intern Stimmy in the backrow. A hand card with
+   the flag and no glow matches nothing here and keeps its own shadow. */
+[data-testid^="card-"][data-condition-active="true"]:not([data-glow="ready"]):not([data-selected="true"]):not(.card-hand) {
+  box-shadow:
+    0 0 0 2px var(--glow-condition),
+    0 0 10px 2px color-mix(in srgb, var(--glow-condition) 45%, transparent);
+}

@@ -27,6 +27,7 @@ import type { ActionBody, PlayerView } from "@jackioh/shared";
 
 import Board from "./Board.tsx";
 import Prompt from "./Prompt.tsx";
+import DragLayer from "./drag/DragLayer.tsx";
 import { IDLE, highlightFor, onClickTarget, onControl, type Interaction } from "./actions.ts";
 import {
   animTestid,
@@ -38,6 +39,7 @@ import {
 } from "./animations.ts";
 import { testid, type BoardControl, type ClickTarget } from "./contract.ts";
 import FxLayer from "../fx/FxLayer.tsx";
+import { useSetting } from "../settings/index.ts";
 import "./animations.css";
 import { AudioToggle, useGameAudio } from "../audio/index.ts";
 
@@ -96,9 +98,16 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
   const [burst, setBurst] = useState<readonly AnimationEntry[]>([]);
   const queue = useRef<AnimationQueue | null>(null);
 
-  if (queue.current === null) {
+  // Polish task 7: the "Reduce motion" setting does what the OS preference does, so every duration
+  // is 0 and the queue drains synchronously (BUILD M5-T4). The queue reads it once, when it is
+  // built, so a change of setting builds a new queue; the subscription effect below tears the old
+  // one down and shows the newest view.
+  const reducedMotion = useSetting("reduceMotion") || prefersReducedMotion();
+  const builtFor = useRef(reducedMotion);
+  if (queue.current === null || builtFor.current !== reducedMotion) {
+    builtFor.current = reducedMotion;
     queue.current = createAnimationQueue({
-      reducedMotion: prefersReducedMotion(),
+      reducedMotion,
       onSettled: () => {
         setShown(latest.current);
       },
@@ -120,6 +129,14 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         return prev.includes(entry) ? prev : [...prev, entry];
       });
     });
+    // A queue rebuilt for a new reduced-motion value starts empty; the one it replaced was reset
+    // below without settling, so catch up with it here (a no-op on the first build).
+    if (runner.idle()) {
+      setAnimating((prev) => (prev.size === 0 ? prev : (runner.animating() as Map<string, never>)));
+      setInFlight(null);
+      setBurst((prev) => (prev.length === 0 ? prev : []));
+      setShown(latest.current);
+    }
     return () => {
       stop();
       runner.reset();
@@ -271,6 +288,7 @@ export default function Game({ view, legal, onAction, error }: GameProps): React
         onInteraction={setInteraction}
         onCancel={() => setInteraction(IDLE)}
       />
+      <DragLayer view={shown} legal={legal} interaction={interaction} onInteraction={setInteraction} onAction={onAction} />
 
       {shown.result !== null ? (
         <div

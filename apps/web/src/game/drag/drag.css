@@ -1,0 +1,447 @@
+/* Drag to play (docs/polish/7-mobile-ux.md S7, S9). Imported by DragLayer.tsx only.
+ *
+ * Two halves. The board rules stop the browser from panning, selecting text or opening the iOS
+ * callout under a finger that is dragging a card. The overlay rules draw the drag itself: a card
+ * ghost for placing a card, Hearthstone's targeting arrow for attacks and target-only plays, and a
+ * reticle over the drop target under the pointer. The overlay never takes a hit, so
+ * `document.elementsFromPoint` sees the board straight through it.
+ */
+
+:root {
+  /* The arrow and ghost colour over a spot that would do nothing on release. */
+  --drag-invalid: #ff5a36;
+}
+
+/* ---- The board while drag to play is on ------------------------------------------------- */
+
+.board[data-drag="on"] .hand-you .card,
+.board[data-drag="on"] .zone .card[data-legal="true"] {
+  touch-action: none;
+}
+
+.board[data-drag="on"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* A native image drag would cancel the pointer drag (DragLayer also refuses its dragstart). */
+.board[data-drag="on"] img {
+  -webkit-user-drag: none;
+}
+
+/* A picker opened by the lifted play must not cover the board it is being dropped on. */
+:root[data-dragging] .prompt-scrim {
+  visibility: hidden;
+}
+
+:root[data-dragging],
+:root[data-dragging] * {
+  cursor: grabbing !important;
+}
+
+/* The card in flight stays in its place in the hand, faded, so the ghost reads as the thing being
+   moved. It does not lift the way a tapped or selected card does: on a phone the lift would
+   stand it over your seat while the ghost is somewhere else. */
+:root[data-dragging="play"] .hand-you .card[data-selected="true"] {
+  opacity: 0.35;
+}
+
+:root[data-dragging="play"] .board .hand-you .hand-slot[data-lifted="true"] {
+  transform: none;
+}
+
+/* ---- The overlay ------------------------------------------------------------------------ */
+
+.drag-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.drag-layer * {
+  pointer-events: none;
+}
+
+/* The ghost: a small face of the card (cost, name, rules text, a unit's attack and health),
+   following the pointer. */
+
+.drag-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  /* Hand-card sized on a phone, a little bigger on a desktop: a fixed 88x120 ghost covered half
+     the field of a phone held landscape. */
+  width: clamp(74px, 19vmin, 88px);
+  height: clamp(100px, 26vmin, 120px);
+  padding: 10px 8px 8px;
+  border: 2px solid var(--drag-invalid);
+  border-radius: 10px;
+  background:
+    radial-gradient(70% 45% at 50% 68%, rgb(125 211 252 / 16%), transparent 70%),
+    linear-gradient(165deg, #2f3752 0%, #1c2133 55%, #151925 100%);
+  color: #f8f5ff;
+  font-size: clamp(11px, 3vmin, 12px);
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: left;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(255, 90, 54, 0.35);
+  transform: translate(-50%, -50%) rotate(-4deg) scale(1.06);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+  will-change: left, top;
+}
+
+/* On touch the ghost rides above the finger, so the finger never hides the card or its target. */
+.drag-ghost[data-pointer="touch"] {
+  transform: translate(-50%, calc(-100% - 16px)) rotate(-4deg) scale(1.06);
+}
+
+.drag-ghost[data-valid="true"] {
+  border-color: var(--glow-ready, #4ade80);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(74, 222, 128, 0.55);
+}
+
+.drag-ghost[data-radiant="true"] {
+  background: linear-gradient(160deg, #6b5320 0%, #2b2110 100%);
+}
+
+.drag-ghost-cost {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #c7d7ff;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6aa5ff 0%, #2156c9 70%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+/* The rules text, in a darker box across the lower card as on a printed card. A diamond used to sit
+   there, which is what a card back shows, so the ghost read as a face-down card. Four lines at
+   most, ended with an ellipsis; the whole text is in the hand and on the field. */
+.drag-ghost-text {
+  display: -webkit-box;
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: auto;
+  padding: 4px 5px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 32%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+  color: #d8dcf0;
+  font-size: 0.78em;
+  font-weight: 600;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+
+/* A unit's printed attack and health, as gems on the bottom corners like the field's. The text
+   box stops short of them. */
+.drag-ghost-stats {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  left: -8px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.drag-ghost-text:has(~ .drag-ghost-stats) {
+  margin-bottom: 10px;
+}
+
+.drag-ghost-attack,
+.drag-ghost-health {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 999px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 55%);
+}
+
+.drag-ghost-attack {
+  background: radial-gradient(circle at 35% 30%, #fcd34d, #d97706 60%, #92400e);
+}
+
+.drag-ghost-health {
+  background: radial-gradient(circle at 35% 30%, #fca5a5, #dc2626 60%, #7f1d1d);
+}
+
+/* Only the first line steps clear of the cost gem, through a float, so a first word too long to
+   sit beside the gem drops under it whole (a phone-sized ghost split "Tempo" into "Tem / po" when
+   any character could break). A word of ten letters or more may be hyphenated at a syllable, as
+   board.css's `.card-name` is, so "Experimentation" is not cut at the ghost's edge. Three lines
+   at most. */
+.drag-ghost-name {
+  display: block;
+  max-width: 100%;
+  max-height: 3.45em;
+  overflow: hidden;
+  overflow-wrap: normal;
+  word-break: normal;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  hyphenate-limit-chars: 10 4 4;
+  text-overflow: ellipsis;
+}
+
+.drag-ghost-name::before {
+  content: "";
+  float: left;
+  width: 12px;
+  height: 1.15em;
+}
+
+/* The targeting arrow: a bowed, lit shaft that brightens toward its tip, with a pale core, a glow
+   and a pulse running toward the target; red-orange until it is over a spot, then green. */
+
+.drag-arrow {
+  --drag-arrow-colour: var(--drag-invalid);
+  --drag-arrow-core: #ffe4d9;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.drag-arrow[data-valid="true"] {
+  --drag-arrow-colour: var(--glow-ready, #4ade80);
+  --drag-arrow-core: #effff4;
+}
+
+.drag-arrow-stop-tail {
+  stop-color: var(--drag-arrow-colour);
+  stop-opacity: 0.4;
+}
+
+.drag-arrow-stop-tip {
+  stop-color: var(--drag-arrow-colour);
+  stop-opacity: 1;
+}
+
+.drag-arrow-shadow {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 17;
+  stroke-linecap: round;
+}
+
+.drag-arrow-shaft {
+  fill: none;
+  stroke: url(#drag-arrow-fade);
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+
+.drag-arrow-core {
+  fill: none;
+  stroke: var(--drag-arrow-core);
+  stroke-opacity: 0.6;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+.drag-arrow-pulse {
+  fill: none;
+  stroke: #fff;
+  stroke-opacity: 0.75;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 1 27;
+  animation: drag-arrow-march 0.7s linear infinite;
+}
+
+.drag-arrow-head {
+  fill: var(--drag-arrow-colour);
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.drag-arrow-origin {
+  fill: var(--drag-arrow-colour);
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 2.5;
+}
+
+@keyframes drag-arrow-march {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+/* The reticle over the drop target under the pointer: a lit ring with four crosshair ticks
+   across its rim, in the arrow's green. Green is "this is a legal target" everywhere on the board
+   (highlights.css), so the ring agrees with the arrow it ends; a red one read as "not allowed". The
+   ticks stop short of the middle, so the name or the health under the ring stays readable. */
+
+.drag-reticle {
+  --drag-reticle-colour: var(--glow-ready, #4ade80);
+  --drag-reticle-tick: 8px;
+  --drag-reticle-out: 4px;
+  position: absolute;
+  box-sizing: border-box;
+  border: 3px solid var(--drag-reticle-colour);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, transparent 72%, color-mix(in srgb, var(--drag-reticle-colour) 22%, transparent));
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 45%),
+    0 0 16px var(--drag-reticle-colour),
+    inset 0 0 10px color-mix(in srgb, var(--drag-reticle-colour) 70%, transparent);
+  transform: translate(-50%, -50%);
+  animation: drag-reticle-pulse 0.8s ease-in-out infinite alternate;
+}
+
+/* Placing a card: the ghost is the thing being aimed, so it stays on top, and the zone it would
+   land in lights up edge to edge (a "pad", DragLayer.tsx) with no crosshair, so the spot still
+   reads round the card covering its middle. */
+.drag-ghost {
+  z-index: 2;
+}
+
+.drag-reticle[data-shape="pad"] {
+  z-index: 1;
+  border-width: 3px;
+  border-color: color-mix(in srgb, var(--drag-reticle-colour) 45%, white);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--drag-reticle-colour) 24%, transparent);
+  box-shadow:
+    0 0 20px 3px color-mix(in srgb, var(--drag-reticle-colour) 55%, transparent),
+    inset 0 0 16px color-mix(in srgb, var(--drag-reticle-colour) 45%, transparent);
+  animation-name: drag-pad-pulse;
+}
+
+.drag-reticle[data-shape="pad"]::before,
+.drag-reticle[data-shape="pad"]::after {
+  display: none;
+}
+
+/* A card an arrow is aimed at: a lit frame standing just off the card, with the crosshair's ticks
+   at the middle of each edge, mostly outside it. A circle the card's size put its rim and ticks
+   across the card's name and its attack and health, which are what you read while choosing. */
+.drag-reticle[data-shape="frame"] {
+  --drag-reticle-tick: 4px;
+  --drag-reticle-out: 7px;
+  border-radius: 12px;
+  background: none;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 45%),
+    0 0 18px 2px var(--drag-reticle-colour),
+    inset 0 0 12px color-mix(in srgb, var(--drag-reticle-colour) 55%, transparent);
+  animation-name: drag-frame-pulse;
+}
+
+@keyframes drag-frame-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
+@keyframes drag-pad-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+}
+
+/* The crosshair: one bar each way, clear in the middle, so it shows as four ticks across the rim.
+   Each tick pokes only `--drag-reticle-out` past the ring and runs a tick's length inside it: ticks
+   reaching a full tick outside covered the letter beside a hero's gem and the pile count under
+   it. */
+.drag-reticle::before,
+.drag-reticle::after {
+  --drag-reticle-bar: calc(var(--drag-reticle-out) + var(--drag-reticle-tick));
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  filter: drop-shadow(0 0 3px rgb(0 0 0 / 60%));
+}
+
+.drag-reticle::before {
+  width: 3px;
+  height: calc(100% + 2 * var(--drag-reticle-out));
+  background: linear-gradient(
+    var(--drag-reticle-colour) 0 var(--drag-reticle-bar),
+    transparent var(--drag-reticle-bar) calc(100% - var(--drag-reticle-bar)),
+    var(--drag-reticle-colour) calc(100% - var(--drag-reticle-bar))
+  );
+}
+
+.drag-reticle::after {
+  width: calc(100% + 2 * var(--drag-reticle-out));
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--drag-reticle-colour) 0 var(--drag-reticle-bar),
+    transparent var(--drag-reticle-bar) calc(100% - var(--drag-reticle-bar)),
+    var(--drag-reticle-colour) calc(100% - var(--drag-reticle-bar))
+  );
+}
+
+@keyframes drag-reticle-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-arrow-pulse,
+  .drag-reticle {
+    animation: none;
+  }
+
+  .drag-ghost {
+    transition: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .drag-arrow-pulse,
+:root[data-reduce-motion="true"] .drag-reticle {
+  animation: none;
+}
+
+:root[data-reduce-motion="true"] .drag-ghost {
+  transition: none;
+}

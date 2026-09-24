@@ -14,6 +14,9 @@
 // The last case is the exception, on purpose (hunt round 8): a cast-on-draw Hinder that /fullsend's
 // Combo draw casts at §10.5 step 5, before this script, is played after Rapid Replenish, not
 // earlier, since §6.2 checks the count at play time.
+//
+// R195's yellow glow (`conditionMet`): both answers of this card's hook, checked against the branch
+// its resolution then takes, are in condition-active.test.ts with the other hooked cards (README §5).
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";
