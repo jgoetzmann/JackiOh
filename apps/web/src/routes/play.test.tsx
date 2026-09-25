@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DECK_SIZE } from "@jackioh/engine/config";
 import type { CardDef, CardDefs } from "@jackioh/shared";
+import { validateDeck, validateTrio, type LoadoutResult } from "@jackioh/validator";
 
 import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../../server/src/config.ts";
 import {
@@ -109,6 +110,18 @@ function decksAnswer(decks: SavedDeck[], trios: SavedTrio[]): DecksResponse {
     trios,
     limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS, nameLength: DECK_NAME_MAX_LENGTH },
   };
+}
+
+/** Everyone owns one of every card here, as the collection answer below says. */
+const OWNED: Record<string, number> = Object.fromEntries(ALL_IDS.map((id) => [id, 1]));
+
+/**
+ * The validator's own sentences for a verdict. They are computed, never typed out: the lobby shows
+ * `@jackioh/validator`'s words verbatim, and `messages.test.ts` fails any client file that carries a
+ * copy of them.
+ */
+function messagesOf(result: LoadoutResult): string[] {
+  return result.ok ? [] : result.errors.map((error) => error.message);
 }
 
 function openTicket(mode: QueueMode): EnqueueResponse {
@@ -303,13 +316,25 @@ describe("the lobby's modes", () => {
     fireEvent.change(screen.getByTestId(playTestid.deckSelect), { target: { value: HALF.id } });
     const verdict = screen.getByTestId(playTestid.verdict);
     expect(verdict).toHaveAttribute("data-ready", "false");
-    expect(verdict).toHaveTextContent(`Half Built has 5 cards; every deck needs exactly ${String(DECK_SIZE)}.`);
+    const halfIssues = messagesOf(
+      validateDeck({ deck: { name: HALF.name, cards: HALF.cards }, catalog: { version: "v1", cards: DEFS }, collection: OWNED }),
+    );
+    expect(halfIssues.length).toBeGreaterThan(0);
+    for (const message of halfIssues) expect(verdict).toHaveTextContent(message);
     // UX only: the server decides.
     expect(screen.getByTestId(playTestid.queue)).not.toBeDisabled();
 
     pickMode("bo3");
     fireEvent.change(screen.getByTestId(playTestid.trioSelect), { target: { value: LOOSE.id } });
-    expect(screen.getByTestId(playTestid.verdict)).toHaveTextContent("A trio needs exactly 3 decks; this one has 2.");
+    const looseIssues = messagesOf(
+      validateTrio({
+        decks: [AGGRO, HALF].map((saved) => ({ name: saved.name, cards: saved.cards })),
+        catalog: { version: "v1", cards: DEFS },
+        collection: OWNED,
+      }),
+    );
+    expect(looseIssues.length).toBeGreaterThan(0);
+    expect(screen.getByTestId(playTestid.verdict)).toHaveTextContent(looseIssues[0] ?? "");
   });
 
   it("a player with no decks is sent to /decks, and has nothing to queue a Best of 1 with", async () => {
@@ -340,9 +365,10 @@ describe("the lobby's modes", () => {
 
 describe("the lobby's answers", () => {
   it("R253 a 422 loadout_invalid shows the server's messages verbatim", async () => {
+    // Whatever the server says is shown as it said it, so these need not be the validator's words.
     const issues = [
-      { rule: "L2", message: "Half Built has 5 cards; every deck needs exactly 20.", deck: 1 },
-      { rule: "L5", message: 'Half Built uses 2 copies of "Card core-001" (core-001) but you own 1.', deck: 1 },
+      { rule: "L2", message: "Server sentence one about Half Built.", deck: 1 },
+      { rule: "L5", message: "Server sentence two about Half Built.", deck: 1 },
     ];
     vi.mocked(enqueue).mockRejectedValue(
       new ApiRequestError(422, { code: "loadout_invalid", message: issues[0]?.message ?? "", details: issues }),

@@ -1,44 +1,46 @@
-// `/decks`: §9.4's gate, the three reads the screen opens with, and the relay of a 422's issues.
+// `/decks`: §9.4's gate, the three reads the workshop opens with, and the writes it is handed.
 //
-// `Deckbuilder.test.tsx` covers the editor itself. This file covers what the route adds: a pending
-// account lands on `/invite` (which is what `10-invite-gate.cy.ts` asserts from the browser), an
-// active one stays and sees its saved decks by name (which is what `09-deckbuilder.cy.ts`'s last
-// `it` asserts), a profile that has never saved opens empty rather than in an error, and the
-// server's `details` reach the screen unchanged.
+// `game/deckbuilder/DeckWorkshop.test.tsx` covers the workshop itself. This file covers what the
+// route adds: a pending account lands on `/invite` (which is what `10-invite-gate.cy.ts` asserts
+// from the browser), an active one stays and sees its saved decks by name, a profile that has saved
+// nothing opens an empty workshop rather than an error, a collection that cannot be read leaves
+// ownership unclaimed, and a save carries the session's token (R256).
 
-import { validateLoadout, type LoadoutError } from "@jackioh/validator";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  SPARE_CARD_ID,
-  fixtureCatalog,
-  fixtureCollection,
-  legalDecks,
-} from "../game/deckbuilder/fixtures.ts";
-import { ApiRequestError, getCatalog, getCollection, getLoadout, getMe, putLoadout } from "../net/api.ts";
+import { DECK_AUTOSAVE_DEBOUNCE_MS } from "../../../server/src/config.ts";
+import { fixtureCatalog, fixtureCollection, legalDecks } from "../game/deckbuilder/fixtures.ts";
+import { mirrorKey } from "../game/deckbuilder/sync.ts";
+import { decksResponse, savedDeck, savedTrio } from "../game/deckbuilder/testkit.ts";
+import { ApiRequestError, getCatalog, getCollection, getDecks, getMe, putDeck } from "../net/api.ts";
 import { E2E_SESSION_STORAGE_KEY } from "../net/session.ts";
-import DecksRoute, { loadoutIssuesFrom, saveOutcomeFrom } from "./decks.tsx";
+import DecksRoute from "./decks.tsx";
 
 vi.mock("../net/api.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../net/api.ts")>();
   return {
     ...actual,
     getMe: vi.fn(),
-    getLoadout: vi.fn(),
+    getDecks: vi.fn(),
     getCatalog: vi.fn(),
     getCollection: vi.fn(),
-    putLoadout: vi.fn(),
+    putDeck: vi.fn(),
+    deleteDeck: vi.fn(),
+    putTrio: vi.fn(),
+    deleteTrio: vi.fn(),
   };
 });
 
 const TOKEN = "e2e-token-p1";
+const PROFILE = "profile-p1";
 const catalog = fixtureCatalog();
 const collection = fixtureCollection();
+const [ONE = [], TWO = []] = legalDecks();
 
 function meBody(status: "pending" | "active" | "banned", needsInviteCode: boolean) {
   return {
-    profile: { id: "p", status, rating: 1000 },
+    profile: { id: PROFILE, status, rating: 1000 },
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,
@@ -60,11 +62,16 @@ beforeEach(() => {
   vi.mocked(getMe).mockResolvedValue(meBody("active", false));
   vi.mocked(getCatalog).mockResolvedValue({ version: catalog.version, defs: catalog.cards });
   vi.mocked(getCollection).mockResolvedValue(collectionBody());
-  vi.mocked(getLoadout).mockResolvedValue({
-    catalogVersion: catalog.version,
-    loadout: { catalogVersion: catalog.version, decks: legalDecks(), updatedAt: 0 },
-  });
-  vi.mocked(putLoadout).mockReset();
+  vi.mocked(getDecks).mockResolvedValue(
+    decksResponse(
+      [savedDeck("d-aggro", "Aggro", ONE, 1, catalog.version), savedDeck("d-tempo", "Tempo", TWO.slice(0, 4), 2, catalog.version)],
+      [savedTrio("t-ladder", "Ladder", ["d-aggro", "d-tempo", null], 3)],
+      catalog.version,
+    ),
+  );
+  vi.mocked(putDeck).mockImplementation(async (_token, id, input) => ({
+    deck: { id, ...input, cards: [...input.cards], createdAt: 0, updatedAt: 0 },
+  }));
 });
 
 afterEach(() => {
@@ -75,7 +82,7 @@ afterEach(() => {
 async function mount(): Promise<void> {
   render(<DecksRoute />);
   await waitFor(() => {
-    expect(screen.getByTestId("deckbuilder")).toBeInTheDocument();
+    expect(screen.getByTestId("workshop")).toBeInTheDocument();
   });
 }
 
@@ -91,7 +98,7 @@ describe("the gate (§9.4)", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/invite");
     });
-    expect(getLoadout, "and the gated reads are never attempted").not.toHaveBeenCalled();
+    expect(getDecks, "and the gated reads are never attempted").not.toHaveBeenCalled();
   });
 
   it("sends an account with no session to the sign-in screen", async () => {
@@ -102,7 +109,7 @@ describe("the gate (§9.4)", () => {
     });
   });
 
-  it("keeps an active account on the deckbuilder", async () => {
+  it("keeps an active account on the workshop", async () => {
     await mount();
     expect(window.location.pathname).toBe("/decks");
   });
@@ -121,45 +128,42 @@ describe("the gate (§9.4)", () => {
     vi.mocked(getMe).mockRejectedValue(new Error("the server could not be reached"));
     render(<DecksRoute />);
     await waitFor(() => {
-      expect(screen.getByTestId("deckbuilder-error")).toHaveTextContent(
-        "the server could not be reached",
-      );
+      expect(screen.getByTestId("deckbuilder-error")).toHaveTextContent("the server could not be reached");
     });
   });
 });
 
 // ---------------------------------------------------------------------------------------------
-// the reads
+// The reads
 // ---------------------------------------------------------------------------------------------
 
 describe("what the screen opens with", () => {
-  it("renders the saved loadout's cards by name", async () => {
-    const decks = legalDecks();
+  it("R250 lists the saved decks and trios by name, with the session's token on the read", async () => {
     await mount();
-    for (const deck of [1, 2, 3]) {
-      const cardId = decks[deck - 1]?.[0] ?? "";
-      expect(screen.getByTestId(`deck-card-${String(deck)}-${cardId}`)).toHaveTextContent(
-        catalog.cards[cardId]?.name ?? "",
-      );
-    }
+    expect(getDecks).toHaveBeenCalledWith(TOKEN);
+    expect(screen.getByTestId("deck-row-d-aggro")).toHaveTextContent("Aggro");
+    expect(screen.getByTestId("deck-row-d-aggro")).toHaveAttribute("data-status", "ready");
+    expect(screen.getByTestId("deck-row-d-tempo")).toHaveTextContent("Tempo");
+    expect(screen.getByTestId("trio-row-t-ladder")).toHaveTextContent("Ladder");
+    expect(screen.getByTestId("sync-status")).toHaveAttribute("data-state", "saved");
   });
 
-  it("opens empty for a profile that has never saved, and not in an error", async () => {
-    vi.mocked(getLoadout).mockResolvedValue({ catalogVersion: catalog.version, loadout: null });
+  it("opens an empty workshop, and not an error, for a profile that has saved nothing", async () => {
+    vi.mocked(getDecks).mockResolvedValue(decksResponse([], [], catalog.version));
     await mount();
-    expect(screen.getByTestId("deck-count-1")).toHaveAttribute("data-count", "0");
+    expect(screen.getByTestId("workshop-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("deck-new")).toBeEnabled();
     expect(screen.queryByTestId("deckbuilder-error")).toBeNull();
   });
 
-  it("still opens when the collection cannot be read, with no client verdict", async () => {
+  it("still opens when the collection cannot be read, claiming nothing about ownership", async () => {
     vi.mocked(getCollection).mockRejectedValue(new ApiRequestError(403, { code: "account_pending", message: "no" }));
-    vi.mocked(getLoadout).mockResolvedValue({ catalogVersion: catalog.version, loadout: null });
     await mount();
-    // L5 needs quantities; without them nothing is claimed, and the server is still law.
-    expect(screen.getByTestId("loadout-errors")).toHaveAttribute("data-count", "0");
+    // L5 needs quantities; without them a full deck is "Complete", never "Ready" on a guess.
+    expect(screen.getByTestId("deck-row-d-aggro")).toHaveAttribute("data-status", "complete");
   });
 
-  it("shows the reason when the loadout or the catalog cannot be read", async () => {
+  it("shows the reason when the decks or the catalog cannot be read", async () => {
     vi.mocked(getCatalog).mockRejectedValue(new Error("catalog unavailable"));
     render(<DecksRoute />);
     await waitFor(() => {
@@ -169,110 +173,32 @@ describe("what the screen opens with", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// the save, and §9.4's "the server's verdict is law"
+// The writes (R256)
 // ---------------------------------------------------------------------------------------------
 
 describe("saving", () => {
-  it("stamps the catalog version the loadout read returned", async () => {
-    vi.mocked(putLoadout).mockResolvedValue({ catalogVersion: catalog.version, loadout: null });
+  it("R256 a new deck is PUT under a client-minted id with the token, the name and the catalog version", async () => {
     await mount();
-    fireEvent.click(screen.getByTestId("loadout-save"));
+    fireEvent.click(screen.getByTestId("deck-new"));
+    await waitFor(
+      () => {
+        expect(putDeck).toHaveBeenCalled();
+      },
+      { timeout: DECK_AUTOSAVE_DEBOUNCE_MS * 4 },
+    );
+    const [token, id, input] = vi.mocked(putDeck).mock.calls[0] ?? [];
+    expect(token).toBe(TOKEN);
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(input).toEqual({ name: "Deck 1", cards: [], catalogVersion: catalog.version });
     await waitFor(() => {
-      expect(putLoadout).toHaveBeenCalledWith(TOKEN, catalog.version, legalDecks());
+      expect(screen.getByTestId("sync-status")).toHaveAttribute("data-state", "saved");
     });
-    expect(screen.getByTestId("loadout-saved")).toBeInTheDocument();
   });
 
-  it("renders a 422's details verbatim, under the rules the server named", async () => {
-    const decks = legalDecks();
-    const result = validateLoadout({
-      decks: [{ cards: decks[0] ?? [] }, { cards: decks[1] ?? [] }],
-      catalog,
-      collection,
-    });
-    const issues: readonly LoadoutError[] = result.ok ? [] : result.errors;
-    expect(issues.length).toBeGreaterThan(0);
-
-    vi.mocked(putLoadout).mockRejectedValue(
-      new ApiRequestError(422, {
-        code: "loadout_invalid",
-        message: issues[0]?.message ?? "",
-        details: issues,
-      }),
-    );
-
+  it("R256 an edit is mirrored to this profile's local copy at once", async () => {
     await mount();
-    fireEvent.click(screen.getByTestId("loadout-save"));
-    await waitFor(() => {
-      expect(screen.getByTestId("loadout-error-L1")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("loadout-error-L1").textContent).toBe(
-      issues.find((issue) => issue.rule === "L1")?.message,
-    );
-  });
-
-  it("shows any other refusal as the server's own sentence", async () => {
-    vi.mocked(putLoadout).mockRejectedValue(
-      new ApiRequestError(409, { code: "catalog_stale", message: "update required" }),
-    );
-    await mount();
-    fireEvent.click(screen.getByTestId("loadout-save"));
-    await waitFor(() => {
-      expect(screen.getByTestId("loadout-save-error")).toHaveTextContent("update required");
-    });
-  });
-
-  it("sends the edited draft, not the one it opened with", async () => {
-    vi.mocked(putLoadout).mockResolvedValue({ catalogVersion: catalog.version, loadout: null });
-    await mount();
-    // Polish 6: the pool card's "+" adds it (a click on the card opens its detail view).
-    fireEvent.click(screen.getByTestId(`db-add-${SPARE_CARD_ID}`));
-    fireEvent.click(screen.getByTestId("loadout-save"));
-    await waitFor(() => {
-      expect(putLoadout).toHaveBeenCalled();
-    });
-    const sent = vi.mocked(putLoadout).mock.calls[0]?.[2] as string[][];
-    expect(sent[0]).toContain(SPARE_CARD_ID);
-  });
-});
-
-// ---------------------------------------------------------------------------------------------
-// the two pure translations, in isolation
-// ---------------------------------------------------------------------------------------------
-
-describe("reading the server's refusal", () => {
-  it("keeps every field the validator set, and invents none", () => {
-    const details = [{ rule: "L4", message: "whatever the validator said", cardId: "core-001" }];
-    expect(loadoutIssuesFrom(details)).toEqual([
-      { rule: "L4", message: "whatever the validator said", cardId: "core-001" },
-    ]);
-  });
-
-  it("claims no issue at all when the payload is not §9.4's shape", () => {
-    // Better to show the error's own message than to half-read a list of sentences.
-    expect(loadoutIssuesFrom(undefined)).toEqual([]);
-    expect(loadoutIssuesFrom([])).toEqual([]);
-    expect(loadoutIssuesFrom([{ rule: "L9", message: "x" }])).toEqual([]);
-    expect(loadoutIssuesFrom([{ rule: "L1" }])).toEqual([]);
-    expect(loadoutIssuesFrom("nope")).toEqual([]);
-  });
-
-  it("only reads details for a loadout_invalid", () => {
-    const outcome = saveOutcomeFrom(
-      new ApiRequestError(403, {
-        code: "account_pending",
-        message: "gate",
-        details: [{ rule: "L1", message: "not a rule failure" }],
-      }),
-    );
-    expect(outcome).toEqual({ ok: false, message: "gate", issues: [] });
-  });
-
-  it("passes a non-API failure's own message through", () => {
-    expect(saveOutcomeFrom(new Error("offline"))).toEqual({
-      ok: false,
-      message: "offline",
-      issues: [],
-    });
+    fireEvent.click(screen.getByTestId("deck-row-d-tempo"));
+    fireEvent.change(screen.getByTestId("deck-name-input"), { target: { value: "Tempo v2" } });
+    expect(window.localStorage.getItem(mirrorKey(PROFILE))).toContain("Tempo v2");
   });
 });

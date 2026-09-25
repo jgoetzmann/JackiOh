@@ -1,0 +1,797 @@
+/* The deck workshop (DeckWorkshop.tsx): the page's grid, the rail of decks and trios, the save
+   status, the editor's head, the comparison, the verdicts, the trio editor and the import panel.
+   deckbuilder.css draws the deck editor's pool and tiles. Nothing here is a rule.
+
+   The same two constraints as deckbuilder.css hold: nothing here is sticky or fixed (Cypress
+   scrolls a target to the top of the viewport and fails on anything covering it), and every rule
+   for a <button> is scoped `.deckbuilder.app-shell …`, which outranks index.css's `.app-shell
+   button` without touching it.
+
+   THE HALVES. From 1101 px up the rail and the open item sit side by side. Below that they take
+   turns (`data-view="list|editor"` on the root): the editor gets the whole width, which the pool
+   and the deck's sidebar need, and "← All decks" goes back. Both halves stay mounted either way. */
+
+/* --- colours of state -------------------------------------------------------------------------- */
+
+.workshop {
+  --ws-amber: #e0a93b;
+  --ws-clash: #ffb45c;
+  --ws-panel: linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) 85%, #2a2f44), var(--bg-sunken));
+}
+
+/* --- the page's grid --------------------------------------------------------------------------- */
+
+.ws-layout {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+.ws-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* --- the save status (R256) ---------------------------------------------------------------------- */
+
+.deckbuilder.app-shell .ws-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  margin: 0 0 0 auto;
+  padding: 4px 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.03);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.ws-sync-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--legal);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--legal) 60%, transparent);
+}
+
+.ws-sync[data-state="saving"] .ws-sync-dot {
+  background: var(--mana);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--mana) 70%, transparent);
+  animation: ws-pulse 900ms ease-in-out infinite alternate;
+}
+
+.deckbuilder.app-shell .ws-sync[data-state="offline"] {
+  border-color: color-mix(in srgb, var(--ws-amber) 60%, var(--line));
+  color: var(--text);
+}
+
+.ws-sync[data-state="offline"] .ws-sync-dot {
+  background: var(--ws-amber);
+  box-shadow: none;
+}
+
+.deckbuilder.app-shell .ws-sync[data-state="error"] {
+  border-color: color-mix(in srgb, var(--opponent) 70%, var(--line));
+  color: var(--text);
+}
+
+.ws-sync[data-state="error"] .ws-sync-dot {
+  background: var(--opponent);
+  box-shadow: none;
+}
+
+@keyframes ws-pulse {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --- buttons ------------------------------------------------------------------------------------- */
+
+.deckbuilder.app-shell .ws-action {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.deckbuilder.app-shell .ws-action--primary {
+  border-color: color-mix(in srgb, var(--you) 70%, white);
+  background: color-mix(in srgb, var(--you) 55%, var(--bg-raised));
+  color: #fff;
+}
+
+.deckbuilder.app-shell .ws-action--danger {
+  border-color: color-mix(in srgb, var(--opponent) 65%, var(--line-bright));
+  background: color-mix(in srgb, var(--opponent) 14%, var(--bg-raised));
+}
+
+.deckbuilder.app-shell .ws-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ws-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Only the one-at-a-time layout shows the way back to the list (see the widths below). */
+.deckbuilder.app-shell .ws-back {
+  display: none;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* --- the rail ------------------------------------------------------------------------------------ */
+
+.ws-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: calc(var(--radius) + 3px);
+  background: var(--ws-panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.ws-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ws-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+}
+
+.deckbuilder.app-shell .ws-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ws-cap {
+  color: var(--text-dim);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ws-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-list:empty {
+  display: none;
+}
+
+.deckbuilder.app-shell .ws-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 22px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1b1f2d, #121521);
+  text-align: left;
+}
+
+.deckbuilder.app-shell .ws-row[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--selected) 75%, var(--line-bright));
+  background: linear-gradient(180deg, #262a3a, #171a26);
+  box-shadow: inset 3px 0 0 var(--selected);
+}
+
+.ws-row-name {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not saved yet (R256): a small amber dot in the corner, gone once the server has it. */
+.ws-row-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ws-amber);
+}
+
+.ws-chip {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ws-chip[data-status="ready"] {
+  color: var(--legal);
+}
+
+.ws-chip[data-status="complete"] {
+  color: #8db8f0;
+}
+
+.ws-chip[data-status="incomplete"] {
+  color: var(--ws-amber);
+}
+
+.ws-chip[data-status="unowned"],
+.ws-chip[data-status="invalid"] {
+  color: #ff8f86;
+}
+
+.deckbuilder.app-shell .ws-cap-note {
+  margin: 0;
+  color: var(--ws-amber);
+  font-size: 12px;
+}
+
+.deckbuilder.app-shell .ws-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.ws-empty {
+  padding: 40px 16px;
+  border: 1px dashed var(--line-bright);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.ws-empty p {
+  margin: 0 auto;
+}
+
+/* --- an editor's head: the way back, the name, the server's refusal ------------------------------ */
+
+.ws-editor {
+  min-width: 0;
+}
+
+.ws-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.ws-name {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ws-field-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ws-name-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--bg-sunken);
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.ws-name-input:focus,
+.ws-select:focus,
+.ws-import-input:focus,
+.ws-code-input:focus {
+  outline: 2px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.deckbuilder.app-shell .ws-save-error {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.ws-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+}
+
+/* --- the deck editor's comparison, verdict, code and confirm ------------------------------------- */
+
+.ws-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.ws-compare-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ws-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ws-chips > li {
+  max-width: 100%;
+}
+
+.deckbuilder.app-shell .ws-chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-color: color-mix(in srgb, var(--opponent) 60%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--opponent) 16%, var(--bg-raised));
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ws-chip-button > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deckbuilder.app-shell .ws-conflicts {
+  margin: 0;
+  color: var(--ws-clash);
+  font-size: 12px;
+}
+
+.ws-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.deckbuilder.app-shell .ws-verdict-title {
+  margin: 0;
+  color: var(--ws-amber);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.deckbuilder.app-shell .ws-verdict[data-ready="true"] .ws-verdict-title {
+  color: var(--legal);
+}
+
+.ws-code {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ws-code-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--line-bright);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.ws-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--opponent) 60%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--opponent) 10%, var(--bg-raised));
+}
+
+.deckbuilder.app-shell .ws-confirm p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ws-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- the trio editor ----------------------------------------------------------------------------- */
+
+.ws-trio,
+.ws-import {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: calc(var(--radius) + 3px);
+  background: var(--ws-panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.ws-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ws-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ws-slot-row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ws-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.ws-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+}
+
+.ws-compare-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ws-compare-name {
+  overflow: hidden;
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-compare-count {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-compare-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ws-compare-list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* The side-by-side tiles are read, not pressed: no entrance, no hover. */
+.deckbuilder.app-shell .ws-ctile {
+  animation: none;
+  cursor: default;
+}
+
+.deckbuilder.app-shell .ws-ctile:hover {
+  border-color: #2f3547;
+  background: linear-gradient(180deg, #1b1f2d, #10131c);
+}
+
+.deckbuilder.app-shell .ws-ctile[data-conflict="true"],
+.deckbuilder.app-shell .ws-ctile[data-conflict="true"]:hover {
+  border-color: color-mix(in srgb, var(--opponent) 75%, var(--line-bright));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 3px 0 0 var(--opponent);
+}
+
+.ws-also {
+  padding-left: 6px;
+  color: var(--ws-clash);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+/* --- the import panel ---------------------------------------------------------------------------- */
+
+.ws-import {
+  max-width: 720px;
+}
+
+.deckbuilder.app-shell .ws-import-title {
+  margin: 0;
+  color: #f3e3b3;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 20px;
+}
+
+.ws-import-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 14px;
+  resize: vertical;
+  word-break: break-all;
+}
+
+.ws-import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-import-preview:empty {
+  display: none;
+}
+
+.deckbuilder.app-shell .ws-import-name {
+  margin: 0;
+  color: var(--text);
+}
+
+.ws-import-name strong {
+  color: #f3e3b3;
+}
+
+.ws-import-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.ws-import-notes:empty {
+  display: none;
+}
+
+.ws-import-notes li[data-kind="unowned"] {
+  color: var(--ws-amber);
+}
+
+/* --- widths -------------------------------------------------------------------------------------- */
+
+/* Side by side: the status toast centres on the pool, between the rail (232 px and a 14 px gap) and
+   the deck's sidebar (340 px and a 14 px gap). */
+@media (min-width: 1101px) {
+  .db-deck-status {
+    left: calc(50% - 54px);
+    max-width: calc(100vw - 680px);
+  }
+}
+
+/* One half at a time: the list, or the open item across the whole width. */
+@media (max-width: 1100px) {
+  .ws-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workshop[data-view="list"] .ws-main,
+  .workshop[data-view="editor"] .ws-rail {
+    display: none;
+  }
+
+  .deckbuilder.app-shell .ws-back {
+    display: inline-flex;
+  }
+
+  .ws-rail {
+    width: 100%;
+    max-width: 640px;
+    box-sizing: border-box;
+  }
+}
+
+/* Desktop: the page is one screen tall (deckbuilder.css), so the grid hands its height down to the
+   deck editor, whose pool and deck list scroll inside it; the rail, a trio and the import scroll
+   inside their own column. */
+@media (min-width: 761px) and (min-height: 501px) {
+  .ws-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .ws-rail {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ws-main {
+    min-height: 0;
+  }
+
+  .ws-editor--deck {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The deck's tiles keep about six rows however much sits under them (the comparison, the
+     verdict, the code): the sidebar scrolls instead of squeezing the list to a sliver. */
+  .ws-editor--deck .db-deck {
+    min-height: auto;
+  }
+
+  .ws-editor--deck .db-deck-list {
+    min-height: min(230px, 34vh);
+  }
+
+  .ws-editor--deck .db-sidebar > :not(.db-deck) {
+    flex-shrink: 0;
+  }
+
+  .ws-editor--trio,
+  .ws-import,
+  .ws-empty {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* Phone and narrow tablet: the trio's slots and its three decks stack. */
+@media (max-width: 760px) {
+  .ws-slots,
+  .ws-compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deckbuilder.app-shell .ws-sync {
+    margin-left: 0;
+  }
+
+  /* 16 px keeps a phone from zooming into a field when it takes focus. */
+  .ws-name-input,
+  .ws-select,
+  .ws-import-input,
+  .ws-code-input {
+    font-size: 16px;
+  }
+}
+
+/* Touch sizing: every control a finger hits is at least 44 px, as on the board and in the pool. */
+@media (max-width: 760px), (max-height: 500px), (pointer: coarse) {
+  .deckbuilder.app-shell .ws-action,
+  .deckbuilder.app-shell .ws-row,
+  .deckbuilder.app-shell .ws-back,
+  .deckbuilder.app-shell .ws-chip-button,
+  .ws-select,
+  .ws-name-input {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-sync[data-state="saving"] .ws-sync-dot {
+    animation: none;
+  }
+}

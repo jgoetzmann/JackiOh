@@ -206,7 +206,7 @@ const SERVER_SERIES_RECOVERY_TEST = "../../../apps/server/test/match/series-reco
 const SERVER_DECKS_SQL = "../../../apps/server/test/sql/04_decks_and_series.sql";
 const WEB_DECK_CODE_TEST = "../../../apps/web/src/game/deckbuilder/deckCode.test.ts";
 const WEB_DECK_SYNC_TEST = "../../../apps/web/src/game/deckbuilder/sync.test.ts";
-const WEB_WORKSHOP_TEST = "../../../apps/web/src/game/deckbuilder/Workshop.test.tsx";
+const WEB_WORKSHOP_TEST = "../../../apps/web/src/game/deckbuilder/DeckWorkshop.test.tsx";
 const WEB_PLAY_TEST = "../../../apps/web/src/routes/play.test.tsx";
 const WEB_SERIES_TEST = "../../../apps/web/src/routes/series.test.tsx";
 
