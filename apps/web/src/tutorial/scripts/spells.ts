@@ -23,8 +23,8 @@
 
 import type { ActionBody, PlayerView, Selection, UnitView } from "@jackioh/shared";
 
-import { cardName, hasKeyword, legalAttacksOf, nextMove, sameMove, trades, yourMove, zoneOf, type Attack } from "../advice.ts";
-import { anchorOf, textOf, type CoachCtx, type CoachStep, type LessonScript } from "../coach.ts";
+import { cardName, hasKeyword, legalAttacksOf, trades, yourMove, type Attack } from "../advice.ts";
+import type { CoachCtx, CoachStep, LessonScript } from "../coach.ts";
 import {
   attackWith,
   endTurn,
@@ -287,33 +287,10 @@ function attackAdvice(ctx: CoachCtx): string {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Where the coach's shared advice (advice.ts `nextMove`) would only dent a Taunt or end the turn,
- * the blow that destroys a Taunt in the way, even at the attacker's cost: this lesson's own advice,
- * which opens the hero to the units behind it.
+ * The last step: the coach names one move at a time, and points at it, until the enemy hero falls
+ * (advice.ts: a finishing blow first, and a Taunt in the way cleared even at the attacker's cost).
  */
-function clearTaunt(ctx: CoachCtx): Attack | undefined {
-  const move = nextMove(ctx);
-  if (move === undefined || (move.kind !== "chip" && move.kind !== "end")) return undefined;
-  const attack = goodAttack(ctx);
-  const target = attack === undefined ? undefined : unitsOf(ctx.view, "opponent").find((unit) => unit.instanceId === attack.targetId);
-  return target !== undefined && hasKeyword(target, "Taunt") ? attack : undefined;
-}
-
-const advised = yourMove({ id: "win", title: "Win the game", final: true });
-
-/** The last step: the coach names one move at a time, and points at it, until the enemy hero falls. */
-const win: CoachStep = {
-  ...advised,
-  text: (ctx) => (clearTaunt(ctx) === undefined ? textOf(advised.text, ctx) : attackAdvice(ctx)),
-  anchor: (ctx) => {
-    const attack = clearTaunt(ctx);
-    return attack === undefined ? anchorOf(advised.anchor, ctx) : zoneOf(ctx, "opponent", attack.targetId);
-  },
-  expect: (action, ctx) => {
-    const attack = clearTaunt(ctx);
-    return attack === undefined ? advised.expect?.(action, ctx) === true : sameMove(action, attack);
-  },
-};
+const win: CoachStep = yourMove({ id: "win", title: "Win the game", final: true });
 
 // ---------------------------------------------------------------------------------------------
 // the script

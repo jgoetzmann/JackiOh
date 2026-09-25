@@ -58,6 +58,33 @@ describe("R292 the coach's advice", () => {
     expect(nextMove(ctx(walled, []))).toBeUndefined();
   });
 
+  it("R292 names the finishing blow before anything else, and clears a Taunt even at the attacker's cost", () => {
+    const striker = unit("p1", { instanceId: "a1", defId: "core-013", attack: 8, health: 2, maxHealth: 2 });
+    const face: ActionBody = { type: "attack", attackerId: "a1", targetId: "hero-p2" };
+    const hand = [card({ instanceId: "h1", defId: "core-008", cost: 1 })];
+    const play: ActionBody = { type: "play", instanceId: "h1", zone: { row: "units", lane: 2 } };
+    const low = baseView({
+      you: emptySide("p1", { units: [striker, null, null, null, null], hand }),
+      opponent: emptySide("p2", { hand: { count: 1 }, hero: { health: 8, armor: 0, powers: [], power: null } }),
+    });
+    const lethal = nextMove(ctx(low, [play, face, END]));
+    expect(lethal?.kind).toBe("hero");
+    expect(moveText(ctx(low, []), lethal)).toContain("finish");
+    // Not lethal: the card comes first.
+    const high = { ...low, opponent: { ...low.opponent, hero: { ...low.opponent.hero, health: 9 } } };
+    expect(nextMove(ctx(high, [play, face, END]))?.kind).toBe("play");
+
+    const guard = unit("p2", { instanceId: "e1", defId: "core-003", attack: 5, health: 3, maxHealth: 3, keywords: [{ kind: "Taunt" }] });
+    const walled = baseView({
+      you: emptySide("p1", { units: [striker, null, null, null, null] }),
+      opponent: emptySide("p2", { units: [guard, null, null, null, null], hand: { count: 1 } }),
+    });
+    const clear: ActionBody = { type: "attack", attackerId: "a1", targetId: "e1" };
+    const move = nextMove(ctx(walled, [clear, END]));
+    expect(move?.kind).toBe("clear");
+    expect(moveText(ctx(walled, []), move)).toContain("Both fall");
+  });
+
   it("R292 makes a step that names its move, is done when the turn passes, or with the game when final", () => {
     const view = baseView({ you: emptySide("p1", { hand: [card({ instanceId: "h1", defId: "core-008", cost: 1 })] }) });
     const play: ActionBody = { type: "play", instanceId: "h1", zone: { row: "units", lane: 1 } };

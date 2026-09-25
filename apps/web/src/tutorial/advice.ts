@@ -3,10 +3,11 @@
 //
 // A lesson's scripted steps cover the moments it teaches; between and after them the player still
 // has turns to play, and a new player left with a silent coach does nothing, loses, and learns
-// nothing. So a lesson's quiet stretches end in `yourMove` (steps.ts), which always names one move:
-// play the dearest card that is legal, never aimed at your own side; else a trade that destroys an
-// enemy unit and leaves yours standing; else the enemy hero; else the best dent in a Taunt that
-// keeps the hero out of reach; else End turn. It is advice, never a rule (CLAUDE.md rule 7): every
+// nothing. So a lesson's quiet stretches end in `yourMove`, which always names one move: the enemy
+// hero when the attacks on offer can finish it this turn; else the dearest legal card, never aimed at
+// your own side; else a trade that destroys an enemy unit and leaves yours standing; else the enemy
+// hero; else an attack that clears a Taunt out of the way, even at the attacker's cost; else the best
+// dent in that Taunt; else End turn. It is advice, never a rule (CLAUDE.md rule 7): every
 // move it names is one the engine already offered in `legalActions`, and it reads what the view
 // shows of each unit — attack, health, Armor, keywords — the way a player reads the board.
 
@@ -97,6 +98,34 @@ export function chip(ctx: CoachCtx): Trade | undefined {
   return options[0];
 }
 
+/** When a Taunt keeps the hero out of reach: an attack that destroys it, even if the attacker falls too. */
+export function clearTaunt(ctx: CoachCtx): Trade | undefined {
+  if (heroAttack(ctx) !== undefined) return undefined;
+  const options = trades(ctx).filter((trade) => trade.kills && hasKeyword(trade.target, "Taunt"));
+  options.sort((a, b) => Number(b.survives) - Number(a.survives) || size(a.attacker) - size(b.attacker));
+  return options[0];
+}
+
+/**
+ * The attacks on the enemy hero add up to its health this turn, reading what the view shows (the
+ * attackers' attack less the hero's Armor, each hit its own). A plan, not a promise: a trap may
+ * still answer (lesson 3 says so), which is the game.
+ */
+export function lethalOnBoard(ctx: CoachCtx): boolean {
+  const hero = heroTargetId(ctx.view, "opponent");
+  const armor = ctx.view.opponent.hero.armor;
+  const attackers = new Set<string>();
+  let damage = 0;
+  for (const action of legalAttacksOf(ctx)) {
+    if (action.targetId !== hero || attackers.has(action.attackerId)) continue;
+    const attacker = myUnit(ctx, action.attackerId);
+    if (attacker === undefined) continue;
+    attackers.add(action.attackerId);
+    damage += Math.max(0, attacker.attack - armor);
+  }
+  return attackers.size > 0 && damage >= ctx.view.opponent.hero.health;
+}
+
 /** A play aimed at one of the human's own cards or at their own hero. */
 export function aimsAtOwnSide(ctx: CoachCtx, play: Play): boolean {
   const own = new Set<string>(unitsOf(ctx.view, "you").map((unit) => unit.instanceId));
@@ -122,11 +151,16 @@ export function bestPlay(ctx: CoachCtx): Play | undefined {
 export type Move =
   | { kind: "play"; action: Play; defId: string }
   | { kind: "trade"; action: Attack; trade: Trade }
-  | { kind: "hero"; action: Attack; attacker: UnitView }
+  | { kind: "hero"; action: Attack; attacker: UnitView; lethal: boolean }
+  | { kind: "clear"; action: Attack; trade: Trade }
   | { kind: "chip"; action: Attack; trade: Trade }
   | { kind: "end"; action: ActionBody };
 
 export function nextMove(ctx: CoachCtx): Move | undefined {
+  if (lethalOnBoard(ctx)) {
+    const hero = heroAttack(ctx);
+    if (hero !== undefined) return { kind: "hero", action: hero.action, attacker: hero.attacker, lethal: true };
+  }
   const play = bestPlay(ctx);
   if (play !== undefined) {
     const hand = Array.isArray(ctx.view.you.hand) ? ctx.view.you.hand : [];
@@ -136,7 +170,9 @@ export function nextMove(ctx: CoachCtx): Move | undefined {
   const trade = goodTrade(ctx);
   if (trade !== undefined) return { kind: "trade", action: trade.action, trade };
   const hero = heroAttack(ctx);
-  if (hero !== undefined) return { kind: "hero", action: hero.action, attacker: hero.attacker };
+  if (hero !== undefined) return { kind: "hero", action: hero.action, attacker: hero.attacker, lethal: false };
+  const clear = clearTaunt(ctx);
+  if (clear !== undefined) return { kind: "clear", action: clear.action, trade: clear };
   const dent = chip(ctx);
   if (dent !== undefined) return { kind: "chip", action: dent.action, trade: dent };
   const end = ctx.legal.find((action) => action.type === "endTurn");
@@ -162,6 +198,7 @@ export function moveAnchor(ctx: CoachCtx, move: Move | undefined): CoachAnchor |
     case "play":
       return { kind: "handCard", defId: move.defId };
     case "trade":
+    case "clear":
     case "chip":
       return zoneOf(ctx, "opponent", move.trade.target.instanceId);
     case "hero":
@@ -183,11 +220,17 @@ export function moveText(ctx: CoachCtx, move: Move | undefined): string {
     case "play":
       return `Play ${cardName(ctx, move.defId)}: spend your mana every turn you can.`;
     case "trade":
-      return `Attack ${cardName(ctx, move.trade.target.defId)} with ${cardName(ctx, move.trade.attacker.defId)}: it destroys that unit and survives.`;
+      return `Attack the enemy's ${cardName(ctx, move.trade.target.defId)} with your ${cardName(ctx, move.trade.attacker.defId)}: it destroys that unit and survives.`;
     case "hero":
-      return `Attack the enemy hero with ${cardName(ctx, move.attacker.defId)}: every point counts.`;
+      return move.lethal
+        ? `Your attacks can finish the enemy hero this turn: attack it with your ${cardName(ctx, move.attacker.defId)}.`
+        : `Attack the enemy hero with your ${cardName(ctx, move.attacker.defId)}: every point counts.`;
+    case "clear":
+      return move.trade.survives
+        ? `A Taunt unit guards the hero: attack the enemy's ${cardName(ctx, move.trade.target.defId)} with your ${cardName(ctx, move.trade.attacker.defId)} to clear the way.`
+        : `A Taunt unit guards the hero: attack the enemy's ${cardName(ctx, move.trade.target.defId)} with your ${cardName(ctx, move.trade.attacker.defId)}. Both fall, but the way is clear.`;
     case "chip":
-      return `A Taunt unit guards the hero. Wear it down: attack it with ${cardName(ctx, move.trade.attacker.defId)}. Damage stays.`;
+      return `A Taunt unit guards the hero. Wear it down: attack it with your ${cardName(ctx, move.trade.attacker.defId)}. Damage stays.`;
     case "end":
       return "Nothing useful left this turn: press End turn.";
   }
