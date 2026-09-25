@@ -9,33 +9,33 @@
 // the card at every tier, and the reason names the tier after the flags ("neverPlayed: hard: …").
 // No card is listed without a flag, and the ban is not tuned by hand.
 //
-// Sweep of record: 2026-09-23 (UTC), `pnpm ai:sweep` over the 100 non-token Core cards at easy and
-// hard, starting from the table before it (Field of Dreams, /fullsend and Ceaseless Void, swept as
-// forced-in cards like any other), AI_SWEEP.seedsPerCard (8) seeds per card and tier
-// (`sweep:<tier>:<id>:1..8`), budget AI_GATE_BUDGET, which is AI_BUDGET {"nodes":600,
+// Sweep of record: 2026-09-25 (UTC), `pnpm ai:sweep` over 100 non-token Core cards at easy and hard,
+// 8 seeds per card and tier (`sweep:<tier>:<id>:<n>`), budget AI_GATE_BUDGET {"nodes":600,
 // "lethalNodes":150,"determinizations":3,"beamWidth":4,"rootBranching":20,"branching":6,
-// "maxDepth":8,"finalists":3}, run as six parallel slices (`--json`, joined with `--report`). It
-// flagged the twelve `neverPlayed` cards below: three at Easy, eight at Hard only, and Eugenics at
-// both. No card was flagged `error`, `timeout` or `selfHarm`. Field of Dreams and Ceaseless Void
-// were played this time at both tiers, so they are no longer banned; /fullsend was played at Easy
-// and never at Hard. Hinder is the one card no tier could judge: it is cast on draw, so it never
-// sits in hand (unswept, not banned).
+// "maxDepth":8,"finalists":3}, re-run after the Radiant pass (R275, R276) changed 27 Radiant faces.
+// It ran as five parallel slices on a busy machine, which flagged 30 cards `timeout`; each was swept
+// again (three slices on a quiet machine, then Friend of Felinors and Conjure KY alone, twice for
+// Conjure KY), and only Conjure KY's hard-tier timeout held, so it is the one `timeout` entry. The
+// rest are `neverPlayed`, as before. Against the table before it: Right-house defender, Field of
+// Dreams and Genn's Greed are new (hard), and Conjure KY; Jewelosco Scarab, Unstable Clone Machine,
+// KY's Trial and CN-Viral Injection were played this time and come off; and Blood Ridden Glowy
+// Jelly Bean, which is cast on draw, was never affordable at either tier, so like Hinder it is
+// unswept and not listed (R186: no evidence either way). No card was flagged `error` or `selfHarm`.
 
 /** R186: defId → why the AI never deals it to itself. Each reason starts "<SweepFlag>: <tier>: ". */
 export const SHADOW_BAN: Readonly<Record<string, string>> = {
-  "core-007": "neverPlayed: hard: affordable in hand on 6 turns, never played",
-  "core-026": "neverPlayed: hard: affordable in hand on 17 turns, never played",
-  "core-027": "neverPlayed: hard: affordable in hand on 4 turns, never played",
-  "core-033": "neverPlayed: hard: affordable in hand on 11 turns, never played",
-  "core-042":
-    "neverPlayed: easy: affordable in hand on 34 turns, never played; hard: affordable in hand on 23 turns, never played",
-  "core-059": "neverPlayed: hard: affordable in hand on 17 turns, never played",
-  "core-078": "neverPlayed: hard: affordable in hand on 16 turns, never played",
+  "core-003": "neverPlayed: hard: affordable in hand on 6 turns, never played",
+  "core-026": "neverPlayed: easy: affordable in hand on 21 turns, never played",
+  "core-042": "neverPlayed: hard: affordable in hand on 19 turns, never played",
+  "core-057": "timeout: hard: 1 decision(s) over 2000 ms or game(s) past 600 actions",
+  "core-059": "neverPlayed: hard: affordable in hand on 22 turns, never played",
+  "core-076": "neverPlayed: hard: affordable in hand on 16 turns, never played",
+  "core-078": "neverPlayed: easy: affordable in hand on 9 turns, never played",
   "core-079": "neverPlayed: hard: affordable in hand on 6 turns, never played",
-  "core-082": "neverPlayed: hard: affordable in hand on 15 turns, never played",
-  "core-083": "neverPlayed: easy: affordable in hand on 18 turns, never played",
-  "core-090": "neverPlayed: hard: affordable in hand on 20 turns, never played",
-  "core-099": "neverPlayed: easy: affordable in hand on 14 turns, never played",
+  "core-083": "neverPlayed: hard: affordable in hand on 21 turns, never played",
+  "core-094": "neverPlayed: hard: affordable in hand on 16 turns, never played",
+  "core-099":
+    "neverPlayed: easy: affordable in hand on 17 turns, never played; hard: affordable in hand on 31 turns, never played",
 };
 
 /** Object.keys(SHADOW_BAN), sorted. */
