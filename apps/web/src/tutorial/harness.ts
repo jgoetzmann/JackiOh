@@ -4,9 +4,11 @@
 //
 // The human is played by a policy. `"coach"` is the lesson's own line: it answers every tip and
 // info step with "Got it", does whatever the showing `act` step `expect`s, and falls back to the
-// autopilot below only when the coach asks for nothing. `"random"` is a player who ignores the
-// coach, drawing uniformly from the legal actions (never conceding or offering a draw) — the
-// robustness case: the coach must neither throw nor stall, whatever the player does.
+// autopilot below only when the coach asks for nothing. `"autopilot"` is a sensible beginner who
+// reads nothing the coach says and plays the autopilot alone, which is how forgiving a lesson is.
+// `"random"` is a player who ignores the coach, drawing uniformly from the legal actions (never
+// conceding or offering a draw) — the robustness case: the coach must neither throw nor stall,
+// whatever the player does.
 //
 // The core runs with a frozen clock and the gates' budget, as core.test.ts does, so the AI's
 // decisions are a pure function of the node budget and a game replays exactly.
@@ -36,7 +38,7 @@ import { heroTargetId, myMain, mulliganOpen } from "./steps.ts";
 /** Most requests one lesson game sends before the harness calls it stuck. */
 const LESSON_REQUEST_CAP = 1500;
 
-export type LessonPolicy = "coach" | "random";
+export type LessonPolicy = "coach" | "autopilot" | "random";
 
 export type LessonRun = {
   lesson: TutorialLesson;
@@ -212,6 +214,8 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
         byCoach = action !== null;
       }
       action ??= autopilot(ctx);
+    } else if (policy === "autopilot") {
+      action = autopilot(ctx);
     } else {
       action = randomPolicy(ctx, (n) => rng.int(n));
     }

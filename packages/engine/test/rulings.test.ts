@@ -195,6 +195,17 @@ const WEB_FX_CSS_TEST = "../../../apps/web/src/fx/css.test.ts";
 const WEB_FX_CANVAS_TEST = "../../../apps/web/src/fx/canvasFx.test.ts";
 const WEB_FX_PARTICLES_TEST = "../../../apps/web/src/fx/particles.test.ts";
 const WEB_ANIMATIONS_FX_TEST = "../../../apps/web/src/game/animations.fx.test.ts";
+/** R290 to R294's proofs: the tutorial (SPEC §9.10) — its handicap, lessons, coach and progress. */
+const AI_TUTORIAL_TIER_TEST = "../../ai/test/tutorial-tier.test.ts";
+const WEB_TUTORIAL_LESSONS_TEST = "../../../apps/web/src/tutorial/lessons.test.ts";
+const WEB_TUTORIAL_COACH_TEST = "../../../apps/web/src/tutorial/coach.test.ts";
+const WEB_TUTORIAL_PROGRESS_TEST = "../../../apps/web/src/tutorial/progress.test.ts";
+const WEB_TUTORIAL_LESSON_TESTS = [
+  "../../../apps/web/src/tutorial/scripts/basics.test.ts",
+  "../../../apps/web/src/tutorial/scripts/spells.test.ts",
+  "../../../apps/web/src/tutorial/scripts/traps.test.ts",
+  "../../../apps/web/src/tutorial/scripts/advanced.test.ts",
+] as const;
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -2016,6 +2027,46 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // number; and by PromptCards.test.tsx "R247 …": the picker draws the numbers, and no card face.
   it("R247 offers #82's Discover as the numbers themselves", () => {
     provenIn(247, "effects-choose.test.ts", CARDS_KYS_TRIAL_TEST, WEB_PROMPT_CARDS_TEST);
+  });
+
+  // Proved by handicap.test.ts "R290 …" (AI_TUTORIAL's numbers, `heroHealth` stored only off 30 and
+  // validated, the hero starting at 20, the mana cap, the fold) and by packages/ai
+  // tutorial-tier.test.ts "R290 …": the greedy baseline at a human's resources beats the AI at the
+  // tutorial handicap in most of a frozen series of games.
+  it("R290 gives the tutorial opponent a handicap below Easy: 12 cards, 3 mana, a hero at 20", () => {
+    expect(config.AI_TUTORIAL).toEqual({
+      deckSize: 12,
+      manaBonus: 0,
+      manaCap: 3,
+      extraOpeningCards: 0,
+      extraDrawsPerTurn: 0,
+      heroHealth: 20,
+    });
+    expect(config.DIFFICULTIES).not.toContain("tutorial");
+    provenIn(290, "handicap.test.ts", AI_TUTORIAL_TIER_TEST);
+  });
+
+  // Proved by apps/web tutorial/lessons.test.ts "R291 …": legal decks, an AI deck of exactly the
+  // handicap's size free of the shadow ban and of what the lesson has not taught, a fixed deal, and a
+  // start through the practice core with the lesson's decks and the tutorial handicap.
+  it("R291 plays each lesson with a fixed seed, seat and two fixed decks", () => {
+    provenIn(291, WEB_TUTORIAL_LESSONS_TEST);
+  });
+
+  // Proved by apps/web tutorial/coach.test.ts "R292 …": the coach machine on hand-built views.
+  it("R292 has the coach read only the view, legal actions and the AI's turn, and never strand a player", () => {
+    provenIn(292, WEB_TUTORIAL_COACH_TEST);
+  });
+
+  // Proved by each lesson's scripts/<id>.test.ts "R293 …": the lesson played through the real
+  // practice core by a player following the coach, by a sensible one ignoring it, and by a random one.
+  it("R293 makes every lesson winnable by following its coach", () => {
+    provenIn(293, ...WEB_TUTORIAL_LESSON_TESTS);
+  });
+
+  // Proved by apps/web tutorial/progress.test.ts "R294 …": the on-device store and the unlock order.
+  it("R294 keeps tutorial progress on the device and opens the lessons in order", () => {
+    provenIn(294, WEB_TUTORIAL_PROGRESS_TEST);
   });
 });
 
