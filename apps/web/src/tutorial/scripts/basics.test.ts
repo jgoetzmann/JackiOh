@@ -1,15 +1,19 @@
 // Lesson "basics" (SPEC §9.10, R293): the coach's own line wins and shows every step, the lesson's
-// mechanics come up on it, a beginner who ignores the coach still wins, a player who does anything
-// at all never stalls or breaks the coach, and the whole game replays from its seed.
+// mechanics come up on it without ever asking for more than two "Got it"s in a row, a beginner who
+// plays only what the coach names wins, a beginner who ignores the coach still wins, a player who
+// does anything at all never stalls or breaks the coach, and the whole game replays from its seed.
 //
 // Played through the REAL practice core (harness.ts): the engine, the card scripts and the AI.
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { beginGame, createGame, fold, hashState, legalActions, reduce, type GameState } from "@jackioh/engine";
+import { aiToAct } from "@jackioh/ai";
+import { beginGame, createGame, fold, hashState, legalActions, reduce, viewFor, type GameState } from "@jackioh/engine";
 import { AI_TUTORIAL, HERO_HEALTH } from "@jackioh/engine/config";
-import { opponentOf, type Action, type GameEvent, type PlayerId } from "@jackioh/shared";
+import { opponentOf, type Action, type GameEvent, type PlayerId, type PlayerView } from "@jackioh/shared";
 
+import { newEventsSince } from "../../game/animations.ts";
+import { COACH_START, coachAck, coachDisplay, coachObserve, type CoachCtx } from "../coach.ts";
 import { playLesson, type LessonRun } from "../harness.ts";
 import { lessonById } from "../lessons.ts";
 import { script } from "./basics.ts";
@@ -19,6 +23,13 @@ const LESSON = "basics";
 const COACH_TURNS_MAX = 8;
 /** The autopilot's line wins on its 6th turn too. */
 const AUTOPILOT_TURNS_MAX = 8;
+/**
+ * A beginner who plays only what the coach names (and otherwise only attacks and ends the turn)
+ * wins on the 6th turn too: from the trade on, the coach names every move.
+ */
+const PASSIVE_TURNS_MAX = 8;
+/** The most "Got it" bubbles the coach shows in a row, with no move of the player's between them. */
+const GOT_IT_RUN_MAX = 2;
 /**
  * Policy seeds for the player who ignores the coach. The harness gives the AI a small budget under
  * the random policy, so each of these games costs a second or three.
@@ -50,6 +61,55 @@ function stepsOf(run: LessonRun): Step[] {
     state = result.state;
   }
   return steps;
+}
+
+/**
+ * Every run of "Got it" bubbles the coach showed on this line, in order: tips and info steps, with
+ * no move of the player's and no step asking for one between them. Rebuilt by folding the run's
+ * log and reading each snapshot the way the harness's coach did (the page's own reads: the human's
+ * view, legal actions and whether the AI owes a move), which the tips it saw prove.
+ */
+function gotItRuns(run: LessonRun): { runs: string[][]; tips: string[] } {
+  const { seed, decks, handicaps, log } = run.debug;
+  const human = run.humanSeat;
+  const ai = opponentOf(human);
+  let state = beginGame(createGame({ seed, decks, handicaps })).state;
+  let coach = COACH_START;
+  let previous: PlayerView | null = null;
+  const runs: string[][] = [];
+  const tips: string[] = [];
+  let current: string[] = [];
+  const close = (): void => {
+    if (current.length > 0) runs.push(current);
+    current = [];
+  };
+  const observe = (): void => {
+    const view = viewFor(state, human);
+    const ctx: CoachCtx = {
+      view,
+      legal: legalActions(state, human),
+      fresh: previous === null ? [] : newEventsSince(previous.events, view.events),
+      aiToAct: aiToAct(state, ai),
+    };
+    previous = view;
+    coach = coachObserve(run.script, coach, ctx);
+    let display = coachDisplay(run.script, coach, ctx);
+    while (display.mode === "tip" || (display.mode === "step" && display.ack)) {
+      current.push(display.id);
+      if (display.mode === "tip") tips.push(display.id);
+      coach = coachAck(run.script, coach, ctx);
+      display = coachDisplay(run.script, coach, ctx);
+    }
+    if (display.mode === "step") close();
+  };
+  observe();
+  for (const action of log) {
+    if (action.playerId === human) close();
+    state = reduce(state, action).state;
+    observe();
+  }
+  close();
+  return { runs, tips };
 }
 
 /** The player-turn number (the engine's `turn`) of the human's own turn `n` (p1 takes the odd ones). */
@@ -184,6 +244,32 @@ describe("R293 lesson basics", () => {
     expect(over?.type === "gameOver" ? over.winner : null, "the player wins").toBe(human);
     expect(steps.at(-1)?.after.players[ai].hero.health ?? 1, "the enemy hero is at 0").toBeLessThanOrEqual(0);
   });
+
+  it("R293 basics: the coach never shows more than two \"Got it\"s in a row on its line", () => {
+    const { runs, tips } = gotItRuns(coach);
+    // The fold reads the same snapshots the harness's coach read.
+    expect(tips, "the rebuilt line shows the tips the coach showed").toEqual(coach.tips);
+    for (const run of runs) expect(run.length, `"Got it" ${run.join(" -> ")}`).toBeLessThanOrEqual(GOT_IT_RUN_MAX);
+    // The AI's second turn (an attack that costs a unit, then Defense Position) is the busiest moment,
+    // and the Postdoc's copy waits for the player's own turn.
+    expect(runs, "the attack and the loss are one tip").toContainEqual(["enemy-attacks", "defense"]);
+    expect(coach.tips, "the Postdoc's copy is explained").toContain("postdoc");
+  });
+
+  it(
+    "R293 basics: a beginner who plays only what the coach names still wins",
+    () => {
+      const run = playLesson(LESSON, { policy: "coach-passive" });
+      expect(run.winner, "the human wins").toBe(human);
+      expect(run.view.result?.reason).toBe("hero-death");
+      expect(run.humanTurns, "within the lesson's turns").toBeLessThanOrEqual(PASSIVE_TURNS_MAX);
+      expect(run.coach.finished).toBe(true);
+      // Every card this beginner played, the coach named.
+      expect(run.humanActions.filter((entry) => entry.action.type === "play" && !entry.byCoach)).toEqual([]);
+      expect(run.humanActions.filter((entry) => entry.refused !== null)).toEqual([]);
+    },
+    LESSON_TIMEOUT_MS,
+  );
 
   it(
     "R293 basics: a sensible beginner who ignores the coach still wins",

@@ -13,7 +13,8 @@
 //           Defense; Tempo Timmy's First Strike finishes the defender; Mr. Vanilla hits the hero.
 //   turn 4  Hit Job destroys the biggest Taunt, Twisted Sorcerer the other; Deft Duelist charges the
 //           hero the turn it arrives, and the rest follow.
-//   turn 5  Big D-fender goes to Defense Position; then the last step until the enemy hero falls.
+//   turn 5  Big D-fender goes to Defense Position; from then on the coach names every next move
+//           (`yourMove`) until the enemy hero falls.
 //
 // Every step belongs to one of the player's turns (`onTurn`), reads only the view and the legal
 // actions (CLAUDE.md rule 7), and retires without a word once its moment has passed, so a player who
@@ -22,7 +23,8 @@
 
 import type { ActionBody, PlayerView, Selection, UnitView } from "@jackioh/shared";
 
-import type { CoachCtx, CoachStep, LessonScript } from "../coach.ts";
+import { cardName, hasKeyword, legalAttacksOf, nextMove, sameMove, trades, yourMove, zoneOf, type Attack } from "../advice.ts";
+import { anchorOf, textOf, type CoachCtx, type CoachStep, type LessonScript } from "../coach.ts";
 import {
   attackWith,
   endTurn,
@@ -58,36 +60,9 @@ const LUNAR_DAMAGE = 3;
 const TRUE_STRIKE_DAMAGE = 4;
 const SORCERER_DAMAGE = 4;
 
-/** The units a step may name, both decks' (and the Rush Token Me and Mr Token summons). */
-const NAMES: Readonly<Record<string, string>> = {
-  "core-001": "Big D-fender",
-  "core-003": "Right-house defender",
-  "core-008": "Mr. Vanilla",
-  "core-011": "Tempo Timmy",
-  "core-012": "Duplicating Felinors",
-  "core-013": "Jlockeed Shredder-10",
-  "core-015": "Me and Mr Token",
-  "core-019": "Midrange Menace",
-  "core-020": "Pointmaster",
-  "core-025": "4-mana 7/7",
-  "core-030": "Archivist",
-  "core-032": "Prem Panther",
-  "core-037": "Gravedigger",
-  "core-045": "Deft Duelist",
-  "core-053": "Reno",
-  "core-056": "Jilliax",
-  "core-068": "Twisted Sorcerer",
-  "core-077": "Professor Curvature",
-  "core-t-rush": "the Rush Token",
-};
-
 // ---------------------------------------------------------------------------------------------
 // reads of the view this lesson needs
 // ---------------------------------------------------------------------------------------------
-
-function hasKeyword(unit: UnitView, kind: string): boolean {
-  return unit.keywords.some((keyword) => keyword.kind === kind);
-}
 
 /** The AI's units that carry Taunt, printed or from Defense Position. */
 function enemyTaunts(view: PlayerView): UnitView[] {
@@ -110,9 +85,10 @@ function arrivedThisTurn(view: PlayerView, defId: string): boolean {
   return false;
 }
 
-function enemyName(view: PlayerView, instanceId: string): string {
-  const unit = unitsOf(view, "opponent").find((candidate) => candidate.instanceId === instanceId);
-  return unit === undefined ? "that unit" : (NAMES[unit.defId] ?? "that unit");
+/** A unit's name on either side, from the catalog the page holds (`ctx.nameOf`). */
+function unitName(ctx: CoachCtx, instanceId: string): string {
+  const unit = [...unitsOf(ctx.view, "you"), ...unitsOf(ctx.view, "opponent")].find((candidate) => candidate.instanceId === instanceId);
+  return unit === undefined ? "that unit" : cardName(ctx, unit.defId);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -165,7 +141,7 @@ function biggestEnemy(ctx: CoachCtx): Selection | null {
 function aimName(ctx: CoachCtx, aim: Aim): string {
   const target = aim(ctx);
   if (target?.pick === "hero") return "the enemy hero";
-  if (target?.pick === "instance") return enemyName(ctx.view, target.instanceId);
+  if (target?.pick === "instance") return unitName(ctx, target.instanceId);
   return "an enemy";
 }
 
@@ -233,31 +209,13 @@ function onTurn(n: number, step: CoachStep): CoachStep {
 // suggesting an attack
 // ---------------------------------------------------------------------------------------------
 
-type Attack = Extract<ActionBody, { type: "attack" }>;
-
-function isAttack(action: ActionBody): action is Attack {
-  return action.type === "attack";
-}
-
-/** One blow as the view shows it: a Divine Shield soaks it whole, Armor lessens it (§4.4 steps 1–2). */
-function blow(amount: number, target: UnitView): number {
-  if (amount <= 0 || hasKeyword(target, "Divine Shield")) return 0;
-  return Math.max(0, amount - target.armor);
-}
-
 /**
- * What the board suggests an attack on a unit comes to (§4.3): whether the defender falls, and
- * whether the attacker lives through its answer. Advice only, read off the view: the engine alone
- * resolves the attack.
+ * What the board suggests an attack on a unit comes to (§4.3), as the coach's advice reads it
+ * (advice.ts `trades`): whether the defender falls, and whether the attacker lives through its
+ * answer. Advice only, read off the view: the engine alone resolves the attack.
  */
-function outcome(view: PlayerView, attack: Attack): { kills: boolean; survives: boolean } | null {
-  const attacker = unitsOf(view, "you").find((unit) => unit.instanceId === attack.attackerId);
-  const defender = unitsOf(view, "opponent").find((unit) => unit.instanceId === attack.targetId);
-  if (attacker === undefined || defender === undefined) return null;
-  const kills = blow(attacker.attack, defender) >= defender.health;
-  const strikesFirst = hasKeyword(attacker, "First Strike") && !hasKeyword(defender, "First Strike");
-  const back = kills && strikesFirst ? 0 : blow(defender.attack, attacker);
-  return { kills, survives: back < attacker.health };
+function outcome(ctx: CoachCtx, attack: Attack): { kills: boolean; survives: boolean } | undefined {
+  return trades(ctx).find((trade) => trade.action.attackerId === attack.attackerId && trade.action.targetId === attack.targetId);
 }
 
 /**
@@ -266,12 +224,12 @@ function outcome(view: PlayerView, attack: Attack): { kills: boolean; survives: 
  * keep the hero out), one the attacker survives first; else none.
  */
 function goodAttack(ctx: CoachCtx): Attack | undefined {
-  const attacks = ctx.legal.filter(isAttack);
+  const attacks = legalAttacksOf(ctx);
   const hero = heroTargetId(ctx.view, "opponent");
   const face = attacks.find((attack) => attack.targetId === hero);
   if (face !== undefined) return face;
   const killing = attacks
-    .map((attack) => ({ attack, result: outcome(ctx.view, attack) }))
+    .map((attack) => ({ attack, result: outcome(ctx, attack) }))
     .filter((entry) => entry.result?.kills === true);
   killing.sort((a, b) => Number(b.result?.survives) - Number(a.result?.survives));
   return killing[0]?.attack;
@@ -280,11 +238,6 @@ function goodAttack(ctx: CoachCtx): Attack | undefined {
 /** An "End your turn" text that first says to attack when the board still offers a good attack. */
 function endTurnText(settled: string): (ctx: CoachCtx) => string {
   return (ctx) => (goodAttack(ctx) === undefined ? settled : "Attack with what can still attack, then press End turn.");
-}
-
-function unitName(view: PlayerView, instanceId: string): string {
-  const unit = [...unitsOf(view, "you"), ...unitsOf(view, "opponent")].find((candidate) => candidate.instanceId === instanceId);
-  return unit === undefined ? "that unit" : (NAMES[unit.defId] ?? "that unit");
 }
 
 /**
@@ -313,7 +266,7 @@ function attackWell(options: Common & { clearing?: boolean }): CoachStep {
     },
     expect: (action, ctx) => {
       const best = goodAttack(ctx);
-      return best !== undefined && isAttack(action) && action.attackerId === best.attackerId && action.targetId === best.targetId;
+      return best !== undefined && action.type === "attack" && action.attackerId === best.attackerId && action.targetId === best.targetId;
     },
   };
 }
@@ -322,61 +275,45 @@ function attackWell(options: Common & { clearing?: boolean }): CoachStep {
 function attackAdvice(ctx: CoachCtx): string {
   const attack = goodAttack(ctx);
   if (attack === undefined) return "Attack with the units that can.";
-  const attacker = unitName(ctx.view, attack.attackerId);
+  const attacker = unitName(ctx, attack.attackerId);
   if (attack.targetId === heroTargetId(ctx.view, "opponent")) return `Nothing guards the enemy hero now: attack it with ${attacker}.`;
-  return `The AI's ${unitName(ctx.view, attack.targetId)} has Taunt and blocks the way. ${attacker} can destroy it: attack it.`;
+  const blocker = `The AI's ${unitName(ctx, attack.targetId)} has Taunt and blocks the way.`;
+  if (outcome(ctx, attack)?.survives === false) return `${blocker} Attack it with ${attacker}: both fall, but the Taunt is gone.`;
+  return `${blocker} ${attacker} can destroy it: attack it.`;
 }
 
 // ---------------------------------------------------------------------------------------------
 // the last step: every move until the enemy hero falls
 // ---------------------------------------------------------------------------------------------
 
-type Play = Extract<ActionBody, { type: "play" }>;
-
-/** A play aimed at one of the human's own cards or their own hero. */
-function aimsAtOwnSide(ctx: CoachCtx, play: Play): boolean {
-  const own = new Set(unitsOf(ctx.view, "you").map((unit) => unit.instanceId));
-  return (play.targets ?? []).some(
-    (target) => (target.pick === "instance" && own.has(target.instanceId)) || (target.pick === "hero" && target.player === ctx.view.viewer),
-  );
-}
-
-/** The dearest card the human can play now, aimed away from their own side. */
-function bestPlay(ctx: CoachCtx): Play | undefined {
-  const hand = Array.isArray(ctx.view.you.hand) ? ctx.view.you.hand : [];
-  const costOf = (instanceId: string): number => hand.find((card) => card.instanceId === instanceId)?.cost ?? 0;
-  const plays = ctx.legal.filter((action): action is Play => action.type === "play" && !aimsAtOwnSide(ctx, action));
-  plays.sort((a, b) => costOf(b.instanceId) - costOf(a.instanceId));
-  return plays[0];
-}
-
 /**
- * With a Taunt keeping the hero out of reach and no blow that destroys it, the hit that wears it
- * down most while the attacker lives: damage stays, so the next hit finishes it.
+ * Where the coach's shared advice (advice.ts `nextMove`) would only dent a Taunt or end the turn,
+ * the blow that destroys a Taunt in the way, even at the attacker's cost: this lesson's own advice,
+ * which opens the hero to the units behind it.
  */
-function chip(ctx: CoachCtx): Attack | undefined {
-  if (enemyTaunts(ctx.view).length === 0) return undefined;
-  const options = ctx.legal
-    .filter(isAttack)
-    .map((attack) => {
-      const attacker = unitsOf(ctx.view, "you").find((unit) => unit.instanceId === attack.attackerId);
-      const defender = unitsOf(ctx.view, "opponent").find((unit) => unit.instanceId === attack.targetId);
-      const dealt = attacker === undefined || defender === undefined ? 0 : blow(attacker.attack, defender);
-      return { attack, dealt, survives: outcome(ctx.view, attack)?.survives === true };
-    })
-    .filter((entry) => entry.survives && entry.dealt > 0);
-  options.sort((a, b) => b.dealt - a.dealt);
-  return options[0]?.attack;
+function clearTaunt(ctx: CoachCtx): Attack | undefined {
+  const move = nextMove(ctx);
+  if (move === undefined || (move.kind !== "chip" && move.kind !== "end")) return undefined;
+  const attack = goodAttack(ctx);
+  const target = attack === undefined ? undefined : unitsOf(ctx.view, "opponent").find((unit) => unit.instanceId === attack.targetId);
+  return target !== undefined && hasKeyword(target, "Taunt") ? attack : undefined;
 }
 
-/** What the last step asks for next: play what you can, then attack well, then wear a Taunt down, else end the turn. */
-function nextMove(ctx: CoachCtx): ActionBody | undefined {
-  return bestPlay(ctx) ?? goodAttack(ctx) ?? chip(ctx) ?? ctx.legal.find((action) => action.type === "endTurn");
-}
+const advised = yourMove({ id: "win", title: "Win the game", final: true });
 
-function sameAction(a: ActionBody, b: ActionBody | undefined): boolean {
-  return b !== undefined && JSON.stringify(a) === JSON.stringify(b);
-}
+/** The last step: the coach names one move at a time, and points at it, until the enemy hero falls. */
+const win: CoachStep = {
+  ...advised,
+  text: (ctx) => (clearTaunt(ctx) === undefined ? textOf(advised.text, ctx) : attackAdvice(ctx)),
+  anchor: (ctx) => {
+    const attack = clearTaunt(ctx);
+    return attack === undefined ? anchorOf(advised.anchor, ctx) : zoneOf(ctx, "opponent", attack.targetId);
+  },
+  expect: (action, ctx) => {
+    const attack = clearTaunt(ctx);
+    return attack === undefined ? advised.expect?.(action, ctx) === true : sameMove(action, attack);
+  },
+};
 
 // ---------------------------------------------------------------------------------------------
 // the script
@@ -436,7 +373,14 @@ export const script: LessonScript = {
         attacker: VANILLA,
         target: { defId: DEFENDER },
         title: "Attack the Taunt",
-        text: "Right-house defender has Taunt: while it stands, your units must attack it first. Attack it with Mr. Vanilla.",
+        // The "taunt" tip has just said what Taunt is; this says what to do, and what to watch for.
+        text: (ctx) => {
+          const defender = unitOf(ctx.view, "opponent", DEFENDER);
+          const shielded = defender !== undefined && hasKeyword(defender, "Divine Shield");
+          return shielded
+            ? "Drag Mr. Vanilla onto Right-house defender. It also has Divine Shield: watch what happens to this first hit."
+            : "Drag Mr. Vanilla onto Right-house defender to start clearing the way to the hero.";
+        },
       }),
     ),
     onTurn(
@@ -501,14 +445,12 @@ export const script: LessonScript = {
         text: "Tempo Timmy has First Strike: it hits first, so if that blow kills, it takes no damage back. Attack Right-house defender.",
         // Only when the blow does kill, so the lesson it teaches is the one the board shows.
         when: (ctx) => {
-          const attack = ctx.legal
-            .filter(isAttack)
-            .find(
-              (candidate) =>
-                candidate.attackerId === unitOf(ctx.view, "you", TIMMY)?.instanceId &&
-                candidate.targetId === unitOf(ctx.view, "opponent", DEFENDER)?.instanceId,
-            );
-          return attack !== undefined && outcome(ctx.view, attack)?.kills === true;
+          const attack = legalAttacksOf(ctx).find(
+            (candidate) =>
+              candidate.attackerId === unitOf(ctx.view, "you", TIMMY)?.instanceId &&
+              candidate.targetId === unitOf(ctx.view, "opponent", DEFENDER)?.instanceId,
+          );
+          return attack !== undefined && outcome(ctx, attack)?.kills === true;
         },
       }),
     ),
@@ -584,17 +526,7 @@ export const script: LessonScript = {
         text: "Press the small ⟳ button at the top right of Big D-fender. In Defense it turns sideways and gains Taunt and Armor, so enemies must hit it first.",
       }),
     ),
-    {
-      id: "win",
-      kind: "act",
-      title: "Win the game",
-      text: "Now finish it: bring the enemy hero to 0. Play your cards, clear any Taunt, and hit the hero with everything else.",
-      anchor: { kind: "hero", side: "opponent" },
-      when: myMain,
-      done: (ctx) => ctx.view.result !== null,
-      expect: (action, ctx) => sameAction(action, nextMove(ctx)),
-      final: true,
-    },
+    win,
   ],
   tips: [
     tip({
@@ -608,9 +540,11 @@ export const script: LessonScript = {
     tip({
       id: "taunt",
       title: "Taunt",
+      // What Taunt is. The step that follows ("attack-taunt") says what to do about it.
       text: (ctx) => {
         const unit = enemyTaunts(ctx.view)[0];
-        return `The AI's ${unit === undefined ? "unit" : (NAMES[unit.defId] ?? "unit")} has Taunt: your units must attack it before anything else.`;
+        const name = unit === undefined ? "unit" : cardName(ctx, unit.defId);
+        return `The AI's ${name} has Taunt, a bodyguard keyword: while a unit with Taunt stands, your units must attack it before anything else, the hero included.`;
       },
       anchor: (ctx) => {
         const unit = enemyTaunts(ctx.view)[0];
