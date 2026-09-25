@@ -62,5 +62,9 @@ export const lesson: TutorialLesson = {
     "core-001", // Big D-fender
     "core-008", // Mr. Vanilla
   ],
+  aiShadowBanned: {
+    "core-003":
+      "Right-house defender teaches Taunt, Divine Shield and Reborn in one 1-cost card; the lesson's tests show the AI playing it on its first turn, where the ban's sweep saw a Hard AI hold it",
+  },
   retryTip: "Break a Divine Shield with a small hit before a big one, and clear Taunts with spells, so your units can reach the hero.",
 };

@@ -125,7 +125,7 @@ describe("R291 the tutorial's lessons", () => {
         const card = def(id);
         const where = `${lesson.id}: ${id} ${card.name}`;
         expect(card.token, where).toBe(false);
-        expect(SHADOW_BAN_IDS, where).not.toContain(id);
+        if (lesson.aiShadowBanned?.[id] === undefined) expect(SHADOW_BAN_IDS, where).not.toContain(id);
         expect(SHOWPIECE_RARITIES, where).not.toContain(card.rarity);
         expect(READS_THIRTY, `${where}: reads its hero's health against 30`).not.toContain(id);
         if (lesson.number < BACKROW_LESSON) expect(BACKROW_TYPES, `${where}: no backrow card before lesson ${String(BACKROW_LESSON)}`).not.toContain(card.type);
@@ -135,6 +135,16 @@ describe("R291 the tutorial's lessons", () => {
           const keywords = card.base.keywords.map((keyword) => keyword.kind);
           for (const keyword of keywords) expect(COMBAT_KEYWORDS, `${where}: ${keyword}`).not.toContain(keyword);
         }
+      }
+    }
+  });
+
+  it("R291 name every shadow-banned card of an AI deck with its reason, and name no other", () => {
+    for (const lesson of TUTORIAL_LESSONS) {
+      for (const [id, reason] of Object.entries(lesson.aiShadowBanned ?? {})) {
+        expect(lesson.aiDeck, `${lesson.id}: ${id} is in the AI's deck`).toContain(id);
+        expect(SHADOW_BAN_IDS, `${lesson.id}: ${id} is on the shadow ban`).toContain(id);
+        expect(reason.length, `${lesson.id}: ${id} says why`).toBeGreaterThan(0);
       }
     }
   });

@@ -33,8 +33,14 @@ export type TutorialLesson = {
   humanSeat: PlayerId;
   /** DECK_SIZE distinct non-token Core ids. */
   humanDeck: readonly string[];
-  /** AI_TUTORIAL.deckSize distinct non-token Core ids, none on the shadow ban (R186). */
+  /** AI_TUTORIAL.deckSize distinct non-token Core ids, none on the shadow ban (R186) but `aiShadowBanned`'s. */
   aiDeck: readonly string[];
+  /**
+   * R291: a card of `aiDeck` that is on the AI's shadow ban (R186), with why the lesson needs it
+   * anyway. The ban keeps a card out of a dealt deck because a sweep saw the AI hold it unplayed at
+   * some tier; a lesson's list is fixed, and the lesson's own tests show what the AI does with it.
+   */
+  aiShadowBanned?: Readonly<Record<string, string>>;
   /** Shown after a loss, beside Retry. */
   retryTip: string;
 };
