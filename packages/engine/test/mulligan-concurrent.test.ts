@@ -133,6 +133,31 @@ describe("R265 the mulligans are open at once", () => {
   });
 });
 
+describe("R265 a game that ends while the mulligans are open", () => {
+  it("R265 closes both mulligans with the game, so no view offers one no one can answer (R216)", () => {
+    const begun = beginGame(newGame("r265-concede")).state;
+    const waiting = act(begun, { type: "mulligan", keep: [], playerId: "p1" });
+    for (const [state, who] of [
+      [begun, "p1"],
+      [waiting, "p2"],
+      [waiting, "p1"],
+    ] as const) {
+      const over = act(state, { type: "concede", playerId: who });
+      expect(over.result?.reason).toBe("concede");
+      expect(over.mulligan).toBeUndefined();
+      expect(mulliganOwed(over)).toEqual([]);
+      for (const seat of SEATS) {
+        expect(viewFor(over, seat).pending).toBeNull();
+        expect(viewFor(over, seat).mulligan).toBeUndefined();
+        expect(legalActions(over, seat)).toEqual([]);
+      }
+    }
+    // A disconnect or the ceiling ends it the same way.
+    const dropped = act(begun, { type: "disconnectExpired", player: "p2", playerId: "p2" });
+    expect(dropped.mulligan).toBeUndefined();
+  });
+});
+
 describe("R266 an answer is sealed until both are in", () => {
   it("R266 the other seat sees that a seat is ready and nothing of what it kept", () => {
     const begun = beginGame(newGame("r266")).state;
