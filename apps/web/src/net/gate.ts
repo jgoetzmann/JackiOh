@@ -379,15 +379,26 @@ function useRenewalBeforeExpiry(account: Account, reread: () => void): void {
       Math.max(renewAt, lastRenewal.current === null ? 0 : lastRenewal.current + AUTH_SESSION_RENEWAL_FLOOR_SECONDS * 1000);
     // No once-only guard: a renewal that failed keeps the account (and so this effect) as it was,
     // and the page coming back into view may try again, never sooner than the floor allows.
-    const fire = (): void => {
-      if (Date.now() < earliest()) return;
+    let timer: number | undefined;
+    const schedule = (): void => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(fire, Math.min(Math.max(0, earliest() - Date.now()), LONGEST_TIMER_MS));
+    };
+    // A timer measures from the event loop's cached clock, which a long task leaves behind the
+    // wall clock, so it can come due a little before `Date.now()` says: then it waits out the rest
+    // rather than dropping the renewal until the page is next woken.
+    function fire(): void {
+      if (Date.now() < earliest()) {
+        schedule();
+        return;
+      }
       lastRenewal.current = Date.now();
       reread();
-    };
+    }
     const onWake = (): void => {
       if (document.visibilityState !== "hidden") fire();
     };
-    const timer = window.setTimeout(fire, Math.min(Math.max(0, earliest() - Date.now()), LONGEST_TIMER_MS));
+    schedule();
     document.addEventListener("visibilitychange", onWake);
     window.addEventListener("focus", onWake);
     window.addEventListener("pageshow", onWake);
