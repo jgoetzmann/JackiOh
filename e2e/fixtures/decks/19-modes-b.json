@@ -1,0 +1,27 @@
+{
+  "id": "19-modes-b",
+  "spec": "19-queue-modes-and-series.cy.ts",
+  "description": "The Node player's deck in spec 19, saved as Deck 1 (deck index 0) and picked as trio slot 0 for game 2 of the series. SPEC \u00a78 cards #41-#60: twenty distinct non-Token Core ids (L2, L3, L6), disjoint from 19-modes-a so the two players' hands can never be confused. Never played: the Node player only reads its opening hand and concedes, and nothing here puts a non-Token card into a hand at the opening.",
+  "cards": [
+    "core-041",
+    "core-042",
+    "core-043",
+    "core-044",
+    "core-045",
+    "core-046",
+    "core-047",
+    "core-048",
+    "core-049",
+    "core-050",
+    "core-051",
+    "core-052",
+    "core-053",
+    "core-054",
+    "core-055",
+    "core-056",
+    "core-057",
+    "core-058",
+    "core-059",
+    "core-060"
+  ]
+}

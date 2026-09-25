@@ -37,7 +37,6 @@
 // Needs: M6 (server, match actor, WS protocol). See e2e/README.md.
 
 import { CODE_ALPHABET, ROOM_CODE_LENGTH } from "../../../apps/server/src/config.ts";
-import { CARD_NAMES, cardId } from "../../support/cards.ts";
 import { accounts, constants, routes, seedFor, server, timeouts } from "../../support/config.ts";
 import {
   END_TURN,
@@ -49,7 +48,8 @@ import {
   ts,
   zoneId,
 } from "../../support/testids.ts";
-import type { ActionInput, FixtureDeck, Lane, PlayerId, Row, Side } from "../../support/types.ts";
+import type { InstalledLoadout } from "../../support/commands.ts";
+import type { ActionInput, Lane, PlayerId, Row, Side } from "../../support/types.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Local scaffolding. Items marked ASK belong in `e2e/support/**` (one place to change) and are
@@ -67,8 +67,6 @@ const LANES: readonly Lane[] = [1, 2, 3, 4, 5];
 const ROWS: readonly Row[] = ["units", "backrow"];
 const SIDES: readonly Side[] = ["you", "opponent"];
 
-const CORE_CARD_COUNT = Object.keys(CARD_NAMES).length;
-
 /** `handCardId("")` is the prefix, so no spec spells a testid format. */
 const HAND_CARD_PREFIX = handCardId("");
 
@@ -80,32 +78,10 @@ function bearer(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}` };
 }
 
-/** See 05-reconnect.cy.ts: L1 wants 3 decks and L4 wants them disjoint. ASK: `cy.installLoadout`. */
-function loadoutFrom(deck: readonly string[]): string[][] {
-  const used = new Set(deck);
-  const spare = Array.from({ length: CORE_CARD_COUNT }, (_, index) => cardId(index + 1)).filter(
-    (id) => !used.has(id),
-  );
-  const size = constants.DECK_SIZE;
-  expect(spare.length, "enough spare Core ids to pad a loadout").to.be.at.least(size * 2);
-  return [[...deck], spare.slice(0, size), spare.slice(size, size * 2)];
-}
-
-function installLoadout(token: string, deck: readonly string[]): void {
-  cy.request<{ catalogVersion: string }>({
-    method: "GET",
-    url: api("/api/loadout"),
-    headers: bearer(token),
-  }).then((current) => {
-    cy.request({
-      method: "PUT",
-      url: api("/api/loadout"),
-      headers: bearer(token),
-      body: { catalogVersion: current.body.catalogVersion, decks: loadoutFrom(deck) },
-    })
-      .its("status")
-      .should("eq", 200);
-  });
+/** The fixture's deck id out of `cy.installLoadout`'s answer (deck index 0, the default). */
+function deckOf(installed: InstalledLoadout | null): string {
+  expect(installed, "cy.installLoadout has answered").to.not.eq(null);
+  return installed?.deckIds[0] ?? "";
 }
 
 function visitAs(token: string, path: string): void {
@@ -205,13 +181,19 @@ describe("06 room code — a networked match between a browser and a Node client
     const seatTwo = accounts.p2();
     let roomCode = "";
     let matchId = "";
+    let seatOneDecks: InstalledLoadout | null = null;
+    let seatTwoDecks: InstalledLoadout | null = null;
 
-    // --- both seats have a loadout whose deck 0 is this spec's fixture (§9.4) -----------------
-    cy.fixture<FixtureDeck>("decks/06-room-a.json").then((deck) => {
-      installLoadout(seatOne.token, deck.cards);
+    // --- both seats are free and have this spec's fixture saved as a deck (§9.4, R250) ---------
+    // `cy.freeAccount`: the E2E server keeps its state for its whole life, so a match or series an
+    // earlier spec left behind would answer `POST /api/rooms` with 409 `already_in_match`.
+    cy.freeAccount(seatOne);
+    cy.freeAccount(seatTwo);
+    cy.installLoadout(seatOne, "06-room-a").then((installed) => {
+      seatOneDecks = installed;
     });
-    cy.fixture<FixtureDeck>("decks/06-room-b.json").then((deck) => {
-      installLoadout(seatTwo.token, deck.cards);
+    cy.installLoadout(seatTwo, "06-room-b").then((installed) => {
+      seatTwoDecks = installed;
     });
 
     // --- create the room ---------------------------------------------------------------------
@@ -227,43 +209,49 @@ describe("06 room code — a networked match between a browser and a Node client
     // proves the join uses it verbatim. This comment used to say the field was ignored and that
     // the fixture decks were therefore written not to need it; the first half is no longer true,
     // and the second is kept because it costs nothing and is one less thing to depend on.
-    cy.request<{ code: string; expiresAt: number; deckIndex: number }>({
-      method: "POST",
-      url: api("/api/rooms"),
-      headers: bearer(seatOne.token),
-      body: { deckIndex: 0, seed },
-    }).then((created) => {
-      roomCode = created.body.code;
+    //
+    // R264: a room carries a mode, and a Best-of-1 room is made with one saved deck, by id.
+    cy.then(() => {
+      cy.request<{ code: string; expiresAt: number; mode: string }>({
+        method: "POST",
+        url: api("/api/rooms"),
+        headers: bearer(seatOne.token),
+        body: { mode: "bo1", deckId: deckOf(seatOneDecks), seed },
+      }).then((created) => {
+        roomCode = created.body.code;
 
-      expect(
-        constants.ROOM_CODE_LENGTH,
-        "support/config.ts's mirror still agrees with apps/server/src/config.ts (R79)",
-      ).to.eq(ROOM_CODE_LENGTH);
-      expect(roomCode.length, `R79: a room code is ${String(ROOM_CODE_LENGTH)} characters`).to.eq(
-        ROOM_CODE_LENGTH,
-      );
-      for (const character of roomCode) {
         expect(
-          CODE_ALPHABET.includes(character),
-          `R104: "${character}" is in the invite-code alphabet ${CODE_ALPHABET}`,
-        ).to.eq(true);
-      }
-      expect(created.body.deckIndex, "the deck frozen into the room (§9.4, §9.5)").to.eq(0);
-      expect(created.body.expiresAt, "the room's TTL is returned so a client can show it").to.be.a(
-        "number",
-      );
+          constants.ROOM_CODE_LENGTH,
+          "support/config.ts's mirror still agrees with apps/server/src/config.ts (R79)",
+        ).to.eq(ROOM_CODE_LENGTH);
+        expect(roomCode.length, `R79: a room code is ${String(ROOM_CODE_LENGTH)} characters`).to.eq(
+          ROOM_CODE_LENGTH,
+        );
+        for (const character of roomCode) {
+          expect(
+            CODE_ALPHABET.includes(character),
+            `R104: "${character}" is in the invite-code alphabet ${CODE_ALPHABET}`,
+          ).to.eq(true);
+        }
+        expect(created.body.mode, "R264: the room plays the mode it was made with").to.eq("bo1");
+        expect(created.body.expiresAt, "the room's TTL is returned so a client can show it").to.be.a(
+          "number",
+        );
+      });
     });
 
     // --- seat 2 claims it: `app.join_room`'s atomic single-claim (§9.5) -----------------------
     cy.then(() => {
-      cy.request<{ matchId: string; code: string; seat: string }>({
+      cy.request<{ matchId: string; seriesId: string | null; code: string; seat: string; mode: string }>({
         method: "POST",
         url: api(`/api/rooms/${roomCode}/join`),
         headers: bearer(seatTwo.token),
-        body: { deckIndex: 0 },
+        body: { mode: "bo1", deckId: deckOf(seatTwoDecks) },
       }).then((joined) => {
         expect(joined.body.code, "the claim names the code it claimed").to.eq(roomCode);
         expect(joined.body.seat, "the joiner is seat 2 (§9.5)").to.eq(SEAT_TWO_ID);
+        expect(joined.body.mode, "R264: the join plays the room's mode").to.eq("bo1");
+        expect(joined.body.seriesId, "a Best-of-1 room makes a match, not a series").to.eq(null);
         matchId = joined.body.matchId;
         expect(matchId, "a match id to open a socket onto").to.be.a("string").and.not.eq("");
       });
@@ -420,10 +408,14 @@ describe("06 room code — a networked match between a browser and a Node client
     // --- "both are queue-eligible" -----------------------------------------------------------
     // §9.5: "Every ending records a result and clears both players' in-match state." `POST
     // /api/queue` is the assertion, because enqueue is exactly the endpoint that refuses an
-    // account that is still in a match (`already_in_match`) or whose loadout no longer validates.
+    // account that is still in a match (`already_in_match`) or whose deck no longer validates (R253).
     // Each player is dequeued again before the next one enqueues, so this never pairs them into a
     // second match. R110's released room code is the same clearing, seen from the code's side.
-    for (const token of [seatOne.token, seatTwo.token]) {
+    for (const seat of [
+      { token: seatOne.token, decks: () => seatOneDecks },
+      { token: seatTwo.token, decks: () => seatTwoDecks },
+    ]) {
+      const token = seat.token;
       cy.then(() => {
         cy.request<{ profile: { status: string } }>({
           method: "GET",
@@ -436,7 +428,7 @@ describe("06 room code — a networked match between a browser and a Node client
           method: "POST",
           url: api("/api/queue"),
           headers: bearer(token),
-          body: { deckIndex: 0 },
+          body: { mode: "bo1", deckId: deckOf(seat.decks()) },
         })
           .its("status")
           .should("eq", 200);

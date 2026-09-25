@@ -139,6 +139,17 @@ export type LoadoutIssue = {
 
 export type LoadoutValidateInput = {
   decks: readonly (readonly string[])[];
+  /**
+   * The decks' names, by position, so a message names "Aggro" rather than "Deck 1" (§9.4: "a
+   * queue-time failure names the deck and the card"). Absent or short, the validator falls back to
+   * `Deck <n>`.
+   */
+  names?: readonly string[];
+  /**
+   * R253: `"trio"` (the default) checks L1–L6 over three decks — a Best-of-3 trio is §9.4's
+   * loadout. `"deck"` checks one Best-of-1 deck against L2, L3, L5 and L6.
+   */
+  scope?: "trio" | "deck";
   catalogVersion: string;
   catalog: CatalogInfo;
   /** cardId -> quantity owned, for L5. */
@@ -346,26 +357,96 @@ export type CollectionStore = {
   appendGrants: (grants: readonly CollectionGrant[]) => Promise<void>;
 };
 
-export type StoredLoadout = {
+// ---------------------------------------------------------------------------
+// Saved decks and trios (SPEC §9.4, R250–R256). They replace the single three-deck loadout: a
+// profile keeps up to `MAX_SAVED_DECKS` named decks and builds up to `MAX_SAVED_TRIOS` trios from
+// them. Both are drafts (R250, R252): a save checks structure only, and legality is judged when a
+// deck or a trio is queued (R253).
+// ---------------------------------------------------------------------------
+
+export type SavedDeck = {
+  /** A UUID the client mints (R256), so a save is an idempotent upsert that can be retried. */
+  id: string;
+  profileId: string;
+  /** 1..`DECK_NAME_MAX_LENGTH` characters, stored as `normalizeName` leaves it (R250). */
+  name: string;
+  /** Catalog ids in the order the player put them in; at most `DECK_SIZE` (R250 D2). */
+  cards: string[];
+  /** The catalog version the client held at the last save. Informational: the queue re-validates (R253). */
   catalogVersion: string;
-  /** Exactly 3 decks of DECK_SIZE ids (§9.4 L1, L2). */
-  decks: string[][];
+  createdAt: number;
   updatedAt: number;
 };
 
-export type LoadoutStore = {
-  get: (profileId: string) => Promise<StoredLoadout | null>;
-  /**
-   * §9.4: writes all three decks or nothing. The db implementation runs inside one transaction
-   * and relies on the unique index on `(profile_id, card_id)` for L4.
-   */
-  replace: (
-    profileId: string,
-    catalogVersion: string,
-    decks: readonly (readonly string[])[],
-    at: number,
-  ) => Promise<void>;
+/** A trio's three slots, in order. `null` is an empty slot, which a saved trio may have (R252). */
+export type TrioSlots = [string | null, string | null, string | null];
+
+export type SavedTrio = {
+  /** A UUID the client mints (R256). */
+  id: string;
+  profileId: string;
+  name: string;
+  deckIds: TrioSlots;
+  createdAt: number;
+  updatedAt: number;
 };
+
+/**
+ * What an upsert did:
+ *  - `created` / `updated` — written;
+ *  - `limit` — creating would take the profile past its cap (`MAX_SAVED_DECKS` or
+ *    `MAX_SAVED_TRIOS`); nothing was written;
+ *  - `not_owner` — the id is another profile's deck or trio; nothing was written, and the caller
+ *    answers exactly as for a missing id so an id reveals nothing about anyone else.
+ */
+export type UpsertOutcome = "created" | "updated" | "limit" | "not_owner";
+
+/** A trio's upsert can also find a slot naming a deck that is not this profile's (or none at all). */
+export type TrioUpsertOutcome = UpsertOutcome | "unknown_deck";
+
+export type DeckStore = {
+  /** A profile's decks, oldest first: `createdAt`, then `id`. The order legacy `deckIndex` reads. */
+  list: (profileId: string) => Promise<SavedDeck[]>;
+  /** One deck by id, whoever owns it; the caller checks `profileId`. */
+  get: (deckId: string) => Promise<SavedDeck | null>;
+  /**
+   * Inserts a deck whose id is new, or replaces `name`, `cards`, `catalogVersion` and `updatedAt`
+   * of the profile's own deck (its `createdAt` is kept). The cap is checked under a lock on the
+   * profile, so two concurrent creates cannot both pass it (`app.upsert_deck`, migration 0007).
+   */
+  upsert: (deck: SavedDeck, maxDecks: number) => Promise<UpsertOutcome>;
+  /**
+   * Deletes the profile's own deck; every trio slot that named it becomes `null` in the same
+   * statement (R252). False when the profile has no deck with this id.
+   */
+  remove: (profileId: string, deckId: string) => Promise<boolean>;
+};
+
+export type TrioStore = {
+  /** A profile's trios, oldest first: `createdAt`, then `id`. */
+  list: (profileId: string) => Promise<SavedTrio[]>;
+  get: (trioId: string) => Promise<SavedTrio | null>;
+  /**
+   * As `DeckStore.upsert`, plus `unknown_deck` when a non-null slot names a deck that is not this
+   * profile's. The caller has already checked T1–T3 (`checkTrioDraft`); the store refuses a deck
+   * twice as well, by constraint.
+   */
+  upsert: (trio: SavedTrio, maxTrios: number) => Promise<TrioUpsertOutcome>;
+  remove: (profileId: string, trioId: string) => Promise<boolean>;
+};
+
+// ---------------------------------------------------------------------------
+// Queue modes (SPEC §9.5, R257) and what a ticket or a room freezes.
+// ---------------------------------------------------------------------------
+
+/** R257: a ticket pairs only with a ticket of the same mode. */
+export type QueueMode = "bo1" | "bo3" | "random";
+
+/** One deck as a match or a series freezes it: the cards and the name the player gave them. */
+export type FrozenDeck = { name: string; cards: string[] };
+
+/** R259: a Best-of-3 player's trio, frozen at enqueue (or at room create/join). */
+export type FrozenTrio = { name: string; decks: [FrozenDeck, FrozenDeck, FrozenDeck] };
 
 export type MatchStatus = "live" | "finished";
 
@@ -413,12 +494,25 @@ export type MatchStore = {
   finish: (matchId: string, at: number) => Promise<void>;
   /** For the reaper (§9.5). */
   live: () => Promise<MatchRow[]>;
+  /**
+   * R263: forget a match id that was reserved and never started — the first game of a Best-of-3
+   * series that ended (forfeit, abandoned) before it was played. In Postgres the reservation is an
+   * `open` row (`tickets.claimPair`'s skeleton, or a claimed room), and dropping it releases a room
+   * code for reuse (R110). A no-op for an id with no such row, and never touches a live or finished
+   * match.
+   */
+  discardOpen: (matchId: string) => Promise<void>;
 };
 
 export type Room = {
   code: string;
   hostProfileId: string;
+  /** R264: the room's mode. A joiner plays it or is refused with it. */
+  mode: QueueMode;
+  /** The host's frozen Best-of-1 deck; `[]` in the other two modes. */
   hostDeck: string[];
+  /** The host's frozen trio in a Best-of-3 room; null otherwise. */
+  hostTrio: FrozenTrio | null;
   catalogVersion: string;
   createdAt: number;
   expiresAt: number;
@@ -444,8 +538,15 @@ export type Ticket = {
   id: string;
   profileId: string;
   rating: number;
-  /** §9.4, §9.5: the deck is frozen into the ticket; editing the loadout later cannot change it. */
+  /** R257: pairs only with a ticket of the same mode. */
+  mode: QueueMode;
+  /**
+   * §9.4, §9.5: the Best-of-1 deck is frozen into the ticket; editing a saved deck later cannot
+   * change it. `[]` for a Best-of-3 or an All Random ticket.
+   */
   deck: string[];
+  /** R259: a Best-of-3 ticket's frozen trio; null in the other two modes. */
+  trio: FrozenTrio | null;
   catalogVersion: string;
   enqueuedAt: number;
   status: TicketStatus;
@@ -458,6 +559,8 @@ export type TicketStore = {
   openForProfile: (profileId: string) => Promise<Ticket | null>;
   listOpen: () => Promise<Ticket[]>;
   countOpen: () => Promise<number>;
+  /** R257: open tickets per mode, for the lobby's per-mode population. Every mode is present. */
+  countOpenByMode: () => Promise<Record<QueueMode, number>>;
   /**
    * §9.5: "both tickets are claimed in one atomic statement". Returns false unless both were
    * still open, so two concurrent matchers cannot pair the same ticket twice.
@@ -496,6 +599,101 @@ export type ResultStore = {
   recordFor: (profileId: string) => Promise<ProfileRecord>;
 };
 
+// ---------------------------------------------------------------------------
+// The Best-of-3 series (SPEC §9.5, R259–R263). One row per series, persisted so a series survives a
+// server restart; every transition is a pure function in `src/api/series-rules.ts` written back
+// with `SeriesStore.update`, which is compare-and-set on `version`.
+// ---------------------------------------------------------------------------
+
+/** A series seat. Index 0 of `SeriesRow.sides` is `p1`; it is not the seat a game's match uses. */
+export type SeriesSeat = "p1" | "p2";
+
+/**
+ * `picking` — both players are choosing the next game's deck (R259, R260);
+ * `playing` — the game `nextMatchId` names is being played (or about to be started);
+ * `over` — decided, played out, forfeited or abandoned (R261).
+ */
+export type SeriesStatus = "picking" | "playing" | "over";
+
+/**
+ * Why a series ended (R261): a side reached `SERIES_WINS_NEEDED` (`decided`); every game was
+ * played without that (`exhausted`); a side left between games (`forfeit`); or neither side picked
+ * before the pick clock ran out (`abandoned`, unrated, R260).
+ */
+export type SeriesEnd = "decided" | "exhausted" | "forfeit" | "abandoned";
+
+export type SeriesGame = {
+  /** 1-based. */
+  gameNo: number;
+  matchId: string;
+  /** The trio slot each side played, index 0 being series `p1`. */
+  slots: [number, number];
+  /** Which side went first — was the match's `p1` (R259: odd games p1, even games p2). */
+  first: SeriesSeat;
+  /** Null while the game is being played. */
+  winner: SeriesSeat | "draw" | null;
+  reason: GameOverReason | null;
+};
+
+export type SeriesSide = {
+  profileId: string;
+  trio: FrozenTrio;
+  wins: number;
+  /**
+   * The trio slot this side picked for the next game, or null. Hidden from the other side until
+   * both have picked (R259): it leaves the server only in its owner's projection.
+   */
+  pick: number | null;
+};
+
+export type SeriesRow = {
+  id: string;
+  sides: [SeriesSide, SeriesSide];
+  catalogVersion: string;
+  /** Each game's seed is `${seedBase}:${gameNo}` (R259). The server mints it; R143's e2e override feeds it. */
+  seedBase: string;
+  status: SeriesStatus;
+  games: SeriesGame[];
+  /**
+   * The match id of the game being picked for or played. Minted when the pick phase opens — for
+   * game 1, when the series is made — so a restart finds the same id (R263).
+   */
+  nextMatchId: string;
+  /** Epoch ms the pick phase closes (R260); null outside it. */
+  pickDeadline: number | null;
+  winner: SeriesSeat | "draw" | null;
+  endReason: SeriesEnd | null;
+  /** R262: the one Elo move a series makes, recorded when it ends; null until then, and when abandoned. */
+  ratingBefore: [number, number] | null;
+  ratingAfter: [number, number] | null;
+  createdAt: number;
+  updatedAt: number;
+  endedAt: number | null;
+  /** Optimistic concurrency: `update` writes only over the version before this one. */
+  version: number;
+};
+
+export type SeriesStore = {
+  create: (series: SeriesRow) => Promise<void>;
+  get: (seriesId: string) => Promise<SeriesRow | null>;
+  /**
+   * Compare-and-set: writes `next` only when the stored row's `version` is `next.version - 1`.
+   * False when another writer got there first; the caller re-reads and re-applies its transition.
+   */
+  update: (next: SeriesRow) => Promise<boolean>;
+  /** The series whose game in play is this match (`status = 'playing'` and `nextMatchId`), or null. */
+  byMatch: (matchId: string) => Promise<SeriesRow | null>;
+  /**
+   * The series one of whose `games` was played (or is being played) as this match, whatever the
+   * series' status, or null. The board's series banner reads it after a game has ended.
+   */
+  withGame: (matchId: string) => Promise<SeriesRow | null>;
+  /** The profile's series that is not over, or null. A profile is in at most one. */
+  activeFor: (profileId: string) => Promise<SeriesRow | null>;
+  /** Every series that is not over: the sweeper's input (R263). */
+  active: () => Promise<SeriesRow[]>;
+};
+
 /**
  * `tx` runs `fn` against a handle scoped to one database transaction and rolls back if `fn`
  * throws. Nested `tx` joins the enclosing transaction.
@@ -527,11 +725,13 @@ export type Store = {
   profiles: ProfileStore;
   codes: CodeStore;
   collection: CollectionStore;
-  loadouts: LoadoutStore;
+  decks: DeckStore;
+  trios: TrioStore;
   matches: MatchStore;
   rooms: RoomStore;
   tickets: TicketStore;
   results: ResultStore;
+  series: SeriesStore;
 };
 
 // ---------------------------------------------------------------------------
@@ -589,6 +789,13 @@ export type ServerDeps = {
   limits: ApiLimits;
   catalog: CatalogInfo;
   validateLoadout: LoadoutValidator;
+  /**
+   * R258: All Random's deck, from the game's own weighted random deck-builder (`buildAiDeck` in
+   * `@jackioh/ai`, with nothing banned — the same draw practice deals a human who asks for a
+   * random deck), seeded so the same seed deals the same deck in any process. Bound at the
+   * composition root from `src/match/engine.real.ts`, the one file that reaches the engine.
+   */
+  dealRandomDeck: (seed: string) => string[];
   matches: MatchDirectory;
   log: Logger;
   /**

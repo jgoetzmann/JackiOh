@@ -24,7 +24,13 @@ import type { CardDefs } from "@jackioh/shared";
 
 import { paths } from "../net/navigate.ts";
 import { DeckPreview } from "./DeckPreview.tsx";
-import { RANDOM_DECK_IDENTITY, deckChoiceFromValue, deckOptions, presetById } from "./decks.ts";
+import {
+  RANDOM_DECK_IDENTITY,
+  deckChoiceFromValue,
+  deckOptions,
+  presetById,
+  type PracticeSavedDeck,
+} from "./decks.ts";
 import type { PracticeDeckChoice } from "./protocol.ts";
 import { practiceTestid } from "./testids.ts";
 import { DIFFICULTY_LABEL, DIFFICULTY_TAGLINE, TierCrest } from "./Tier.tsx";
@@ -39,15 +45,16 @@ export type PracticeSetupChoice = { difficulty: Difficulty; deck: PracticeDeckCh
 export type SavedDecks =
   /** No session. */
   | { kind: "anonymous" }
-  /** The account, or its loadout, is still being read. */
+  /** The account, or its saved decks, are still being read. */
   | { kind: "checking" }
   /** Signed in, but the account is not active yet (an invite code is owed) or may not play. */
   | { kind: "inactive" }
-  /** An active account that has never saved a loadout. */
+  /** An active account that has no saved deck. */
   | { kind: "none" }
-  /** The account or the loadout could not be read. */
+  /** The account or its saved decks could not be read. */
   | { kind: "unavailable" }
-  | { kind: "ready"; decks: readonly string[][] };
+  /** `GET /api/decks`'s decks, oldest first (R250). */
+  | { kind: "ready"; decks: readonly PracticeSavedDeck[] };
 
 type PracticeSetupProps = {
   saved: SavedDecks;
@@ -64,7 +71,7 @@ function savedHint(saved: SavedDecks): ReactElement | null {
     case "ready":
       return null;
     case "anonymous":
-      return <>Sign in and save a loadout to play one of your own decks here.</>;
+      return <>Sign in and save a deck to play one of your own decks here.</>;
     case "checking":
       return <>Looking for your saved decks…</>;
     case "inactive":
@@ -72,7 +79,7 @@ function savedHint(saved: SavedDecks): ReactElement | null {
     case "none":
       return (
         <>
-          Save a loadout in <a href={paths.decks}>Decks</a> to play one of your own decks here.
+          Save a deck in <a href={paths.decks}>Decks</a> to play one of your own decks here.
         </>
       );
     case "unavailable":
@@ -83,6 +90,7 @@ function savedHint(saved: SavedDecks): ReactElement | null {
 /** The preview's title, identity line and cards for a picker value. */
 function previewFor(
   choice: PracticeDeckChoice,
+  saved: readonly PracticeSavedDeck[] | null,
 ): { title: string; identity: string; cards: readonly string[] | null } {
   switch (choice.kind) {
     case "random":
@@ -95,8 +103,8 @@ function previewFor(
     }
     case "saved":
       return {
-        title: `Saved deck ${String(choice.index)}`,
-        identity: "One of the three decks in your loadout, exactly as you saved it.",
+        title: saved?.[choice.index - 1]?.name ?? `Saved deck ${String(choice.index)}`,
+        identity: "One of your saved decks, exactly as you saved it.",
         cards: choice.cards,
       };
   }
@@ -149,10 +157,10 @@ export function PracticeSetup({ saved, initial, defs, defsFailed, onStart }: Pra
 
   const savedDecks = saved.kind === "ready" ? saved.decks : null;
   const options = deckOptions(savedDecks);
-  // A remembered saved deck the loadout no longer has (or has not loaded yet) falls back to random.
+  // A remembered saved deck that is gone, not complete or not loaded yet falls back to random.
   const selected = options.some((option) => option.value === deck && !option.disabled) ? deck : "random";
   const choice: PracticeDeckChoice = deckChoiceFromValue(selected, savedDecks) ?? { kind: "random" };
-  const preview = previewFor(choice);
+  const preview = previewFor(choice, savedDecks);
   const hint = savedHint(saved);
 
   function submit(event: FormEvent<HTMLFormElement>): void {

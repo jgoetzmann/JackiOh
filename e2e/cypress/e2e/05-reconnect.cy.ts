@@ -74,8 +74,8 @@ import {
   PROMPT_CLOCK_SECONDS,
   TURN_CLOCK_SECONDS,
 } from "../../../apps/server/src/config.ts";
-import { CARD_NAMES, cardId } from "../../support/cards.ts";
-import { accounts, constants, routes, seedFor, server, timeouts } from "../../support/config.ts";
+import { CARD_NAMES } from "../../support/cards.ts";
+import { accounts, routes, seedFor, server, timeouts } from "../../support/config.ts";
 import {
   END_TURN,
   MANA_CRYSTAL,
@@ -92,7 +92,7 @@ import {
   ts,
   zoneId,
 } from "../../support/testids.ts";
-import type { ActionInput, FixtureDeck, Lane, PlayerId, Side } from "../../support/types.ts";
+import type { ActionInput, Lane, PlayerId, Side } from "../../support/types.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Local scaffolding. Every item marked ASK is something `e2e/support/**` should own (one place to
@@ -114,9 +114,6 @@ const SEAT_TWO_ID: PlayerId = "p2";
 
 const LANES: readonly Lane[] = [1, 2, 3, 4, 5];
 const SIDES: readonly Side[] = ["you", "opponent"];
-
-/** SPEC §8 numbers 100 Core cards; `support/cards.ts` is the only place they are named. */
-const CORE_CARD_COUNT = Object.keys(CARD_NAMES).length;
 
 /** `promptOptionId("")` is the prefix, so no spec spells a testid format. */
 const OPTION_PREFIX = promptOptionId("");
@@ -150,43 +147,6 @@ function api(path: string): string {
 
 function bearer(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}` };
-}
-
-/**
- * L1 wants exactly 3 decks and L4 wants no card in two of them, so a one-deck scenario fixture
- * has to be padded before it can be saved. The padding is the next `DECK_SIZE * 2` Core ids the
- * fixture did not use, which keeps all three decks disjoint and — with R111's one copy of every
- * non-token card — inside L5.
- *
- * ASK (support/commands.ts): `cy.installLoadout(account, fixtureId)`. Specs 05, 06 and 10 all
- * need it and all three currently carry this copy.
- */
-function loadoutFrom(deck: readonly string[]): string[][] {
-  const used = new Set(deck);
-  const spare = Array.from({ length: CORE_CARD_COUNT }, (_, index) => cardId(index + 1)).filter(
-    (id) => !used.has(id),
-  );
-  const size = constants.DECK_SIZE;
-  expect(spare.length, "enough spare Core ids to pad a loadout").to.be.at.least(size * 2);
-  return [[...deck], spare.slice(0, size), spare.slice(size, size * 2)];
-}
-
-/** §9.4: `saveLoadout` is the only authority; the deck the match freezes is deck index 0. */
-function installLoadout(token: string, deck: readonly string[]): void {
-  cy.request<{ catalogVersion: string }>({
-    method: "GET",
-    url: api("/api/loadout"),
-    headers: bearer(token),
-  }).then((current) => {
-    cy.request({
-      method: "PUT",
-      url: api("/api/loadout"),
-      headers: bearer(token),
-      body: { catalogVersion: current.body.catalogVersion, decks: loadoutFrom(deck) },
-    })
-      .its("status")
-      .should("eq", 200);
-  });
 }
 
 function visitAs(token: string, path: string): void {
@@ -354,13 +314,15 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
     };
     let clockFramesBefore = 0;
 
-    // --- both seats have a loadout whose deck 0 is this spec's fixture (§9.4) -----------------
-    cy.fixture<FixtureDeck>("decks/05-reconnect-a.json").then((deck) => {
-      installLoadout(seatOne.token, deck.cards);
-    });
-    cy.fixture<FixtureDeck>("decks/05-reconnect-b.json").then((deck) => {
-      installLoadout(seatTwo.token, deck.cards);
-    });
+    // --- both seats are free, and their first saved deck is this spec's fixture (§9.4) ---------
+    // `cy.freeAccount`: the E2E server keeps its state for its whole life, so a match or series an
+    // earlier spec left behind would answer the room calls below with 409 `already_in_match`.
+    // `cy.installLoadout` saves the fixture as the oldest of three decks (R250), which is the one
+    // the legacy `{ deckIndex: 0 }` bodies below name (R257).
+    cy.freeAccount(seatOne);
+    cy.freeAccount(seatTwo);
+    cy.installLoadout(seatOne, "05-reconnect-a");
+    cy.installLoadout(seatTwo, "05-reconnect-b");
 
     // --- a live match: seat 1 opens a room, seat 2 claims it (§9.5) ---------------------------
     // `seed` is BUILD M8's "every spec sets a seed". A networked match's seed is normally minted

@@ -10,7 +10,7 @@
 // Every response shape below is the one `apps/server/src/api/*.ts` actually returns; every error
 // is `{ error: { code, message, details? } }` from `apps/server/src/api/http.ts`.
 
-import type { CardDefs } from "@jackioh/shared";
+import type { CardDefs, GameOverReason } from "@jackioh/shared";
 
 import { API_REQUEST_TIMEOUT_SECONDS } from "../../../server/src/config.ts";
 
@@ -177,6 +177,12 @@ export type MeResponse = {
   emailVerified: boolean;
   /** §9.5: the match this profile is in, or null. What `/play` waits on after it queues. */
   currentMatchId: string | null;
+  /**
+   * R259: the Best-of-3 series this profile is in (not over), or null. Set between games too, when
+   * `currentMatchId` is null, so `/play` can send a paired player to the series screen to pick.
+   * Optional because a server from before R259 does not send it.
+   */
+  currentSeriesId?: string | null;
   /** The address this account is tied to, so a player can see who they are signed in as. */
   email: string | null;
 };
@@ -256,23 +262,124 @@ export function getCollection(token: string): Promise<CollectionResponse> {
   return apiRequest<CollectionResponse>("/api/collection", { token });
 }
 
-export type StoredLoadout = { catalogVersion: string; decks: string[][]; updatedAt: number };
-export type LoadoutResponse = { catalogVersion: string; loadout: StoredLoadout | null };
+// ---------------------------------------------------------------------------------------------
+// Saved decks and trios (SPEC §9.4, R250–R256). Ids are minted HERE, by the client
+// (`crypto.randomUUID()`), so every save is an idempotent `PUT` that can be retried after a dropped
+// connection without making a second deck (R256).
+// ---------------------------------------------------------------------------------------------
 
-export function getLoadout(token: string): Promise<LoadoutResponse> {
-  return apiRequest<LoadoutResponse>("/api/loadout", { token });
+export type SavedDeck = {
+  id: string;
+  name: string;
+  cards: string[];
+  catalogVersion: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type TrioSlots = [string | null, string | null, string | null];
+
+export type SavedTrio = {
+  id: string;
+  name: string;
+  deckIds: TrioSlots;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** `GET /api/decks`: the profile's decks and trios, oldest first, and the caps they live under. */
+export type DecksResponse = {
+  catalogVersion: string;
+  decks: SavedDeck[];
+  trios: SavedTrio[];
+  limits: { decks: number; trios: number; nameLength: number };
+};
+
+export function getDecks(token: string): Promise<DecksResponse> {
+  return apiRequest<DecksResponse>("/api/decks", { token });
 }
 
-export function putLoadout(
-  token: string,
-  catalogVersion: string,
-  decks: readonly (readonly string[])[],
-): Promise<LoadoutResponse> {
-  return apiRequest<LoadoutResponse>("/api/loadout", {
+export type DeckInput = { name: string; cards: readonly string[]; catalogVersion: string };
+
+/**
+ * `PUT /api/decks/:id`: creates the deck when the id is new, else replaces its name and cards.
+ * Refusals: 400 `bad_request` (a D1–D4 draft rule, the issues in `details`), 409 `conflict` with
+ * `details.limit` when the profile already has `limits.decks` decks, 409 `update_required` for a
+ * stale catalog, 404 when the id is another profile's.
+ */
+export function putDeck(token: string, id: string, input: DeckInput): Promise<{ deck: SavedDeck }> {
+  return apiRequest<{ deck: SavedDeck }>(`/api/decks/${encodeURIComponent(id)}`, {
     method: "PUT",
     token,
-    body: { catalogVersion, decks },
+    body: input,
   });
+}
+
+/** `DELETE /api/decks/:id`: idempotent; `deleted: false` when there was nothing to delete. */
+export function deleteDeck(token: string, id: string): Promise<{ deleted: boolean }> {
+  return apiRequest<{ deleted: boolean }>(`/api/decks/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export type TrioInput = { name: string; deckIds: TrioSlots };
+
+/**
+ * `PUT /api/trios/:id`: as `putDeck`. A slot naming a deck the server does not have yet is a 409
+ * `conflict` with `details.unknownDeck`, which a client syncing an offline draft answers by saving
+ * the deck first.
+ */
+export function putTrio(token: string, id: string, input: TrioInput): Promise<{ trio: SavedTrio }> {
+  return apiRequest<{ trio: SavedTrio }>(`/api/trios/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    token,
+    body: input,
+  });
+}
+
+export function deleteTrio(token: string, id: string): Promise<{ deleted: boolean }> {
+  return apiRequest<{ deleted: boolean }>(`/api/trios/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Queue modes (SPEC §9.5, R257–R258, R264)
+// ---------------------------------------------------------------------------------------------
+
+export type QueueMode = "bo1" | "bo3" | "random";
+
+/** What a queue ticket or a room is made with: a deck, a trio, or nothing at all. */
+export type ModeChoice =
+  | { mode: "bo1"; deckId: string }
+  | { mode: "bo3"; trioId: string }
+  | { mode: "random" };
+
+/** `POST /api/queue`. `matchId` for a paired Best-of-1 or All Random game, `seriesId` for Best-of-3. */
+export type EnqueueResponse = {
+  ticketId: string;
+  status: "open" | "matched" | "cancelled";
+  matchId: string | null;
+  seriesId: string | null;
+  population: number;
+  mode: QueueMode;
+};
+
+export function enqueue(token: string, choice: ModeChoice): Promise<EnqueueResponse> {
+  return apiRequest<EnqueueResponse>("/api/queue", { method: "POST", token, body: choice });
+}
+
+export function dequeue(token: string): Promise<{ cancelled: boolean; ticketId?: string }> {
+  return apiRequest<{ cancelled: boolean; ticketId?: string }>("/api/queue", { method: "DELETE", token });
+}
+
+/** `GET /api/queue/population`: the total, and per mode (R257). */
+export type PopulationResponse = { population: number; byMode?: Record<QueueMode, number> };
+
+export function getPopulation(token: string): Promise<PopulationResponse> {
+  return apiRequest<PopulationResponse>("/api/queue/population", { token });
 }
 
 /**
@@ -294,26 +401,118 @@ export function getCatalog(): Promise<CatalogResponse> {
   return apiRequest<CatalogResponse>("/api/catalog");
 }
 
-/** `POST /api/rooms` / `POST /api/rooms/:code/join` (§9.5). */
-export type CreateRoomResponse = { code: string; expiresAt: number; deckIndex: number };
-export type JoinRoomResponse = { matchId: string; code: string; seat: "p1" | "p2" };
+/** `POST /api/rooms` / `POST /api/rooms/:code/join` (§9.5, R264). */
+export type CreateRoomResponse = { code: string; expiresAt: number; mode: QueueMode };
 
-export function createRoom(token: string, deckIndex: number): Promise<CreateRoomResponse> {
-  return apiRequest<CreateRoomResponse>("/api/rooms", { method: "POST", token, body: { deckIndex } });
+/**
+ * A join answers with the match (Best-of-1, All Random) or the series (Best-of-3) it made. A joiner
+ * whose choice is in another mode than the room's is refused with 409 `conflict` and
+ * `details.mode`, the room's mode, so the lobby can ask for the right deck or trio.
+ */
+export type JoinRoomResponse = {
+  matchId: string | null;
+  seriesId: string | null;
+  code: string;
+  seat: "p1" | "p2";
+  mode: QueueMode;
+};
+
+export function createRoom(token: string, choice: ModeChoice): Promise<CreateRoomResponse> {
+  return apiRequest<CreateRoomResponse>("/api/rooms", { method: "POST", token, body: choice });
 }
 
-export function joinRoom(token: string, code: string, deckIndex: number): Promise<JoinRoomResponse> {
+export function joinRoom(token: string, code: string, choice: ModeChoice): Promise<JoinRoomResponse> {
   return apiRequest<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(code)}/join`, {
     method: "POST",
     token,
-    body: { deckIndex },
+    body: choice,
   });
 }
 
-export function enqueue(token: string, deckIndex: number): Promise<unknown> {
-  return apiRequest<unknown>("/api/queue", { method: "POST", token, body: { deckIndex } });
+/** The room's mode from a mode-mismatch refusal (R264), or null for any other error. */
+export function roomModeOf(error: unknown): QueueMode | null {
+  if (!(error instanceof ApiRequestError) || error.code !== "conflict") return null;
+  const details = error.details;
+  if (typeof details !== "object" || details === null) return null;
+  const mode = (details as { mode?: unknown }).mode;
+  return mode === "bo1" || mode === "bo3" || mode === "random" ? mode : null;
 }
 
-export function dequeue(token: string): Promise<unknown> {
-  return apiRequest<unknown>("/api/queue", { method: "DELETE", token });
+// ---------------------------------------------------------------------------------------------
+// The Best-of-3 series (SPEC §9.5, R259–R263). The server's projection for the caller: the other
+// side's pick is never in it before both have picked, and the other side's deck names never are.
+// ---------------------------------------------------------------------------------------------
+
+export type SeriesEnd = "decided" | "exhausted" | "forfeit" | "abandoned";
+
+export type SeriesView = {
+  id: string;
+  status: "picking" | "playing" | "over";
+  /** The game being picked for or played, or the last one played once the series is over. */
+  gameNo: number;
+  winsNeeded: number;
+  maxGames: number;
+  /** Epoch ms the pick clock runs out (R260), or null outside the pick phase. */
+  pickDeadline: number | null;
+  /** The server's clock when it answered, so a countdown does not depend on this device's. */
+  now: number;
+  /** The match to open while `status` is `playing`. */
+  currentMatchId: string | null;
+  you: {
+    seat: "p1" | "p2";
+    wins: number;
+    trioName: string;
+    decks: { slot: number; name: string; cards: string[]; played: boolean }[];
+    /** Your pick for the next game, or null. */
+    pick: number | null;
+  };
+  opponent: {
+    wins: number;
+    /** Only which slots have been played: names and cards stay hidden (R259). */
+    decks: { slot: number; played: boolean }[];
+    /** Whether they have picked; never what. */
+    picked: boolean;
+  };
+  games: {
+    gameNo: number;
+    matchId: string;
+    yourSlot: number;
+    opponentSlot: number;
+    youWentFirst: boolean;
+    result: "win" | "loss" | "draw" | null;
+    reason: GameOverReason | null;
+  }[];
+  /** Null until the series is over. */
+  result: {
+    outcome: "win" | "loss" | "draw" | "abandoned";
+    endReason: SeriesEnd;
+    ratingBefore: number | null;
+    ratingAfter: number | null;
+  } | null;
+};
+
+export function getSeries(token: string, seriesId: string): Promise<SeriesView> {
+  return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}`, { token });
+}
+
+/** `GET /api/matches/:id/series`: the series a match belongs to, for the board's series banner. */
+export function getSeriesForMatch(token: string, matchId: string): Promise<{ series: SeriesView | null }> {
+  return apiRequest<{ series: SeriesView | null }>(`/api/matches/${encodeURIComponent(matchId)}/series`, { token });
+}
+
+/** `POST /api/series/:id/pick` with a trio slot (0-based). Answers with the new projection. */
+export function pickSeriesDeck(token: string, seriesId: string, slot: number): Promise<SeriesView> {
+  return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}/pick`, {
+    method: "POST",
+    token,
+    body: { slot },
+  });
+}
+
+/** `POST /api/series/:id/forfeit`: between games only (R261). */
+export function forfeitSeries(token: string, seriesId: string): Promise<SeriesView> {
+  return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}/forfeit`, {
+    method: "POST",
+    token,
+  });
 }

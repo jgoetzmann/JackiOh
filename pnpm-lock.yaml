@@ -41,6 +41,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.17(hono@4.13.8)
+      '@jackioh/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@jackioh/cards':
         specifier: workspace:*
         version: link:../../packages/cards

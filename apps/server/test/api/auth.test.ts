@@ -30,7 +30,7 @@ import {
 } from "../../src/api/auth";
 import { createAuthRoutes } from "../../src/api/auth";
 import { ApiError, createRouter, type Router } from "../../src/api/http";
-import type { AuthProvider } from "../../src/api/ports";
+import type { AuthProvider, FrozenTrio, SeriesRow } from "../../src/api/ports";
 import { AUTH_SESSION_LIVE_CACHE_SECONDS } from "../../src/config";
 import {
   createTestDeps,
@@ -727,6 +727,66 @@ describe("/api/auth/me reports the caller's own current match (§9.5)", () => {
 
     expect(res.status).toBe(200);
     expect(body.currentMatchId, "the id /play navigates to").toBe("match-42");
+  });
+
+  it("names the caller's own Best-of-3 series while it is not over, and only then (R259, R264)", async () => {
+    const deps = createTestDeps();
+    const token = deps.auth.addUser({ userId: ALICE, email: "alice@example.test" });
+    const profile = await deps.store.profiles.create({
+      userId: ALICE,
+      email: "alice@example.test",
+      rating: 1000,
+      at: 1,
+    });
+    const router = createRouter(createAuthRoutes(), deps);
+    const read = async (): Promise<{ currentMatchId: string | null; currentSeriesId: string | null }> =>
+      (await readJson(await router(jsonRequest("GET", "/api/auth/me", undefined, { token })))) as {
+        currentMatchId: string | null;
+        currentSeriesId: string | null;
+      };
+
+    expect((await read()).currentSeriesId, "premise: in no series").toBeNull();
+
+    // Between the games of a series nobody is in a match, and this is how the player who waited
+    // learns there is a deck to pick.
+    const trio: FrozenTrio = {
+      name: "t",
+      decks: [
+        { name: "a", cards: [] },
+        { name: "b", cards: [] },
+        { name: "c", cards: [] },
+      ],
+    };
+    const series: SeriesRow = {
+      id: "series-7",
+      sides: [
+        { profileId: profile.id, trio, wins: 0, pick: null },
+        { profileId: "rival", trio, wins: 0, pick: null },
+      ],
+      catalogVersion: deps.catalog.version,
+      seedBase: "s",
+      status: "picking",
+      games: [],
+      nextMatchId: "reserved",
+      pickDeadline: null,
+      winner: null,
+      endReason: null,
+      ratingBefore: null,
+      ratingAfter: null,
+      createdAt: 0,
+      updatedAt: 0,
+      endedAt: null,
+      version: 1,
+    };
+    await deps.store.series.create(series);
+
+    const during = await read();
+    expect(during.currentSeriesId).toBe("series-7");
+    expect(during.currentMatchId).toBeNull();
+
+    // Over, it is nobody's current series.
+    await deps.store.series.update({ ...series, status: "over", version: 2 });
+    expect((await read()).currentSeriesId).toBeNull();
   });
 });
 

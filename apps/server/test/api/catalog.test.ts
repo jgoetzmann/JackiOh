@@ -87,6 +87,47 @@ describe("loadout validator binding (§9.4: one module, shared)", () => {
     expect(short[0]?.message.length).toBeGreaterThan(0);
   });
 
+  it("R253 checks one Best-of-1 deck on the one-deck rules when the port asks for `scope: \"deck\"`", async () => {
+    const catalog = await loadCatalog();
+    const legal = catalog.cardIds.filter((id) => !catalog.isToken(id)).slice(0, 20);
+    const owned = new Map(legal.map((cardId) => [cardId, 1] as const));
+    const input = { catalogVersion: catalog.version, catalog, owned };
+
+    // One legal deck: as a trio it fails L1 (one deck, not three); as a deck it passes.
+    expect(sharedLoadoutValidator({ ...input, decks: [legal] }).map((issue) => issue.rule)).toEqual(["L1"]);
+    expect(sharedLoadoutValidator({ ...input, decks: [legal], scope: "deck" })).toEqual([]);
+
+    // One card short: L2, naming the deck by the name the player gave it.
+    const short = sharedLoadoutValidator({
+      ...input,
+      decks: [legal.slice(0, 19)],
+      names: ["Midrange"],
+      scope: "deck",
+    });
+    expect(short.map((issue) => issue.rule)).toEqual(["L2"]);
+    expect(short[0]?.deck).toBe(1);
+    expect(short[0]?.message).toContain("Midrange");
+  });
+
+  it("R253 names a trio's decks in its messages when the port passes their names", async () => {
+    const catalog = await loadCatalog();
+    const legal = catalog.cardIds.filter((id) => !catalog.isToken(id)).slice(0, 60);
+    const owned = new Map(legal.map((cardId) => [cardId, 1] as const));
+    const shared = legal[0] ?? "";
+    const issues = sharedLoadoutValidator({
+      decks: [legal.slice(0, 20), [shared, ...legal.slice(21, 40)], legal.slice(40, 60)],
+      names: ["Aggro", "Control", "Tempo"],
+      catalogVersion: catalog.version,
+      catalog,
+      owned,
+    });
+    const l4 = issues.find((issue) => issue.rule === "L4");
+    expect(l4?.cardId).toBe(shared);
+    expect(l4?.message).toContain("Aggro");
+    expect(l4?.message).toContain("Control");
+    expect(l4?.message).not.toContain("Deck 1");
+  });
+
   it("reports a card the profile does not own (L5) rather than silently allowing it", async () => {
     const catalog = await loadCatalog();
     const legal = catalog.cardIds.filter((id) => !catalog.isToken(id)).slice(0, 60);

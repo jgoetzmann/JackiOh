@@ -36,7 +36,8 @@
 // repeated redemption cannot double a collection". So activation is asserted twice — once for the
 // grant, once for its idempotence — and then by the thing the grant exists for: R111 notes that
 // one copy of every non-token card is, with MAX_COPIES = 1 and three decks of 20, exactly enough
-// for a legal loadout, so a freshly activated account must be able to save one.
+// for a legal loadout, so a freshly activated account must be able to save three such decks as a
+// trio (R250, R252) and queue it for Best of 3, where L1–L6 are checked (R253).
 //
 // ORDER MATTERS in this file. The gate and the failure kinds are asserted while the fixture
 // account is still pending; the last `it` flips it to active and burns the good code. Cypress
@@ -64,7 +65,7 @@ import {
   INVITE_SUBMIT,
   ts,
 } from "../../support/testids.ts";
-import type { FixtureDeck } from "../../support/types.ts";
+import { mintId } from "../../support/commands.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Local scaffolding. Items marked ASK belong in `e2e/support/**` and are in the hand-off report.
@@ -209,12 +210,17 @@ describe("10 invite gate — a pending account", () => {
       expect(response.body.retryAfterMs).to.eq(0);
     });
 
-    // "and nothing else". One 403 per door §9.4 names.
-    const gated: { method: "GET" | "PUT" | "POST"; path: string; body?: Record<string, unknown> }[] = [
+    // "and nothing else". One 403 per door §9.4 names: the collection, the saved decks and trios
+    // that replaced the loadout (R250, R252), and the queue in each of its modes (R257).
+    const someId = mintId();
+    const gated: { method: "GET" | "PUT" | "DELETE" | "POST"; path: string; body?: Record<string, unknown> }[] = [
       { method: "GET", path: "/api/collection" },
-      { method: "GET", path: "/api/loadout" },
-      { method: "PUT", path: "/api/loadout", body: { catalogVersion: "whatever", decks: [] } },
+      { method: "GET", path: "/api/decks" },
+      { method: "PUT", path: `/api/decks/${someId}`, body: { name: "Gate", cards: [], catalogVersion: "whatever" } },
+      { method: "DELETE", path: `/api/decks/${someId}` },
+      { method: "PUT", path: `/api/trios/${someId}`, body: { name: "Gate", deckIds: [null, null, null] } },
       { method: "POST", path: "/api/queue", body: { deckIndex: 0 } },
+      { method: "POST", path: "/api/queue", body: { mode: "random" } },
     ];
     for (const door of gated) {
       cy.request<{ error: { code: string } }>({
@@ -416,29 +422,22 @@ describe("10 invite gate — a pending account", () => {
       });
     });
 
-    // R111's stated rationale, end to end: the grant is exactly enough for a legal loadout.
-    cy.fixture<FixtureDeck>("decks/10-invite-gate-a.json").then((deck) => {
-      const used = new Set(deck.cards);
-      const spare = Array.from({ length: CORE_CARD_COUNT }, (_, index) => cardId(index + 1)).filter(
-        (id) => !used.has(id),
-      );
-      const size = constants.DECK_SIZE;
-      const decks = [[...deck.cards], spare.slice(0, size), spare.slice(size, size * 2)];
-
-      cy.request<{ catalogVersion: string }>({
-        method: "GET",
-        url: api("/api/loadout"),
+    // R111's stated rationale, end to end: the grant is exactly enough for a legal loadout —
+    // three disjoint decks of DECK_SIZE, which is now a trio (R252). A save is only a draft (R250),
+    // so the proof is the queue: `POST /api/queue` runs L1–L6 on the trio (R253) and takes it.
+    cy.installLoadout(accounts.pending(), "10-invite-gate-a").then((installed) => {
+      cy.request<{ status: string; mode: string }>({
+        method: "POST",
+        url: api("/api/queue"),
         headers: bearer(pendingToken()),
-      }).then((current) => {
-        cy.request({
-          method: "PUT",
-          url: api("/api/loadout"),
-          headers: bearer(pendingToken()),
-          body: { catalogVersion: current.body.catalogVersion, decks },
-        })
-          .its("status")
-          .should("eq", 200);
+        body: { mode: "bo3", trioId: installed.trioId },
+      }).should((response) => {
+        expect(response.status, "R253: the granted cards make a trio Best of 3 accepts").to.eq(200);
+        expect(response.body.mode).to.eq("bo3");
       });
+      cy.request({ method: "DELETE", url: api("/api/queue"), headers: bearer(pendingToken()) })
+        .its("status")
+        .should("eq", 200);
     });
 
     // And the screen the gate used to bounce now stays open.

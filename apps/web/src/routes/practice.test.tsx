@@ -1,6 +1,6 @@
 // `/practice`: B32 and B33 of docs/polish/3-ai.md, in jsdom.
 //
-// The route is rendered with every seam injected — the account, the loadout reader, the host that
+// The route is rendered with every seam injected — the account, the saved-deck reader, the host that
 // would otherwise start a worker, and the e2e pacing — so nothing here needs a server, a session,
 // a worker or the engine. The host is a scripted fake that answers `start` with a fixture view for
 // whichever seat the route asked to play, which is what lets these tests read the seat, the
@@ -22,7 +22,8 @@ import { HOVER_DELAY_MS } from "../cards/inspect/constants.ts";
 import { FX_LETHAL_LEAD_MAX_MS, FX_RESULT_MS } from "../fx/constants.ts";
 import { resetFxSettingsForTests, setFxSettings } from "../fx/settings.ts";
 
-import type { LoadoutResponse } from "../net/api.ts";
+import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../../server/src/config.ts";
+import type { DecksResponse } from "../net/api.ts";
 import type { Account } from "../net/gate.ts";
 import {
   PRACTICE_PACING,
@@ -33,7 +34,12 @@ import {
   PRACTICE_VOICE_HOLD_MAX_MS,
   type PracticePacing,
 } from "../practice/config.ts";
-import { PRACTICE_PRESETS, deckChoiceFromValue, deckChoiceValue } from "../practice/decks.ts";
+import {
+  PRACTICE_PRESETS,
+  deckChoiceFromValue,
+  deckChoiceValue,
+  type PracticeSavedDeck,
+} from "../practice/decks.ts";
 import { createPracticeHost, type PracticeHost } from "../practice/host.ts";
 import type {
   PracticeDebug,
@@ -83,8 +89,13 @@ const SAVED_DECKS: string[][] = [
   Array.from({ length: 20 }, (_, i) => `core-${String(i + 41).padStart(3, "0")}`),
 ];
 
+/** The saved decks' names, as `GET /api/decks` lists them. */
+const SAVED_NAMES = ["Humans Rising", "Burn Pile", "Big Guys"] as const;
+
+const SAVED: PracticeSavedDeck[] = SAVED_DECKS.map((cards, i) => ({ name: SAVED_NAMES[i] ?? "", cards }));
+
 // ---------------------------------------------------------------------------------------------
-// accounts and loadouts
+// accounts and saved decks
 // ---------------------------------------------------------------------------------------------
 
 const ANONYMOUS: Account = { kind: "anonymous" };
@@ -103,8 +114,21 @@ function signedIn(status: "active" | "pending" | "banned"): Account {
   };
 }
 
-function loadout(decks: string[][] | null): LoadoutResponse {
-  return { catalogVersion: "v1", loadout: decks === null ? null : { catalogVersion: "v1", decks, updatedAt: 0 } };
+/** `GET /api/decks` for these decks, oldest first (R250); null is a profile that has saved none. */
+function decksResponse(decks: readonly PracticeSavedDeck[] | null): DecksResponse {
+  return {
+    catalogVersion: "v1",
+    decks: (decks ?? []).map((deck, i) => ({
+      id: `deck-${String(i + 1)}`,
+      name: deck.name,
+      cards: [...deck.cards],
+      catalogVersion: "v1",
+      createdAt: i,
+      updatedAt: i,
+    })),
+    trios: [],
+    limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS, nameLength: DECK_NAME_MAX_LENGTH },
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -276,7 +300,7 @@ function renderRoute(
       hostFactory={host.factory}
       pacing={PRACTICE_PACING_FAST}
       account={ANONYMOUS}
-      loadLoadout={vi.fn(() => Promise.reject(new Error("an anonymous page has no loadout")))}
+      loadDecks={vi.fn(() => Promise.reject(new Error("an anonymous page has no saved decks")))}
       {...props}
     />,
   );
@@ -356,8 +380,8 @@ afterEach(() => {
 describe("B32 /practice shows setup to anyone", () => {
   it("B32 renders with no account, session or server: three difficulty radios on easy and random plus every preset", async () => {
     const host = routeHost();
-    const loadLoadout = vi.fn(() => Promise.resolve(loadout(SAVED_DECKS)));
-    renderRoute(host, { loadLoadout });
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(SAVED)));
+    renderRoute(host, { loadDecks });
     await settle();
 
     expect(screen.getByTestId(T.setup)).toBeInTheDocument();
@@ -372,7 +396,7 @@ describe("B32 /practice shows setup to anyone", () => {
     expect([...deckOptions()].sort()).toEqual(["random", ...PRESET_VALUES].sort());
     expect(savedOptions()).toEqual([]);
 
-    expect(loadLoadout).not.toHaveBeenCalled();
+    expect(loadDecks).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(socketSpy).not.toHaveBeenCalled();
     expect(screen.queryByTestId(T.hud)).toBeNull();
@@ -422,20 +446,53 @@ describe("B32 /practice shows setup to anyone", () => {
     expect(screen.getByTestId(T.easy)).toBeChecked();
   });
 
-  it("B32 an active signed-in account with a saved loadout also gets saved:1..3", async () => {
-    const loadLoadout = vi.fn(() => Promise.resolve(loadout(SAVED_DECKS)));
-    renderRoute(routeHost(), { account: signedIn("active"), loadLoadout });
+  it("B32 an active signed-in account with saved decks also gets saved:1..3", async () => {
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(SAVED)));
+    renderRoute(routeHost(), { account: signedIn("active"), loadDecks });
 
     await waitFor(() => {
       expect(savedOptions().sort()).toEqual(["saved:1", "saved:2", "saved:3"]);
     });
-    expect(loadLoadout).toHaveBeenCalledWith("tok-1");
+    expect(loadDecks).toHaveBeenCalledWith("tok-1");
     expect(deckOptions()).toEqual(expect.arrayContaining(["random", ...PRESET_VALUES]));
   });
 
+  it("offers each saved deck from GET /api/decks by its name, in the saved list's order", async () => {
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(SAVED)));
+    renderRoute(routeHost(), { account: signedIn("active"), loadDecks });
+
+    await waitFor(() => {
+      expect(savedOptions()).toEqual(["saved:1", "saved:2", "saved:3"]);
+    });
+    const select = screen.getByTestId(T.deck) as HTMLSelectElement;
+    const labels = Array.from(select.options)
+      .filter((option) => option.value.startsWith("saved:"))
+      .map((option) => option.textContent);
+    expect(labels).toEqual([...SAVED_NAMES]);
+  });
+
+  it("lists a saved deck that is not complete, disabled, with the reason", async () => {
+    const short = { name: "Half Built", cards: (SAVED_DECKS[0] ?? []).slice(0, 12) };
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse([short, ...SAVED.slice(1)])));
+    window.localStorage.setItem(PRACTICE_SETUP_KEY, JSON.stringify({ difficulty: "easy", deck: "saved:1" }));
+    renderRoute(routeHost(), { account: signedIn("active"), loadDecks });
+
+    await waitFor(() => {
+      expect(savedOptions()).toEqual(["saved:1", "saved:2", "saved:3"]);
+    });
+    const select = screen.getByTestId(T.deck) as HTMLSelectElement;
+    const first = Array.from(select.options).find((option) => option.value === "saved:1");
+    expect(first).toBeDisabled();
+    expect(first?.textContent).toBe(`Half Built (12 of ${String(SAVED_DECKS[0]?.length ?? 0)} cards, not complete)`);
+    expect(Array.from(select.options).find((option) => option.value === "saved:2")).not.toBeDisabled();
+    // The remembered choice names the incomplete deck, so the picker falls back to random.
+    expect(select.value).toBe("random");
+    expect(deckChoiceFromValue("saved:1", [short])).toBeNull();
+  });
+
   it("B32 a pending account gets no saved decks", async () => {
-    const loadLoadout = vi.fn(() => Promise.resolve(loadout(SAVED_DECKS)));
-    renderRoute(routeHost(), { account: signedIn("pending"), loadLoadout });
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(SAVED)));
+    renderRoute(routeHost(), { account: signedIn("pending"), loadDecks });
     await settle();
 
     expect(screen.getByTestId(T.setup)).toBeInTheDocument();
@@ -443,29 +500,29 @@ describe("B32 /practice shows setup to anyone", () => {
   });
 
   it("B32 a banned account gets no saved decks", async () => {
-    const loadLoadout = vi.fn(() => Promise.resolve(loadout(SAVED_DECKS)));
-    renderRoute(routeHost(), { account: signedIn("banned"), loadLoadout });
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(SAVED)));
+    renderRoute(routeHost(), { account: signedIn("banned"), loadDecks });
     await settle();
 
     expect(screen.getByTestId(T.setup)).toBeInTheDocument();
     expect(savedOptions()).toEqual([]);
   });
 
-  it("B32 an active account whose loadout is null gets no saved decks", async () => {
-    const loadLoadout = vi.fn(() => Promise.resolve(loadout(null)));
-    renderRoute(routeHost(), { account: signedIn("active"), loadLoadout });
+  it("B32 an active account that has saved no deck gets no saved options", async () => {
+    const loadDecks = vi.fn(() => Promise.resolve(decksResponse(null)));
+    renderRoute(routeHost(), { account: signedIn("active"), loadDecks });
     await settle();
 
     expect(savedOptions()).toEqual([]);
     expect([...deckOptions()].sort()).toEqual(["random", ...PRESET_VALUES].sort());
   });
 
-  it("B32 a loadout that fails to load simply shows no saved options", async () => {
-    const loadLoadout = vi.fn(() => Promise.reject(new Error("503 service unavailable")));
-    renderRoute(routeHost(), { account: signedIn("active"), loadLoadout });
+  it("B32 saved decks that fail to load simply show no saved options", async () => {
+    const loadDecks = vi.fn(() => Promise.reject(new Error("503 service unavailable")));
+    renderRoute(routeHost(), { account: signedIn("active"), loadDecks });
     await settle();
 
-    expect(loadLoadout).toHaveBeenCalled();
+    expect(loadDecks).toHaveBeenCalled();
     expect(screen.getByTestId(T.setup)).toBeInTheDocument();
     expect(savedOptions()).toEqual([]);
     expect(screen.queryByTestId(T.error)).toBeNull();
@@ -526,13 +583,13 @@ describe("the deck hint says why no saved deck is offered, and never tells a sig
     expect(hint()).toMatch(/sign in/i);
   });
 
-  it("an active account that never saved a loadout is sent to Decks, not to sign in", async () => {
+  it("an active account that never saved a deck is sent to Decks, not to sign in", async () => {
     renderRoute(routeHost(), {
       account: signedIn("active"),
-      loadLoadout: vi.fn(() => Promise.resolve(loadout(null))),
+      loadDecks: vi.fn(() => Promise.resolve(decksResponse(null))),
     });
     await settle();
-    expect(hint()).toMatch(/Save a loadout in Decks/);
+    expect(hint()).toMatch(/Save a deck in Decks/);
     expect(hint()).not.toMatch(/sign in/i);
     expect(screen.getByRole("link", { name: "Decks" })).toHaveAttribute("href", "/decks");
   });
@@ -547,7 +604,7 @@ describe("the deck hint says why no saved deck is offered, and never tells a sig
     }
   });
 
-  it("while the account or its loadout is read, the hint says it is looking", async () => {
+  it("while the account or its saved decks are read, the hint says it is looking", async () => {
     renderRoute(routeHost(), { account: { kind: "loading" } });
     await settle();
     expect(hint()).toMatch(/Looking for your saved decks/);
@@ -555,16 +612,16 @@ describe("the deck hint says why no saved deck is offered, and never tells a sig
 
     renderRoute(routeHost(), {
       account: signedIn("active"),
-      loadLoadout: vi.fn(() => new Promise<LoadoutResponse>(() => undefined)),
+      loadDecks: vi.fn(() => new Promise<DecksResponse>(() => undefined)),
     });
     await settle();
     expect(hint()).toMatch(/Looking for your saved decks/);
   });
 
-  it("a loadout that fails to load, or an account that cannot be read, is reported as such", async () => {
+  it("saved decks that fail to load, or an account that cannot be read, are reported as such", async () => {
     renderRoute(routeHost(), {
       account: signedIn("active"),
-      loadLoadout: vi.fn(() => Promise.reject(new Error("503"))),
+      loadDecks: vi.fn(() => Promise.reject(new Error("503"))),
     });
     await settle();
     expect(hint()).toMatch(/could not be loaded/);
@@ -579,7 +636,7 @@ describe("the deck hint says why no saved deck is offered, and never tells a sig
   it("an active account with saved decks gets them and no hint", async () => {
     renderRoute(routeHost(), {
       account: signedIn("active"),
-      loadLoadout: vi.fn(() => Promise.resolve(loadout(SAVED_DECKS))),
+      loadDecks: vi.fn(() => Promise.resolve(decksResponse(SAVED))),
     });
     await waitFor(() => {
       expect(savedOptions()).toHaveLength(3);
@@ -679,13 +736,13 @@ describe("the setup previews the chosen deck", () => {
   it("a saved deck previews exactly its own cards", async () => {
     renderRoute(routeHost(), {
       account: signedIn("active"),
-      loadLoadout: vi.fn(() => Promise.resolve(loadout(SAVED_DECKS))),
+      loadDecks: vi.fn(() => Promise.resolve(decksResponse(SAVED))),
     });
     await waitFor(() => {
       expect(savedOptions()).toHaveLength(3);
     });
     fireEvent.change(screen.getByTestId(T.deck), { target: { value: "saved:2" } });
-    expect(preview()).toHaveTextContent("Saved deck 2");
+    expect(preview()).toHaveTextContent(SAVED_NAMES[1] ?? "");
     expect([...previewedIds()].sort()).toEqual([...(SAVED_DECKS[1] ?? [])].sort());
   });
 
@@ -730,7 +787,7 @@ describe("B32 deck choice values", () => {
 
   it("B32 saved:<n> names the n-th saved deck and maps back to the same value", () => {
     for (const n of [1, 2, 3]) {
-      const choice = deckChoiceFromValue(`saved:${String(n)}`, SAVED_DECKS);
+      const choice = deckChoiceFromValue(`saved:${String(n)}`, SAVED);
       expect(choice).toMatchObject({ kind: "saved", cards: SAVED_DECKS[n - 1] });
       if (choice === null) return;
       expect(deckChoiceValue(choice)).toBe(`saved:${String(n)}`);
@@ -739,11 +796,11 @@ describe("B32 deck choice values", () => {
 
   it("B32 a value naming nothing is null", () => {
     expect(deckChoiceFromValue("saved:1", null)).toBeNull();
-    expect(deckChoiceFromValue("saved:0", SAVED_DECKS)).toBeNull();
-    expect(deckChoiceFromValue("saved:4", SAVED_DECKS)).toBeNull();
-    expect(deckChoiceFromValue("saved:two", SAVED_DECKS)).toBeNull();
+    expect(deckChoiceFromValue("saved:0", SAVED)).toBeNull();
+    expect(deckChoiceFromValue("saved:4", SAVED)).toBeNull();
+    expect(deckChoiceFromValue("saved:two", SAVED)).toBeNull();
     expect(deckChoiceFromValue("", null)).toBeNull();
-    expect(deckChoiceFromValue("garbage", SAVED_DECKS)).toBeNull();
+    expect(deckChoiceFromValue("garbage", SAVED)).toBeNull();
   });
 });
 
@@ -797,7 +854,7 @@ describe("B33 starting renders the game under the practice HUD", () => {
 
   it("B33 a saved deck chosen in setup travels as that deck's cards", async () => {
     const host = routeHost();
-    renderRoute(host, { account: signedIn("active"), loadLoadout: vi.fn(() => Promise.resolve(loadout(SAVED_DECKS))) });
+    renderRoute(host, { account: signedIn("active"), loadDecks: vi.fn(() => Promise.resolve(decksResponse(SAVED))) });
     await waitFor(() => {
       expect(savedOptions()).toContain("saved:2");
     });
@@ -1556,7 +1613,7 @@ describe("practice plays on the full board, with sound and settings", () => {
         hostFactory={() => host}
         pacing={PRACTICE_PACING_FAST}
         account={ANONYMOUS}
-        loadLoadout={vi.fn(() => Promise.reject(new Error("no loadout")))}
+        loadDecks={vi.fn(() => Promise.reject(new Error("no saved decks")))}
       />,
     );
     await screen.findByTestId(T.hud);

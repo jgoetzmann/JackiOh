@@ -24,6 +24,7 @@ import type {
   Timers,
 } from "../../src/api/ports";
 import { createHashes } from "../../src/api/crypto";
+import { seedHash } from "./engine";
 import { createMemoryStore, type MemoryStore } from "./store";
 
 // ---------------------------------------------------------------------------
@@ -215,8 +216,8 @@ export function createTestCatalog(version = TEST_CATALOG_VERSION, count = 24): C
  * So the split is deliberate: a test whose subject is not loadout legality gets this and a
  * synthetic catalog, and a test whose subject IS loadout legality builds deps on the real catalog
  * (`loadCatalog()`) with the real adapter (`sharedLoadoutValidator`) instead. Both do:
- * `test/api/catalog.test.ts` drives the adapter directly, and the last block of
- * `test/api/loadouts.test.ts` drives L2, L3, L4 and L6 through `PUT /api/loadout` itself.
+ * `test/api/catalog.test.ts` drives the adapter directly, and `test/api/queue.test.ts` drives the
+ * Best-of-1 and Best-of-3 refusals (R253) through `POST /api/queue` itself.
  *
  * Nothing in `src/` restates a loadout rule; `test/validator-single-source.test.ts` is the grep
  * that keeps it that way.
@@ -226,24 +227,46 @@ export const permissiveValidator: LoadoutValidator = () => [];
 /**
  * `deck` is 1-based here, exactly as `@jackioh/validator`'s `LoadoutError.deck` is (and as
  * `LoadoutIssue.deck` in ports.ts documents): a 0-based fake would hide an adapter that forgot
- * the conversion. Note that `deckFor(loadout, deckIndex)` takes a 0-based array index instead —
- * a request parameter, not a rule's report — so the two must never be fed to each other.
+ * the conversion. Note that a legacy `deckIndex` is a 0-based position in the saved-deck list
+ * instead — a request parameter, not a rule's report — so the two must never be fed to each other.
+ *
+ * It honours the port's `scope` (L1 only for a trio, R253) and `names` (a message names the deck
+ * by its saved name, falling back to `Deck <n>`), as the real adapter does.
  */
-export const strictTestValidator: LoadoutValidator = ({ decks, catalog, owned }) => {
+export const strictTestValidator: LoadoutValidator = ({ decks, names, scope, catalog, owned }) => {
   const issues: { rule: string; message: string; deck?: number; cardId?: string }[] = [];
-  if (decks.length !== 3) issues.push({ rule: "L1", message: "a loadout holds exactly 3 decks" });
+  if ((scope ?? "trio") === "trio" && decks.length !== 3) {
+    issues.push({ rule: "L1", message: "a trio holds exactly 3 decks" });
+  }
   decks.forEach((deck, index) => {
+    const label = names?.[index] ?? `Deck ${index + 1}`;
     for (const cardId of deck) {
       if (!catalog.cardIds.includes(cardId) || catalog.isBanned(cardId)) {
-        issues.push({ rule: "L6", message: `Deck ${index + 1}: ${cardId} is not playable`, deck: index + 1, cardId });
+        issues.push({ rule: "L6", message: `${label}: ${cardId} is not playable`, deck: index + 1, cardId });
       }
       if ((owned.get(cardId) ?? 0) < 1) {
-        issues.push({ rule: "L5", message: `Deck ${index + 1}: you do not own ${cardId}`, deck: index + 1, cardId });
+        issues.push({ rule: "L5", message: `${label}: you do not own ${cardId}`, deck: index + 1, cardId });
       }
     }
   });
   return issues;
 };
+
+/**
+ * `ServerDeps.dealRandomDeck` for the suite (R258): deterministic from the seed, over the catalog's
+ * playable ids. The real deal is `buildAiDeck` behind `src/match/engine.real.ts` and is tested there
+ * (`test/match/engine.real.test.ts`); here the question is only which seed a caller asks for and
+ * where the dealt deck goes, so a rotation of the pool is enough. Half the pool, so two seeds' decks
+ * are told apart at a glance.
+ */
+export function fakeRandomDealer(catalog: CatalogInfo): (seed: string) => string[] {
+  const playable = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId) && !catalog.isBanned(cardId));
+  return (seed) => {
+    const offset = seedHash(seed) % Math.max(playable.length, 1);
+    const rotated = [...playable.slice(offset), ...playable.slice(0, offset)];
+    return rotated.slice(0, Math.ceil(playable.length / 2));
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Ids, logger, match directory
@@ -405,6 +428,7 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
         attemptWindowMs: limits.redeemWindowMs,
       },
     });
+  const catalog = overrides.catalog ?? createTestCatalog();
   const base = {
     store,
     auth: createFakeAuth(),
@@ -413,8 +437,9 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
     ids: createFakeIds(),
     config: testConfig(),
     limits,
-    catalog: createTestCatalog(),
+    catalog,
     validateLoadout: permissiveValidator,
+    dealRandomDeck: fakeRandomDealer(catalog),
     matches: createFakeMatchDirectory(),
     log: createRecordingLogger(),
     // `jsonRequest` writes the `X-Forwarded-For` entry a proxy would, so the tests model the

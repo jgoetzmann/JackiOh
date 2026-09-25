@@ -7,6 +7,8 @@
 // those cards never worth playing, which is no way to meet the game. `core.test.ts` holds both
 // rules. The ids are plain data here; the worker's core turns the list into a deck.
 
+import { DECK_SIZE } from "@jackioh/engine/config";
+
 import type { PracticeDeckChoice } from "./protocol.ts";
 
 export type PracticePreset = {
@@ -110,11 +112,26 @@ export function presetById(id: string): PracticePreset | undefined {
 export const RANDOM_DECK_IDENTITY =
   "A fresh twenty-card deck every game, dealt with a sensible mana curve. You meet it in your opening hand.";
 
+/**
+ * One of the player's saved decks, as `GET /api/decks` lists them (R250): oldest first, named, and
+ * possibly a draft that is not complete yet.
+ */
+export type PracticeSavedDeck = { name: string; cards: readonly string[] };
+
+/**
+ * Whether a saved deck can start a practice game: exactly `DECK_SIZE` cards. A saved deck is a draft
+ * (R250), so a shorter one is listed but not offered. It is a label, not a rule: the worker's
+ * `createGame` checks every deck it is given (§2.6), a complete one included.
+ */
+export function isPlayableSavedDeck(deck: PracticeSavedDeck): boolean {
+  return deck.cards.length === DECK_SIZE;
+}
+
 const RANDOM_VALUE = "random";
 const PRESET_PREFIX = "preset:";
 const SAVED_PREFIX = "saved:";
 
-/** "random" | "preset:<id>" | "saved:<1..3>" */
+/** "random" | "preset:<id>" | "saved:<n>", n the 1-based position in the saved list */
 export function deckChoiceValue(choice: PracticeDeckChoice): string {
   switch (choice.kind) {
     case "random":
@@ -128,9 +145,13 @@ export function deckChoiceValue(choice: PracticeDeckChoice): string {
 
 /**
  * The choice a `<select>` value names, or null when it names nothing this device can play: an
- * unknown preset, or a saved deck when no loadout is loaded or the number is out of range.
+ * unknown preset, or a saved deck when none are loaded, the number is out of range or the deck is
+ * not complete.
  */
-export function deckChoiceFromValue(value: string, saved: readonly string[][] | null): PracticeDeckChoice | null {
+export function deckChoiceFromValue(
+  value: string,
+  saved: readonly PracticeSavedDeck[] | null,
+): PracticeDeckChoice | null {
   if (value === RANDOM_VALUE) return { kind: "random" };
 
   if (value.startsWith(PRESET_PREFIX)) {
@@ -143,41 +164,52 @@ export function deckChoiceFromValue(value: string, saved: readonly string[][] | 
     const digits = value.slice(SAVED_PREFIX.length);
     if (!/^[0-9]+$/.test(digits)) return null;
     const index = Number(digits);
-    const cards = saved[index - 1];
-    if (index < 1 || cards === undefined) return null;
-    return { kind: "saved", index, cards: [...cards] };
+    const deck = saved[index - 1];
+    if (index < 1 || deck === undefined || !isPlayableSavedDeck(deck)) return null;
+    return { kind: "saved", index, cards: [...deck.cards] };
   }
 
   return null;
 }
 
-/** Whether a value is well-formed without a loadout to check it against (URL params). */
+/** Whether a value is well-formed without the saved decks to check it against (URL params). */
 export function isDeckValue(value: string): boolean {
   if (value === RANDOM_VALUE) return true;
   if (value.startsWith(PRESET_PREFIX)) return presetById(value.slice(PRESET_PREFIX.length)) !== undefined;
   return /^saved:[1-9][0-9]*$/.test(value);
 }
 
-/** Whether the route may start a game from this value alone, with no loadout (`?deck=` autostart). */
+/** Whether the route may start a game from this value alone, with no saved decks (`?deck=` autostart). */
 export function isAutostartDeckValue(value: string): boolean {
   return value === RANDOM_VALUE || (value.startsWith(PRESET_PREFIX) && isDeckValue(value));
 }
 
 type DeckOption = { value: string; label: string; disabled: boolean };
 
-/** The setup `<select>`'s options, in order: random, each preset, then each saved deck. */
-export function deckOptions(saved: readonly string[][] | null): DeckOption[] {
+/**
+ * A saved deck's option label: its name, and for one that is not complete, why it cannot be picked
+ * ("Aggro (12 of 20 cards, not complete)").
+ */
+export function savedDeckLabel(deck: PracticeSavedDeck): string {
+  if (isPlayableSavedDeck(deck)) return deck.name;
+  return `${deck.name} (${String(deck.cards.length)} of ${String(DECK_SIZE)} cards, not complete)`;
+}
+
+/**
+ * The setup `<select>`'s options, in order: random, each preset, then each saved deck by name, in
+ * the saved list's order. A deck that is not complete is listed, disabled, with the reason.
+ */
+export function deckOptions(saved: readonly PracticeSavedDeck[] | null): DeckOption[] {
   const options: DeckOption[] = [{ value: RANDOM_VALUE, label: "Random deck", disabled: false }];
   for (const preset of PRACTICE_PRESETS) {
     options.push({ value: `${PRESET_PREFIX}${preset.id}`, label: preset.name, disabled: false });
   }
   if (saved !== null) {
-    saved.forEach((cards, i) => {
-      const index = i + 1;
+    saved.forEach((deck, i) => {
       options.push({
-        value: `${SAVED_PREFIX}${String(index)}`,
-        label: cards.length === 0 ? `Saved deck ${String(index)} (empty)` : `Saved deck ${String(index)} (${String(cards.length)} cards)`,
-        disabled: cards.length === 0,
+        value: `${SAVED_PREFIX}${String(i + 1)}`,
+        label: savedDeckLabel(deck),
+        disabled: !isPlayableSavedDeck(deck),
       });
     });
   }

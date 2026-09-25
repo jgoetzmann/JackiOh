@@ -1,6 +1,6 @@
 #!/bin/sh
-# Apply the four migrations to a throwaway Postgres and assert the invariants of
-# SPEC §9.1 and §9.4 against a real database.
+# Apply every migration (0001-0009) to a throwaway Postgres and assert the
+# invariants of SPEC §9.1, §9.4 and §9.5 against a real database.
 #
 #   pnpm test:sql            # or: sh apps/server/test/sql/run.sh
 #
@@ -22,7 +22,20 @@
 # 00_supabase_stub.sql stands in for the Supabase-managed pieces the migrations
 # reference (the `anon`/`authenticated`/`service_role` roles, `auth.users` and
 # `auth.uid()`), so a plain postgres image is enough. It is never applied to a
-# real project — Supabase provides all of it.
+# real project — Supabase provides all of it. 0005 and 0006 need nothing more
+# from it: 0005 grants service_role what the stub already grants (a GRANT that
+# is already held is a no-op), and 0006 only replaces a function body.
+#
+# The migrations go in two batches with a seed between them, because R254 is a
+# DATA migration: 0007 turns every loadout that exists when it runs into three
+# decks and a trio, so there has to be a loadout for it to find. 03b seeds one
+# — through 0003's own app.save_loadout, as a player of the old server saved
+# it — after 0001-0006 and before 0007-0009, exactly the order a database that
+# predates 0007 sees. 04 then checks what 0007 made of it.
+#
+# The CONTAINER name is fixed so a run can be inspected afterwards; the script
+# removes a previous container of that name before it starts, so never point it
+# at a name another tool uses.
 set -e
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
@@ -57,10 +70,13 @@ done
 
 $PSQL -d jackioh -f /tmp/00_supabase_stub.sql >/dev/null
 
-echo "--- migrations ---"
-for f in 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches; do
-  printf '%s: ' "$f"
-  out=$($PSQL -d jackioh -f "/tmp/$f.sql" 2>&1 |
+# One migration file, applied the way src/db/migrate.ts applies it: inside a
+# transaction of its own, so a file lands whole or not at all. "Clean" means
+# psql said nothing but the expected "does not exist, skipping" notices of a
+# drop-if-exists on a first run.
+apply_migration() {
+  printf '%s: ' "$1"
+  out=$($PSQL -d jackioh -1 -f "/tmp/$1.sql" 2>&1 |
     grep -v "does not exist, skipping" | grep -v "^$" || true)
   if [ -z "$out" ]; then
     echo "clean"
@@ -69,9 +85,36 @@ for f in 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches; d
     echo "$out"
     failed=1
   fi
+}
+
+echo "--- migrations 0001-0006 ---"
+for f in 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches \
+         0005_service_role_reads_auth_users 0006_redeem_ip_lock; do
+  apply_migration "$f"
 done
 
-for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle; do
+echo "--- 03b: a loadout saved before 0007 (R254's input) ---"
+if ! $PSQL -d jackioh -f /tmp/03b_legacy_loadout_seed.sql; then
+  echo "!!! 03b_legacy_loadout_seed: the legacy loadout could not be seeded"
+  failed=1
+fi
+
+echo "--- migrations 0007-0009 ---"
+for f in 0007_decks_and_trios 0008_queue_modes 0009_series; do
+  apply_migration "$f"
+done
+
+# A migration directory with a file this list does not name is a migration no
+# check ever ran against. Refuse it rather than pass without it.
+for f in "$REPO"/apps/server/src/db/migrations/*.sql; do
+  name=$(basename "$f" .sql)
+  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series " in
+    *" $name "*) ;;
+    *) echo "!!! migration $name is not applied by this script; add it above"; failed=1 ;;
+  esac
+done
+
+for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle 04_decks_and_series; do
   echo "--- $f ---"
   status=0
   out=$(docker exec "$CONTAINER" psql -U postgres -q -v ON_ERROR_STOP=1 \
@@ -82,7 +125,7 @@ for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle; do
     failed=1
   fi
   # A `raise notice 'FAIL ...'` leaves psql's exit status at 0, so the text would be
-  # the only signal. All three files raise instead, which is why the exit-status
+  # the only signal. All four files raise instead, which is why the exit-status
   # check above is the primary gate; this grep is the backstop for a check that ever
   # regresses to a notice.
   if printf '%s\n' "$out" | grep -E 'FAIL|UNEXPECTED' >/dev/null 2>&1; then

@@ -1,0 +1,256 @@
+/* The lobby (routes/play.tsx), the series screen (routes/series.tsx) and the board's series banner
+   (routes/SeriesBanner.tsx).
+
+   SCOPED ON PURPOSE, like index.css's shell chrome: every rule sits under `.lobby`, `.series` or
+   `.series-banner`, and nothing is added to :root. The board's layout is a pixel measurement
+   (index.css's header), and the banner is the one piece that shares a screen with it, so it only
+   sets its own box. */
+
+/* --- the lobby ---------------------------------------------------------------------------- */
+
+.lobby .lobby-card {
+  max-width: 60ch;
+}
+
+.lobby .lobby-modes {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.lobby .lobby-modes__legend {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.lobby .lobby-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lobby .lobby-mode[data-selected="true"] {
+  border-color: var(--selected);
+  background: color-mix(in srgb, var(--selected) 8%, var(--bg-sunken));
+}
+
+.lobby .lobby-mode input {
+  margin: 3px 0 0;
+  accent-color: var(--selected);
+  flex: 0 0 auto;
+}
+
+.lobby .lobby-mode__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lobby .lobby-mode__name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.lobby .lobby-mode__hint {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.lobby .lobby-select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 44px;
+  max-width: 100%;
+}
+
+.lobby .lobby-note,
+.lobby .lobby-population {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.lobby .lobby-verdict {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.lobby .lobby-verdict[data-ready="true"] {
+  border-color: var(--legal);
+  color: var(--legal);
+  font-weight: 700;
+}
+
+.lobby .lobby-verdict[data-ready="false"] {
+  border-color: var(--opponent);
+}
+
+.lobby .lobby-verdict ul,
+.lobby .lobby-issues {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.lobby .lobby-verdict__lead {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.lobby .lobby-room-mode {
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* --- the series screen -------------------------------------------------------------------- */
+
+.series .series-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 64ch;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-raised);
+}
+
+.series .series-panel h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.series .series-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.series .series-score__first {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.series .series-open {
+  align-self: flex-start;
+  font-size: 17px;
+}
+
+.series .series-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.series .series-decks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.series .series-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+
+.series .series-deck[data-picked="true"] {
+  border-color: var(--selected);
+  box-shadow: 0 0 0 1px var(--selected);
+}
+
+.series .series-deck[data-played="true"] {
+  opacity: 0.5;
+}
+
+.series .series-deck__name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.series .series-deck__meta {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.series .series-history {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.series .series-history [data-result="win"] .series-history__result {
+  color: var(--legal);
+}
+
+.series .series-history [data-result="loss"] .series-history__result {
+  color: var(--opponent);
+}
+
+.series .series-result[data-outcome="win"] .series-result__word {
+  color: #fcd34d;
+}
+
+.series .series-result[data-outcome="loss"] .series-result__word {
+  color: #f87171;
+}
+
+.series .series-result__word {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+/* --- the board's series banner -------------------------------------------------------------- */
+
+.series-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  font-size: 13px;
+}
+
+.series-banner__score {
+  font-weight: 700;
+}
+
+.series-banner a.series-banner__continue {
+  font-weight: 700;
+}

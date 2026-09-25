@@ -520,7 +520,10 @@ begin
       'FAIL (CHECK 9): % of 2 players are marked in the match — SPEC §9.5 needs both, or a player can queue twice',
       n;
   end if;
-  if exists (select 1 from public.profiles where current_match_id is distinct from v_match) then
+  -- "Some other match", not "not this one": 03b's legacy profile (04's R254 input) is in no
+  -- match at all, and that is not what this guards against.
+  if exists (select 1 from public.profiles
+              where current_match_id is not null and current_match_id <> v_match) then
     raise exception 'FAIL (CHECK 9): a profile is marked in some other match';
   end if;
 end $$;

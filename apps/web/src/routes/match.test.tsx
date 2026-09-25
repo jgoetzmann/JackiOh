@@ -12,7 +12,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 import type { ActionBody } from "@jackioh/shared";
 
-import { MULLIGAN_CLOCK_MS } from "../../../server/src/config.ts";
+import { MULLIGAN_CLOCK_MS, SERIES_MAX_GAMES, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
+
 import type { SocketLike } from "../game/net.ts";
 import { baseView } from "../test/fixtures.ts";
 import MatchRoute, { withoutToken } from "./match.tsx";
@@ -210,6 +211,87 @@ describe("the networked board", () => {
     expect(handle?.seat).toBe("p1");
     // And no seed: the server never sends one, because (seed, log) is the library order (§9.3).
     expect(handle?.seed).toBe("");
+  });
+});
+
+describe("the series banner on a series game (R259)", () => {
+  /** A Best-of-3 game's series, as `GET /api/matches/:id/series` answers it. */
+  function seriesAnswer(over: boolean): Record<string, unknown> {
+    const decks = [0, 1, 2].map((slot) => ({ slot, name: `Deck ${String(slot + 1)}`, cards: [], played: slot === 0 }));
+    return {
+      series: {
+        id: "series-1",
+        status: over ? "picking" : "playing",
+        gameNo: over ? 2 : 1,
+        winsNeeded: SERIES_WINS_NEEDED,
+        maxGames: SERIES_MAX_GAMES,
+        pickDeadline: null,
+        now: 0,
+        currentMatchId: over ? null : "m-1",
+        you: { seat: "p1", wins: over ? 1 : 0, trioName: "Main trio", decks, pick: null },
+        opponent: { wins: 0, decks: decks.map(({ slot, played }) => ({ slot, played })), picked: false },
+        games: [],
+        result: null,
+      },
+    };
+  }
+
+  it("R259 shows the score, and once the game is over the way on to the next game", async () => {
+    let gameOver = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              JSON.stringify(url.includes("/api/matches/m-1/series") ? seriesAnswer(gameOver) : { version: "v1", defs: {} }),
+            ),
+        } as unknown as Response),
+      ),
+    );
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+
+    const banner = await screen.findByTestId("series-banner");
+    expect(banner).toHaveTextContent("You 0 – 0 Opponent");
+    expect(screen.queryByTestId("series-banner-continue")).toBeNull();
+
+    gameOver = true;
+    act(() => {
+      live().onmessage?.({
+        data: JSON.stringify({
+          type: "view",
+          view: baseView({ viewer: "p1", active: "p1", result: { winner: "p1", reason: "hero-death" } }),
+        }),
+      });
+    });
+
+    const next = await screen.findByTestId("series-banner-continue");
+    expect(next).toHaveTextContent("Continue to game 2");
+    expect(next).toHaveAttribute("href", "/series/series-1");
+    expect(screen.getByTestId("series-banner")).toHaveTextContent("You 1 – 0 Opponent");
+  });
+
+  it("shows no banner on a game that is not in a series", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve(JSON.stringify(url.includes("/series") ? { series: null } : { version: "v1", defs: {} })),
+        } as unknown as Response),
+      ),
+    );
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId("series-banner")).toBeNull();
   });
 });
 
