@@ -445,3 +445,64 @@ export function checkTrioDraft(input: TrioDraftInput): DraftIssue<TrioDraftRule>
   }
   return issues;
 }
+
+// --- Room for an imported trio (R340) -------------------------------------------------------
+
+/**
+ * R340: what a trio import would add to a profile, against what it has and the caps it lives
+ * under. The caps are the caller's config (`MAX_SAVED_DECKS`, `MAX_SAVED_TRIOS`), handed in like
+ * `nameMaxLength`, so this package states no number of its own.
+ */
+export type ImportRoomInput = {
+  /** What the profile has saved now. */
+  saved: { decks: number; trios: number };
+  /** The most it may keep. */
+  limits: { decks: number; trios: number };
+  /** What the import would make: the code's decks, and the trio. */
+  adding: { decks: number; trios: number };
+};
+
+/**
+ * `ok`, or exactly how far short the profile is: how many decks and trios it must delete, and one
+ * sentence saying so that the workshop and the server both show (R340: an import that would pass a
+ * cap says how many slots it needs and makes nothing).
+ */
+export type ImportRoom =
+  | { ok: true }
+  | { ok: false; decksShort: number; triosShort: number; message: string };
+
+function counted(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function free(count: number, what: string): string {
+  return count <= 0 ? `no free ${what} slot` : counted(count, `free ${what} slot`, `free ${what} slots`);
+}
+
+/** R340: whether an import fits under both caps, and the sentence when it does not. */
+export function checkImportRoom(input: ImportRoomInput): ImportRoom {
+  const { saved, limits, adding } = input;
+  const freeDecks = Math.max(0, limits.decks - saved.decks);
+  const freeTrios = Math.max(0, limits.trios - saved.trios);
+  const decksShort = Math.max(0, adding.decks - freeDecks);
+  const triosShort = Math.max(0, adding.trios - freeTrios);
+  if (decksShort === 0 && triosShort === 0) return { ok: true };
+
+  const needs: string[] = [];
+  const has: string[] = [];
+  const remove: string[] = [];
+  if (decksShort > 0) {
+    needs.push(counted(adding.decks, "free deck slot", "free deck slots"));
+    has.push(free(freeDecks, "deck"));
+    remove.push(counted(decksShort, "deck", "decks"));
+  }
+  if (triosShort > 0) {
+    needs.push(counted(adding.trios, "free trio slot", "free trio slots"));
+    has.push(free(freeTrios, "trio"));
+    remove.push(counted(triosShort, "trio", "trios"));
+  }
+  const message =
+    `Importing this trio needs ${needs.join(" and ")}, and you have ${has.join(" and ")}. ` +
+    `Delete ${remove.join(" and ")}, then import it again.`;
+  return { ok: false, decksShort, triosShort, message };
+}

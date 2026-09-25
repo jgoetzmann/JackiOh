@@ -14,6 +14,8 @@
  *  - R250: a save checks structure only (D1–D4), at most `MAX_SAVED_DECKS` decks;
  *  - R252: T1–T3, at most `MAX_SAVED_TRIOS` trios, a deleted deck empties its slots;
  *  - R256: `PUT` is an idempotent upsert keyed by the client's id;
+ *  - R341: a trio import is checked like every save and written all or nothing, under both caps
+ *    (R340);
  *  - R165: a profile with nothing saved is refused as a deck failure, not a missing resource.
  */
 
@@ -28,7 +30,7 @@ import {
   type TrioView,
 } from "../../src/api/decks";
 import { ApiError, createRouter, type Router } from "../../src/api/http";
-import { checkDeckDraft, checkTrioDraft, normalizeName } from "../../src/api/loadout-validator";
+import { checkDeckDraft, checkImportRoom, checkTrioDraft, normalizeName } from "../../src/api/loadout-validator";
 import type { FrozenTrio, LoadoutValidateInput, SavedDeck, SeriesRow } from "../../src/api/ports";
 import {
   DECK_NAME_MAX_LENGTH,
@@ -82,6 +84,24 @@ function putTrio(body: Record<string, unknown>, id = uuid(101), bearer = token):
 
 function deckBody(target: TestDeps, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { name: "Aggro", cards: cards(target, 4), catalogVersion: target.catalog.version, ...overrides };
+}
+
+/** A trio import's body (R341): three decks of disjoint cards, ids from `base`, and the trio. */
+function importBody(target: TestDeps, base = 500, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    catalogVersion: target.catalog.version,
+    trio: { id: uuid(base), name: "Shared trio" },
+    slots: [0, 1, 2].map((slot) => ({
+      id: uuid(base + 1 + slot),
+      name: `Imported ${String(slot + 1)}`,
+      cards: cards(target, 3, slot * 3),
+    })),
+    ...overrides,
+  };
+}
+
+function postImport(body: Record<string, unknown>, bearer = token): Promise<Response> {
+  return router(jsonRequest("POST", "/api/trios/import", body, { token: bearer }));
 }
 
 async function getDecks(bearer = token): Promise<DecksBody> {
@@ -471,6 +491,165 @@ describe("saved trios (§9.4, R252)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// A trio import (R340, R341)
+// ---------------------------------------------------------------------------
+
+describe("a trio import (§9.4, R340, R341)", () => {
+  type ImportAnswer = { decks: DeckView[]; trio: TrioView };
+
+  it("R341 makes the code's decks and the trio naming them, in one request", async () => {
+    const answer = await postImport(importBody(deps));
+    expect(answer.status).toBe(200);
+    const body = await readJson<ImportAnswer>(answer);
+    expect(body.decks.map((deck) => [deck.id, deck.name, deck.cards])).toEqual([
+      [uuid(501), "Imported 1", cards(deps, 3, 0)],
+      [uuid(502), "Imported 2", cards(deps, 3, 3)],
+      [uuid(503), "Imported 3", cards(deps, 3, 6)],
+    ]);
+    expect(body.trio).toMatchObject({ id: uuid(500), name: "Shared trio", deckIds: [uuid(501), uuid(502), uuid(503)] });
+    const listed = await getDecks();
+    expect(listed.decks.map((deck) => deck.id)).toEqual([uuid(501), uuid(502), uuid(503)]);
+    expect(listed.trios.map((trio) => trio.id)).toEqual([uuid(500)]);
+  });
+
+  it("R341 keeps an empty slot empty, unowned cards and cards the decks share: drafts, judged at queue", async () => {
+    const shared = cards(deps, 2, 0);
+    const body = importBody(deps, 600, {
+      slots: [
+        { id: uuid(601), name: "One", cards: shared },
+        null,
+        { id: uuid(603), name: "Three", cards: shared },
+      ],
+    });
+    const answer = await postImport(body);
+    expect(answer.status).toBe(200);
+    const saved = await readJson<ImportAnswer>(answer);
+    expect(saved.trio.deckIds).toEqual([uuid(601), null, uuid(603)]);
+    expect(saved.decks.map((deck) => deck.cards)).toEqual([shared, shared]);
+  });
+
+  it("R341 is idempotent: the same ids again update what the first attempt made and take no new slot", async () => {
+    expect((await postImport(importBody(deps))).status).toBe(200);
+    for (let n = 0; n < MAX_SAVED_DECKS - 3; n += 1) {
+      expect((await putDeck(deckBody(deps, { name: `Filler ${String(n)}` }), uuid(700 + n))).status).toBe(200);
+    }
+    // At the deck cap now, and the retry still lands: its decks are already this profile's.
+    const retry = await postImport(importBody(deps));
+    expect(retry.status).toBe(200);
+    const listed = await getDecks();
+    expect(listed.decks).toHaveLength(MAX_SAVED_DECKS);
+    expect(listed.trios).toHaveLength(1);
+  });
+
+  it("R340 refuses an import past the deck cap with exactly the slots it needs, and writes nothing", async () => {
+    for (let n = 0; n < MAX_SAVED_DECKS - 1; n += 1) {
+      expect((await putDeck(deckBody(deps, { name: `Deck ${String(n)}` }), uuid(700 + n))).status).toBe(200);
+    }
+    const answer = await postImport(importBody(deps));
+    expect(answer.status).toBe(409);
+    const body = await readJson<ErrorBody>(answer);
+    const room = checkImportRoom({
+      saved: { decks: MAX_SAVED_DECKS - 1, trios: 0 },
+      limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS },
+      adding: { decks: 3, trios: 1 },
+    });
+    expect(room.ok).toBe(false);
+    expect(body.error).toEqual({
+      code: "conflict",
+      message: `${room.ok ? "" : room.message} Nothing was imported.`,
+      details: { decksShort: 2, triosShort: 0, limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS } },
+    });
+    const listed = await getDecks();
+    expect(listed.decks).toHaveLength(MAX_SAVED_DECKS - 1);
+    expect(listed.trios).toEqual([]);
+  });
+
+  it("R340 refuses an import past the trio cap the same way", async () => {
+    for (let n = 0; n < MAX_SAVED_TRIOS; n += 1) {
+      expect((await putTrio({ name: `Trio ${String(n)}`, deckIds: [null, null, null] }, uuid(800 + n))).status).toBe(200);
+    }
+    const answer = await postImport(importBody(deps));
+    expect(answer.status).toBe(409);
+    expect((await readJson<ErrorBody>(answer)).error.details).toMatchObject({ decksShort: 0, triosShort: 1 });
+    expect(deps.store.tables.decks).toEqual([]);
+  });
+
+  it("R341 rolls every deck back when a later write fails, so a failure part-way leaves nothing", async () => {
+    let upserts = 0;
+    deps.store.onCall = (method) => {
+      if (method === "trios.upsert") throw new Error("the database went away");
+      if (method === "decks.upsert") upserts += 1;
+    };
+    const answer = await postImport(importBody(deps));
+    expect(answer.status).toBe(500);
+    expect(upserts).toBe(3);
+    deps.store.onCall = () => undefined;
+    expect(deps.store.tables.decks).toEqual([]);
+    expect(deps.store.tables.trios).toEqual([]);
+  });
+
+  it("R341 checks what the client sends like any save: D1–D4 per deck, T1 for the trio, the catalog, the shape", async () => {
+    const unknownCard = await postImport(
+      importBody(deps, 500, {
+        slots: [
+          { id: uuid(501), name: "Fine", cards: cards(deps, 2) },
+          { id: uuid(502), name: "Bad", cards: ["core-999"] },
+          null,
+        ],
+      }),
+    );
+    expect(unknownCard.status).toBe(400);
+    const issue = draftIssues(deps, "Bad", ["core-999"])[0];
+    expect((await readJson<ErrorBody>(unknownCard)).error.message).toBe(`Deck 2 (“Bad”): ${issue?.message ?? ""}`);
+
+    const noName = await postImport(importBody(deps, 500, { trio: { id: uuid(500), name: "   " } }));
+    expect(noName.status).toBe(400);
+    const trioIssue = checkTrioDraft({ name: "", deckIds: [null, null, null], nameMaxLength: DECK_NAME_MAX_LENGTH })[0];
+    expect((await readJson<ErrorBody>(noName)).error.message).toBe(trioIssue?.message);
+
+    const stale = await postImport(importBody(deps, 500, { catalogVersion: "stale" }));
+    expect(stale.status).toBe(409);
+    expect((await readJson<ErrorBody>(stale)).error.code).toBe("update_required");
+
+    const twice = await postImport(
+      importBody(deps, 500, {
+        slots: [
+          { id: uuid(501), name: "A", cards: [] },
+          { id: uuid(501), name: "B", cards: [] },
+          null,
+        ],
+      }),
+    );
+    expect(twice.status).toBe(400);
+    expect((await readJson<ErrorBody>(twice)).error.message).toBe(
+      checkTrioDraft({ name: "T", deckIds: [uuid(501), uuid(501), null], nameMaxLength: DECK_NAME_MAX_LENGTH })[0]?.message,
+    );
+
+    for (const bad of [
+      { ...importBody(deps), slots: [null, null] },
+      { ...importBody(deps), slots: "three" },
+      { ...importBody(deps), trio: { id: "not-a-uuid", name: "T" } },
+      { ...importBody(deps), trio: null },
+      { ...importBody(deps), slots: [{ id: uuid(1), name: 5, cards: [] }, null, null] },
+      { ...importBody(deps), slots: [{ id: uuid(1), name: "N", cards: [7] }, null, null] },
+    ]) {
+      const refused = await postImport(bad);
+      expect(refused.status).toBe(400);
+    }
+    expect(deps.store.tables.decks).toEqual([]);
+    expect(deps.store.tables.trios).toEqual([]);
+  });
+
+  it("R341 answers ids another profile owns as missing, and writes nothing of the import", async () => {
+    expect((await putDeck(deckBody(deps), uuid(502), otherToken)).status).toBe(200);
+    const answer = await postImport(importBody(deps));
+    expect(answer.status).toBe(404);
+    expect(deps.store.tables.decks.map((deck) => deck.id)).toEqual([uuid(502)]);
+    expect(deps.store.tables.trios).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // §9.4's gate
 // ---------------------------------------------------------------------------
 
@@ -482,6 +661,7 @@ describe("the routes (§9.4: a pending account sees no decks)", () => {
       "PUT /api/decks/:id",
       "DELETE /api/decks/:id",
       "PUT /api/trios/:id",
+      "POST /api/trios/import",
       "DELETE /api/trios/:id",
     ]);
     expect(routes.every((entry) => entry.auth === "active")).toBe(true);
@@ -497,6 +677,7 @@ describe("the routes (§9.4: a pending account sees no decks)", () => {
       await router(jsonRequest("DELETE", `/api/decks/${uuid(1)}`, undefined, { token: pending })),
       await putTrio({ name: "T", deckIds: [null, null, null] }, uuid(101), pending),
       await router(jsonRequest("DELETE", `/api/trios/${uuid(101)}`, undefined, { token: pending })),
+      await router(jsonRequest("POST", "/api/trios/import", importBody(deps), { token: pending })),
     ];
     for (const response of responses) {
       expect(response.status).toBe(403);

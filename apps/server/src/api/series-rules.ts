@@ -1,5 +1,12 @@
 /**
- * The Best-of-3 series as pure transitions over `SeriesRow` (SPEC §9.5, R259–R263).
+ * The Conquest series as pure transitions over `SeriesRow` (SPEC §9.5, R330–R337, with R262–R264).
+ *
+ * Conquest is the trio mode (the queue's `bo3`, called Best of 3 before R330): a player takes the
+ * series by winning one game with EACH of their three decks. A deck that has won is locked for the
+ * rest of the series; a deck that lost or drew may be picked again (R330). Before each game both
+ * players pick at once, from their decks that have not won yet, and a pick is sealed: final once
+ * made, and hidden from the other side until both are in (R331). A player with one deck left has it
+ * picked for them (R332).
  *
  * Every rule of a series lives here and nowhere else: who may pick what and when, when a game
  * begins and which seat goes first, what a finished game does to the score, when the series is
@@ -16,6 +23,12 @@
  *
  * A transition that does not apply throws `SeriesRefusal`, with a sentence a player can read;
  * `series.ts` turns it into an HTTP answer.
+ *
+ * THE ROW IS THE ONE R259 WROTE. Which decks have won is not stored: it is read off `games` (the
+ * slot each side played and who won), and `SeriesSide.wins` stays the count of games won, which a
+ * locked deck makes the same number (a deck wins at most once). So a series begun before Conquest
+ * shipped reads as a Conquest series with the games it has played (R337), and no migration was
+ * needed.
  */
 
 import type { GameOverReason } from "@jackioh/shared";
@@ -43,13 +56,6 @@ const MS_PER_SECOND = 1000;
 /** Games are numbered from one (`SeriesGame.gameNo`). */
 const FIRST_GAME = 1;
 
-/**
- * A trio has one deck per game a series can play: a deck is played at most once in a series
- * (R259), so a full series plays all three. `test/api/series-rules.test.ts` pins
- * `SERIES_MAX_GAMES` to the validator's `TRIO_DECKS`, which is why this may stand for both.
- */
-const TRIO_SLOTS = SERIES_MAX_GAMES;
-
 const SEATS: readonly [SeriesSeat, SeriesSeat] = ["p1", "p2"];
 
 // ---------------------------------------------------------------------------
@@ -66,9 +72,11 @@ export type SeriesView = {
   status: SeriesStatus;
   /** The game being picked for or played, or the last one played once the series is over. */
   gameNo: number;
+  /** R330: game wins that take the series — one with each deck of the trio. */
   winsNeeded: number;
+  /** R334: the most games a series plays. */
   maxGames: number;
-  /** Epoch ms the pick clock runs out (R260), or null outside the pick phase. */
+  /** Epoch ms the pick clock runs out (R333), or null outside the pick phase. */
   pickDeadline: number | null;
   /** The server's clock when it answered, so a countdown does not depend on the device's. */
   now: number;
@@ -78,15 +86,18 @@ export type SeriesView = {
     seat: SeriesSeat;
     wins: number;
     trioName: string;
-    decks: { slot: number; name: string; cards: string[]; played: boolean }[];
-    /** Your pick for the next game, or null. */
+    /** `won`: the deck has won a game in this series and is locked (R330). `games`: games it played. */
+    decks: { slot: number; name: string; cards: string[]; won: boolean; games: number }[];
+    /** Your sealed pick for the next game, or null (R331). */
     pick: number | null;
+    /** R332: your pick was made for you, because one deck is left that has not won. */
+    autoPick: boolean;
   };
   opponent: {
     wins: number;
-    /** Only which slots have been played: names and cards stay hidden (R259). */
-    decks: { slot: number; played: boolean }[];
-    /** Whether they have picked; never what. */
+    /** Only which slots have won: names, cards and picks stay hidden (R336). */
+    decks: { slot: number; won: boolean }[];
+    /** Whether their pick is in; never what (R331). */
     picked: boolean;
   };
   games: {
@@ -112,7 +123,7 @@ export type SeriesView = {
 // ---------------------------------------------------------------------------
 
 /**
- * Why a transition did not apply. The first four reach a player (`series.ts` maps them to 409 or
+ * Why a transition did not apply. The first five reach a player (`series.ts` maps them to 409 or
  * 400); the rest are the server calling a transition out of turn — a CAS retry that re-read a row
  * another writer had already moved, which the caller treats as "nothing to do".
  */
@@ -121,12 +132,14 @@ export type SeriesRefusalReason =
   | "not_picking"
   /** The series has ended. */
   | "over"
-  /** The pick clock has run out; the sweeper is about to settle the picks (R260). */
+  /** The pick clock has run out; the sweeper is about to settle the picks (R333). */
   | "pick_closed"
   /** The slot is not one of the trio's, or not a whole number. */
   | "slot_out_of_range"
-  /** The player has already played that deck in this series (R259). */
-  | "slot_played"
+  /** That deck has already won a game in this series, so it is locked (R330). */
+  | "slot_won"
+  /** This player's pick for the game is already in, and a pick is final (R331). */
+  | "pick_sealed"
   /** The pick clock has not run out yet. */
   | "pick_open"
   /** There is no game in play to end or to seat. */
@@ -172,33 +185,40 @@ function sideOf(series: SeriesRow, seat: SeriesSeat): SeriesSide {
   return series.sides[seatIndex(seat)];
 }
 
-/** The trio slots this seat has played (or is playing) in `games`. */
-function playedSlots(seat: SeriesSeat, games: readonly SeriesGame[]): Set<number> {
+/** How many decks this seat's trio holds: three, by L1, frozen at queue. */
+function slotCount(series: SeriesRow, seat: SeriesSeat): number {
+  return sideOf(series, seat).trio.decks.length;
+}
+
+/** R330: the trio slots whose deck has won a game for this seat — each one locked. */
+export function wonSlots(seat: SeriesSeat, games: readonly SeriesGame[]): Set<number> {
   const index = seatIndex(seat);
-  return new Set(games.map((game) => game.slots[index]));
+  return new Set(games.filter((game) => game.winner === seat).map((game) => game.slots[index]));
+}
+
+/** The slots this seat may still pick: every slot of its trio whose deck has not won (R330). */
+export function unwonSlots(series: SeriesRow, seat: SeriesSeat, games: readonly SeriesGame[] = series.games): number[] {
+  const won = wonSlots(seat, games);
+  const open: number[] = [];
+  for (let slot = 0; slot < slotCount(series, seat); slot += 1) {
+    if (!won.has(slot)) open.push(slot);
+  }
+  return open;
 }
 
 /**
- * R260: the deck a player who did not pick is given — their first unplayed slot in trio order —
- * or null when every deck has been played.
+ * R333: the deck a player who did not pick is given — their first deck in trio order that has not
+ * won — or null when every deck has won (the series is then already over).
  */
-export function firstUnplayed(seat: SeriesSeat, games: readonly SeriesGame[]): number | null {
-  const played = playedSlots(seat, games);
-  for (let slot = 0; slot < TRIO_SLOTS; slot += 1) {
-    if (!played.has(slot)) return slot;
-  }
-  return null;
-}
-
-function unplayedCount(seat: SeriesSeat, games: readonly SeriesGame[]): number {
-  return TRIO_SLOTS - playedSlots(seat, games).size;
+export function firstUnwon(series: SeriesRow, seat: SeriesSeat, games: readonly SeriesGame[] = series.games): number | null {
+  return unwonSlots(series, seat, games)[0] ?? null;
 }
 
 export function bothPicked(series: SeriesRow): boolean {
   return series.sides.every((side) => side.pick !== null);
 }
 
-/** R259: series `p1` goes first in odd games, `p2` in even ones. */
+/** R335: series `p1` goes first in odd games, `p2` in even ones, drawn games counted. */
 function firstSeatOf(gameNo: number): SeriesSeat {
   return gameNo % 2 === 1 ? "p1" : "p2";
 }
@@ -209,9 +229,15 @@ function gameInPlay(series: SeriesRow): SeriesGame | null {
   return series.status === "playing" && last !== undefined && last.winner === null ? last : null;
 }
 
+/** R332: a seat with exactly one deck left that has not won has its pick made for it. */
+function automaticPick(series: SeriesRow, seat: SeriesSeat): number | null {
+  const open = unwonSlots(series, seat);
+  return open.length === 1 ? (open[0] ?? null) : null;
+}
+
 /**
  * R262: series `p1`'s Elo score once the series is over — 1 for a series win, 0 for a loss, 0.5
- * for a series draw — or null while it is not over and when it was abandoned (unrated, R260).
+ * for a series draw — or null while it is not over and when it was abandoned (unrated, R333).
  */
 export function seriesScore(series: SeriesRow): 0 | 0.5 | 1 | null {
   if (series.status !== "over" || series.winner === null) return null;
@@ -236,19 +262,21 @@ function pickDeadlineFrom(now: number): number {
   return now + SERIES_PICK_SECONDS * MS_PER_SECOND;
 }
 
-/** Opens the pick phase for the next game under a freshly reserved match id (R263). */
-function openPicks(series: SeriesRow, matchId: string, now: number): void {
-  series.status = "picking";
-  series.nextMatchId = matchId;
-  series.pickDeadline = pickDeadlineFrom(now);
-  for (const side of series.sides) side.pick = null;
-}
-
-/** Records the next game from both picks and starts playing it (R259). Mutates `series`. */
+/**
+ * Records the next game from both picks and starts playing it (R331, R335). Mutates `series`.
+ * Refused when a pick is missing or names a deck that has won: both are guarded before a pick is
+ * stored, so this is the last word, not the first.
+ */
 function begin(series: SeriesRow): void {
   const [a, b] = series.sides;
   if (a.pick === null || b.pick === null) {
     refuse("picks_missing", "A game cannot start before both players have picked.");
+  }
+  for (const seat of SEATS) {
+    const pick = sideOf(series, seat).pick;
+    if (pick !== null && wonSlots(seat, series.games).has(pick)) {
+      refuse("slot_won", "That deck has already won a game in this series, so it is locked.");
+    }
   }
   const gameNo = series.games.length + FIRST_GAME;
   series.games.push({
@@ -265,7 +293,20 @@ function begin(series: SeriesRow): void {
   series.pickDeadline = null;
 }
 
-/** Ends the series. `winner` null is an abandoned series (R260). Mutates `series`. */
+/**
+ * Opens the pick phase for the next game under a freshly reserved match id (R263), with its clock
+ * running from `now` (R333). A seat with one deck left gets it picked for it (R332); when both have,
+ * there is nothing to choose and the game begins at once. Mutates `series`.
+ */
+function openPicks(series: SeriesRow, matchId: string, now: number): void {
+  series.status = "picking";
+  series.nextMatchId = matchId;
+  series.pickDeadline = pickDeadlineFrom(now);
+  for (const seat of SEATS) sideOf(series, seat).pick = automaticPick(series, seat);
+  if (bothPicked(series)) begin(series);
+}
+
+/** Ends the series. `winner` null is an abandoned series (R333, R263). Mutates `series`. */
 function end(series: SeriesRow, winner: SeriesSeat | "draw" | null, reason: SeriesEnd, now: number): void {
   series.status = "over";
   series.winner = winner;
@@ -284,14 +325,14 @@ export type NewSeriesInput = {
   seriesId: string;
   /** The match id `tickets.claimPair` or `rooms.claim` reserved: game 1's (R263). */
   firstMatchId: string;
-  /** Index 0 is series p1: the older ticket, or the room's host (R259). */
+  /** Index 0 is series p1: the older ticket, or the room's host (R335). */
   sides: [{ profileId: string; trio: FrozenTrio }, { profileId: string; trio: FrozenTrio }];
-  /** Each game's seed is `${seedBase}:${gameNo}` (R259). */
+  /** Each game's seed is `${seedBase}:${gameNo}` (R335). */
   seedBase: string;
   catalogVersion: string;
 };
 
-/** R259, R260, R263: a series in game 1's pick phase, its clock running from `now`. */
+/** R331, R333, R263: a series in game 1's pick phase, its clock running from `now`. */
 export function newSeries(input: NewSeriesInput, now: number): SeriesRow {
   const side = (entry: { profileId: string; trio: FrozenTrio }): SeriesSide => ({
     profileId: entry.profileId,
@@ -320,10 +361,11 @@ export function newSeries(input: NewSeriesInput, now: number): SeriesRow {
 }
 
 /**
- * R259: `seat` picks trio slot `slot` for the next game. A player may change their pick while the
- * other has not picked; the pick that completes both begins the game at once, so there is never a
- * moment where both picks stand and could be changed. Refused once the pick clock has run out
- * (R260), for a slot the trio does not have, and for a deck this player has already played.
+ * R331: `seat` picks trio slot `slot` for the next game. The pick is sealed: once it is in it is
+ * final (`pick_sealed`, which `series.ts` answers as a success when the same slot is sent again, so
+ * a retried request is harmless), and the other side learns only that it is in. The pick that
+ * completes both begins the game at once. Refused once the pick clock has run out (R333), for a slot
+ * the trio does not have, and for a deck that has already won in this series (R330).
  */
 export function pickDeck(series: SeriesRow, seat: SeriesSeat, slot: number, now: number): SeriesRow {
   assertPicking(series, "A game of this series is being played; pick your next deck when it ends.");
@@ -334,8 +376,11 @@ export function pickDeck(series: SeriesRow, seat: SeriesSeat, slot: number, now:
   if (!Number.isInteger(slot) || slot < 0 || slot >= side.trio.decks.length) {
     refuse("slot_out_of_range", "Pick one of the three decks in your trio.");
   }
-  if (playedSlots(seat, series.games).has(slot)) {
-    refuse("slot_played", "You have already played that deck in this series; pick another.");
+  if (wonSlots(seat, series.games).has(slot)) {
+    refuse("slot_won", "That deck has already won a game in this series, so it is locked; pick another.");
+  }
+  if (side.pick !== null) {
+    refuse("pick_sealed", "Your pick for this game is already in, and it is final.");
   }
 
   const next = copy(series);
@@ -344,7 +389,7 @@ export function pickDeck(series: SeriesRow, seat: SeriesSeat, slot: number, now:
   return stamp(next, series, now);
 }
 
-/** R259: both have picked, so the game begins: recorded, seated and `playing`. */
+/** R331: both have picked, so the game begins: recorded, seated and `playing`. */
 export function beginGame(series: SeriesRow, now: number): SeriesRow {
   assertPicking(series, "This game has already begun.");
   const next = copy(series);
@@ -353,11 +398,12 @@ export function beginGame(series: SeriesRow, now: number): SeriesRow {
 }
 
 /**
- * R261: the game in play ended. `winner` is the series seat that won it, or `"draw"`, which counts
- * for neither side — both decks are still spent. A side at `SERIES_WINS_NEEDED` takes the series
- * (`decided`); after `SERIES_MAX_GAMES` games without that, more wins takes it and equal wins is a
- * series draw (`exhausted`). Otherwise the next pick phase opens under `newMatchId` (R263), and
- * when each side has one deck left the picks are made for them and the game begins at once (R259).
+ * R330, R334: the game in play ended. `winner` is the series seat that won it — the deck it played
+ * is locked from now on — or `"draw"`, which counts for neither side and locks nothing. A side at
+ * `SERIES_WINS_NEEDED` wins has won with every deck and takes the series (`decided`). After
+ * `SERIES_MAX_GAMES` games without that, more wins takes it and equal wins is a series draw
+ * (`exhausted`). Otherwise the next pick phase opens under `newMatchId` (R263), with the picks made
+ * for a side that has one deck left (R332) — and when both have, the game begins at once.
  */
 export function gameEnded(
   series: SeriesRow,
@@ -383,19 +429,15 @@ export function gameEnded(
     end(next, p1.wins > p2.wins ? "p1" : p2.wins > p1.wins ? "p2" : "draw", "exhausted", now);
   } else {
     openPicks(next, newMatchId, now);
-    // R259: game 3's picks are automatic — each side has exactly one deck left.
-    if (SEATS.every((seat) => unplayedCount(seat, next.games) === 1)) {
-      for (const seat of SEATS) sideOf(next, seat).pick = firstUnplayed(seat, next.games);
-      begin(next);
-    }
   }
   return stamp(next, series, now);
 }
 
 /**
- * R260: the pick clock ran out. A player who has not picked gets their first unplayed deck in trio
- * order and the game begins; if neither has picked, the series is abandoned — no winner, unrated.
- * Refused before the deadline, so a stale sweep cannot close a pick phase that opened after it read.
+ * R333: the pick clock ran out. A player who has not picked gets their first deck in trio order that
+ * has not won, and the game begins; if neither has a pick in, the series is abandoned — no winner,
+ * unrated. A pick made for a player (R332) is a pick. Refused before the deadline, so a stale sweep
+ * cannot close a pick phase that opened after it read.
  */
 export function timeoutPicks(series: SeriesRow, now: number): SeriesRow {
   assertPicking(series, "A game of this series is being played.");
@@ -411,8 +453,8 @@ export function timeoutPicks(series: SeriesRow, now: number): SeriesRow {
   for (const seat of SEATS) {
     const side = sideOf(next, seat);
     if (side.pick !== null) continue;
-    const slot = firstUnplayed(seat, next.games);
-    if (slot === null) refuse("picks_missing", "Every deck of this trio has been played.");
+    const slot = firstUnwon(next, seat);
+    if (slot === null) refuse("picks_missing", "Every deck of this trio has already won.");
     side.pick = slot;
   }
   begin(next);
@@ -439,7 +481,7 @@ export function abandonUnstarted(series: SeriesRow, now: number): SeriesRow {
 }
 
 /**
- * R261: `seat` leaves the series between games and the other side wins it (`forfeit`). During a
+ * R334: `seat` leaves the series between games and the other side wins it (`forfeit`). During a
  * game the way out is to concede that game, so a forfeit is refused while one is being played.
  */
 export function forfeitSeries(series: SeriesRow, seat: SeriesSeat, now: number): SeriesRow {
@@ -476,7 +518,7 @@ export function rateSeries(series: SeriesRow, before: readonly [number, number])
 // ---------------------------------------------------------------------------
 
 /**
- * R259: the two seats and the seed of the game in play. The match's `p1` is the side that goes
+ * R335: the two seats and the seed of the game in play. The match's `p1` is the side that goes
  * first in this game (series `p1` in odd games, `p2` in even ones), each playing the deck in the
  * trio slot they picked, and the seed is `${seedBase}:${gameNo}`.
  */
@@ -497,15 +539,26 @@ export function gameSeats(series: SeriesRow): { seats: [MatchSeat, MatchSeat]; s
   };
 }
 
+/**
+ * R331: whether `slot` is the pick `seat` already made for the game now under way or waiting — what
+ * a retried pick request finds after its first attempt landed. `series.ts` answers such a retry as
+ * the success it was, rather than as a refusal the player did nothing to earn.
+ */
+export function alreadyPicked(series: SeriesRow, seat: SeriesSeat, slot: number): boolean {
+  if (series.status === "picking") return sideOf(series, seat).pick === slot;
+  const game = gameInPlay(series);
+  return game !== null && game.slots[seatIndex(seat)] === slot;
+}
+
 // ---------------------------------------------------------------------------
 // The projection
 // ---------------------------------------------------------------------------
 
 /**
- * What one player may see of a series (R259): all of their own trio, and of the opponent's only
- * which slots have been played and whether a pick is in — never its slot before both have picked
- * (by then the game has begun and it is history), never a deck name, never a card. Null for a
- * profile that is not one of the two players.
+ * What one player may see of a series (R336): all of their own trio, and of the opponent's only
+ * which slots have won and whether a pick is in — never its slot before both have picked (by then
+ * the game has begun and it is history), never a deck name, never a card. Null for a profile that is
+ * not one of the two players.
  */
 export function projectSeries(series: SeriesRow, viewerProfileId: string, now: number): SeriesView | null {
   const seat = seatOf(series, viewerProfileId);
@@ -514,16 +567,14 @@ export function projectSeries(series: SeriesRow, viewerProfileId: string, now: n
   const theirs = seatIndex(otherSeat(seat));
   const you = series.sides[mine];
   const opponent = series.sides[theirs];
-  const myPlayed = playedSlots(seat, series.games);
-  const theirPlayed = playedSlots(otherSeat(seat), series.games);
+  const myWon = wonSlots(seat, series.games);
+  const theirWon = wonSlots(otherSeat(seat), series.games);
+  const picking = series.status === "picking";
 
   const outcomeOf = (winner: SeriesSeat | "draw"): "win" | "loss" | "draw" =>
     winner === "draw" ? "draw" : winner === seat ? "win" : "loss";
 
-  const gameNo =
-    series.status === "picking"
-      ? series.games.length + FIRST_GAME
-      : Math.max(series.games.length, FIRST_GAME);
+  const gameNo = picking ? series.games.length + FIRST_GAME : Math.max(series.games.length, FIRST_GAME);
 
   return {
     id: series.id,
@@ -531,7 +582,7 @@ export function projectSeries(series: SeriesRow, viewerProfileId: string, now: n
     gameNo,
     winsNeeded: SERIES_WINS_NEEDED,
     maxGames: SERIES_MAX_GAMES,
-    pickDeadline: series.status === "picking" ? series.pickDeadline : null,
+    pickDeadline: picking ? series.pickDeadline : null,
     now,
     currentMatchId: series.status === "playing" ? series.nextMatchId : null,
     you: {
@@ -542,14 +593,16 @@ export function projectSeries(series: SeriesRow, viewerProfileId: string, now: n
         slot,
         name: deck.name,
         cards: [...deck.cards],
-        played: myPlayed.has(slot),
+        won: myWon.has(slot),
+        games: series.games.filter((game) => game.slots[mine] === slot).length,
       })),
-      pick: series.status === "picking" ? you.pick : null,
+      pick: picking ? you.pick : null,
+      autoPick: picking && you.pick !== null && automaticPick(series, seat) === you.pick,
     },
     opponent: {
       wins: opponent.wins,
-      decks: opponent.trio.decks.map((_deck, slot) => ({ slot, played: theirPlayed.has(slot) })),
-      picked: series.status === "picking" && opponent.pick !== null,
+      decks: opponent.trio.decks.map((_deck, slot) => ({ slot, won: theirWon.has(slot) })),
+      picked: picking && opponent.pick !== null,
     },
     games: series.games.map((game) => ({
       gameNo: game.gameNo,

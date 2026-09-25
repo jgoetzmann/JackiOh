@@ -1,13 +1,13 @@
 /**
- * The Best-of-3 series through the server (`src/api/series.ts`, `src/api/results.ts`, SPEC §9.5,
- * R259–R262). `series-rules.test.ts` holds the exhaustive rule tables; this file shows each ruling
+ * The Conquest series through the server (`src/api/series.ts`, `src/api/results.ts`, SPEC §9.5,
+ * R330–R336, R259–R262). `series-rules.test.ts` holds the exhaustive rule tables; this file shows each ruling
  * holding end to end: a series made the way pairing makes it (`startSeries`), picks and forfeits
  * through the router, games started through the match directory, and games finished through the
  * same `createRecordResult` the actor calls.
  *
  * The match directory here writes the match row (`createFakeMatchDirectory(store)`), as the real
  * registry does, so "the game started" is a row in the store and a result can finish it. Time is the
- * manual clock, so the pick clock (R260) is driven by `timers.advance` and the sweeper.
+ * manual clock, so the pick clock (R333) is driven by `timers.advance` and the sweeper.
  */
 
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ import {
   sweepSeries,
 } from "../../src/api/series";
 import type { SeriesView } from "../../src/api/series-rules";
-import { SERIES_PICK_SECONDS, SERIES_SWEEP_INTERVAL_SECONDS, eloUpdate } from "../../src/config";
+import { SERIES_MAX_GAMES, SERIES_PICK_SECONDS, SERIES_SWEEP_INTERVAL_SECONDS, eloUpdate } from "../../src/config";
 import type { GameOverReason } from "@jackioh/shared";
 import {
   createFakeMatchDirectory,
@@ -200,9 +200,9 @@ describe("R259 — the series through the API", () => {
     expect(bobSees.opponent).toEqual({
       wins: 0,
       decks: [
-        { slot: 0, played: false },
-        { slot: 1, played: false },
-        { slot: 2, played: false },
+        { slot: 0, won: false },
+        { slot: 1, won: false },
+        { slot: 2, won: false },
       ],
       picked: true,
     });
@@ -224,7 +224,7 @@ describe("R259 — the series through the API", () => {
     expect((await h.deps.store.matches.get(FIRST_MATCH))?.status).toBe("live");
   });
 
-  it("R259 a pick is refused: 400 for a slot out of range or already played, 409 while a game is played", async () => {
+  it("R330 a pick is refused: 400 for a slot out of range or a deck that has won, 409 while a game is played", async () => {
     const h = await harness();
 
     for (const slot of ["0", 3, -1, 0.5, null]) {
@@ -239,13 +239,57 @@ describe("R259 — the series through the API", () => {
     expect((await readJson<ErrorBody>(during)).error.code).toBe("conflict");
 
     await finishGame(h, ALICE);
-    const again = await pick(h, h.tokens.alice, 0);
-    expect(again.status).toBe(400);
-    expect((await readJson<ErrorBody>(again)).error.message).toMatch(/already played/u);
+    const locked = await pick(h, h.tokens.alice, 0);
+    expect(locked.status).toBe(400);
+    expect((await readJson<ErrorBody>(locked)).error.message).toMatch(/already won .* locked/u);
+    // Bob lost with deck 0, and may play it again.
+    expect((await pick(h, h.tokens.bob, 0)).status).toBe(200);
     expect((await pick(h, h.tokens.alice, 1)).status).toBe(200);
   });
 
-  it("R259 game 2 puts series p2 first, and game 3 starts by itself with the one deck each has left", async () => {
+  it("R331 a pick is sealed: another slot is refused with 409, and the same slot again answers as the success it was", async () => {
+    const h = await harness();
+    expect((await pick(h, h.tokens.alice, 1)).status).toBe(200);
+
+    const other = await pick(h, h.tokens.alice, 2);
+    expect(other.status).toBe(409);
+    expect((await readJson<ErrorBody>(other)).error.message).toMatch(/final/u);
+    expect((await row(h)).sides[0].pick).toBe(1);
+
+    // A retry of the same pick, its first answer lost: 200, and nothing is written twice.
+    const version = (await row(h)).version;
+    const retry = await pick(h, h.tokens.alice, 1);
+    expect(retry.status).toBe(200);
+    expect((await readJson<SeriesView>(retry)).you.pick).toBe(1);
+    expect((await row(h)).version).toBe(version);
+
+    // The same after the pick that completed both began the game.
+    await pick(h, h.tokens.bob, 0);
+    const late = await pick(h, h.tokens.bob, 0);
+    expect(late.status).toBe(200);
+    expect(await readJson<SeriesView>(late)).toMatchObject({ status: "playing", currentMatchId: FIRST_MATCH });
+    expect((await pick(h, h.tokens.bob, 2)).status).toBe(409);
+  });
+
+  it("R331 a pick is in the database before it is acknowledged, and the opponent learns only that it is in", async () => {
+    const h = await harness();
+    // The store fails the write: the pick is refused, and nothing says it was made.
+    h.deps.store.onCall = (method) => {
+      if (method === "series.update") throw new Error("the database went away");
+    };
+    expect((await pick(h, h.tokens.alice, 2)).status).toBe(500);
+    h.deps.store.onCall = () => undefined;
+    expect((await row(h)).sides[0].pick).toBeNull();
+    expect((await readJson<SeriesView>(await getSeries(h, h.tokens.bob))).opponent.picked).toBe(false);
+
+    expect((await pick(h, h.tokens.alice, 2)).status).toBe(200);
+    expect((await row(h)).sides[0].pick).toBe(2);
+    const bob = JSON.stringify(await readJson<SeriesView>(await getSeries(h, h.tokens.bob)));
+    expect(bob).toContain('"picked":true');
+    expect(bob).not.toMatch(/alice/u);
+  });
+
+  it("R335 game 2 puts series p2 first, with its own seed and the decks picked for it", async () => {
     const h = await harness();
     await pickBoth(h, [0, 1]);
     await finishGame(h, ALICE);
@@ -262,30 +306,46 @@ describe("R259 — the series through the API", () => {
         { profileId: ALICE, player: "p2", deck: ["alice-card-2a", "alice-card-2b"] },
       ],
     });
-
-    // Bob wins game 2 (he is the match's p1): 1–1, and game 3 needs no pick.
     await finishGame(h, BOB);
+    const view = await readJson<SeriesView>(await getSeries(h, h.tokens.bob));
+    expect(view).toMatchObject({ status: "picking", gameNo: 3, currentMatchId: null });
+    expect(view.games.map((game) => [game.yourSlot, game.opponentSlot, game.youWentFirst, game.result])).toEqual([
+      [1, 0, false, "loss"],
+      [0, 2, true, "win"],
+    ]);
+  });
+
+  it("R332 a player's last deck is picked for them, and when both are down to one the game starts by itself", async () => {
+    const h = await harness();
+    await pickBoth(h, [0, 0]);
+    await finishGame(h, ALICE);
+    await pickBoth(h, [1, 0]);
+    await finishGame(h, ALICE);
+
+    // Alice has won with decks 0 and 1: deck 2 is hers, picked for her; Bob picks.
+    const alice = await readJson<SeriesView>(await getSeries(h, h.tokens.alice));
+    expect(alice.you).toMatchObject({ pick: 2, autoPick: true });
+    expect((await readJson<SeriesView>(await getSeries(h, h.tokens.bob))).opponent.picked).toBe(true);
+    expect((await pick(h, h.tokens.bob, 0)).status).toBe(200);
+    await finishGame(h, BOB);
+    await pickBoth(h, [2, 1]);
+    await finishGame(h, BOB);
+
+    // Two wins each: game 5 needs no pick and has started.
     const series = await row(h);
+    expect(series.sides.map((side) => side.wins)).toEqual([2, 2]);
     expect(series.status).toBe("playing");
-    expect(series.games[2]).toMatchObject({ gameNo: 3, slots: [1, 2], first: "p1" });
-    expect(h.deps.matches.started[2]).toEqual({
+    expect(series.games[4]).toMatchObject({ gameNo: 5, slots: [2, 2], first: "p1" });
+    expect(h.deps.matches.started[4]).toEqual({
       matchId: series.nextMatchId,
-      seed: "seed-base:3",
+      seed: "seed-base:5",
       catalogVersion: h.deps.catalog.version,
       seats: [
-        { profileId: ALICE, player: "p1", deck: ["alice-card-1a", "alice-card-1b"] },
+        { profileId: ALICE, player: "p1", deck: ["alice-card-2a", "alice-card-2b"] },
         { profileId: BOB, player: "p2", deck: ["bob-card-2a", "bob-card-2b"] },
       ],
     });
     expect(await inMatch(h)).toEqual([series.nextMatchId, series.nextMatchId]);
-
-    const view = await readJson<SeriesView>(await getSeries(h, h.tokens.bob));
-    expect(view).toMatchObject({ status: "playing", gameNo: 3, currentMatchId: series.nextMatchId });
-    expect(view.games.map((game) => [game.yourSlot, game.opponentSlot, game.youWentFirst, game.result])).toEqual([
-      [1, 0, false, "loss"],
-      [0, 2, true, "win"],
-      [2, 1, false, null],
-    ]);
   });
 
   it("R259 GET /api/matches/:matchId/series names the series a game belongs to, for its players only", async () => {
@@ -315,8 +375,8 @@ describe("R259 — the series through the API", () => {
   });
 });
 
-describe("R261 — endings inside a series", () => {
-  it("R261 a concede or a disconnect loses the game, not the series", async () => {
+describe("R334 — endings inside a series", () => {
+  it("R334 a concede or a disconnect loses the game, not the series (R261)", async () => {
     const h = await harness();
     await pickBoth(h, [0, 0]);
     await finishGame(h, ALICE, "concede");
@@ -324,19 +384,25 @@ describe("R261 — endings inside a series", () => {
     await pickBoth(h, [1, 1]);
     await finishGame(h, BOB, "disconnect");
     const series = await row(h);
-    expect(series.status).toBe("playing");
+    expect(series.status).toBe("picking");
     expect(series.sides.map((side) => side.wins)).toEqual([1, 1]);
-    expect(series.games.map((game) => game.reason)).toEqual(["concede", "disconnect", null]);
+    expect(series.games.map((game) => game.reason)).toEqual(["concede", "disconnect"]);
   });
 
-  it("R261 a drawn game counts for neither side; after three games equal wins is a series draw, rated once", async () => {
+  it("R334 a drawn game counts for neither side; at the game cap equal wins is a series draw, rated once", async () => {
     const h = await harness([1200, 1000]);
     await pickBoth(h, [0, 0]);
     await finishGame(h, "draw");
     expect((await row(h)).sides.map((side) => side.wins)).toEqual([0, 0]);
+    for (let game = 2; game <= SERIES_MAX_GAMES - 2; game += 1) {
+      await pickBoth(h, [0, 0]);
+      await finishGame(h, "draw");
+    }
     await pickBoth(h, [1, 1]);
     await finishGame(h, ALICE);
+    await pickBoth(h, [2, 1]);
     await finishGame(h, BOB);
+    expect((await row(h)).games).toHaveLength(SERIES_MAX_GAMES);
 
     const series = await row(h);
     expect(series).toMatchObject({ status: "over", winner: "draw", endReason: "exhausted" });
@@ -354,7 +420,7 @@ describe("R261 — endings inside a series", () => {
     expect(await inMatch(h)).toEqual([null, null]);
   });
 
-  it("R261 between games a player may forfeit: the other side wins, and the series is rated once (R262)", async () => {
+  it("R334 between games a player may forfeit: the other side wins, and the series is rated once (R261, R262)", async () => {
     const h = await harness();
     await pickBoth(h, [0, 0]);
     await finishGame(h, BOB);
@@ -378,7 +444,7 @@ describe("R261 — endings inside a series", () => {
     expect((await pick(h, h.tokens.alice, 1)).status).toBe(409);
   });
 
-  it("R261 a forfeit before game 1 releases the match id the pairing reserved (R263)", async () => {
+  it("R334 a forfeit before game 1 releases the match id the pairing reserved (R261, R263)", async () => {
     const h = await harness();
     expect((await forfeit(h, h.tokens.alice)).status).toBe(200);
     expect(h.discarded).toEqual([FIRST_MATCH]);
@@ -386,7 +452,7 @@ describe("R261 — endings inside a series", () => {
     expect((await row(h))).toMatchObject({ status: "over", winner: "p2", endReason: "forfeit", games: [] });
   });
 
-  it("R261 a forfeit is refused with 409 while a game is being played: concede the game instead", async () => {
+  it("R334 a forfeit is refused with 409 while a game is being played: concede the game instead (R261)", async () => {
     const h = await harness();
     await pickBoth(h, [0, 0]);
     const refused = await forfeit(h, h.tokens.alice);
@@ -399,7 +465,7 @@ describe("R261 — endings inside a series", () => {
 });
 
 describe("R262 — how a series is rated", () => {
-  it("R262 a series decided at two wins moves Elo once, from the ratings before game 1; its games are unrated", async () => {
+  it("R262 a series decided at three wins moves Elo once, from the ratings before game 1; its games are unrated", async () => {
     const h = await harness([1200, 1000]);
     await pickBoth(h, [0, 0]);
     await finishGame(h, BOB);
@@ -424,6 +490,12 @@ describe("R262 — how a series is rated", () => {
       ratingBefore: [1000, 1200],
       ratingAfter: [1000, 1200],
     });
+    expect(await ratings(h)).toEqual([1200, 1000]);
+
+    // Game 3: Bob's last deck is picked for him (R332); Alice's pick starts it, and Bob wins.
+    expect((await pick(h, h.tokens.alice, 2)).status).toBe(200);
+    await finishGame(h, BOB);
+    expect(h.deps.store.tables.results).toHaveLength(3);
 
     // The series: one move, scored as one match that bob won.
     const expected = eloUpdate(1200, 1000, 0);
@@ -436,7 +508,7 @@ describe("R262 — how a series is rated", () => {
       ratingBefore: [1200, 1000],
       ratingAfter: [expected.a, expected.b],
     });
-    expect(h.deps.matches.started).toHaveLength(2);
+    expect(h.deps.matches.started).toHaveLength(3);
 
     const alice = await readJson<SeriesView>(await getSeries(h, h.tokens.alice));
     expect(alice.result).toEqual({
@@ -445,12 +517,12 @@ describe("R262 — how a series is rated", () => {
       ratingBefore: 1200,
       ratingAfter: expected.a,
     });
-    expect(alice.gameNo).toBe(2);
+    expect(alice.gameNo).toBe(3);
 
     // A late second report of the deciding game changes nothing.
     await createRecordResult(h.deps)({
-      matchId: series.games[1]?.matchId ?? "",
-      seats: seatsOf(h, series.games[1]?.matchId ?? ""),
+      matchId: series.games[2]?.matchId ?? "",
+      seats: seatsOf(h, series.games[2]?.matchId ?? ""),
       outcome: { winner: "p2", reason: "concede" },
       turns: 1,
       at: h.deps.timers.now(),
@@ -460,8 +532,8 @@ describe("R262 — how a series is rated", () => {
   });
 });
 
-describe("R260 — the pick clock", () => {
-  it("R260 at the deadline the sweeper gives a player who has not picked their first unplayed deck, and the game starts", async () => {
+describe("R333 — the pick clock", () => {
+  it("R333 at the deadline the sweeper gives a player who has not picked their first deck that has not won, and the game starts", async () => {
     const h = await harness();
     expect((await pick(h, h.tokens.alice, 2)).status).toBe(200);
 
@@ -478,7 +550,7 @@ describe("R260 — the pick clock", () => {
     expect(await inMatch(h)).toEqual([FIRST_MATCH, FIRST_MATCH]);
   });
 
-  it("R260 a pick that arrives after the deadline is refused with 409", async () => {
+  it("R333 a pick that arrives after the deadline is refused with 409", async () => {
     const h = await harness();
     h.deps.timers.advance(PICK_MS);
     const late = await pick(h, h.tokens.bob, 0);
@@ -486,7 +558,7 @@ describe("R260 — the pick clock", () => {
     expect((await readJson<ErrorBody>(late)).error.code).toBe("conflict");
   });
 
-  it("R260 with no pick at all by the deadline the series is abandoned: no winner, unrated, game 1's id released", async () => {
+  it("R333 with no pick at all by the deadline the series is abandoned: no winner, unrated, game 1's id released (R260)", async () => {
     const h = await harness([1200, 1000]);
     h.deps.timers.advance(PICK_MS);
     await sweepSeries(h.deps);
@@ -512,7 +584,7 @@ describe("R260 — the pick clock", () => {
     expect(await h.deps.store.series.active()).toEqual([]);
   });
 
-  it("R260 the sweeper runs every SERIES_SWEEP_INTERVAL_SECONDS on its own, and a failed sweep does not stop it", async () => {
+  it("R333 the sweeper runs every SERIES_SWEEP_INTERVAL_SECONDS on its own, and a failed sweep does not stop it", async () => {
     const h = await harness();
     const sweeper = startSeriesSweeper(h.deps);
 
