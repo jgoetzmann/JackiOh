@@ -312,6 +312,56 @@ export const API_REQUESTS_PER_MINUTE = 300;
 export const MATCH_REAPER_INTERVAL_SECONDS = 30;
 
 // ---------------------------------------------------------------------------------------------
+// Saved decks and trios (SPEC §9.4, R250–R256). PUBLIC: the deck builder imports these too.
+// ---------------------------------------------------------------------------------------------
+
+/** SPEC §11 R250: how many named decks a profile may save. Mirrored in `app.settings` (0007). */
+export const MAX_SAVED_DECKS = 10;
+/** SPEC §11 R252: how many trios a profile may save. Mirrored in `app.settings` (0007). */
+export const MAX_SAVED_TRIOS = 5;
+/**
+ * SPEC §11 R250, R252: the longest deck or trio name, in characters once trimmed. Long enough for
+ * "Midrange Humans (anti-aggro)", short enough for a tab, a list row and a sentence in a message.
+ * Mirrored in `app.settings` (0007).
+ */
+export const DECK_NAME_MAX_LENGTH = 40;
+/** SPEC §11 R255: the deck-code format's version; a code naming any other version is refused. */
+export const DECK_CODE_VERSION = 1;
+/**
+ * SPEC §11 R255: raw deck-code input longer than this is refused before it is read. A v1 code for
+ * a full deck with the longest name is under 200 characters, so this leaves room for whatever a
+ * chat client wraps around a pasted code.
+ */
+export const DECK_CODE_MAX_INPUT_LENGTH = 512;
+/** SPEC §11 R256: how long the builder waits after the last edit before it saves. */
+export const DECK_AUTOSAVE_DEBOUNCE_MS = 800;
+/** SPEC §11 R256: how long the builder waits before it tries a failed save again. */
+export const DECK_AUTOSAVE_RETRY_SECONDS = 5;
+
+// ---------------------------------------------------------------------------------------------
+// Queue modes and the Best-of-3 series (SPEC §9.5, R257–R264).
+// ---------------------------------------------------------------------------------------------
+
+/** SPEC §11 R259: game wins that take a Best-of-3 series. */
+export const SERIES_WINS_NEEDED = 2;
+/**
+ * SPEC §11 R259: the most games a series plays: one per deck of a trio, since a deck is played at
+ * most once in a series. `test/api/series.test.ts` asserts it equals the validator's `TRIO_DECKS`.
+ */
+export const SERIES_MAX_GAMES = 3;
+/** SPEC §11 R260: how long both players have to pick their deck for the next game of a series. */
+export const SERIES_PICK_SECONDS = 60;
+/** SPEC §11 R263: how often the series sweeper runs (pick clocks, and games a restart left unstarted). */
+export const SERIES_SWEEP_INTERVAL_SECONDS = 5;
+/**
+ * SPEC §11 R263: how long a series game may sit unstarted before the sweeper starts it. Longer
+ * than any request that is starting it itself, so the sweeper never races a live start.
+ */
+export const SERIES_START_GRACE_SECONDS = 15;
+/** How often the series screen and the match screen's series banner re-read the series. */
+export const SERIES_POLL_SECONDS = 2;
+
+// ---------------------------------------------------------------------------------------------
 // Derived millisecond helpers, since timers (setTimeout/alarms) take milliseconds.
 // ---------------------------------------------------------------------------------------------
 
@@ -373,6 +423,19 @@ export const SERVER_CONFIG = Object.freeze({
   MATCH_ACTIONS_PER_SECOND,
   API_REQUESTS_PER_MINUTE,
   MATCH_REAPER_INTERVAL_SECONDS,
+  MAX_SAVED_DECKS,
+  MAX_SAVED_TRIOS,
+  DECK_NAME_MAX_LENGTH,
+  DECK_CODE_VERSION,
+  DECK_CODE_MAX_INPUT_LENGTH,
+  DECK_AUTOSAVE_DEBOUNCE_MS,
+  DECK_AUTOSAVE_RETRY_SECONDS,
+  SERIES_WINS_NEEDED,
+  SERIES_MAX_GAMES,
+  SERIES_PICK_SECONDS,
+  SERIES_SWEEP_INTERVAL_SECONDS,
+  SERIES_START_GRACE_SECONDS,
+  SERIES_POLL_SECONDS,
   TURN_CLOCK_MS,
   PROMPT_CLOCK_MS,
   DISCONNECT_GRACE_MS,

@@ -24,6 +24,7 @@ import {
   createTransactionQueue,
   type RedemptionSettings,
 } from "../../src/api/e2e-store";
+import { createMemoryDeckStores, type DeckTables } from "../../src/api/memory-stores";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -34,10 +35,10 @@ import type {
   MatchRow,
   Profile,
   ProfileStatus,
+  QueueMode,
   ResultRow,
   Room,
   Store,
-  StoredLoadout,
   Ticket,
 } from "../../src/api/ports";
 
@@ -47,13 +48,12 @@ type Tables = {
   attempts: CodeAttempt[];
   collection: { profileId: string; cardId: string; quantity: number }[];
   grants: CollectionGrant[];
-  loadouts: { profileId: string; loadout: StoredLoadout }[];
   matches: MatchRow[];
   matchActions: MatchActionRow[];
   rooms: Room[];
   tickets: Ticket[];
   results: ResultRow[];
-};
+} & DeckTables;
 
 function emptyTables(): Tables {
   return {
@@ -62,7 +62,9 @@ function emptyTables(): Tables {
     attempts: [],
     collection: [],
     grants: [],
-    loadouts: [],
+    decks: [],
+    trios: [],
+    series: [],
     matches: [],
     matchActions: [],
     rooms: [],
@@ -279,35 +281,12 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
     },
   };
 
-  store.loadouts = {
-    get: async (profileId) => {
-      call("loadouts.get");
-      const row = tables.loadouts.find((entry) => entry.profileId === profileId);
-      return row === undefined ? null : clone(row.loadout);
-    },
-    replace: async (profileId, catalogVersion, decks, at) => {
-      call("loadouts.replace");
-      // The db implementation leans on the unique index on (profile_id, card_id) for L4; the
-      // fake enforces the same thing so a bypassed application check still fails here.
-      const seen = new Set<string>();
-      for (const deck of decks) {
-        for (const cardId of deck) {
-          if (seen.has(cardId)) {
-            throw new Error(`unique violation: (${profileId}, ${cardId}) appears twice`);
-          }
-          seen.add(cardId);
-        }
-      }
-      const loadout: StoredLoadout = {
-        catalogVersion,
-        decks: decks.map((deck) => [...deck]),
-        updatedAt: at,
-      };
-      const row = tables.loadouts.find((entry) => entry.profileId === profileId);
-      if (row === undefined) tables.loadouts.push({ profileId, loadout });
-      else row.loadout = loadout;
-    },
-  };
+  // R250–R263: the same in-memory decks, trios and series the end-to-end store runs, charged to
+  // `onCall` like every other method here.
+  const deckStores = createMemoryDeckStores(() => tables, call);
+  store.decks = deckStores.decks;
+  store.trios = deckStores.trios;
+  store.series = deckStores.series;
 
   store.matches = {
     create: async (match) => {
@@ -353,6 +332,10 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
     live: async () => {
       call("matches.live");
       return tables.matches.filter((match) => match.status === "live").map(clone);
+    },
+    // No `open` rows here: a reserved match id is only an id until the registry creates it (R263).
+    discardOpen: async (_matchId) => {
+      call("matches.discardOpen");
     },
   };
 
@@ -411,6 +394,14 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
     countOpen: async () => {
       call("tickets.countOpen");
       return tables.tickets.filter((ticket) => ticket.status === "open").length;
+    },
+    countOpenByMode: async () => {
+      call("tickets.countOpenByMode");
+      const counts: Record<QueueMode, number> = { bo1: 0, bo3: 0, random: 0 };
+      for (const ticket of tables.tickets) {
+        if (ticket.status === "open") counts[ticket.mode] += 1;
+      }
+      return counts;
     },
     claimPair: async (aId, bId, matchId, at) => {
       call("tickets.claimPair");

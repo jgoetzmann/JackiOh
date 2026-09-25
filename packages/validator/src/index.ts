@@ -1,5 +1,15 @@
 /**
- * The loadout rules L1–L6, as SPEC §9.4 states them.
+ * The loadout rules L1–L6, as SPEC §9.4 states them, and the draft rules D1–D4 and T1–T3 that a
+ * saved deck and a saved trio obey (R250, R252).
+ *
+ * Since R250 a player keeps up to ten named decks and builds up to five trios from them. A trio is
+ * what §9.4 first called a loadout: three decks with no card in common, and L1–L6 are its rules
+ * (`validateLoadout`, also exported as `validateTrio`). A Best-of-1 deck is checked by the rules
+ * that are about one deck — L2, L3, L5 and L6 (`validateDeck`, R253). Neither is checked at save:
+ * a saved deck or trio is a draft, which may be incomplete, hold cards the player does not own, or
+ * share cards with another deck of its trio, and it is judged when it is queued. What a save does
+ * check is structure (`checkDeckDraft`, `checkTrioDraft`): a name, at most `DECK_SIZE` deckable
+ * cards, at most `MAX_COPIES` of each, and three trio slots that name three different decks.
  *
  * §9.4 asks for "one validator module shared by client and server, at save and again at queue",
  * and this is that module. Three callers need the same answer: the deckbuilder in `apps/web`, so a
@@ -21,6 +31,9 @@ import type { CardDef, CardDefs } from "@jackioh/shared";
 
 /** §9.4: exactly 3 decks per loadout. Not in engine config, so it lives here. */
 export const LOADOUT_DECKS = 3;
+
+/** R252: a trio is §9.4's loadout of three decks, so it holds `LOADOUT_DECKS` of them. */
+export const TRIO_DECKS = LOADOUT_DECKS;
 
 export type CardId = string;
 
@@ -104,7 +117,38 @@ function isToken(def: CardDef): boolean {
  * (BUILD M6-T2) and this module only checks membership in the snapshot it was handed.
  */
 export function validateLoadout(input: LoadoutInput): LoadoutResult {
-  const { decks, catalog, collection } = input;
+  return check(input.decks, input.catalog, input.collection, "trio");
+}
+
+/** R253: a Best-of-3 trio is §9.4's loadout, so its rules are L1–L6 exactly. */
+export const validateTrio = validateLoadout;
+
+export type DeckInput = {
+  deck: LoadoutDeck;
+  catalog: CatalogSnapshot;
+  collection: Collection;
+};
+
+/**
+ * R253: the rules a Best-of-1 deck must pass to be queued — the four of L1–L6 that are about one
+ * deck: L2 (exactly `DECK_SIZE` cards), L3 (copies and Tokens), L5 (owned) and L6 (in the catalog,
+ * not banned). L1 and L4 are about three decks together and cannot apply to one. Every error names
+ * the deck, as 1, so a message and a `deck` field read the same way they do for a trio.
+ */
+export function validateDeck(input: DeckInput): LoadoutResult {
+  return check([input.deck], input.catalog, input.collection, "deck");
+}
+
+/**
+ * One pass over the decks for either scope. `"trio"` is L1–L6 over three decks; `"deck"` is one
+ * deck, where L1 and L4 do not apply and L5's sentence names the deck rather than the trio.
+ */
+function check(
+  decks: readonly LoadoutDeck[],
+  catalog: CatalogSnapshot,
+  collection: Collection,
+  scope: "trio" | "deck",
+): LoadoutResult {
   const errors: LoadoutError[] = [];
   const banned = new Set<CardId>(catalog.banned ?? []);
   const deckLabels: readonly string[] = decks.map((deck, index) => deckLabel(deck, index));
@@ -112,10 +156,10 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
   const label = (cardId: CardId): string => cardLabel(cardId, catalog.cards);
 
   // L1 — exactly LOADOUT_DECKS decks. Loadout-wide, so no `deck` field.
-  if (decks.length !== LOADOUT_DECKS) {
+  if (scope === "trio" && decks.length !== LOADOUT_DECKS) {
     errors.push({
       rule: "L1",
-      message: `A loadout needs exactly ${LOADOUT_DECKS} decks; this one has ${decks.length}.`,
+      message: `A trio needs exactly ${LOADOUT_DECKS} decks; this one has ${decks.length}.`,
     });
   }
 
@@ -204,13 +248,13 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
     }
   }
 
-  // L4 — a card id appears in at most one deck of the loadout.
-  for (const cardId of order) {
+  // L4 — a card id appears in at most one deck of the loadout. One deck has nothing to share with.
+  for (const cardId of scope === "trio" ? order : []) {
     const holders = decksHolding.get(cardId) ?? [];
     if (holders.length < 2) continue;
     errors.push({
       rule: "L4",
-      message: `${label(cardId)} appears in ${joinLabels(holders.map(labelAt))}; a card may be in only one deck of a loadout.`,
+      message: `${label(cardId)} appears in ${joinLabels(holders.map(labelAt))}; a card may be in only one deck of a trio.`,
       cardId,
     });
   }
@@ -222,10 +266,168 @@ export function validateLoadout(input: LoadoutInput): LoadoutResult {
     if (used <= owned) continue;
     errors.push({
       rule: "L5",
-      message: `Your loadout uses ${used} ${copyWord(used)} of ${label(cardId)} but you own ${owned}.`,
+      message:
+        scope === "deck"
+          ? `${labelAt(0)} uses ${used} ${copyWord(used)} of ${label(cardId)} but you own ${owned}.`
+          : `Your trio uses ${used} ${copyWord(used)} of ${label(cardId)} but you own ${owned}.`,
+      ...(scope === "deck" ? { deck: 1 } : {}),
       cardId,
     });
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+// --- Trio conflicts (R251, R252) -----------------------------------------------------------
+
+/** One card that two or more decks of a trio hold, and which decks (0-based, in trio order). */
+export type TrioConflict = { cardId: CardId; decks: readonly number[] };
+
+/**
+ * Every card that more than one of `decks` holds, in first-appearance order: the builder's
+ * "unavailable, used in <deck>" highlight and L4's input are the same fact. R251: a card is its
+ * catalog id — Radiant is a flag on a card in play (§5.2), never a second id, so there is no Radiant
+ * copy to tell apart. No rule is decided here and no sentence is written: L4 words it.
+ */
+export function trioConflicts(decks: readonly { readonly cards: readonly CardId[] }[]): TrioConflict[] {
+  const holders = new Map<CardId, number[]>();
+  const order: CardId[] = [];
+  decks.forEach((deck, index) => {
+    for (const cardId of deck.cards) {
+      const held = holders.get(cardId);
+      if (held === undefined) {
+        holders.set(cardId, [index]);
+        order.push(cardId);
+      } else if (!held.includes(index)) {
+        held.push(index);
+      }
+    }
+  });
+  return order
+    .map((cardId) => ({ cardId, decks: holders.get(cardId) ?? [] }))
+    .filter((conflict) => conflict.decks.length > 1);
+}
+
+// --- Draft rules: what a save checks (R250, R252) ------------------------------------------
+
+/**
+ * R250: a saved deck's structural rules. They are all a save checks, because a saved deck is a
+ * draft: incomplete, unowned or conflicting cards are allowed and judged at queue (R253).
+ *
+ *  D1 — a name of 1 to `nameMaxLength` characters once trimmed, with no control characters;
+ *  D2 — at most `DECK_SIZE` cards;
+ *  D3 — every card a deckable card of the catalog (it exists and is not a Token);
+ *  D4 — at most `MAX_COPIES` copies of a card.
+ */
+export type DraftRule = "D1" | "D2" | "D3" | "D4";
+
+/** R252: a saved trio's rules. T1 a name as D1; T2 exactly `TRIO_DECKS` slots; T3 no deck twice. */
+export type TrioDraftRule = "T1" | "T2" | "T3";
+
+export type DraftIssue<Rule extends string = DraftRule> = {
+  rule: Rule;
+  message: string;
+  cardId?: CardId;
+};
+
+export type NameLimits = {
+  /** The longest name, in characters, after trimming. The caller's config states the number. */
+  nameMaxLength: number;
+};
+
+// Control characters (C0, DEL and C1): a name is shown in lists, buttons and messages, and none of
+// them has a place there.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
+
+/** A name as it is stored: trimmed, and every run of whitespace inside it one space. */
+export function normalizeName(raw: string): string {
+  return raw.trim().replace(/\s+/gu, " ");
+}
+
+/** The length a name limit counts: code points, so an emoji is one character, as a player sees it. */
+function nameLength(name: string): number {
+  return [...name].length;
+}
+
+function nameIssue<Rule extends string>(
+  rule: Rule,
+  what: "deck" | "trio",
+  raw: string,
+  limits: NameLimits,
+): DraftIssue<Rule> | null {
+  const name = normalizeName(raw);
+  if (name.length === 0) return { rule, message: `A ${what} needs a name.` };
+  if (CONTROL_CHARACTERS.test(name)) {
+    return { rule, message: `A ${what} name cannot contain control characters.` };
+  }
+  if (nameLength(name) > limits.nameMaxLength) {
+    return { rule, message: `A ${what} name can be at most ${limits.nameMaxLength} characters.` };
+  }
+  return null;
+}
+
+export type DeckDraftInput = {
+  name: string;
+  cards: readonly CardId[];
+  /**
+   * Whether an id is a deckable card: in the current catalog and not a Token. A predicate rather
+   * than a snapshot, because the server holds its catalog as ids and flags and the client holds
+   * definitions; both answer the same question.
+   */
+  isDeckable: (cardId: CardId) => boolean;
+} & NameLimits;
+
+/** R250's D1–D4, every failure at once. Empty when the draft may be saved. */
+export function checkDeckDraft(input: DeckDraftInput): DraftIssue[] {
+  const issues: DraftIssue[] = [];
+  const named = nameIssue("D1", "deck", input.name, input);
+  if (named !== null) issues.push(named);
+
+  if (input.cards.length > DECK_SIZE) {
+    issues.push({
+      rule: "D2",
+      message: `A deck holds at most ${DECK_SIZE} cards; this one has ${input.cards.length}.`,
+    });
+  }
+
+  const counts = new Map<CardId, number>();
+  for (const cardId of input.cards) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+  for (const [cardId, count] of counts) {
+    if (!input.isDeckable(cardId)) {
+      issues.push({ rule: "D3", message: `"${cardId}" is not a card a deck can hold.`, cardId });
+    }
+    if (count > MAX_COPIES) {
+      issues.push({
+        rule: "D4",
+        message: `A deck may hold at most ${MAX_COPIES} ${copyWord(MAX_COPIES)} of "${cardId}"; this one has ${count}.`,
+        cardId,
+      });
+    }
+  }
+  return issues;
+}
+
+export type TrioDraftInput = {
+  name: string;
+  /** Deck ids by slot; `null` is an empty slot, which a draft may have (R252). */
+  deckIds: readonly (string | null)[];
+} & NameLimits;
+
+/** R252's T1–T3, every failure at once. Empty when the trio may be saved. */
+export function checkTrioDraft(input: TrioDraftInput): DraftIssue<TrioDraftRule>[] {
+  const issues: DraftIssue<TrioDraftRule>[] = [];
+  const named = nameIssue("T1", "trio", input.name, input);
+  if (named !== null) issues.push(named);
+  if (input.deckIds.length !== TRIO_DECKS) {
+    issues.push({
+      rule: "T2",
+      message: `A trio has exactly ${TRIO_DECKS} slots; this one has ${input.deckIds.length}.`,
+    });
+  }
+  const filled = input.deckIds.filter((id): id is string => id !== null);
+  if (new Set(filled).size !== filled.length) {
+    issues.push({ rule: "T3", message: "A trio cannot hold the same deck twice." });
+  }
+  return issues;
 }
