@@ -1,7 +1,9 @@
 // #39 Recycling Initiative (SPEC §8.2): 0-cost Spell, "Exile this on play. End of turn: add a copy
-// of every other card you played this turn to your hand", radiant "Copies cost 1 less". The radiant
-// cell restates only what a copy costs, so the exile and the end-of-turn clause are kept unchanged
-// (§8 Conventions).
+// of every other card you played this turn to your hand", radiant "Exile this on play. End of turn:
+// add a Radiant copy of every other card you played this turn to your hand; the copies cost 1 less"
+// (R275: the discount alone fell short, so the copies are Radiant as well). The radiant cell
+// restates only what a copy is and costs, so the exile and the end-of-turn clause are kept
+// unchanged (§8 Conventions).
 //
 // §8.2's Engine cell spells the mechanism out: "End-of-turn delayed effect: a fresh copy (radiant
 // flag kept) of every card in `turnLog.playedIds` except this one, including cards played after it
@@ -18,7 +20,8 @@
 //     that left the field, R11) drops out of the pool instead of fizzling on it. An id whose card
 //     merely changed zone is still in the pool, which is why nothing here filters on `zone`.
 //   - R57 is `addToHand`'s contract — a fresh instance carrying only the radiant flag — which is
-//     exactly "a fresh copy (radiant flag kept)".
+//     exactly "a fresh copy (radiant flag kept)" on the base face. The radiant face's copies are
+//     Radiant whatever the played card was: a flag that is only ever set (§5.2), never taken away.
 //   - "every OTHER card" excludes this card's own id. One copy per log entry, so a card played
 //     twice in a turn (bounced and replayed, #24) is copied twice: the Engine cell says "every card
 //     in `turnLog.playedIds`", and that list holds one entry per play.
@@ -33,15 +36,12 @@
 // by stored def id, so it re-enters with `ctx.self === null` once this card is in exile, which is
 // why the id it needs travels in `data`.
 //
-// !! BLOCKED — MISSING VERB ARGUMENT (reported; #7 Jewelosco Scarab asks for the same one) !!
-//     addToHand(args: { defId; player?; radiant?; costOverride?; costMod?: number })
-//       … if (args.costMod !== undefined) card.costMod += args.costMod;
-// Radiant's "Copies cost 1 less" is R65's `costMod`, not a `costOverride`: an override REPLACES the
-// printed cost, so it would make an X-cost copy free outright (R65: "a `costOverride` makes one
-// free while X is still chosen") and erase an embiggen card's price choice. `setCostMod` cannot
-// stand in for it either — the fresh copy does not exist until `addToHand` creates it, and
-// `setCostMod`'s only way to name a card is a `TargetSpec`. So the −1 is passed as `costMod`,
-// which R78 keeps in every zone.
+// THE DISCOUNT. Radiant's "the copies cost 1 less" is R65's `costMod`, not a `costOverride`: an
+// override REPLACES the printed cost, so it would make an X-cost copy free outright (R65: "a
+// `costOverride` makes one free while X is still chosen") and erase an embiggen card's price choice.
+// `setCostMod` cannot stand in for it either — the fresh copy does not exist until `addToHand`
+// creates it, and `setCostMod`'s only way to name a card is a `TargetSpec`. So the −1 is passed as
+// `addToHand`'s `costMod`, which R78 keeps in every zone.
 
 import type { Effect, EffectContext, Hook, Script } from "@jackioh/engine";
 import { findInstance, playedIdsThisTurn, RESUME_HOOK } from "@jackioh/engine";
@@ -50,8 +50,17 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-039");
 
-/** Radiant: "Copies cost 1 less". */
+/** Radiant: "the copies cost 1 less". */
 const DISCOUNT = 1;
+
+/** What a face does to each copy: the discount, and whether the copy is Radiant regardless. */
+type CopyTerms = { discount: number; radiant: boolean };
+
+/** Base: a plain copy at its printed price, radiant flag kept (R57). */
+const BASE_TERMS: CopyTerms = { discount: 0, radiant: false };
+
+/** Radiant: a Radiant copy, one cheaper. */
+const RADIANT_TERMS: CopyTerms = { discount: DISCOUNT, radiant: true };
 
 /** The step the end-of-turn delayed effect re-enters (§10.6: `script.resume[step]`). */
 const COPY_STEP = "copies";
@@ -74,7 +83,7 @@ function excludedId(ctx: EffectContext): string | undefined {
  * one card. "Every other card you played this turn" is the set of cards, not the list of plays, so
  * each id yields one copy; deduping by id leaves R86's skip untouched.
  */
-function copiesOfOtherPlays(ctx: EffectContext, discount: number): Effect[] {
+function copiesOfOtherPlays(ctx: EffectContext, terms: CopyTerms): Effect[] {
   const selfId = excludedId(ctx);
   const out: Effect[] = [];
   const seen = new Set<string>();
@@ -90,9 +99,9 @@ function copiesOfOtherPlays(ctx: EffectContext, discount: number): Effect[] {
       addToHand({
         defId: card.defId,
         player: "self",
-        // R57: a fresh copy carries the radiant flag and nothing else.
-        radiant: card.radiant,
-        ...(discount === 0 ? {} : { costMod: -discount }),
+        // R57: a fresh copy carries the radiant flag and nothing else; the radiant face sets it.
+        radiant: terms.radiant || card.radiant,
+        ...(terms.discount === 0 ? {} : { costMod: -terms.discount }),
       }),
     );
   }
@@ -100,10 +109,10 @@ function copiesOfOtherPlays(ctx: EffectContext, discount: number): Effect[] {
   return out;
 }
 
-/** The two faces differ only in what a copy costs. */
-function recyclingInitiative(discount: number): Script {
+/** The two faces differ only in what a copy is and costs. */
+function recyclingInitiative(terms: CopyTerms): Script {
   /** R62's continuation, registered once: the `resume` step table the `delay` below names. */
-  const copyStep: Hook = (ctx) => copiesOfOtherPlays(ctx, discount);
+  const copyStep: Hook = (ctx) => copiesOfOtherPlays(ctx, terms);
 
   return {
     cry: (ctx) => [
@@ -121,6 +130,6 @@ function recyclingInitiative(discount: number): Script {
   };
 }
 
-export const base: Script = recyclingInitiative(0);
+export const base: Script = recyclingInitiative(BASE_TERMS);
 
-export const radiant: Script = recyclingInitiative(DISCOUNT);
+export const radiant: Script = recyclingInitiative(RADIANT_TERMS);

@@ -1,8 +1,10 @@
 // #33 Unstable Clone Machine (SPEC §8.2 row 33): Field Spell, "After you play a card, shuffle 3
-// copies of it into your library", radiant "One of the 3 is Radiant".
+// copies of it into your library", radiant "After you play a card, shuffle 3 Radiant copies of it
+// into your library" (R275: the rider went from one Radiant copy in three to all three).
 //
-// The radiant cell restates only which copies are Radiant, so it is 2 copies carrying the played
-// card's own flag plus 1 forced-Radiant copy — not 3 radiant copies (§8 Conventions).
+// The radiant cell restates only which copies are Radiant, so the count, the trigger and the
+// library are kept (§8 Conventions): the base face's three copies carry the played card's own flag,
+// and the radiant face's three are Radiant whatever the played card was.
 //
 // Rulings:
 //   R34  token cards are copied too, spell tokens and unit-token cards alike, so there is no token
@@ -60,20 +62,19 @@ function answers(ctx: EffectContext, event: ResolvedEvent): boolean {
   return event.instanceId !== self.id;
 }
 
-/** `oneRadiant` is the radiant face: 2 copies keep the played flag, the third is forced Radiant. */
-function afterPlay(oneRadiant: boolean): TriggerDef {
+/** Three copies per play, on both faces (§8.2 row 33). */
+const COPIES = 3;
+
+/** `allRadiant` is the radiant face: every copy is Radiant; the base face keeps the played flag. */
+function afterPlay(allRadiant: boolean): TriggerDef {
   return {
-    id: oneRadiant ? "33r-after-you-play-a-card" : "33-after-you-play-a-card",
+    id: allRadiant ? "33r-after-you-play-a-card" : "33-after-you-play-a-card",
     on: ["cardResolved"],
     run(ctx): Effect[] {
       const event = ctx.event;
       if (event.type !== "cardResolved" || !answers(ctx, event)) return [];
-      const flag = playedRadiantFlag(ctx, event);
-      if (!oneRadiant) return [shuffleInto({ defId: event.defId, count: 3, radiant: flag })];
-      return [
-        shuffleInto({ defId: event.defId, count: 2, radiant: flag }),
-        shuffleInto({ defId: event.defId, count: 1, radiant: true }),
-      ];
+      const flag = allRadiant || playedRadiantFlag(ctx, event);
+      return [shuffleInto({ defId: event.defId, count: COPIES, radiant: flag })];
     },
   };
 }

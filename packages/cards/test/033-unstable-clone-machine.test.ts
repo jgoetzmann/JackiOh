@@ -1,6 +1,7 @@
 // #33 Unstable Clone Machine — SPEC §8.2 row 33, BUILD M4-T4 must-pass row 33:
 // "After each play, library +3 fresh copies with the radiant flag preserved; token spells copied
-//  (R34); nothing is added to a 60-card library (R80); radiant one radiant copy".
+//  (R34); nothing is added to a 60-card library (R80)". Radiant (R275): "shuffle 3 Radiant copies",
+// so all three are Radiant whatever the played card was, and R80 still caps the library.
 //
 // R57: a copy shuffled into a library is a fresh instance carrying only the radiant flag (and
 // `statsOverride`, which `shuffleInto` cannot carry yet — reported as an engine gap).
@@ -10,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
-import { subsystems, type CardInstance } from "@jackioh/engine";
+import { LIBRARY_CAP, subsystems, type CardInstance } from "@jackioh/engine";
 
 /** The copies of one def sitting in a library. */
 function copiesIn(cards: CardInstance[], defId: string): CardInstance[] {
@@ -136,7 +137,7 @@ describe("#33 Unstable Clone Machine — base", () => {
 });
 
 describe("#33 Unstable Clone Machine — radiant", () => {
-  it("one of the 3 copies is Radiant and the other two are not", () => {
+  it("R275 all 3 copies of a non-Radiant card are Radiant", () => {
     const s = scenario({
       seed: "clone-radiant",
       p1: { hand: ["15"], backrow: [{ def: "33", radiant: true }], field: ["43"], library: [] },
@@ -147,17 +148,34 @@ describe("#33 Unstable Clone Machine — radiant", () => {
 
     const copies = copiesIn(s.pile("p1", "library"), "core-015");
     expect(copies).toHaveLength(3);
-    expect(copies.filter((card) => card.radiant)).toHaveLength(1);
-    expect(copies.filter((card) => !card.radiant)).toHaveLength(2);
+    expect(copies.every((card) => card.radiant)).toBe(true);
+    // R57: still fresh instances, three of them.
+    expect(copies.every((card) => card.damage === 0)).toBe(true);
+    expect(new Set(copies.map((card) => card.id)).size).toBe(3);
+    // The played card itself is untouched: only the copies are Radiant.
+    expect(s.unit("p1", 2)?.radiant).toBe(false);
   });
 
-  it("a Radiant card played into a radiant copier still makes 3 radiant copies", () => {
+  it("R275 a spell's copies are Radiant too", () => {
     const s = scenario({
-      seed: "clone-radiant-both",
-      p1: { hand: ["15"], backrow: [{ def: "33", radiant: true }], field: ["43"], library: [] },
+      seed: "clone-radiant-spell",
+      p1: { hand: ["31"], backrow: [{ def: "33", radiant: true }], field: ["43"], library: [] },
       p2: { field: ["15"] },
     });
-    s.card("15").radiant = true;
+
+    s.play("31", { targets: [{ pick: "hero", player: "p2" }] });
+
+    const copies = copiesIn(s.pile("p1", "library"), "core-031");
+    expect(copies).toHaveLength(3);
+    expect(copies.every((card) => card.radiant)).toBe(true);
+  });
+
+  it("a Radiant card played into a radiant copier makes 3 Radiant copies", () => {
+    const s = scenario({
+      seed: "clone-radiant-both",
+      p1: { hand: [{ def: "15", radiant: true }], backrow: [{ def: "33", radiant: true }], field: ["43"], library: [] },
+      p2: { field: ["15"] },
+    });
 
     s.play("15");
 
@@ -180,7 +198,29 @@ describe("#33 Unstable Clone Machine — radiant", () => {
 
     s.play("31", { targets: [{ pick: "hero", player: "p2" }] });
 
-    expect(s.pile("p1", "library")).toHaveLength(60);
+    expect(s.pile("p1", "library")).toHaveLength(LIBRARY_CAP);
+    expect(copiesIn(s.pile("p1", "library"), "core-031")).toHaveLength(0);
+  });
+
+  it("R80 a library one short of the cap takes one copy, and it is Radiant", () => {
+    const s = scenario({
+      seed: "clone-radiant-near-cap",
+      p1: {
+        hand: ["31"],
+        backrow: [{ def: "33", radiant: true }],
+        field: ["43"],
+        library: FULL_LIBRARY.slice(1),
+      },
+      p2: { field: ["15"] },
+    });
+    expect(s.pile("p1", "library")).toHaveLength(LIBRARY_CAP - 1);
+
+    s.play("31", { targets: [{ pick: "hero", player: "p2" }] });
+
+    expect(s.pile("p1", "library")).toHaveLength(LIBRARY_CAP);
+    const copies = copiesIn(s.pile("p1", "library"), "core-031");
+    expect(copies).toHaveLength(1);
+    expect(copies[0]?.radiant).toBe(true);
   });
 });
 

@@ -1,7 +1,8 @@
-// #12 Duplicating Felinors (SPEC §8.1): 3/4 → 5/9 Unit, Felinor, cost 2, Rare. Base "Cry: summon a
+// #12 Duplicating Felinors (SPEC §8.1): 3/4 → 6/9 Unit, Felinor, cost 2, Rare. Base "Cry: summon a
 // copy of this unit"; the radiant cell says "Same", so the radiant face runs the very same text
-// (§8 Conventions) on the 5/9 body. §8's Engine cell: "Copy per R57, placed per R64; the copy's Cry
-// does not fire (§6.2)".
+// (§8 Conventions) on the 6/9 body — and its copy is a Radiant 6/9 too, so the effect doubles with
+// the stats (R275). §8's Engine cell: "Copy per R57, placed per R64; the copy's Cry does not fire
+// (§6.2)".
 //
 // R57 (copy semantics): "A copy of a unit on the field keeps its radiant flag, buffs, granted
 // keywords, Vanilla state and `statsOverride` and resets damage, exertion and counters." The copy is
@@ -17,26 +18,12 @@
 // 2 mana otherwise". A summon fires no Cry (engine/src/effects/summon.ts), so the chain ends after
 // one copy on its own.
 //
-// BLOCKED: there is no copy verb in the effects library and no `cloneInstance` anywhere in the
-// engine. `summon` takes either a fresh `defId` — which would drop the radiant flag, the buffs, the
-// granted keywords and the Vanilla state that R57 keeps — or an existing `instance`, which MOVES a
-// card rather than duplicating it and refuses a card already on the field. Passing `radiant` and
-// `statsOverride` by hand would still lose buffs, granted keywords and Vanilla state, and a card
-// file may not read them off the instance and rebuild them (that would be state handling in a card
-// file, CLAUDE.md rule 5). So this card needs one new verb in
-// `packages/engine/src/effects/summon.ts`, re-exported from `packages/engine/src/effects/index.ts`:
-//
-//   summonCopy(args: { of: TargetSpec } & SummonPlacement): Effect
-//
-// which resolves `of` to a unit, clones it per R57 (radiant flag, buffs, granted keywords, Vanilla
-// flag and `statsOverride` copied; damage, exertion, counters, memory and `summonedTurn` reset),
-// places it per R64 through the same `summonOnto` path as `summon` (so it emits `summoned`, fizzles
-// silently on a full row and fires no Cry), and does nothing when `of` resolves to nothing.
-// #61 Prejudiced Postdoc ("summon a Vanilla copy", R57 with `vanilla` set) and #22 Carnivorous Cube
-// need the same clone, so `summonCopy` also wants a `vanilla?: boolean` once #61 lands.
+// The clone is the engine's `summonCopy` (engine/src/effects/summon.ts), which resolves `of` to a
+// unit, clones it per R57 and places it per R64 through the same path as `summon`. A card file may
+// not read the buffs, keywords and Vanilla state off the instance and rebuild them (CLAUDE.md
+// rule 5), which is why the copy is a verb and not a `summon({ defId, radiant })`.
 
 import type { Script } from "@jackioh/engine";
-// BLOCKED: `summonCopy` does not exist yet — see the note above.
 import { summonCopy } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 

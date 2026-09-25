@@ -1,6 +1,7 @@
 // #39 Recycling Initiative — SPEC §8.2 row 39, BUILD M4-T4 row 39: "Exiled on play; end of turn
 // adds copies of every other card played this turn, including later ones (R71); radiant copies
-// cost 1 less".
+// cost 1 less". R275 raised the radiant face: its copies are Radiant as well as 1 cheaper, whatever
+// the played card was, where the base face's copies keep the played card's own flag (R57).
 //
 // The rulings these tests are named after:
 //   R71  the log is read at END of turn, so cards played AFTER this one are copied too;
@@ -10,7 +11,8 @@
 //        `turnStarted` is the first event after cleanup and that is what these tests key on;
 //   R86  an id in `turnLog.playedIds` whose instance has ceased to exist is skipped, not fizzled on;
 //   R57  a copy is a fresh instance carrying the radiant flag and nothing else;
-//   R65  radiant's "costs 1 less" is a `costMod`, so the copy's price is what `effectiveCost`
+//   R275 the radiant face's copies are Radiant and 1 cheaper;
+//   R65  radiant's "cost 1 less" is a `costMod`, so the copy's price is what `effectiveCost`
 //        reports to the client in `viewFor` and what the player actually pays.
 
 import { describe, expect, it } from "vitest";
@@ -178,6 +180,21 @@ describe("#39 Recycling Initiative — base", () => {
     expect(countIn(s, "p1", "hand", TIMMY)).toBe(1);
   });
 
+  it("R57 the base face keeps the played card's flag: a Radiant card's copy is Radiant", () => {
+    const s = scenario({
+      p1: { hand: [{ def: TIMMY, radiant: true }, RECYCLING, STOCKPILE], library: [MENACE, POSTDOC] },
+      p2: { ...SPARE },
+    });
+
+    s.play(TIMMY, { zone: 1 });
+    s.play(RECYCLING);
+    s.endTurn();
+
+    const copy = s.pile("p1", "hand").find((card) => card.defId === TIMMY)!;
+    expect(copy.radiant).toBe(true);
+    expect(copy.costMod).toBe(0);
+  });
+
   it("the base face gives no discount: the copy costs the printed price", () => {
     const s = scenario({
       p1: { hand: [BIG_D, RECYCLING, STOCKPILE], library: [MENACE, POSTDOC] },
@@ -224,7 +241,46 @@ describe("#39 Recycling Initiative — radiant", () => {
     expect(countIn(s, "p1", "hand", RECYCLING)).toBe(0);
   });
 
-  it("R65 'Copies cost 1 less' is a costMod, so the copy is offered at one less than its price", () => {
+  it("R275 the copy of a non-Radiant card is Radiant, and one cheaper", () => {
+    const s = scenario({
+      p1: { hand: [TIMMY, { def: RECYCLING, radiant: true }, MR_TOKEN, STOCKPILE], library: [MENACE, POSTDOC] },
+      p2: { ...SPARE },
+    });
+
+    s.play(TIMMY, { zone: 1 }); // printed cost 1, played as the base 3/3
+    s.play(RECYCLING);
+    s.play(MR_TOKEN, { zone: 2 }); // printed cost 1, played after it (R71)
+    s.endTurn();
+
+    for (const defId of [TIMMY, MR_TOKEN]) {
+      const copy = s.pile("p1", "hand").find((card) => card.defId === defId)!;
+      expect(copy.radiant).toBe(true);
+      expect(copy.costMod).toBe(-1);
+      expect(viewCost(s, "p1", copy.id)).toBe(0);
+    }
+    // The originals on the field are untouched: only the copies are Radiant.
+    expect(s.unit("p1", 1)?.radiant).toBe(false);
+  });
+
+  it("R275 the Radiant copy plays as its Radiant face", () => {
+    const s = scenario({
+      p1: { hand: [TIMMY, { def: RECYCLING, radiant: true }, STOCKPILE], library: [MENACE, POSTDOC] },
+      p2: { ...SPARE },
+    });
+
+    s.play(TIMMY, { zone: 1 });
+    s.play(RECYCLING);
+    s.endTurn();
+    const copy = s.pile("p1", "hand").find((card) => card.defId === TIMMY)!;
+    s.endTurn(); // back to p1
+
+    s.play(copy, { zone: 2 });
+    // #11 Tempo Timmy's Radiant face is a 6/6 (§8.1 row 11), for 0 mana.
+    s.expectStats(copy, { attack: 6, health: 6, maxHealth: 6 });
+    s.expectMana("p1", 4);
+  });
+
+  it("R65 'the copies cost 1 less' is a costMod, so the copy is offered at one less than its price", () => {
     const s = scenario({
       p1: { hand: [BIG_D, { def: RECYCLING, radiant: true }, STOCKPILE], library: [MENACE, POSTDOC] },
       p2: { ...SPARE },
@@ -256,7 +312,7 @@ describe("#39 Recycling Initiative — radiant", () => {
     s.expectMana("p1", 3); // 2 printed − 1 = 1 paid (R65, R78: the costMod survived the zone change)
   });
 
-  it("R57 the copy of a Radiant card is Radiant, and the flag is all it carries", () => {
+  it("R57 the copy of a Radiant card is Radiant too, and the flag is all it carries", () => {
     const s = scenario({
       p1: { hand: [{ def: BIG_D, radiant: true }, { def: RECYCLING, radiant: true }, STOCKPILE], library: [MENACE, POSTDOC] },
       p2: { ...SPARE },

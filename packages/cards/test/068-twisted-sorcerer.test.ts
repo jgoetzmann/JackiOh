@@ -1,7 +1,7 @@
 // #68 Twisted Sorcerer — SPEC §8.3, BUILD M4-T4: "4 damage, 8 when hero < 10 at resolution;
-// radiant 6 / 12".
+// radiant 8 / 16" (R275 doubled the radiant numbers from 6 / 12).
 //
-// §8.3's row: "Cry: deal 4 damage to a target, 8 if your hero is below 10" → "6, or 12", Engine
+// §8.3's row: "Cry: deal 4 damage to a target, 8 if your hero is below 10" → "8, or 16", Engine
 // cell "Threshold read at resolution". R75 and §5.3: the source's "Spell, Unit" is read as a Unit,
 // so this is a Cry and the body stays on the board.
 //
@@ -113,37 +113,55 @@ describe("#68 Twisted Sorcerer", () => {
   });
 
   // -------------------------------------------------------------------------------------------
-  // Radiant: "6, or 12" (§8 Conventions — only the numbers move)
+  // Radiant: "8, or 16" (§8 Conventions — only the numbers move; R275)
   // -------------------------------------------------------------------------------------------
 
-  it("§5.2 the radiant face is 10/10 and deals 6 with the hero at full health", () => {
+  it("R275 the radiant face is 10/10 and deals 8 with the hero at full health", () => {
     const s = board({ p1: { hand: [{ def: SOURCERER, radiant: true }] }, p2: { field: [SPONGE] } });
     s.play(SOURCERER, { targets: onUnit(s, "p2", 1) });
-    s.expectStats(SOURCERER, { attack: 10, health: 10, maxHealth: 10 }).expectStats(SPONGE, { health: 3, maxHealth: 9 });
+    s.expectStats(SOURCERER, { attack: 10, health: 10, maxHealth: 10 }).expectStats(SPONGE, { health: 1, maxHealth: 9 });
   });
 
-  it("§8.3 the radiant face deals 12 when the controller's hero is below 10", () => {
+  it("R275 the radiant face deals 16 when the controller's hero is below 10", () => {
     const s = board({
       p1: { hand: [{ def: SOURCERER, radiant: true }], health: 9 },
       p2: { field: [{ def: SPONGE, radiant: true }] },
     });
     s.play(SOURCERER, { targets: onUnit(s, "p2", 1) });
-    s.expectStats(SPONGE, { health: 6, maxHealth: 18 });
+    s.expectStats(SPONGE, { health: 2, maxHealth: 18 });
   });
 
-  it("§8.3 the radiant threshold is the same strict 'below 10': at 10 it deals 6", () => {
-    const s = board({ p1: { hand: [{ def: SOURCERER, radiant: true }], health: 10 }, p2: { field: [SPONGE] } });
+  it("§8.3 the radiant threshold is the same strict 'below 10': at 10 it deals 8", () => {
+    const s = board({
+      p1: { hand: [{ def: SOURCERER, radiant: true }], health: 10 },
+      p2: { field: [{ def: SPONGE, radiant: true }] },
+    });
     s.play(SOURCERER, { targets: onUnit(s, "p2", 1) });
-    s.expectStats(SPONGE, { health: 3, maxHealth: 9 });
+    s.expectStats(SPONGE, { health: 10, maxHealth: 18 });
   });
 
-  it("§8.3 the radiant face still hits a hero, for 6 and for 12", () => {
+  it("§8.3 the radiant threshold reads the controller's hero, not the opponent's", () => {
+    const s = board({
+      p1: { hand: [{ def: SOURCERER, radiant: true }], health: 30 },
+      p2: { field: [{ def: SPONGE, radiant: true }], health: 3 },
+    });
+    s.play(SOURCERER, { targets: onUnit(s, "p2", 1) });
+    s.expectStats(SPONGE, { health: 10, maxHealth: 18 });
+  });
+
+  it("R275 the radiant face still hits a hero, for 8 and for 16", () => {
     const high = board({ p1: { hand: [{ def: SOURCERER, radiant: true }] } });
     high.play(SOURCERER, { targets: AT_ENEMY_HERO });
-    high.expectHealth("p2", 24);
+    high.expectHealth("p2", 22);
 
     const low = board({ p1: { hand: [{ def: SOURCERER, radiant: true }], health: 1 } });
     low.play(SOURCERER, { targets: AT_ENEMY_HERO });
-    low.expectHealth("p2", 18);
+    low.expectHealth("p2", 14);
+  });
+
+  it("§4.4 the radiant 8 is one instance too: Armor 7 lets 1 through", () => {
+    const s = board({ p1: { hand: [{ def: SOURCERER, radiant: true }] }, p2: { field: ["core-025"] } });
+    s.play(SOURCERER, { targets: onUnit(s, "p2", 1) });
+    s.expectStats("core-025", { health: 6, maxHealth: 7 });
   });
 });

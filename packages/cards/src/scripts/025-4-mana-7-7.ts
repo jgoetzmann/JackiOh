@@ -1,5 +1,6 @@
-// #25 4-mana 7/7 (SPEC §8.2): base "Armor 7", radiant "Indestructible". The Engine cell is
-// "Keywords only", so there is no script: both keywords are printed on the catalog faces
+// #25 4-mana 7/7 (SPEC §8.2): a 7/7 → 14/14 Unit, base "Armor 7", radiant "Indestructible" (R275:
+// the Radiant body doubles, and the keyword is the stronger one). The Engine cell is "Keywords
+// only", so there is no script: the stats and both keywords are printed on the catalog faces
 // (`base.keywords = [Armor 7]`, `radiant.keywords = [Indestructible]`) and §10.4 layer 1 reads them
 // from the def, so granting them here would double the Armor (§10.4: "Armor sums across sources").
 //

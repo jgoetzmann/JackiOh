@@ -1,10 +1,11 @@
-// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78).
+// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78, R275).
 // BUILD M4-T4 row 54: "2 random units of cost 3 or 4, no tokens, not #54, cost override 1;
-// radiant 0".
+// radiant 0". R275 raised the radiant face: "add 2 random Radiant Units costing 3 or 4 to your hand;
+// they cost 0" — the same pool, the cards Radiant as they are made.
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";
-import { scenario } from "./_harness";
+import { scenario, type Scenario } from "./_harness";
 import { catalog, pool } from "../src/query";
 import { cardDef } from "../src/catalog-data";
 
@@ -107,41 +108,92 @@ describe("#54 Straaza — base", () => {
   });
 });
 
+/** A Radiant Straaza in hand, with nothing else to do (the §5.2 flag, seeded by the harness). */
+function radiantStraaza(seed: string, hand: readonly string[] = []): Scenario {
+  return scenario({ seed, p1: { hand: [{ def: "core-054", radiant: true }, ...hand] } });
+}
+
 describe("#54 Straaza — radiant", () => {
-  it("§8 Conventions: the restated clause replaces only the price, so they cost 0", () => {
-    const s = scenario({ seed: "straaza-radiant", p1: { hand: ["core-054"] } });
-    // HARNESS GAP (reported): `SideSetup.hand` takes no `{ def, radiant }` form.
-    s.card("core-054").radiant = true;
+  it("R275 adds 2 Radiant Units costing 3 or 4, each costing 0", () => {
+    const s = radiantStraaza("straaza-radiant");
 
     s.play("core-054");
 
     const cards = added(s.hand("p1"));
     expect(cards).toHaveLength(2);
     for (const card of cards) {
+      expect(card.radiant).toBe(true);
       expect(card.costOverride).toBe(0);
       expect(POOL_IDS).toContain(card.defId);
     }
+    s.expectEvents("cardPlayed", "addedToHand", "addedToHand");
   });
 
-  it("the rest of the base clause is kept: still 2, still Units costing 3 or 4, still not #54", () => {
-    const s = scenario({ seed: "straaza-radiant", p1: { hand: ["core-054"] } });
-    s.card("core-054").radiant = true;
+  it("§5.2 the view shows each one's Radiant face, at 0 mana", () => {
+    const s = radiantStraaza("straaza-radiant-view");
+
+    s.play("core-054");
+
+    const hand = s.view("p1").you.hand;
+    if (!Array.isArray(hand)) throw new Error("the viewer's own hand should be cards, not a count");
+    const shown = hand.filter((card) => card.defId !== "core-054");
+    expect(shown).toHaveLength(2);
+    for (const card of shown) {
+      expect(card.radiant).toBe(true);
+      expect(card.cost).toBe(0);
+      // R243: a Unit in its owner's hand shows its Radiant face's printed stats.
+      const face = cardDef(card.defId).radiant;
+      expect(card.attack).toBe(face.attack);
+    }
+  });
+
+  it("R275 the pool is the base clause's: still 2, still Units costing 3 or 4, still not #54", () => {
+    const s = radiantStraaza("straaza-radiant");
 
     s.play("core-054");
 
     const defIds = added(s.hand("p1")).map((card) => card.defId);
     expect(defIds).toHaveLength(2);
     expect(defIds).not.toContain("core-054");
-    for (const id of defIds) expect(catalog.cost(cardDef(id))).toBeGreaterThanOrEqual(3);
+    for (const id of defIds) {
+      expect(catalog.cost(cardDef(id))).toBeGreaterThanOrEqual(3);
+      expect(catalog.cost(cardDef(id))).toBeLessThanOrEqual(4);
+    }
   });
 
-  it("the generated cards are ordinary non-Radiant cards: only the price clause changed", () => {
-    const s = scenario({ seed: "straaza-radiant", p1: { hand: ["core-054"] } });
-    s.card("core-054").radiant = true;
+  it("R65/R78 the 0 is paid: a Radiant card it made is played for nothing", () => {
+    const s = radiantStraaza("straaza-radiant-play");
+
+    s.play("core-054");
+    const made = added(s.hand("p1"))[0];
+    if (made === undefined) throw new Error("Straaza should have added a card");
+    s.expectMana("p1", 0);
+
+    s.play(made);
+
+    s.expectMana("p1", 0).expectInZone(made, "field");
+    expect(s.card(made).radiant).toBe(true);
+  });
+
+  it("§5.2 the radiant body is a 16/16", () => {
+    const s = radiantStraaza("straaza-radiant");
 
     s.play("core-054");
 
-    for (const card of added(s.hand("p1"))) expect(card.radiant).toBe(false);
-    s.expectStats("core-054", { attack: 16, maxHealth: 16 });
+    s.expectStats("core-054", { attack: 16, health: 16, maxHealth: 16 });
+  });
+
+  it("R4 a full hand burns the extra on the radiant face too", () => {
+    const s = radiantStraaza("straaza-radiant-cap", FILLER);
+    const before = new Set(s.hand("p1").map((card) => card.id));
+
+    s.play("core-054");
+
+    expect(s.hand("p1")).toHaveLength(10);
+    expect(s.pile("p1", "graveyard")).toHaveLength(1);
+    const kept = s.hand("p1").filter((card) => !before.has(card.id));
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.radiant).toBe(true);
+    expect(kept[0]?.costOverride).toBe(0);
   });
 });
