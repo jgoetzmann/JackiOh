@@ -4,7 +4,10 @@
 //
 // The human is played by a policy. `"coach"` is the lesson's own line: it answers every tip and
 // info step with "Got it", does whatever the showing `act` step `expect`s, and falls back to the
-// autopilot below only when the coach asks for nothing. `"autopilot"` is a sensible beginner who
+// autopilot below only when the coach asks for nothing. `"coach-passive"` follows the coach just as
+// closely but, where it asks nothing, only attacks (the hero first) and ends the turn: a beginner who
+// plays no card the coach did not name, which is how the tutorial's own browser run plays (spec 22)
+// and what a lesson's quiet turns must survive. `"autopilot"` is a sensible beginner who
 // reads nothing the coach says and plays the autopilot alone, which is how forgiving a lesson is.
 // `"random"` is a player who ignores the coach, drawing uniformly from the legal actions (never
 // conceding or offering a draw) — the robustness case: the coach must neither throw nor stall,
@@ -54,7 +57,7 @@ export const RANDOM_POLICY_AI_BUDGET: SearchBudget = {
   finalists: 1,
 };
 
-export type LessonPolicy = "coach" | "autopilot" | "random";
+export type LessonPolicy = "coach" | "coach-passive" | "autopilot" | "random";
 
 export type LessonRun = {
   lesson: TutorialLesson;
@@ -140,6 +143,24 @@ export function autopilot(ctx: CoachCtx): ActionBody | null {
   return legal.find((action) => action.type === "endTurn") ?? null;
 }
 
+/**
+ * A beginner who plays no card on their own: keep the hand, answer a prompt with its first option,
+ * attack the hero when they may, else attack anything, else end the turn.
+ */
+export function passive(ctx: CoachCtx): ActionBody | null {
+  const { view, legal } = ctx;
+  if (mulliganOpen(view) || (view.pending !== null && view.pending.forYou)) return autopilot(ctx);
+  if (!myMain(ctx)) return null;
+  const hero = heroTargetId(view, "opponent");
+  const attacks = legal.filter((action) => action.type === "attack");
+  return (
+    attacks.find((action) => action.type === "attack" && action.targetId === hero) ??
+    attacks[0] ??
+    legal.find((action) => action.type === "endTurn") ??
+    null
+  );
+}
+
 /** A player who ignores the coach: uniform over the legal actions, never conceding or offering a draw. */
 function randomPolicy(ctx: CoachCtx, pick: (n: number) => number): ActionBody | null {
   const choices = ctx.legal.filter((action) => action.type !== "concede" && action.type !== "offerDraw" && action.type !== "answerDraw");
@@ -168,8 +189,7 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
   const budget = options.budget ?? (policy === "random" ? RANDOM_POLICY_AI_BUDGET : AI_GATE_BUDGET);
   const core = createPracticeCore({ now: () => 0, dev: true, budget });
   const counter = { n: 0 };
-  let snapshot = snapshotOf(
-    send(core, counter, {
+  const startedResponse = send(core, counter, {
       type: "start",
       config: {
         seed: options.seed ?? lesson.seed,
@@ -178,8 +198,9 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
         deck: { kind: "random" },
         lesson: lesson.id,
       },
-    }),
-  );
+    });
+  let snapshot = snapshotOf(startedResponse);
+  const defs = startedResponse.type === "started" ? startedResponse.defs : {};
 
   let coach: CoachState = COACH_START;
   let previous: PlayerView | null = null;
@@ -194,6 +215,7 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
     legal: snap.legal,
     fresh: previous === null ? [] : newEventsSince(previous.events, snap.view.events),
     aiToAct: snap.aiToAct,
+    nameOf: (defId) => snap.view.defs?.[defId]?.name ?? defs[defId]?.name,
   });
 
   for (;;) {
@@ -237,6 +259,14 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
         byCoach = action !== null;
       }
       action ??= autopilot(ctx);
+    } else if (policy === "coach-passive") {
+      const step = activeStep(script, coach);
+      if (step?.kind === "act" && step.expect !== undefined) {
+        const expected = step.expect;
+        action = snapshot.legal.find((candidate) => expected(candidate, ctx)) ?? null;
+        byCoach = action !== null;
+      }
+      action ??= passive(ctx);
     } else if (policy === "autopilot") {
       action = autopilot(ctx);
     } else {

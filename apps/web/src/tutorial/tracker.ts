@@ -118,11 +118,14 @@ export function createCoachTracker(source: CoachSource, script: LessonScript): C
     if (snapshot === null || snapshot === lastSnapshot) return;
     const previous = lastSnapshot?.view ?? null;
     lastSnapshot = snapshot;
+    const defs = source.getState().defs;
     ctx = {
       view: snapshot.view,
       legal: snapshot.legal,
       fresh: previous === null ? [] : newEventsSince(previous.events, snapshot.view.events),
       aiToAct: snapshot.aiToAct,
+      // §5.1: the catalog is public; the worker sent it with the game (`started`).
+      nameOf: (defId) => snapshot.view.defs?.[defId]?.name ?? defs?.[defId]?.name,
     };
     coach = coachObserve(script, coach, ctx);
     publish();

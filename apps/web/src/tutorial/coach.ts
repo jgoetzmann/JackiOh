@@ -42,6 +42,11 @@ export type CoachCtx = {
   fresh: readonly GameEvent[];
   /** Whether the AI owes an action (the snapshot's `aiToAct`). */
   aiToAct: boolean;
+  /**
+   * A card's name by definition id, from the public catalog the worker sent (§5.1), so the coach can
+   * name the card it suggests. Absent in a test that passes no catalog.
+   */
+  nameOf?: (defId: string) => string | undefined;
 };
 
 /**
