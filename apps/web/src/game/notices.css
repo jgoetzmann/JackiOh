@@ -29,6 +29,12 @@
   font-size: 13px;
   font-weight: 650;
   text-align: center;
+  /* The notice floats over the top of the board for the rest of a turn, so it takes no taps of its
+     own: only its Accept and Decline buttons do (below). */
+  pointer-events: none;
+}
+
+.draw-offer__actions > button {
   pointer-events: auto;
 }
 

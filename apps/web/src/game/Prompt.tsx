@@ -846,8 +846,9 @@ function MulliganWaiting(props: { view: PlayerView; mulligan: MulliganView }) {
         className="prompt prompt-mulligan-waiting"
         data-testid={testid.mulliganWaiting}
         data-returning={back}
-        role="dialog"
-        aria-modal="true"
+        // A labelled region, not a modal dialog: there is nothing in it to answer, and a modal
+        // would hold a screen reader inside static text while Concede stays live on the board.
+        role="region"
         aria-labelledby={titleId}
       >
         <p className="prompt-title" id={titleId}>

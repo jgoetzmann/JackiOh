@@ -2058,6 +2058,12 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   it("R269 lets a draw offer stand until it is answered or its offerer's turn ends", () => {
     provenIn(269, "mulligan-concurrent.test.ts", SERVER_ACTOR_TEST);
   });
+
+  // Proved by actor.test.ts "R270 …": a client frame carrying the nonce the mulligan expiry is about
+  // to mint is refused as malformed, and the expiry still times out the seat left.
+  it("R270 refuses a client nonce with the server's own prefix", () => {
+    provenIn(270, SERVER_ACTOR_TEST);
+  });
 });
 
 describe("SPEC §11 index completeness", () => {

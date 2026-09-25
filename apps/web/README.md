@@ -152,7 +152,8 @@ animation table's `drawOffered` and `drawAnswered` rows play on), inside an alwa
   agreement."), and "The draw offer expired" through the turn after an unanswered offer lapsed.
 - Sound (`audio/cues.ts`): the answering seat hears an urgent notify (a doorbell, `urgent: true`);
   the offerer hears `cancel` on a decline, and an acceptance is sounded by the `gameOver` that
-  follows.
+  follows. That is online: in hotseat the offer and the answer each hand the device over, and a
+  hand-over plays nothing (SPEC §10.11), so there the notice itself is the whole of it.
 - Hotseat: an offer from the seat holding the device hands it to the other seat to answer, and the
   answer hands it back to the player whose turn it is (`hotseat.ts`). Only the offer moves it: if
   the players pass the device back unanswered with the seat switch, the offerer plays on and the

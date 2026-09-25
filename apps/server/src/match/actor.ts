@@ -33,6 +33,7 @@ import {
   parseClientMessage,
   promptForOpponent,
   promptForYou,
+  SERVER_NONCE_PREFIX,
   viewMessage,
   type AckMessage,
   type ServerMessage,
@@ -246,8 +247,9 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
       if (stopped || finished) return;
       deps.log.info("match.clock.expired", { matchId: match.id, kind: expiry.kind, player });
       // The nonce is derived from the seq this action will occupy: unique, and stable across a
-      // rebuild, so a rebuilt actor cannot collide with a nonce already in the log.
-      await applyAction(player, `srv-${expiry.kind}-${String(nextSeq)}`, body);
+      // rebuild, so a rebuilt actor cannot collide with a nonce already in the log. Its prefix is
+      // one no client may send (R270), so no client can pre-empt it.
+      await applyAction(player, `${SERVER_NONCE_PREFIX}${expiry.kind}-${String(nextSeq)}`, body);
     }
   }
 

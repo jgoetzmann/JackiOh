@@ -86,8 +86,8 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
   // prompt clock's `holder`, `expired` outlives the timer: the window is still open after the clock
   // runs out (the actor times the owing seats out), and nothing re-arms a second window over it.
   //
-  // NOT IN SPEC: a rebuilt actor (§9.5) builds a new clock, which sees the window for the first time
-  // and arms a fresh full deadline, exactly as the turn clock restarts from full on a rebuild. A
+  // R268: a rebuilt actor (§9.5) builds a new clock, which sees the window for the first time and
+  // arms a fresh full deadline, exactly as the turn clock restarts from full on a rebuild. A
   // crash in the window therefore gives both seats at most one more `mulliganClockSeconds`; reading
   // the stored `promptDeadline` back instead would be stricter, but the stored row is written after
   // the fact and may be stale, and no clock here trusts it yet.

@@ -21,8 +21,8 @@
 // entry that animates its arrival needs the element there to animate. It sits in a live region that
 // is always in the tree, so each notice is read out as it arrives.
 //
-// A view with no `drawOffer` (a server from before R269, or a fixture) still works as the event
-// stream alone allows: an offer with no answer and no turn since it is taken to stand.
+// `view.drawOffer` alone says an offer stands (R269): every view carries it, and it is gone once
+// the offer is answered, lapses, or the game ends. The event stream only says what became of one.
 
 import { useId, type ReactElement } from "react";
 
@@ -67,14 +67,15 @@ export function drawNoticeFor(view: PlayerView): DrawNotice | null {
   if (last === undefined || !isDrawEvent(last)) return null;
   const turnsSince = view.events.slice(at + 1).filter((event) => event.type === "turnStarted").length;
 
+  if (last.type === "drawAnswered" && last.accept) return { kind: "accepted" };
+  // A game that is over has no offer to answer and no decline to report: the result says it all
+  // (R216). A conceded or timed-out game is not a lapsed offer either.
+  if (view.result !== null) return null;
   if (last.type === "drawAnswered") {
-    if (last.accept) return { kind: "accepted" };
     return turnsSince === 0 ? { kind: "declined", byYou: last.player === view.viewer } : null;
   }
-  // An offer with no answer. With no turn since, only a view that cannot carry `drawOffer` gets
-  // here, and the offer is taken to stand; a turn later it has lapsed (R269).
-  if (turnsSince === 0) return last.player === view.viewer ? { kind: "waiting" } : { kind: "offered" };
-  return turnsSince <= EXPIRED_NOTE_TURNS ? { kind: "expired" } : null;
+  // An offer with no answer and no `drawOffer` has lapsed with its offerer's turn (R269).
+  return turnsSince >= 1 && turnsSince <= EXPIRED_NOTE_TURNS ? { kind: "expired" } : null;
 }
 
 /** The words each notice says, as the screen and the live region both say them. */

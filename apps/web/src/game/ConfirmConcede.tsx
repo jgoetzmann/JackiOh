@@ -11,7 +11,7 @@
 // consequence. The focus moves in on open (to "Keep playing"), Tab and Shift+Tab stay between the
 // two buttons, and the caller puts the focus back on the Concede control once it closes.
 
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactElement } from "react";
+import { useEffect, useId, useRef, type ReactElement } from "react";
 
 import { testid } from "./contract.ts";
 import "./notices.css";
@@ -38,30 +38,31 @@ export default function ConfirmConcede({ onConfirm, onCancel }: ConfirmConcedePr
     stay.current?.focus({ preventScroll: true });
   }, []);
 
-  // Escape anywhere means stay, even when a click on the scrim has taken the focus out of the panel.
+  // Both keys are read at the window, in the capture phase, so they hold wherever the focus is: a
+  // click on the scrim or on the panel's text can take it off the buttons. Escape anywhere means
+  // stay; Tab and Shift+Tab go round the two buttons and never reach the board behind the scrim.
   useEffect(() => {
     function onKey(event: globalThis.KeyboardEvent): void {
-      if (event.key !== "Escape") return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const order = [stay.current, concede.current].filter((el): el is HTMLButtonElement => el !== null);
+      if (order.length === 0) return;
+      const at = order.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.shiftKey ? (at <= 0 ? order.length - 1 : at - 1) : at === order.length - 1 ? 0 : at + 1;
       event.preventDefault();
       event.stopPropagation();
-      onCancel();
+      order[next]?.focus();
     }
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("keydown", onKey, true);
     };
   }, [onCancel]);
-
-  /** Tab and Shift+Tab go round the two buttons and never leave the dialog. */
-  function trapTab(event: KeyboardEvent<HTMLElement>): void {
-    if (event.key !== "Tab") return;
-    const order = [stay.current, concede.current].filter((el): el is HTMLButtonElement => el !== null);
-    if (order.length === 0) return;
-    const at = order.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.shiftKey ? (at <= 0 ? order.length - 1 : at - 1) : at === order.length - 1 ? 0 : at + 1;
-    event.preventDefault();
-    order[next]?.focus();
-  }
 
   return (
     <div
@@ -77,7 +78,9 @@ export default function ConfirmConcede({ onConfirm, onCancel }: ConfirmConcedePr
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        onKeyDown={trapTab}
+        // A click on the panel's own text keeps the focus in the dialog rather than dropping it to
+        // the page behind it.
+        tabIndex={-1}
       >
         <h2 className="concede-dialog__title" id={titleId}>
           {CONCEDE_TITLE}

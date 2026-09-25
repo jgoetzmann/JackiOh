@@ -193,10 +193,14 @@ an expiry becomes an ordinary server-only action — `timeout`, `disconnectExpir
   mulligan by keeping its whole hand and ends no turn. Once both are in, the ordinary turn clock
   starts from full for turn 1. A card that asks a question during setup (a cast-on-draw card in the
   deal or in a replacement draw) is a real `pending` prompt and is timed by R79 as above. A rebuilt
-  actor arms a fresh window (`// NOT IN SPEC:` in `clock.ts`), as the turn clock restarts from full.
-- While the mulligans are open each seat gets the `prompt` frame that fits it: a seat that owes its
+  actor arms a fresh window (R268), as the turn clock restarts from full.
+- Once one seat has answered, each seat gets the `prompt` frame that fits it: a seat that owes its
   mulligan its own prompt (`forYou: true`, its choiceId), a seat that has answered only that the
-  other still owes one. What a seat kept is sealed (R266) and travels in no frame but its own view.
+  other still owes one. None is pushed as the window opens with the match; the client reads both
+  mulligans off `view.pending` and the deadline off the `clock` frame.
+- Every nonce the actor mints for a clock's action starts `srv-`, and a client frame whose nonce
+  does is refused as malformed (R270): the actor answers a known nonce with its stored ack, so a
+  client that sent the next expiry's nonce first would swallow it. What a seat kept is sealed (R266) and travels in no frame but its own view.
 - Disconnect grace runs per player and is stored on the match, so both clients can show the
   countdown. The turn clock keeps running while a player is away.
 - Reaching the ceiling is a draw. A reaper resolves anything past it.

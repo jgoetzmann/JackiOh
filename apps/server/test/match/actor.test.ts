@@ -1104,6 +1104,26 @@ describe("the concurrent mulligan through the actor (R265, R266, R268)", () => {
     expect(lastView(actor.snapshot().active === "p1" ? p1 : p2).clockMs).toBe(turnMs);
   });
 
+  it("R270 a client may not send a nonce the server mints, so it cannot swallow the clock's own timeout", async () => {
+    const { actor, p1, p2, deps, mulliganMs } = await mulliganMatch();
+    // p1 answers with the very nonce the mulligan expiry would mint for p2's timeout (seq 2).
+    await send(actor, p1, "srv-mulligan-2", { type: "mulligan", keep: ids(p1) });
+    expect(errors(p1).at(-1)).toMatchObject({ code: "malformed" });
+    expect(errors(p1).at(-1)?.message).toMatch(/R270/);
+    expect(deps.store.tables.matchActions).toHaveLength(0);
+    expect(actor.snapshot().mulliganOwed).toEqual(["p1", "p2"]);
+
+    // Under any other nonce the answer stands, and the expiry still times out the seat left.
+    await send(actor, p1, "p1-ready", { type: "mulligan", keep: ids(p1) });
+    expect(actor.snapshot().mulliganOwed).toEqual(["p2"]);
+    deps.timers.advance(mulliganMs);
+    await actor.idle();
+    const log = deps.store.tables.matchActions.map((row) => row.action);
+    expect(log.at(-1)).toMatchObject({ type: "timeout", playerId: "p2", nonce: "srv-mulligan-2" });
+    expect(actor.snapshot()).toMatchObject({ mulliganOwed: [], result: null });
+    expect(errors(p2)).toEqual([]);
+  });
+
   it("R268 when neither seat answers, the expiry times out both, in seat order, each its own row", async () => {
     const { actor, p1, p2, deps, mulliganMs, turnMs } = await mulliganMatch();
     const hands = { p1: ids(p1), p2: ids(p2) };

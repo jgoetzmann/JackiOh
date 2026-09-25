@@ -58,6 +58,26 @@ describe("ConfirmConcede on its own", () => {
     expect(stay).toHaveFocus();
   });
 
+  it("keeps Tab inside even once the focus has left the buttons (a click on the text or the page)", () => {
+    render(
+      <>
+        <button type="button" data-testid="behind">
+          behind
+        </button>
+        <ConfirmConcede onConfirm={vi.fn()} onCancel={vi.fn()} />
+      </>,
+    );
+    // The panel itself can hold the focus, so a click on its text leaves it inside.
+    expect(screen.getByTestId("concede-dialog")).toHaveAttribute("tabindex", "-1");
+    // Wherever the focus has gone, the next Tab lands on a button of the dialog, never behind it.
+    for (const shiftKey of [false, true]) {
+      (document.activeElement as HTMLElement | null)?.blur();
+      fireEvent.keyDown(document.body, { key: "Tab", shiftKey });
+      expect(screen.getByTestId("behind")).not.toHaveFocus();
+      expect([screen.getByTestId("concede-cancel"), screen.getByTestId("concede-confirm")]).toContain(document.activeElement);
+    }
+  });
+
   it("Concede confirms; Keep playing, Escape and a click outside the panel cancel", () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();

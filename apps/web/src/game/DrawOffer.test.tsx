@@ -68,9 +68,26 @@ describe("drawNoticeFor", () => {
     expect(drawNoticeFor(view({ events: [...lapsed, { type: "turnStarted", player: "p1", turn: 5 }] }))).toBeNull();
   });
 
-  it("a view that cannot carry drawOffer still shows an offer with no answer and no turn since as standing", () => {
-    expect(drawNoticeFor(view({ events: [OFFER_BY_P2] }))).toEqual({ kind: "offered" });
-    expect(drawNoticeFor(view({ events: [OFFER_BY_P1] }))).toEqual({ kind: "waiting" });
+  it("R269 only view.drawOffer says an offer stands: an unanswered offer without it is shown as nothing", () => {
+    expect(drawNoticeFor(view({ events: [OFFER_BY_P2] }))).toBeNull();
+    expect(drawNoticeFor(view({ events: [OFFER_BY_P1] }))).toBeNull();
+  });
+
+  it("R216 a finished game shows no standing offer and no decline, on either seat, however it ended", () => {
+    const over = { winner: "p2", reason: "concede" } as const;
+    const lists: GameEvent[][] = [
+      [OFFER_BY_P1],
+      [OFFER_BY_P2],
+      [OFFER_BY_P1, { type: "drawAnswered", player: "p2", accept: false }],
+      [OFFER_BY_P1, { type: "turnStarted", player: "p2", turn: 5 }],
+    ];
+    for (const events of lists) expect(drawNoticeFor({ ...view({ events }), result: over })).toBeNull();
+    // An accepted offer is how that game ended, and it still says so.
+    const accepted: PlayerView = {
+      ...view({ events: [OFFER_BY_P1, { type: "drawAnswered", player: "p2", accept: true }] }),
+      result: { winner: "draw", reason: "draw-accepted" },
+    };
+    expect(drawNoticeFor(accepted)).toEqual({ kind: "accepted" });
   });
 });
 

@@ -215,6 +215,10 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
           opponentMs={inMulligan ? mulliganMs : activeIsYou ? null : turnMs}
           graceMs={graceMs}
           mulligan={inMulligan}
+          // R268: the mulligan window can pass with no frame between its opening and its expiry,
+          // so the readout counts down off the frame's own deadline rather than waiting for one.
+          frame={inMulligan ? clock : null}
+          viewer={view.viewer}
         />
       </header>
 
