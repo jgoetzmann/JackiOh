@@ -113,7 +113,7 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
     ...(socketFactory === undefined ? {} : { socketFactory }),
   });
   const defs = useCatalog();
-  // R259: a Best-of-3 game shows its series' score, and once it is over the way to the next game.
+  // R336: a Conquest game shows its series' score and won decks, and once it is over the way to the next game.
   const series = useMatchSeries(token, matchId, match.view?.result != null);
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
 

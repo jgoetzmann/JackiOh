@@ -234,7 +234,7 @@ describe("the lobby's way to practice", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("the lobby's modes", () => {
-  it("R257 the mode picker offers Best of 1, Best of 3 and All Random, each with its own choice", async () => {
+  it("R257 the mode picker offers Best of 1, Conquest and All Random, each with its own choice", async () => {
     await renderLobby();
 
     for (const mode of ["bo1", "bo3", "random"] as const) {

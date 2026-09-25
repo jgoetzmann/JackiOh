@@ -146,7 +146,7 @@ export type LoadoutValidateInput = {
    */
   names?: readonly string[];
   /**
-   * R253: `"trio"` (the default) checks L1–L6 over three decks — a Best-of-3 trio is §9.4's
+   * R253: `"trio"` (the default) checks L1–L6 over three decks — a Conquest trio is §9.4's
    * loadout. `"deck"` checks one Best-of-1 deck against L2, L3, L5 and L6.
    */
   scope?: "trio" | "deck";

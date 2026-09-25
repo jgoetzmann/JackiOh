@@ -178,7 +178,7 @@ export type MeResponse = {
   /** §9.5: the match this profile is in, or null. What `/play` waits on after it queues. */
   currentMatchId: string | null;
   /**
-   * R259: the Best-of-3 series this profile is in (not over), or null. Set between games too, when
+   * R330: the Conquest series this profile is in (not over), or null. Set between games too, when
    * `currentMatchId` is null, so `/play` can send a paired player to the series screen to pick.
    * Optional because a server from before R259 does not send it.
    */
@@ -429,7 +429,7 @@ export function getCatalog(): Promise<CatalogResponse> {
 export type CreateRoomResponse = { code: string; expiresAt: number; mode: QueueMode };
 
 /**
- * A join answers with the match (Best-of-1, All Random) or the series (Best-of-3) it made. A joiner
+ * A join answers with the match (Best-of-1, All Random) or the series (Conquest) it made. A joiner
  * whose choice is in another mode than the room's is refused with 409 `conflict` and
  * `details.mode`, the room's mode, so the lobby can ask for the right deck or trio.
  */
