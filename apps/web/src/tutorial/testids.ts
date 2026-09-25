@@ -14,12 +14,16 @@ export const tutorialTestid = {
   continue: "tutorial-continue",
   /** Once every lesson is done the path folds to its header; this shows or hides the lessons (`aria-expanded`). */
   pathToggle: "tutorial-path-toggle",
+  /** In the path's header while a lesson is still to do: "Hide tutorial" (R322). */
+  hide: "tutorial-hide",
+  /** In the path's place while the player has hidden it (R322): `data-complete` as the path's. */
+  hidden: "tutorial-path-hidden",
+  /** In the hidden path's place: "Show tutorial", which brings the path back (R322). */
+  show: "tutorial-show",
   /** The lesson's HUD above the board; `data-lesson`, `data-human-seat`, `data-ai-seat`, `data-thinking`. */
   hud: "tutorial-hud",
   /** In the HUD: "Step k of n". */
   step: "tutorial-step",
-  /** In the HUD: the coach's "Skip step". */
-  skip: "tutorial-skip",
   /** In the HUD: back to the lessons; mid-game it opens practice's "Leave this game?" first. */
   exit: "tutorial-exit",
   /** In the HUD once the lesson is over: the outcome, which reopens the result dialog. */
@@ -31,11 +35,6 @@ export const tutorialTestid = {
   coach: "coach",
   /** In the bubble: "Got it", on every tip and info step. */
   coachAck: "coach-ack",
-  /**
-   * In the bubble: "Skip step", on every step and tip it shows and on its waiting line while the AI
-   * plays; not on the waiting line of the player's own turn (the HUD's Skip step is always there).
-   */
-  coachSkip: "coach-skip",
   /** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
   coachRing: "coach-ring",
   /** The end-of-lesson dialog; `data-outcome="win|loss|draw"`, `data-lesson`. */

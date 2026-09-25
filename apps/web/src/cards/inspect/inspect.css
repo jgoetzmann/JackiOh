@@ -622,7 +622,7 @@
   }
 }
 
-/* ---- A list of cards: a graveyard or an exile pile (CardList.tsx) ------------------------------ */
+/* ---- A list of cards: a graveyard, an exile pile or your library (CardList.tsx) ---------------- */
 
 .inspect-list-hover {
   --list-face-h: 150px; /* LIST_PREVIEW_FACE_HEIGHT_PX */
@@ -691,6 +691,33 @@
 .inspect-list-more {
   color: var(--text-dim, #9aa1b8);
   font-size: 12.5px;
+}
+
+/* A card back in a library's list (R312): the back fills the tile, and it opens nothing. */
+.inspect-list-face--unknown {
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+/* How many cards one face stands for in a library's list (R310): "×2" on its lower right corner.
+   Dark on gold, so it reads on any face and on a back. */
+.inspect-list-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 1;
+  min-width: 26px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--radiant, #ffd24a);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  color: #16131f;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
 }
 
 /* The sheet: a centred dialog on a wide screen, a bottom sheet on a phone. The grid scrolls

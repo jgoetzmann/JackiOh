@@ -4,9 +4,11 @@
 // The view is built by *copying* what the viewer is entitled to, never by deleting fields from a
 // state clone: a field added to `GameState` stays invisible until this file names it. Five rules do
 // all the work here.
-//   - §9.1 hidden list: library order and contents, the opponent's hand, face-down traps. Both
-//     libraries and the opponent's hand travel as counts; graveyards, exile and Field Spells are
-//     public.
+//   - §9.1 hidden list: library order, the opponent's library, the opponent's hand, face-down traps.
+//     Both libraries and the opponent's hand travel as counts; graveyards, exile and Field Spells are
+//     public. R310–R312: the viewer's own library also travels as a list without order of what the
+//     viewer was shown going in (`ownLibrary.ts`) — definitions, faces and counts, never an instance
+//     id — so R97's rule below still reads no library card, the owner's included.
 //   - R33: a face-down trap is readable by its *current controller* only, so a steal, a board swap
 //     or a rotation moves who may read it even though ownership never changed; a Field Trap that
 //     has fired (`faceUp`) is public to both.
@@ -75,6 +77,7 @@ import {
 } from "./state";
 import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
+import { ownLibraryView } from "./ownLibrary";
 import { backrowIsPublic, previewOf } from "./preview";
 import { mulliganPromptFor, returnedAwaitingShuffle } from "./setup";
 import { standingDrawOffer } from "./turn";
@@ -445,8 +448,11 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
             ),
           )
         : { count: side.hand.length },
-    // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
+    // §9.1: a library's order ships to nobody, and the opponent's library is a count and nothing
+    // else. R310–R312: the viewer's own is a list without order as well, of what they were shown
+    // going in (`ownLibrary.ts`), with no instance id or position in it.
     libraryCount: side.library.length,
+    ...(player === viewer ? { ownLibrary: ownLibraryView(state, player) } : {}),
     graveyard: side.graveyard.map((card) => cardView(state, card)),
     exile: side.exile.map((card) => cardView(state, card)),
     // §10.5 step 4, R98: a Spell between its play and its graveyard. Playing it was public.

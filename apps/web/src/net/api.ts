@@ -370,6 +370,42 @@ export function deleteTrio(token: string, id: string): Promise<{ deleted: boolea
 }
 
 // ---------------------------------------------------------------------------------------------
+// Tutorial progress on the account (SPEC §9.10, R320). The device's copy is the one the page
+// renders (`tutorial/progress.ts`); `tutorial/accountSync.ts` is the only caller of these two.
+// ---------------------------------------------------------------------------------------------
+
+/** `TutorialProgressView` in `apps/server/src/api/tutorial.ts`. */
+export type TutorialAccountProgress = {
+  /** Lesson ids, each once, in code-point order; an id this client does not know may be among them. */
+  completed: string[];
+  /** The newest Hide/Show choice the account has seen (epoch ms), or null. */
+  hiddenChoice: { hidden: boolean; at: number } | null;
+};
+
+/** `GET /api/tutorial` (`active`): the account's copy, empty before its first write. */
+export async function getTutorialProgress(token: string): Promise<TutorialAccountProgress> {
+  return (await apiRequest<{ progress: TutorialAccountProgress }>("/api/tutorial", { token })).progress;
+}
+
+/**
+ * `PUT /api/tutorial` (`active`): merges this device's progress into the account's and answers with
+ * the result — the union of the lessons and the newer choice (R320). It never removes anything, so
+ * sending the same progress twice is harmless.
+ */
+export async function putTutorialProgress(
+  token: string,
+  progress: TutorialAccountProgress,
+): Promise<TutorialAccountProgress> {
+  return (
+    await apiRequest<{ progress: TutorialAccountProgress }>("/api/tutorial", {
+      method: "PUT",
+      token,
+      body: { completed: progress.completed, hiddenChoice: progress.hiddenChoice },
+    })
+  ).progress;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Queue modes (SPEC §9.5, R257–R258, R264)
 // ---------------------------------------------------------------------------------------------
 

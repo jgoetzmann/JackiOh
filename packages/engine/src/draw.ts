@@ -19,6 +19,7 @@ import {
   type WorkItem,
 } from "./state";
 import { stateCheck } from "./stateCheck";
+import { showToOwner } from "./ownLibrary";
 import { owe, paused, registerWorkHandler } from "./work";
 import { cardAt, isUnitToken, moveToZone, slotsOf } from "./zones";
 
@@ -144,6 +145,12 @@ export function shuffleIntoLibrary(
   }
   const position = sink.rng.int(side.library.length + 1);
   moveToZone(sink.state, instance, "library", { position });
+  // R311: a shuffle-in is open to the library's owner. Every Core one goes in by a card its owner
+  // watched resolve — a CN-Virus's copies, an Unstable Clone Machine's (of a card the owner played,
+  // a face-down Trap included), the opponent's CN-Viral Injection, whose text names what it
+  // shuffles — so the owner knows what went in, though never where (the slot below stays hidden
+  // from both, R97).
+  showToOwner(instance);
   sink.events.push({
     type: "shuffledIn",
     player: instance.owner,

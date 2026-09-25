@@ -331,6 +331,27 @@ describe("redact (B9)", () => {
     for (const card of moved) expect(cardById(pub, card.id)?.defId).toBe(HIDDEN_DEF_ID);
   });
 
+  it("R312 a card in the seat's own library it was never shown is hidden, so what it is cannot move a decision", () => {
+    const a = clone(beginGame(createGame({ seed: "observe-r312", decks: randomDecks("observe-r312") })).state);
+    // #83's library replacements (or a library #87 swapped away and back), reduced to two cards:
+    // p1 was never shown them, so its own `viewFor` counts them unknown (R312) and so must the AI.
+    const replaced = a.players[AI].library.slice(0, 2);
+    for (const card of replaced) delete card.knownAs;
+    const b = clone(a);
+    const legendary = "core-052";
+    for (const card of b.players[AI].library.slice(0, 2)) {
+      card.defId = legendary;
+      card.radiant = true;
+    }
+
+    const hidden = hiddenInstanceIds(a, AI);
+    for (const card of replaced) expect(hidden.has(card.id), card.id).toBe(true);
+    for (const card of a.players[AI].library.slice(2)) expect(hidden.has(card.id), `${card.id} is known`).toBe(false);
+    expect(viewFor(a, AI).you.ownLibrary?.unknown).toBe(2);
+    expect(hashState(redact(b, AI))).toBe(hashState(redact(a, AI)));
+    for (const card of replaced) expect(cardById(redact(b, AI), card.id)?.defId).toBe(HIDDEN_DEF_ID);
+  });
+
   it("R185 B9: a different public unit on the opponent's field changes the redacted hash", () => {
     const a = build("observe-a", P2_A);
     const c = build("observe-a", { ...P2_A, field: ["core-025"] });

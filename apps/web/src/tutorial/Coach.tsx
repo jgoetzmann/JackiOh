@@ -25,12 +25,12 @@
 //    lines the screen can spare (tutorial.css), with More and Less when it runs over. With nothing
 //    to point at on screen, the coach shows without a ring, and an anchor under an open prompt
 //    (a phone's picker sheet over your hand) is not on screen.
-//  - It never takes over. "Skip step" is on every step and tip it shows, and on the waiting line
-//    while the AI plays; on your own turn the waiting line says it is your move instead, and a step
-//    waiting there for its moment retires by itself (TUTORIAL_STEP_TURNS_MAX). Skip step and Exit
-//    tutorial are in the HUD throughout, which nothing is ever placed over. Escape does not end the
-//    tutorial; focus moves to "Got it" when a step that needs it appears, but never out of an open
-//    prompt or dialog.
+//  - It never takes over, and it has no Skip step (R314). The only step or tip that holds the AI is
+//    one with "Got it"; an action step waits while the game goes on; the waiting line says whose
+//    move it is and has no buttons, and a step waiting for its moment retires by itself
+//    (TUTORIAL_STEP_TURNS_MAX). Exit tutorial is in the HUD throughout, which nothing is ever placed
+//    over. Escape does not end the tutorial; focus moves to "Got it" when a step that needs it
+//    appears, but never out of an open prompt or dialog.
 //
 // Rule 7: nothing here reads the rules. The anchor's testids come from the view (targets.ts).
 
@@ -196,7 +196,7 @@ function sameGeometry(a: Geometry, b: Geometry): boolean {
  * The display the board has caught up with: the newest one once nothing under `root` animates and
  * no played card is held up, the one already showing until then (null before the first).
  *
- * A display from the snapshot already showing (Got it, Skip step) has nothing new on the board and
+ * A display from the snapshot already showing (after Got it) has nothing new on the board and
  * shows at once. One from a new snapshot is looked at a microtask later: `Game.tsx` plans the
  * snapshot's events in a layout effect and draws `data-animating` in the render that follows, and
  * React may run that render after this effect (it flushes a sync commit's passive effects first),
@@ -374,14 +374,10 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
     // Only a new display moves the focus (`key`), never a re-render of the same one.
   }, [visible, key]);
 
-  const answer = useCallback(
-    (how: "ack" | "skip") => {
-      refocus.current = bubble.current?.contains(document.activeElement) === true;
-      if (how === "ack") tracker.ack(key);
-      else tracker.skip(key);
-    },
-    [tracker, key],
-  );
+  const answer = useCallback(() => {
+    refocus.current = bubble.current?.contains(document.activeElement) === true;
+    tracker.ack(key);
+  }, [tracker, key]);
 
   if (!visible || display === null || shown === null) return null;
 
@@ -397,7 +393,7 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
   const count = `${String(display.stepNumber)} / ${String(display.stepCount)}`;
   const countLabel = `Step ${String(display.stepNumber)} of ${String(display.stepCount)}`;
   const full = display.mode === "tip" || display.mode === "step";
-  // Waiting on the player's own turn: a line saying so, and no Skip step (see the header).
+  // Waiting: a line saying whose move it is, and no buttons (see the header).
   const yourMove = !full && !shown.aiBusy && shown.yourMove;
   const waitingLine = shown.aiBusy ? AI_MOVE : yourMove ? YOUR_MOVE : "";
   const className = ["coach", panel ? "coach--panel" : "coach--float", ...(full ? [] : ["coach--slim"])].join(" ");
@@ -475,25 +471,11 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
               type="button"
               className="coach__ack"
               data-testid={tutorialTestid.coachAck}
-              onClick={() => {
-                answer("ack");
-              }}
+              onClick={answer}
             >
               Got it
             </button>
           ) : null}
-          {yourMove ? null : (
-            <button
-              type="button"
-              className="coach__skip"
-              data-testid={tutorialTestid.coachSkip}
-              onClick={() => {
-                answer("skip");
-              }}
-            >
-              Skip step
-            </button>
-          )}
         </div>
       </section>
     </>

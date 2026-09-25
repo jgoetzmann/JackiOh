@@ -404,6 +404,8 @@ function concealFrom(base: GameState, viewer: PlayerId): void {
     card.memory = {};
     card.grantedKeywords = [];
     card.buffs = { attack: 0, health: 0 };
+    // R311: the record of what a library card's owner was shown names it as well.
+    delete card.knownAs;
   };
   for (const card of base.players[opponent].hand) hide(card, HIDDEN_CARD_DEF_ID);
   for (const player of [viewer, opponent]) {

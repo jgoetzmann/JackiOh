@@ -1,7 +1,7 @@
 // The coach on the board (tutorial/Coach.tsx, fed by tutorial/tracker.ts), on a small fake lesson
 // script and a fake controller, so nothing here depends on the real lessons.
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActionBody, GameEvent, PlayerView } from "@jackioh/shared";
@@ -184,6 +184,13 @@ function bubble(): HTMLElement {
   return screen.getByTestId(tutorialTestid.coach);
 }
 
+/** The bubble's buttons, by their text. There is no Skip step (R314): at most "Got it". */
+function buttonsInBubble(): string[] {
+  return within(bubble())
+    .queryAllByRole("button")
+    .map((button) => button.textContent ?? "");
+}
+
 beforeEach(() => {
   resetIds();
 });
@@ -217,7 +224,7 @@ describe("the coach bubble", () => {
     expect(el).toHaveTextContent("1 / 3");
     expect(el.querySelector('[aria-live="polite"]')).toHaveTextContent("These cards are your hand.");
     expect(screen.getByTestId(tutorialTestid.coachAck)).toHaveTextContent("Got it");
-    expect(screen.getByTestId(tutorialTestid.coachSkip)).toHaveTextContent("Skip step");
+    expect(buttonsInBubble()).toEqual(["Got it"]);
   });
 
   it("Got it completes an info step, and the next step's text is read off the view", () => {
@@ -234,16 +241,24 @@ describe("the coach bubble", () => {
     expect(screen.queryByTestId(tutorialTestid.coachAck)).toBeNull();
   });
 
-  it("Skip step moves on from any step", () => {
+  it("offers no Skip step: an info step and a tip have Got it alone, and an act step has no button", async () => {
     const source = fakeSource();
     source.push(snap(myTurn(1)));
     mount(source, boardWith([]));
 
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
+    // The welcome, an info step.
+    expect(buttonsInBubble()).toEqual(["Got it"]);
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
+    // "Play a unit", an act step: the player does what it says, and it moves on when the board shows it.
     expect(bubble()).toHaveAttribute("data-coach-step", "play");
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
-    expect(bubble()).toHaveAttribute("data-coach-step", "end");
-    expect(tracker?.getState().coach.outcomes).toEqual({ welcome: "skipped", play: "skipped" });
+    expect(buttonsInBubble()).toEqual([]);
+    // A tip, in front of it.
+    await arrive(source, snap(myTurn(1, { you: emptySide("p1", { libraryCount: 0, hand: [card({ instanceId: "h1", defId: VANILLA, cost: 1 })] }) })));
+    expect(bubble()).toHaveAttribute("data-coach-mode", "tip");
+    expect(buttonsInBubble()).toEqual(["Got it"]);
+    expect(screen.queryByTestId("coach-skip")).toBeNull();
+    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull();
+    expect(tracker?.getState().coach.outcomes).toEqual({ welcome: "done" });
   });
 
   it("a step done on the board moves on by itself when the next snapshot shows it", async () => {
@@ -338,19 +353,18 @@ describe("the coach bubble", () => {
     expect(bubble()).toHaveFocus();
   });
 
-  it("while it waits on the AI's turn, a slim bubble says so and keeps Skip step", () => {
+  it("while it waits on the AI's turn, a slim bubble says so, with no button", () => {
     const source = fakeSource();
     source.push(snap(myTurn(2, { active: "p2" }), [], true));
     mount(source, boardWith([]));
-    // The welcome is an info step with no `when`: it shows even now. Skip it to reach "play".
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
+    // The welcome is an info step with no `when`: it shows even now. Got it reaches "play".
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
     const el = bubble();
     expect(el).toHaveAttribute("data-coach-mode", "waiting");
     expect(el).not.toHaveAttribute("data-coach-step");
     expect(el).toHaveTextContent("The AI is taking its turn.");
     expect(el).toHaveAccessibleName("Tutorial coach");
-    expect(screen.getByTestId(tutorialTestid.coachSkip)).toBeInTheDocument();
-    expect(screen.queryByTestId(tutorialTestid.coachAck)).toBeNull();
+    expect(buttonsInBubble()).toEqual([]);
   });
 
   it("waits for the board: a newer display shows only once nothing carries data-animating", async () => {
@@ -361,8 +375,7 @@ describe("the coach bubble", () => {
     fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
     expect(bubble()).toHaveAttribute("data-coach-step", "play");
 
-    // The play lands, and the board animates it: the bubble keeps the step it was on, marked stale,
-    // and a press on it answers nothing the player has not seen.
+    // The play lands, and the board animates it: the bubble keeps the step it was on, marked stale.
     root.firstElementChild?.setAttribute("data-animating", "summoned");
     act(() => {
       source.push(snap(myTurn(1, { you: emptySide("p1", { hand: [] }) }), [{ type: "endTurn" }]));
@@ -370,8 +383,6 @@ describe("the coach bubble", () => {
     expect(tracker?.getState().display).toMatchObject({ mode: "step", id: "end" });
     expect(bubble()).toHaveAttribute("data-coach-step", "play");
     expect(bubble()).toHaveAttribute("data-stale", "true");
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
-    expect(tracker?.getState().display).toMatchObject({ mode: "step", id: "end" });
 
     // The board catches up.
     await act(async () => {
@@ -380,6 +391,36 @@ describe("the coach bubble", () => {
     });
     expect(bubble()).toHaveAttribute("data-coach-step", "end");
     expect(bubble()).not.toHaveAttribute("data-stale");
+  });
+
+  it("a press on a stale bubble answers nothing the player has not seen", async () => {
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    const root = boardWith(["hand-you", "hand-card-h1"]);
+    mount(source, root);
+    expect(bubble()).toHaveAttribute("data-coach-step", "welcome");
+
+    // The last card is drawn while the board animates: the tip it raises waits behind the welcome,
+    // marked stale, and the welcome's Got it neither dismisses the tip nor completes the welcome.
+    root.firstElementChild?.setAttribute("data-animating", "drawn");
+    act(() => {
+      source.push(snap(myTurn(1, { you: emptySide("p1", { libraryCount: 0, hand: [card({ instanceId: "h1", defId: VANILLA, cost: 1 })] }) })));
+    });
+    expect(tracker?.getState().display).toMatchObject({ mode: "tip", id: "fatigue" });
+    expect(bubble()).toHaveAttribute("data-coach-step", "welcome");
+    expect(bubble()).toHaveAttribute("data-stale", "true");
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
+    expect(tracker?.getState().display).toMatchObject({ mode: "tip", id: "fatigue" });
+    expect(tracker?.getState().coach.outcomes).toEqual({});
+
+    // The board catches up, and the tip shows with its own Got it.
+    await act(async () => {
+      root.firstElementChild?.removeAttribute("data-animating");
+      await Promise.resolve();
+    });
+    expect(bubble()).toHaveAttribute("data-coach-mode", "tip");
+    expect(bubble()).not.toHaveAttribute("data-stale");
+    expect(buttonsInBubble()).toEqual(["Got it"]);
   });
 
   it("looks at the board a microtask after a snapshot, so an animation the board marks in its next render holds the new display", async () => {
@@ -497,7 +538,7 @@ describe("the coach bubble", () => {
     expect(screen.getByTestId(tutorialTestid.coachRing)).toBeInTheDocument();
   });
 
-  it("waiting on the player's own turn, says it is their move and offers no Skip step; on the AI's turn it says so and keeps it", async () => {
+  it("waiting on the player's own turn, says it is their move; on the AI's turn it says so; neither has a button", async () => {
     const script: LessonScript = {
       lessonId: "later",
       steps: [{ id: "later", kind: "act", title: "Later", text: "Not yet.", when: () => false, final: true }],
@@ -509,12 +550,12 @@ describe("the coach bubble", () => {
     render(<Coach tracker={tracker} boardRoot={boardWith([])} />);
     expect(bubble()).toHaveAttribute("data-coach-mode", "waiting");
     expect(bubble()).toHaveTextContent("Your move: play cards and attack, then press End turn.");
-    expect(screen.queryByTestId(tutorialTestid.coachSkip)).toBeNull();
+    expect(buttonsInBubble()).toEqual([]);
 
     await arrive(source, snap(myTurn(1, { active: "p2" }), [], true));
     expect(bubble()).toHaveTextContent("The AI is taking its turn.");
     expect(bubble()).not.toHaveTextContent("Your move");
-    expect(screen.getByTestId(tutorialTestid.coachSkip)).toBeInTheDocument();
+    expect(buttonsInBubble()).toEqual([]);
   });
 
   it("shows nothing once the game is over", async () => {
@@ -586,7 +627,7 @@ describe("the coach on a phone: a panel between the HUD and the board", () => {
     expect(el).toHaveAccessibleName("Welcome");
     expect(el).toHaveTextContent("These cards are your hand.");
     expect(el).toHaveTextContent("1 / 3");
-    expect(screen.getByTestId(tutorialTestid.coachSkip)).toHaveTextContent("Skip step");
+    expect(buttonsInBubble()).toEqual(["Got it"]);
     // "Got it" still takes the focus, and the ring still marks the anchor on the board.
     expect(screen.getByTestId(tutorialTestid.coachAck)).toHaveFocus();
     expect(screen.getByTestId(tutorialTestid.coachRing).style.left).toBe("94px");
@@ -664,18 +705,18 @@ describe("the coach on a phone: a panel between the HUD and the board", () => {
     expect(bubble()).not.toHaveAttribute("data-expanded");
   });
 
-  it("keeps the waiting line and Skip step in the panel while the AI plays", () => {
+  it("keeps the waiting line in the panel while the AI plays, with no button", () => {
     phoneLayout(true);
     const source = fakeSource();
     source.push(snap(myTurn(2, { active: "p2" }), [], true));
     mount(source, boardWith([]));
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
     const el = bubble();
     expect(el).toHaveAttribute("data-coach-dock", "panel");
     expect(el).toHaveAttribute("data-coach-mode", "waiting");
     expect(el).toHaveClass("coach--slim");
     expect(el).toHaveTextContent("The AI is taking its turn.");
-    expect(screen.getByTestId(tutorialTestid.coachSkip)).toBeInTheDocument();
+    expect(buttonsInBubble()).toEqual([]);
     expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
   });
 });

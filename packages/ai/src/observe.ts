@@ -63,9 +63,12 @@ function backrowHiddenFrom(state: GameState, card: CardInstance, seat: PlayerId)
 
 /**
  * The instance ids `redact` hides from `seat` (step 2): the opponent's hand and library, every
- * backrow card the seat cannot read, and the cards in the seat's own library that were minted for
- * the opponent's opening deck (#87 Pocket Chaos's library swap, R73). A card the seat's own open
- * prompt offers as an option is shown to the seat by `viewFor` (§10.8), so it is not hidden.
+ * backrow card the seat cannot read, the cards in the seat's own library that were minted for
+ * the opponent's opening deck (#87 Pocket Chaos's library swap, R73), and every card in the seat's
+ * own library it was never shown (no `knownAs`, R312: a library swapped in, or swapped away and
+ * back, and #83 Transmogulate's picks), which its own `viewFor` list counts as unknown too. A card
+ * the seat's own open prompt offers as an option is shown to the seat by `viewFor` (§10.8), so it
+ * is not hidden.
  */
 export function hiddenInstanceIds(state: GameState, seat: PlayerId): Set<string> {
   const opp = opponentOf(seat);
@@ -88,6 +91,8 @@ export function hiddenInstanceIds(state: GameState, seat: PlayerId): Set<string>
   for (const card of state.players[seat].library) {
     const n = instanceNumber(card.id);
     if (n >= low && n <= high) hidden.add(card.id);
+    // R312: a card of the seat's own library it was never shown is as hidden as the opponent's.
+    if (card.knownAs === undefined) hidden.add(card.id);
   }
 
   const pending = state.pending ?? mulliganPromptFor(state, seat);
@@ -114,6 +119,8 @@ function toPlaceholder(card: CardInstance): void {
   delete card.x;
   delete card.embiggened;
   delete card.returnToHandAtEndOfTurn;
+  // R311: what the card's owner was shown of it going into their library names it too.
+  delete card.knownAs;
 }
 
 type Loose = Record<string, unknown>;

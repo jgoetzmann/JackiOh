@@ -29,6 +29,7 @@ import {
 import { clearReturnFlags, startTurn } from "./turn";
 import { owe, paused, registerWorkHandler } from "./work";
 import { moveToZone } from "./zones";
+import { showToOwner } from "./ownLibrary";
 
 function seatOf(player: PlayerId): number {
   return PLAYER_IDS.indexOf(player);
@@ -281,6 +282,8 @@ function finishMulligan(
   for (const card of returned) {
     const position = sink.rng.int(side.library.length + 1);
     moveToZone(state, card, "library", { position });
+    // R311: the player returned it from their own hand, so they know what went back.
+    showToOwner(card);
     sink.events.push({
       type: "shuffledIn",
       player,

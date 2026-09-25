@@ -406,6 +406,24 @@ export const SERIES_WRITE_ATTEMPTS = 3;
 export const SERIES_POLL_SECONDS = 2;
 
 // ---------------------------------------------------------------------------------------------
+// Tutorial progress on the account (SPEC §9.10, R320). The lessons themselves are the client's
+// (`apps/web/src/tutorial/lessons.ts`); the server stores ids it does not interpret, so these only
+// bound what one account can hold.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R320: the most completed-lesson ids one account keeps. The path has four lessons; this
+ * leaves room for the path to grow without a server change, and bounds a body of junk ids.
+ * Mirrored in `app.settings` (0011).
+ */
+export const TUTORIAL_LESSONS_MAX = 32;
+/**
+ * SPEC §11 R320: the longest lesson id the server accepts, in characters. An id is a lower-case
+ * slug (`basics`, `spells`); forty is room to spare. Mirrored in `app.settings` (0011).
+ */
+export const TUTORIAL_LESSON_ID_MAX_LENGTH = 40;
+
+// ---------------------------------------------------------------------------------------------
 // Derived millisecond helpers, since timers (setTimeout/alarms) take milliseconds.
 // ---------------------------------------------------------------------------------------------
 
@@ -488,6 +506,8 @@ export const SERVER_CONFIG = Object.freeze({
   SERIES_START_GIVE_UP_SECONDS,
   SERIES_WRITE_ATTEMPTS,
   SERIES_POLL_SECONDS,
+  TUTORIAL_LESSONS_MAX,
+  TUTORIAL_LESSON_ID_MAX_LENGTH,
   TURN_CLOCK_MS,
   PROMPT_CLOCK_MS,
   MULLIGAN_CLOCK_MS,

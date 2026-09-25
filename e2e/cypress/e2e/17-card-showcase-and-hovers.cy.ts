@@ -12,7 +12,8 @@
 //   * a graveyard (and so an exile pile, the same component) that holds cards is browsable on both
 //     seats: a resting mouse shows its count and its newest faces (`inspect-list-hover`), and a click
 //     opens every card, newest first, in a dialog (`inspect-list-sheet`) where a face opens large;
-//     the library, which is hidden, is not browsable;
+//     the opponent's library, which is hidden, is not browsable (your own is, without its order:
+//     spec 24, R313);
 //   * on `/practice` (normal pacing, not `?pace=fast`), the AI's played card is held up for about a
 //     second and the AI takes no step while it is up (routes/practice.tsx holds it on
 //     `data-showcase`, as it does on `data-speaking`);
@@ -530,8 +531,9 @@ describe("17 — the opponent's play held up, and the log and the piles looked i
     cy.then(() => {
       const name = nameOf(spell.defId);
       const pile = ts("graveyard-you");
-      // The library is hidden, so it is a count and nothing else.
-      cy.get(ts("library-you")).should("not.have.attr", "data-browsable");
+      // The opponent's library is hidden, so it is a count and nothing else (your own opens its
+      // list without order, R313: spec 24).
+      cy.get(ts("library-opponent")).should("not.have.attr", "data-browsable");
 
       cy.get(ts(graveyardCountId("you")))
         .invoke("text")

@@ -24,7 +24,12 @@ import {
   createTransactionQueue,
   type RedemptionSettings,
 } from "../../src/api/e2e-store";
-import { createMemoryDeckStores, type DeckTables } from "../../src/api/memory-stores";
+import {
+  createMemoryDeckStores,
+  createMemoryTutorialStore,
+  type DeckTables,
+  type TutorialTables,
+} from "../../src/api/memory-stores";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -53,7 +58,8 @@ type Tables = {
   rooms: Room[];
   tickets: Ticket[];
   results: ResultRow[];
-} & DeckTables;
+} & DeckTables &
+  TutorialTables;
 
 function emptyTables(): Tables {
   return {
@@ -70,6 +76,7 @@ function emptyTables(): Tables {
     rooms: [],
     tickets: [],
     results: [],
+    tutorial: [],
   };
 }
 
@@ -287,6 +294,8 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
   store.decks = deckStores.decks;
   store.trios = deckStores.trios;
   store.series = deckStores.series;
+  // R320: tutorial progress, the same in-memory store the end-to-end server runs.
+  store.tutorial = createMemoryTutorialStore(() => tables, call);
 
   store.matches = {
     create: async (match) => {

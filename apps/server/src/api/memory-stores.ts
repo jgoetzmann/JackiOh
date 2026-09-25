@@ -1,20 +1,22 @@
 /**
  * The in-memory halves of the stores R250–R263 added — saved decks, saved trios and the Conquest
- * series — shared by the two in-memory `Store`s: `src/api/e2e-store.ts` (the end-to-end server)
- * and `test/fakes/store.ts` (the unit tests). One implementation, so the two cannot answer an
- * upsert or a compare-and-set differently while only one of them runs under `test/db/contract.ts`.
+ * series — and R320's tutorial progress, shared by the two in-memory `Store`s:
+ * `src/api/e2e-store.ts` (the end-to-end server) and `test/fakes/store.ts` (the unit tests). One
+ * implementation, so the two cannot answer an upsert, a compare-and-set or a merge differently
+ * while only one of them runs under `test/db/contract.ts`.
  *
  * Each factory closes over a `tables()` getter rather than the arrays themselves, because both
  * stores replace their tables wholesale (a rolled-back `tx`, `reset()`), and a captured array
  * would keep writing to the discarded copy.
  *
- * Strict where Postgres is strict (migrations 0007, 0008):
+ * Strict where Postgres is strict (migrations 0007, 0008, 0011):
  *  - `decks.upsert` / `trios.upsert` refuse an id owned by another profile (`not_owner`) and a
  *    create past the cap (`limit`), exactly as `app.upsert_deck` / `app.upsert_trio` do;
  *  - `trios.upsert` refuses a slot naming a deck that is not this profile's (`unknown_deck`, the
  *    composite foreign key) and one deck in two slots (the check constraint);
  *  - `decks.remove` empties every trio slot that named the deck (`on delete set null`);
- *  - `series.update` is compare-and-set on `version`.
+ *  - `series.update` is compare-and-set on `version`;
+ *  - `tutorial.merge` only ever grows the lessons and keeps the newest choice (0011, R320).
  */
 
 import type {
@@ -25,6 +27,10 @@ import type {
   SeriesStore,
   TrioStore,
   TrioUpsertOutcome,
+  TutorialMergeInput,
+  TutorialMergeOutcome,
+  TutorialProgressRow,
+  TutorialStore,
   UpsertOutcome,
 } from "./ports";
 
@@ -201,4 +207,66 @@ export function createMemoryDeckStores(
   };
 
   return { decks, trios, series };
+}
+
+// ---------------------------------------------------------------------------
+// Tutorial progress on the account (SPEC §9.10, R320)
+// ---------------------------------------------------------------------------
+
+/** The table R320 adds (`public.tutorial_progress`, migration 0011): one row per profile. */
+export type TutorialTables = { tutorial: TutorialProgressRow[] };
+
+export function emptyTutorialTables(): TutorialTables {
+  return { tutorial: [] };
+}
+
+/**
+ * R320's merge, exactly as `app.merge_tutorial_progress` (0011) makes it: the lessons become the
+ * union of the stored and the sent, each once in code-point order (`collate "C"` in Postgres), and
+ * the stored choice is replaced only by a strictly newer one. `limit` when the union would pass
+ * `maxLessons`; nothing changes then.
+ */
+export function mergeTutorialRow(
+  existing: TutorialProgressRow | null,
+  input: TutorialMergeInput,
+  maxLessons: number,
+): TutorialProgressRow | "limit" {
+  const completed = [...new Set([...(existing?.completed ?? []), ...input.completed])].sort();
+  if (completed.length > maxLessons) return "limit";
+  const stored = existing?.hiddenChoice ?? null;
+  const incoming = input.hiddenChoice;
+  const hiddenChoice = incoming !== null && (stored === null || incoming.at > stored.at) ? incoming : stored;
+  return {
+    profileId: input.profileId,
+    completed,
+    hiddenChoice: hiddenChoice === null ? null : { hidden: hiddenChoice.hidden, at: hiddenChoice.at },
+  };
+}
+
+/**
+ * The in-memory `TutorialStore`, shared by both in-memory stores as the deck stores are. Laxer than
+ * Postgres in two places, both listed in `src/db/store.ts`'s KNOWN DIVERGENCES: it writes a row for
+ * a profile that is not active, and it does not re-check an id's shape (the handler has).
+ */
+export function createMemoryTutorialStore(
+  tables: () => TutorialTables,
+  call: (method: string) => void = () => undefined,
+): TutorialStore {
+  return {
+    get: async (profileId) => {
+      call("tutorial.get");
+      const row = tables().tutorial.find((existing) => existing.profileId === profileId);
+      return row === undefined ? null : clone(row);
+    },
+    merge: async (input, maxLessons): Promise<TutorialMergeOutcome> => {
+      call("tutorial.merge");
+      const rows = tables().tutorial;
+      const at = rows.findIndex((existing) => existing.profileId === input.profileId);
+      const merged = mergeTutorialRow(rows[at] ?? null, input, maxLessons);
+      if (merged === "limit") return { kind: "limit" };
+      if (at < 0) rows.push(clone(merged));
+      else rows[at] = clone(merged);
+      return { kind: "merged", progress: clone(merged) };
+    },
+  };
 }

@@ -1,11 +1,18 @@
 // The lesson path (tutorial/TutorialPath.tsx): every lesson in order with what it teaches, its
-// status in words, and a button that starts, replays or explains why it is locked.
+// status in words, and a button that starts, replays or explains why it is locked; and R322's Hide
+// tutorial and Show tutorial.
 
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TUTORIAL_PROGRESS_KEY } from "./config.ts";
 import { TUTORIAL_LESSONS, type TutorialLesson } from "./lessons.ts";
-import { __resetTutorialProgressForTests, markLessonComplete } from "./progress.ts";
+import {
+  __resetTutorialProgressForTests,
+  markLessonComplete,
+  readTutorialProgress,
+  setTutorialHidden,
+} from "./progress.ts";
 import { tutorialTestid } from "./testids.ts";
 import { TutorialPath } from "./TutorialPath.tsx";
 
@@ -138,5 +145,98 @@ describe("the lesson path", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(node(lesson(1)).closest("ol")).toBeVisible();
     expect(button(lesson(4))).toHaveTextContent("Replay");
+  });
+});
+
+describe("R322 Hide tutorial and Show tutorial", () => {
+  it("R322 Hide folds the path to one Show tutorial button in its place, and Show brings the path back", () => {
+    markLessonComplete(lesson(1).id);
+    render(<TutorialPath onStart={vi.fn()} />);
+    const hide = screen.getByTestId(tutorialTestid.hide);
+    expect(hide).toHaveTextContent("Hide tutorial");
+
+    fireEvent.click(hide);
+    expect(screen.queryByTestId(tutorialTestid.path)).toBeNull();
+    expect(screen.queryByTestId(tutorialTestid.lesson(lesson(1).id))).toBeNull();
+    const bar = screen.getByTestId(tutorialTestid.hidden);
+    expect(bar).toHaveAttribute("data-complete", "false");
+    expect(bar).toHaveTextContent("Tutorial hidden");
+    expect(bar).toHaveTextContent("1 of 4 lessons complete");
+
+    fireEvent.click(screen.getByTestId(tutorialTestid.show));
+    expect(screen.queryByTestId(tutorialTestid.hidden)).toBeNull();
+    expect(screen.getByTestId(tutorialTestid.path)).toBeInTheDocument();
+    expect(node(lesson(2))).toHaveAttribute("data-status", "unlocked");
+  });
+
+  it("R322 both are real buttons a keyboard reaches, and focus moves to the one that undoes the press", () => {
+    render(<TutorialPath onStart={vi.fn()} />);
+    const hide = screen.getByRole("button", { name: "Hide tutorial" });
+    expect(hide).toHaveAttribute("type", "button");
+    hide.focus();
+    expect(hide).toHaveFocus();
+
+    fireEvent.click(hide);
+    const show = screen.getByRole("button", { name: "Show tutorial" });
+    expect(show).toHaveAttribute("type", "button");
+    expect(show).toHaveFocus();
+    // The hidden path is still a named landmark a screen reader can find.
+    expect(screen.getByRole("region", { name: "Tutorial hidden" })).toBe(screen.getByTestId(tutorialTestid.hidden));
+
+    fireEvent.click(show);
+    expect(screen.getByRole("button", { name: "Hide tutorial" })).toHaveFocus();
+  });
+
+  it("R322 the choice is kept on the device with when it was made, and holds on the next visit", () => {
+    const { unmount } = render(<TutorialPath onStart={vi.fn()} />);
+    fireEvent.click(screen.getByTestId(tutorialTestid.hide));
+    const raw = window.localStorage.getItem(TUTORIAL_PROGRESS_KEY);
+    const saved = JSON.parse(raw ?? "null") as { v: number; completed: string[]; hiddenChoice: { hidden: boolean; at: number } };
+    expect(saved.v).toBe(1);
+    expect(saved.completed).toEqual([]);
+    expect(saved.hiddenChoice.hidden).toBe(true);
+    expect(Number.isSafeInteger(saved.hiddenChoice.at)).toBe(true);
+    unmount();
+
+    // A reload: the module reads storage again.
+    __resetTutorialProgressForTests();
+    render(<TutorialPath onStart={vi.fn()} />);
+    expect(screen.getByTestId(tutorialTestid.hidden)).toBeInTheDocument();
+    expect(screen.queryByTestId(tutorialTestid.path)).toBeNull();
+  });
+
+  it("R322 a choice made elsewhere (another tab, or the account's newer one) hides or shows the path here", () => {
+    render(<TutorialPath onStart={vi.fn()} />);
+    act(() => {
+      setTutorialHidden(true, 1_000);
+    });
+    expect(screen.getByTestId(tutorialTestid.hidden)).toBeInTheDocument();
+    act(() => {
+      setTutorialHidden(false, 2_000);
+    });
+    expect(screen.getByTestId(tutorialTestid.path)).toBeInTheDocument();
+    // Focus is moved only by this component's own press, never by a change from elsewhere.
+    expect(screen.getByTestId(tutorialTestid.hide)).not.toHaveFocus();
+  });
+
+  it("R322 a finished path offers no Hide; one hidden before it was finished stays hidden, and Show opens its folded header", () => {
+    render(<TutorialPath onStart={vi.fn()} />);
+    fireEvent.click(screen.getByTestId(tutorialTestid.hide));
+    act(() => {
+      for (const each of TUTORIAL_LESSONS) markLessonComplete(each.id);
+    });
+    const bar = screen.getByTestId(tutorialTestid.hidden);
+    expect(bar).toHaveAttribute("data-complete", "true");
+    expect(bar).toHaveTextContent("4 of 4 lessons complete");
+
+    fireEvent.click(screen.getByTestId(tutorialTestid.show));
+    const path = screen.getByTestId(tutorialTestid.path);
+    expect(path).toHaveAttribute("data-complete", "true");
+    expect(screen.queryByTestId(tutorialTestid.hide)).toBeNull();
+    // With no Hide to go to, focus lands on the folded header's own button.
+    const toggle = screen.getByTestId(tutorialTestid.pathToggle);
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(readTutorialProgress().hiddenChoice?.hidden).toBe(false);
   });
 });

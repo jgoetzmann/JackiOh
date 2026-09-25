@@ -89,8 +89,12 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * were raised (#8, #25, #73, #81, the Rush and Felinor Tokens), and a Radiant Saintess's Death now
  * reaches the hand, so the same seed plays a different game. 38 actions, still won by p1 by hero death.
  * Spec 01 records the same log under the concurrent mulligan, which folds to the hash below.
+ *
+ * R311 moved the hash and not the game: every library card now records what its owner was shown of
+ * it going in (`knownAs`). The same fold with that field stripped from every instance hashes to
+ * "cc583237", the value before it.
  */
-const EXPECTED_HASH = "cc583237";
+const EXPECTED_HASH = "37b1c8ba";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

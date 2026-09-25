@@ -19,9 +19,9 @@ flowchart TD
   CDN["Static host / CDN"]
   AUTH["Supabase Auth<br/>email + password, verification"]
   PGR["Supabase Data API (PostgREST)<br/>role: authenticated"]
-  API["apps/server HTTP routes<br/>codes, collection, decks, trios, queue, rooms, series"]
+  API["apps/server HTTP routes<br/>codes, collection, decks, trios, queue, rooms, series, tutorial"]
   ACT["apps/server match actor<br/>one per live match"]
-  PG[("Supabase Postgres<br/>16 tables + private app schema")]
+  PG[("Supabase Postgres<br/>17 tables + private app schema")]
   ENG["packages/engine<br/>reduce / viewFor / fold"]
   CAT["packages/cards<br/>catalog.json + scripts"]
 
@@ -47,9 +47,9 @@ deployment decision that can be made later without touching the code.
 | --- | --- | --- | --- |
 | `apps/web` | Static bundle on any CDN | No | Rendering `viewFor`, composing intent, the bundled catalog |
 | Supabase Auth | Supabase | Managed | Signup, password hashing, email verification, sessions, JWTs |
-| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 plus `decks`, `trios` and `series` (R250–R263, R330–R341), RLS, the private `app` schema |
+| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 plus `decks`, `trios` and `series` (R250–R263, R330–R341) and `tutorial_progress` (R320), RLS, the private `app` schema |
 | Supabase Data API | Supabase | No | Read-only projections to the browser, RLS-enforced |
-| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, deck and trio saves and trio imports, enqueue in three modes, room create/join, the Conquest series and its sweeper |
+| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, deck and trio saves and trio imports, enqueue in three modes, room create/join, the Conquest series and its sweeper, the tutorial's account copy (R320) |
 | `apps/server` match actor | The same Node process | **Yes (in memory)** | `GameState`, two WebSockets, the turn clock, the action log |
 | `packages/engine` + `packages/cards` | Imported by both of the above | No (pure) | Every rule, `reduce`, `viewFor`, `fold` |
 
@@ -62,8 +62,8 @@ SPEC §9.1, restated as channels rather than domains:
 | Channel | Credential | What it carries |
 | --- | --- | --- |
 | Browser → Supabase Auth | publishable key (`sb_publishable_…`) | signup, login, email verification, token refresh |
-| Browser → Data API | publishable key + the user's JWT | **reads only**: own profile row, own collection, own decks and trios, own tickets, own results, the `cards` projection |
-| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this deck", "enqueue Conquest with this trio", "pick this deck for game 2", "import this trio", "create a room", "join ABC234" |
+| Browser → Data API | publishable key + the user's JWT | **reads only**: own profile row, own collection, own decks and trios, own tickets, own results, own tutorial progress, the `cards` projection |
+| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this deck", "enqueue Conquest with this trio", "pick this deck for game 2", "import this trio", "create a room", "join ABC234", "merge this device's tutorial progress" |
 | Browser → server WebSocket | the user's JWT in the `hello` frame | intent: one `Action` at a time; receives `viewFor` and nothing else |
 
 One rule, from SPEC §9.1: **the client sends intent, never state.** "Play instance 7 in zone 3 with
@@ -122,6 +122,7 @@ the policy in the third column. `service_role` bypasses RLS and is the only writ
 | `match_actions` | **none** | no policy | none — append-only by trigger (§9.3) |
 | `results` | rows you played in | `auth.uid() in (p1_profile_id, p2_profile_id)` | none |
 | `series` | **none** | no policy | none — holds both frozen trios and the hidden picks (R259) |
+| `tutorial_progress` | own row | `profile_id = auth.uid()` | none — the server merges a device's progress into it, never removing a lesson (R320) |
 
 Three Supabase-specific traps this schema avoids on purpose:
 
@@ -129,7 +130,7 @@ Three Supabase-specific traps this schema avoids on purpose:
   `create view … with (security_invoker = true)`.
 - **`SECURITY DEFINER` functions in an exposed schema are reachable over HTTP.** Every one of ours
   lives in the private `app` schema, which is not in the Data API's exposed schema list, so
-  `app.redeem_invite_code`, `app.upsert_deck` and `app.upsert_trio` have **no HTTP path at all** — they are reachable
+  `app.redeem_invite_code`, `app.upsert_deck`, `app.upsert_trio` and `app.merge_tutorial_progress` have **no HTTP path at all** — they are reachable
   only over `DATABASE_URL`.
 - **`user_metadata` is user-editable** and can appear in `auth.jwt()`. No policy or function reads it.
   Authorization comes from `profiles.status`, which only the server writes.
@@ -480,6 +481,16 @@ step that is not yet implemented says which BUILD task delivers it.
 2. **Enable email/password auth with confirmations.** Auth → Providers → Email: enabled,
    "Confirm email" on. Hosted: configure SMTP now. SPEC §9.4 makes a verified email a precondition of
    redemption, so this is not optional.
+   Then Auth → URL Configuration, which decides where every emailed link lands:
+   - **Site URL:** `https://jackioh.vercel.app`. Left at its default (`http://localhost:3000`), every
+     confirmation and reset link pointed at the reader's own machine.
+   - **Redirect URLs:** `https://jackioh.vercel.app/**` and `http://localhost:5173/**`. The client
+     asks for `<origin>/login` on every mailer (`authRedirectUrl`, B35), and the provider honours it
+     only when it matches this allow-list, falling back to the Site URL otherwise.
+   The links are PKCE links (R323): the mailers send a `code_challenge`, the link comes back to
+   `/login?code=…`, and the browser that asked exchanges the code for a session with the verifier
+   it kept. A link opened on another device confirms the address and asks for a sign-in (R324).
+   No Supabase setting needs changing for PKCE.
 3. **Fill the server environment.** `cp apps/server/.env.example apps/server/.env` and set
    `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DATABASE_URL`, `CODE_PEPPER` (`openssl rand -base64 48`),
    `PUBLIC_ORIGINS` and `CATALOG_VERSION`. Then `pnpm install`. Every `@jackioh/server` script runs
@@ -488,11 +499,13 @@ step that is not yet implemented says which BUILD task delivers it.
 4. **Apply the migrations.** `pnpm --filter @jackioh/server db:migrate`, which applies every file in
    `apps/server/src/db/migrations/` in order — `0001_profiles_and_invites.sql` → `0002_collection.sql`
    → `0003_loadouts.sql` → `0004_matches.sql` → `0005` → `0006` → `0007_decks_and_trios.sql` →
-   `0008_queue_modes.sql` → `0009_series.sql` → `0010_jlockeed_tag.sql` — and records them in
-   `app.migrations`. Expected result: 16 tables in `public`, all with RLS enabled, plus the private
-   `app` schema. On a project that already had loadouts, 0007 turns each into three saved decks and a
-   trio named "My trio" (R254) and leaves the loadout tables where they are. 0010 only widens the
-   `cards` tag check, so `db:seed-catalog` can write #13 and #14's Jlockeed tag (R278).
+   `0008_queue_modes.sql` → `0009_series.sql` → `0010_jlockeed_tag.sql` →
+   `0011_tutorial_progress.sql` — and records them in `app.migrations`. Expected result: 17 tables
+   in `public`, all with RLS enabled, plus the private `app` schema. On a project that already had
+   loadouts, 0007 turns each into three saved decks and a trio named "My trio" (R254) and leaves the
+   loadout tables where they are. 0010 only widens the `cards` tag check, so `db:seed-catalog` can
+   write #13 and #14's Jlockeed tag (R278). 0011 adds `tutorial_progress` and its one write path,
+   `app.merge_tutorial_progress` (R320); it needs nothing else from the bring-up.
 5. **Verify the invariants before trusting anything.** `sh apps/server/test/sql/run.sh` runs all of
    §12's checks against a throwaway Docker Postgres, which is the fast way to confirm the migrations
    are intact before you point them at a real project. Against the project itself, in Studio's SQL
@@ -585,14 +598,15 @@ The migrations are not taken on faith. `sh apps/server/test/sql/run.sh` needs no
 it starts a throwaway Postgres, applies `apps/server/test/sql/00_supabase_stub.sql` (stand-ins for the
 Supabase-managed pieces the migrations reference — the `anon`, `authenticated` and `service_role`
 roles, `auth.users` and `auth.uid()`; a real project supplies all of it), applies 0001–0006, saves a
-loadout the old way (`03b_legacy_loadout_seed.sql`), applies 0007–0010 over it, and then asserts:
+loadout the old way (`03b_legacy_loadout_seed.sql`), applies 0007–0011 over it, and then asserts:
 
 | File | What it proves |
 | --- | --- |
-| `01_schema_invariants.sql` | 16 tables in `public`, **every one with RLS enabled**; `loadout_card_unique` is on `(profile_id, card_id)` and refuses a cross-deck duplicate inserted by raw SQL (BUILD M6-T3); no `SECURITY DEFINER` function in `public`; no non-SELECT policy and no INSERT/UPDATE/DELETE privilege for `anon` or `authenticated` anywhere; the `auth.users` trigger creates a `pending` profile; the six-step redemption returns `email_unverified`, and one identical `invalid_code` for both a missing and a revoked code; success flips the profile to `active` and the activation trigger grants every non-token card to both `collection` and `collection_grants`; `collection_grants` refuses an UPDATE; a stale catalog version raises `update required`; the `cards` tag check admits all nine catalog tags, Jlockeed included, alone and together, and refuses an unknown one (R278). |
-| `02_rls_as_client.sql` | Acting as the `authenticated` role inside a transaction (so `SET LOCAL` really takes effect): a profile sees exactly its own `profiles`, `collection`, `collection_grants`, `loadouts` and `loadout_deck_cards` rows and **zero** of the other profile's; `invite_codes`, `code_attempts`, `matches` and `match_actions` are refused outright; every client write — `collection` insert, `profiles` update, `loadout_deck_cards` insert — is refused, as are `app.redeem_invite_code` and `app.save_loadout`. It also sees exactly its own `decks` and `trios`, none of `series`, and cannot write any of them or call `app.upsert_deck` or `app.upsert_trio`. This is §3's trust boundary, executed. |
+| `01_schema_invariants.sql` | 17 tables in `public`, **every one with RLS enabled**; `loadout_card_unique` is on `(profile_id, card_id)` and refuses a cross-deck duplicate inserted by raw SQL (BUILD M6-T3); no `SECURITY DEFINER` function in `public`; no non-SELECT policy and no INSERT/UPDATE/DELETE privilege for `anon` or `authenticated` anywhere; the `auth.users` trigger creates a `pending` profile; the six-step redemption returns `email_unverified`, and one identical `invalid_code` for both a missing and a revoked code; success flips the profile to `active` and the activation trigger grants every non-token card to both `collection` and `collection_grants`; `collection_grants` refuses an UPDATE; a stale catalog version raises `update required`; the `cards` tag check admits all nine catalog tags, Jlockeed included, alone and together, and refuses an unknown one (R278). |
+| `02_rls_as_client.sql` | Acting as the `authenticated` role inside a transaction (so `SET LOCAL` really takes effect): a profile sees exactly its own `profiles`, `collection`, `collection_grants`, `loadouts` and `loadout_deck_cards` rows and **zero** of the other profile's; `invite_codes`, `code_attempts`, `matches` and `match_actions` are refused outright; every client write — `collection` insert, `profiles` update, `loadout_deck_cards` insert — is refused, as are `app.redeem_invite_code` and `app.save_loadout`. It also sees exactly its own `decks` and `trios`, none of `series`, and cannot write any of them or call `app.upsert_deck` or `app.upsert_trio`; and exactly its own `tutorial_progress` row, which it cannot insert, update or delete, nor call `app.merge_tutorial_progress` (R320). This is §3's trust boundary, executed. |
 | `03_match_lifecycle.sql` | `save_loadout` naming the rule it failed; `create_room` → `join_room` (own room refused, a live room refused a second joiner, both players marked in-match, the ceiling stamped on join); `append_match_action` assigning `seq` and returning the **original** seq for a replayed nonce without a second row (BUILD M6-T4); a server action with no author; `live_matches()` returning what a restarting server would fold; `end_match` writing one `results` row, moving both ratings, clearing both `current_match_id`, and staying idempotent on a second call; the room code reusable once the match is `over`; one queued ticket per profile; `claim_ticket_pair` returning true once and **false** to the second matcher (BUILD M7-T3's race test); the reaper turning a match past its ceiling into a `match-ceiling` draw and clearing both players. |
 | `04_decks_and_series.sql` | The loadout 03b saved came out of 0007 as three named decks and a trio named "My trio", with the loadout rows untouched (R254); `app.upsert_deck` saves a draft, updates it in place, holds the cap under a lock on the profile and refuses another profile's id (R250); a trio names only its profile's own, distinct decks, and deleting a deck empties its slots (R252); a ticket carries its mode and exactly a Best-of-3 ticket a trio (R257), as a room does (R264); a series is a server-only row written by compare-and-set and found by its next match and by any of its games (R263). |
+| `05_tutorial_progress.sql` | `app.merge_tutorial_progress` makes a profile's row on its first write, sorted in code-point order; unions the lessons, so a stale or empty write removes none; keeps the strictly newer Hide/Show choice (an older one and a tie keep what is stored, a write with no choice leaves it); refuses a union past the caller's cap or `app.settings.tutorial_lessons_max` and writes nothing; refuses a malformed id, a half choice, an unknown profile and a pending one; and the table itself refuses a half choice and a null lesson (R320). |
 
 Each SPEC §11 row this schema implements is proved under a `### Rnnn: … ###` heading, which is how
 REVIEW's B4 check and the §11 index find a row's evidence. **That heading form is the signal; a bare
@@ -613,6 +627,7 @@ mention in prose is not.** The database-provable rows:
 | R263 | `04` | A series is a server-only row, written by compare-and-set, found by its next match and by any game. |
 | R264 | `04` | A room keeps its mode, and exactly a Best-of-3 room keeps a trio. |
 | R278 | `01` CHECK 18 | `cards_tags_check` admits every catalog tag, Jlockeed included, and refuses an unknown one, so `db:seed-catalog` can write #13 and #14. |
+| R320 | `02`, `05` | A client reads only its own `tutorial_progress` row and writes none of it; `app.merge_tutorial_progress` only grows a row: the union of the lessons, the strictly newer choice, and the cap. |
 
 **R107**, **R108** and **R109** are `config.ts` values with no database behaviour to assert, so they
 get no heading; they are proved at the server level by BUILD M6-T1 (the 5 ms timing test), M7-T1 and
@@ -662,7 +677,8 @@ apps/server/
         0008_queue_modes.sql            tickets.mode and frozen_trio, matches.room_mode and room_trio (R257, R264)
         0009_series.sql                 series: the Best-of-3 row, server-only (R259–R263)
         0010_jlockeed_tag.sql           cards_tags_check re-added with the Jlockeed tag (R278)
-    api/       codes.ts collection.ts decks.ts queue.ts results.ts series.ts series-rules.ts
+        0011_tutorial_progress.sql      tutorial_progress, app.merge_tutorial_progress (R320)
+    api/       codes.ts collection.ts decks.ts queue.ts results.ts series.ts series-rules.ts tutorial.ts
     match/     actor.ts protocol.ts                                        M6-T4, M7-T1
     auth/      jwt.ts (JWKS verification, seat resolution)                 M6-T1
   test/
@@ -671,6 +687,8 @@ apps/server/
     sql/01_schema_invariants.sql   RLS everywhere, the L4 index, the redemption steps
     sql/02_rls_as_client.sql       the trust boundary, executed as `authenticated`
     sql/03_match_lifecycle.sql     room code -> log -> result -> reaper
+    sql/04_decks_and_series.sql    decks, trios, queue modes and the series, as the server drives them
+    sql/05_tutorial_progress.sql   the tutorial's grow-only merge (R320)
 docs/
   architecture.md                  this file
 ```

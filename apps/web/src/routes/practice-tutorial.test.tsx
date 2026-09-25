@@ -268,13 +268,32 @@ describe("a lesson plays under the tutorial HUD with the coach", () => {
     expect(screen.getByTestId(tutorialTestid.coach)).toHaveAttribute("data-coach-step", "welcome");
   });
 
-  it("Skip step in the HUD and in the bubble each move the coach on", async () => {
+  it("R314 without Skip step no step strands the player: no Skip in the HUD or the bubble, Got it moves an info step on, and Exit tutorial is in the HUD", async () => {
     await startLesson();
-    fireEvent.click(screen.getByTestId(tutorialTestid.skip));
+    const hud = screen.getByTestId(tutorialTestid.hud);
+    const coach = (): HTMLElement => screen.getByTestId(tutorialTestid.coach);
+    const noSkip = (): void => {
+      expect(screen.queryByTestId("tutorial-skip")).toBeNull();
+      expect(screen.queryByTestId("coach-skip")).toBeNull();
+      expect(screen.queryAllByRole("button", { name: /skip/i })).toEqual([]);
+      expect(within(hud).queryAllByText(/skip/i)).toEqual([]);
+      expect(within(coach()).queryAllByText(/skip/i)).toEqual([]);
+    };
+    const exit = within(hud).getByRole("button", { name: "Exit tutorial" });
+    expect(exit).toBe(screen.getByTestId(tutorialTestid.exit));
+    noSkip();
+
+    // The welcome is an info step: Got it, its only button, moves the coach on.
+    expect(coach()).toHaveAttribute("data-coach-step", "welcome");
+    expect(within(coach()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Got it"]);
+    fireEvent.click(within(coach()).getByRole("button", { name: "Got it" }));
     expect(screen.getByTestId(tutorialTestid.step)).toHaveTextContent("Step 2 of 3");
-    expect(screen.getByTestId(tutorialTestid.coach)).toHaveAttribute("data-coach-step", "end");
-    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
-    expect(screen.getByTestId(tutorialTestid.step)).toHaveTextContent("Step 3 of 3");
+    expect(coach()).toHaveAttribute("data-coach-step", "end");
+
+    // "End your turn" asks for an action: no button in the bubble, and still no Skip, but Exit.
+    expect(within(coach()).queryAllByRole("button")).toEqual([]);
+    noSkip();
+    expect(within(hud).getByRole("button", { name: "Exit tutorial" })).toBe(exit);
   });
 
   it("a holdAi step holds the AI until Got it", async () => {

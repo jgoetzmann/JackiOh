@@ -15,6 +15,7 @@ import {
   AUTH_PENDING_ADDRESS_TTL_SECONDS,
   GATE_SLOW_NOTICE_SECONDS,
 } from "../../../server/src/config.ts";
+import { challengeForRequest, storedVerifiers } from "../auth/pkce.ts";
 import { clearConsumedAuthRedirect, recoverySession, releaseRecoverySession } from "../auth/redirect.ts";
 import { loginTestid } from "../auth/testids.ts";
 import { emailProblem, newPasswordProblem } from "../auth/validation.ts";
@@ -38,6 +39,9 @@ import LoginRoute from "./login.tsx";
 const URL_ = "https://project.supabase.co";
 const KEY = "sb_publishable_test";
 const EMAIL = "player@example.com";
+
+/** R323: every mailer sends a PKCE challenge beside the address. */
+const PKCE_FIELDS = { code_challenge: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u), code_challenge_method: "s256" };
 const PASSWORD = "x".repeat(AUTH_PASSWORD_MIN_LENGTH);
 const LINK_EXPIRES_AT_S = 2_000_000_000;
 
@@ -333,7 +337,7 @@ describe("B24 validation", () => {
       await waitFor(() => {
         expect(callsTo(calls, "/auth/v1/signup")).toHaveLength(1);
       });
-      expect(callsTo(calls, "/auth/v1/signup")[0]?.body).toEqual({ email: EMAIL, password: "x".repeat(length) });
+      expect(callsTo(calls, "/auth/v1/signup")[0]?.body).toEqual({ email: EMAIL, password: "x".repeat(length), ...PKCE_FIELDS });
     }
   });
 
@@ -500,7 +504,7 @@ describe("R192 B27 resend", () => {
     const sent = callsTo(calls, "/auth/v1/resend");
     expect(sent).toHaveLength(1);
     expect(sent[0]?.method).toBe("POST");
-    expect(sent[0]?.body).toEqual({ type: "signup", email: EMAIL });
+    expect(sent[0]?.body).toEqual({ type: "signup", email: EMAIL, ...PKCE_FIELDS });
     expect(sent[0]?.url.searchParams.get("redirect_to")).toBe(`${window.location.origin}/login`);
     expect(bodyText()).toContain(AUTH_NOTICES.resendSent);
 
@@ -619,7 +623,7 @@ describe("R192 B27 resend", () => {
     await waitFor(() => {
       expect(callsTo(calls, "/auth/v1/resend")).toHaveLength(1);
     });
-    expect(callsTo(calls, "/auth/v1/resend")[0]?.body).toEqual({ type: "signup", email: EMAIL });
+    expect(callsTo(calls, "/auth/v1/resend")[0]?.body).toEqual({ type: "signup", email: EMAIL, ...PKCE_FIELDS });
   });
 
   it("B29 a sign-up remembers the address its confirmation link will carry", async () => {
@@ -662,7 +666,7 @@ describe("B28 forgot password", () => {
     const sent = callsTo(calls, "/auth/v1/recover");
     expect(sent).toHaveLength(1);
     expect(sent[0]?.method).toBe("POST");
-    expect(sent[0]?.body).toEqual({ email: EMAIL });
+    expect(sent[0]?.body).toEqual({ email: EMAIL, ...PKCE_FIELDS });
     expect(sent[0]?.url.searchParams.get("redirect_to")).toBe(`${window.location.origin}/login`);
     expect(bodyText()).toContain(AUTH_NOTICES.resetSent);
 
@@ -724,7 +728,7 @@ describe("B28 forgot password", () => {
     await waitFor(() => {
       expect(callsTo(calls, "/auth/v1/recover")).toHaveLength(2);
     });
-    expect(callsTo(calls, "/auth/v1/recover")[1]?.body).toEqual({ email: EMAIL });
+    expect(callsTo(calls, "/auth/v1/recover")[1]?.body).toEqual({ email: EMAIL, ...PKCE_FIELDS });
   });
 
   it("B28 an address the provider calls invalid reads invalidEmail", async () => {
@@ -1168,6 +1172,140 @@ describe("R193 B30 recovery and error links", () => {
     expect(container.querySelector("b")).toBeNull();
     expect(bodyText()).not.toContain("onerror");
     expect((window as unknown as { __pwned?: unknown }).__pwned).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R323, R324: PKCE links (a one-time code in the query, exchanged with the verifier kept here)
+// ---------------------------------------------------------------------------------------------
+
+describe("R323 R324 PKCE links", () => {
+  /** A GoTrue auth code: a UUID. */
+  const CODE = "3f9c6c1e-5a6b-4c2d-9e8f-0a1b2c3d4e5f";
+
+  /** The provider's answer to the PKCE grant: a session for `token`. */
+  function exchanged(token: string): Answer {
+    return { status: 200, body: { access_token: token, refresh_token: "refresh-from-code", expires_in: 3600, token_type: "bearer" } };
+  }
+
+  it("R323 a confirmation link's code is exchanged with the verifier this browser kept, and signs nothing in", async () => {
+    await challengeForRequest("signup");
+    const [kept] = storedVerifiers();
+    rememberPendingEmail(EMAIL);
+    const token = jwt({ sub: "user-1", email: EMAIL, pkce: 1 });
+    const calls = server({ [token]: EMAIL }, { "/auth/v1/token": exchanged(token), "/auth/v1/logout": { status: 204 } });
+    at(`/login?code=${CODE}`);
+    render(<LoginRoute />);
+
+    const confirmed = await screen.findByTestId(loginTestid.confirmed);
+    expect(confirmed.textContent).toBe(AUTH_NOTICES.emailConfirmed);
+    await flushMicrotasks();
+    const [grant] = callsTo(calls, "/auth/v1/token");
+    expect(grant?.url.searchParams.get("grant_type")).toBe("pkce");
+    expect(grant?.body).toEqual({ auth_code: CODE, code_verifier: kept?.verifier });
+    // No refresh: the session never passed through a URL, so there is nothing in history to spend.
+    expect(calls.some((call) => call.url.searchParams.get("grant_type") === "refresh_token")).toBe(false);
+    // A confirmation never signs in (R193): the exchanged session is revoked, and nothing is stored.
+    expect(callsTo(calls, "/auth/v1/logout").map((call) => call.auth)).toEqual([`Bearer ${token}`]);
+    expect(readSession()).toBeNull();
+    expect(pendingEmail()).toBeNull();
+    // The code is gone from the address bar, and its verifier from the device.
+    expect(window.location.href).not.toContain(CODE);
+    expect(window.location.search).toBe("");
+    expect(storedVerifiers()).toEqual([]);
+  });
+
+  it("R323 a recovery link's code for the reset this browser asked for is held for this tab and opens /reset-password", async () => {
+    rememberPendingReset(EMAIL);
+    await challengeForRequest("recovery");
+    const token = jwt({ sub: "user-1", email: EMAIL, pkce: 2 });
+    server({ [token]: EMAIL }, { "/auth/v1/token": exchanged(token) });
+    at(`/login?code=${CODE}`);
+    render(<LoginRoute />);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(paths.resetPassword);
+    });
+    expect(recoverySession()).toEqual({
+      session: { accessToken: token, refreshToken: "refresh-from-code", expiresAt: expect.any(Number) as unknown as number },
+      email: EMAIL,
+    });
+    expect(readSession()).toBeNull();
+  });
+
+  it("R323 a verifier the provider says is another link's is passed over for the next one", async () => {
+    // The sign-up asked first, the reset after it: the reset's verifier is newer, so it goes first.
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValueOnce(1_000);
+    await challengeForRequest("signup");
+    now.mockReturnValueOnce(2_000);
+    await challengeForRequest("recovery");
+    now.mockRestore();
+    const token = jwt({ sub: "user-1", email: EMAIL, pkce: 3 });
+    const verifiers = storedVerifiers().map((entry) => entry.verifier);
+    let attempt = 0;
+    const calls = server({ [token]: EMAIL }, { "/auth/v1/logout": { status: 204 } });
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: unknown, init?: RequestInit) => {
+        const url = new URL(typeof input === "string" ? input : String((input as URL).href ?? input));
+        if (url.pathname === "/auth/v1/token" && url.searchParams.get("grant_type") === "pkce") {
+          attempt += 1;
+          calls.push({ url, method: "POST", body: JSON.parse(String(init?.body)) });
+          return Promise.resolve(
+            attempt === 1
+              ? providerResponse(400, { error_code: "bad_code_verifier" })
+              : providerResponse(200, exchanged(token).body),
+          );
+        }
+        return inner(input as RequestInfo, init);
+      }),
+    );
+    at(`/login?code=${CODE}`);
+    render(<LoginRoute />);
+
+    await screen.findByTestId(loginTestid.confirmed);
+    const grants = callsTo(calls, "/auth/v1/token").map((call) => (call.body as { code_verifier?: string }).code_verifier);
+    // Newest first: the recovery verifier was made last, and was the wrong one.
+    expect(grants).toEqual(verifiers);
+    expect(storedVerifiers().map((entry) => entry.flow)).toEqual(["recovery"]);
+  });
+
+  it("R324 a code this browser holds no verifier for says the email is confirmed and asks for a sign-in, not an error", async () => {
+    const calls = server({});
+    at(`/login?code=${CODE}`);
+    render(<LoginRoute />);
+
+    const confirmed = await screen.findByTestId(loginTestid.confirmed);
+    expect(confirmed.textContent).toBe("Your email is confirmed. Sign in to continue.");
+    expect(screen.queryByTestId(loginTestid.linkError)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // Nothing was sent: there is no verifier to send with the code.
+    expect(callsTo(calls, "/auth/v1/token")).toEqual([]);
+    expect(window.location.search).toBe("");
+  });
+
+  it("R324 a code the provider refuses reads as a spent link, with the ways forward", async () => {
+    await challengeForRequest("signup");
+    server({}, { "/auth/v1/token": { status: 404, body: { error_code: "flow_state_not_found", msg: PROVIDER_MSG } } });
+    at(`/login?code=${CODE}`);
+    render(<LoginRoute />);
+
+    const error = await screen.findByTestId(loginTestid.linkError);
+    expect(error.textContent).toContain(AUTH_MESSAGES.linkExpired);
+    expect(bodyText()).not.toContain(PROVIDER_MSG);
+  });
+
+  it("R324 a link mailed before the switch, with its tokens in the fragment, still confirms the address", async () => {
+    const { token, hash } = link("signup", EMAIL);
+    server({ [token]: EMAIL }, { "/auth/v1/logout": { status: 204 } });
+    at(`/login${hash}`);
+    render(<LoginRoute />);
+
+    const confirmed = await screen.findByTestId(loginTestid.confirmed);
+    expect(confirmed.textContent).toBe(AUTH_NOTICES.emailConfirmed);
+    expect(window.location.href).not.toContain("access_token");
   });
 });
 

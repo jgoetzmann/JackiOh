@@ -18,9 +18,16 @@
 //   POST /auth/v1/signup?redirect_to=...           sign up (mails a confirmation link)
 //   POST /auth/v1/resend?redirect_to=...           mail the confirmation link again
 //   POST /auth/v1/recover?redirect_to=...          mail a password-reset link
+//   POST /auth/v1/token?grant_type=pkce            an emailed link's code, for a session (R323)
 //   PUT  /auth/v1/user                             set a new password (Bearer: the recovery token)
 //   POST /auth/v1/token?grant_type=refresh_token   renew a session (R194)
 //   POST /auth/v1/logout?scope=local               revoke this session's refresh token (R194)
+//
+// EMAILED LINKS CARRY A CODE, NOT TOKENS (R323). The three mailers send a PKCE challenge
+// (`auth/pkce.ts`), so a link comes back as `/login?code=…` and `exchangeAuthCode` turns the code
+// into a session with the verifier this browser kept. A browser that cannot hash (no `crypto.subtle`
+// outside a secure context) sends no challenge and gets the implicit flow's link, which
+// `auth/redirect.ts` still reads, as it does a link mailed before the switch (R324).
 //
 // NO PROVIDER TEXT EVER REACHES THE SCREEN. Every refusal is reduced to an `AuthFailure` by
 // `classifyProviderRefusal`, which reads only the status and the machine-readable error code, and
@@ -33,6 +40,7 @@ import {
   AUTH_PROVIDER_TIMEOUT_SECONDS,
   AUTH_SESSION_REFRESH_MARGIN_SECONDS,
 } from "../../../server/src/config.ts";
+import { challengeForRequest, forgetVerifier, storedVerifiers, type PkceChallenge, type PkceFlow } from "../auth/pkce.ts";
 import { paths } from "./navigate.ts";
 import {
   forgetPendingAddresses,
@@ -403,6 +411,19 @@ function withRedirect(path: string): string {
   return redirectTo === "" ? path : `${path}?redirect_to=${encodeURIComponent(redirectTo)}`;
 }
 
+/**
+ * R323: the PKCE challenge a mailer sends, remembering its verifier (`auth/pkce.ts`). Nothing when
+ * this browser cannot hash (no `crypto.subtle` outside a secure context) or cannot store: the
+ * provider then mails an implicit-flow link, which still works (R324).
+ */
+async function pkceFields(flow: PkceFlow, reuse = false): Promise<PkceChallenge | Record<string, never>> {
+  try {
+    return await challengeForRequest(flow, { reuse });
+  } catch {
+    return {};
+  }
+}
+
 // --- one request -------------------------------------------------------------------------------
 
 type ProviderRequest = {
@@ -555,7 +576,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
   const { status, json } = await send(config, {
     method: "POST",
     path: withRedirect("/auth/v1/signup"),
-    body: { email, password },
+    body: { email, password, ...(await pkceFields("signup")) },
   });
   if (!isSuccess(status)) throw providerRefusal("signUp", status, json);
 
@@ -595,7 +616,8 @@ export async function resendConfirmation(email: string): Promise<void> {
   const { status, json } = await send(config, {
     method: "POST",
     path: withRedirect("/auth/v1/resend"),
-    body: { type: "signup", email },
+    // The sign-up's verifier again, so the first email's link still exchanges after this one.
+    body: { type: "signup", email, ...(await pkceFields("signup", true)) },
   });
   const refusal = mailerRefusal("resend", status, json);
   if (refusal !== null) throw refusal;
@@ -615,11 +637,69 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const { status, json } = await send(config, {
     method: "POST",
     path: withRedirect("/auth/v1/recover"),
-    body: { email },
+    body: { email, ...(await pkceFields("recovery")) },
   });
   const refusal = mailerRefusal("recover", status, json);
   if (refusal !== null) throw refusal;
   rememberPendingReset(email);
+}
+
+// --- an emailed link's code (R323, R324) --------------------------------------------------------
+
+/** GoTrue's answer when a verifier is not the one the code's challenge was made from. */
+const BAD_CODE_VERIFIER = "bad_code_verifier";
+
+/** A GoTrue auth code is a UUID; anything else in `?code=` is not one, and is never sent. */
+const AUTH_CODE_PATTERN = /^[A-Za-z0-9-]{1,128}$/u;
+
+export function isAuthCode(code: string): boolean {
+  return AUTH_CODE_PATTERN.test(code);
+}
+
+export type CodeExchange =
+  /** The code and a verifier here matched: the link's session, and which kind of link it was. */
+  | { kind: "session"; session: Session; flow: PkceFlow }
+  /**
+   * No verifier here matches the code: the link was asked for on another device or browser, or this
+   * browser's storage was cleared (R324). The provider confirmed the address before it sent the
+   * player here with a code, so a confirmation link has done its work.
+   */
+  | { kind: "elsewhere" }
+  /** The provider refused the code itself: spent, expired, or never real. */
+  | { kind: "refused" };
+
+/**
+ * R323: an emailed link's `code` for a session, with the verifier this browser kept when it asked
+ * for the link. The newest verifier is tried first; one the provider answers `bad_code_verifier`
+ * belongs to another link, so the next is tried, and none left is `elsewhere` (R324). A refused
+ * verifier leaves the code usable, so trying one does not spend it. A verifier is forgotten once
+ * its code has been exchanged. Throws `network` or `service` when the provider could not answer;
+ * the code is then still good for another try.
+ */
+export async function exchangeAuthCode(code: string): Promise<CodeExchange> {
+  if (!isAuthCode(code)) return { kind: "refused" };
+  const verifiers = storedVerifiers();
+  // Nothing to send: a link from elsewhere, whether or not this build can reach a provider.
+  if (verifiers.length === 0) return { kind: "elsewhere" };
+  const config = requireConfig();
+  for (const { flow, verifier } of verifiers) {
+    const { status, json } = await send(config, {
+      method: "POST",
+      path: "/auth/v1/token?grant_type=pkce",
+      body: { auth_code: code, code_verifier: verifier },
+    });
+    if (isSuccess(status)) {
+      const session = sessionFromTokens((json ?? {}) as TokenResponse, null);
+      if (session === null) return { kind: "refused" };
+      forgetVerifier(flow);
+      return { kind: "session", session, flow };
+    }
+    if (status >= 500) throw new AuthError("service");
+    if (status === 429) throw new AuthError("rateLimited");
+    if (providerCode(json) === BAD_CODE_VERIFIER) continue;
+    return { kind: "refused" };
+  }
+  return { kind: "elsewhere" };
 }
 
 // --- session calls -----------------------------------------------------------------------------

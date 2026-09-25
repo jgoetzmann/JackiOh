@@ -1,5 +1,5 @@
-// Spec 23 — the tutorial's lesson path: progress saved and restored, Skip and Exit, a later lesson
-// with its fixed deck, and the phone layout (SPEC §9.10, R290, R291, R294).
+// Spec 23 — the tutorial's lesson path: progress saved and restored, no Skip step and Exit, a later
+// lesson with its fixed deck, and the phone layout (SPEC §9.10, R290, R291, R294, R314).
 //
 // What it proves, against `pnpm build:e2e` + `vite preview` and NO server:
 //
@@ -13,8 +13,9 @@
 //     (read from the web source at spec time by `cy.task("tutorialLessons")`, never copied here),
 //     and the AI seat carries the tutorial handicap (R290: 12 cards, no mana bonus, a cap of 3, a
 //     20-health hero), which the opponent's hero shows;
-//   * Skip step moves the HUD's step counter on; Exit tutorial asks first ("Leave this game?"),
-//     Stay keeps the game, and Exit returns to the lobby's path with the progress unchanged;
+//   * there is no Skip step (R314): no button in the HUD or the coach's bubble is named or marked
+//     as one, while the HUD counts the steps; Exit tutorial asks first ("Leave this game?"), Stay
+//     keeps the game, and Exit returns to the lobby's path with the progress unchanged;
 //   * a later lesson (traps) deals its fixed opening hand, Quickdraw card included when its deck
 //     has one (a Quickdraw card always starts in the opening hand), and deals the same hand again
 //     when it is started a second time;
@@ -42,7 +43,6 @@ import {
   TUTORIAL_EXIT,
   TUTORIAL_HUD,
   TUTORIAL_PATH,
-  TUTORIAL_SKIP,
   handCardId,
   handRegionId,
   healthIs,
@@ -62,7 +62,6 @@ import {
   lessonUrl,
   practiceHandle,
   stepCounter,
-  stepCounterIn,
   storedProgress,
   takeMoment,
   visitTutorial,
@@ -81,7 +80,7 @@ const PHONE = { width: 390, height: 844 } as const;
 /** Moments followed on the phone, from the first bubble to the player's first turn. */
 const PHONE_MOMENTS = 16;
 
-/** Tips read before the coach is on a step Skip can move past. */
+/** Tips read before the coach is on a step (or waiting for one). */
 const TIP_BUDGET = 6;
 
 type Status = "locked" | "unlocked" | "completed";
@@ -166,6 +165,23 @@ function exitLesson(): void {
   cy.get(ts(PRACTICE_LEAVE_CONFIRM)).click();
   cy.get(ts(TUTORIAL_PATH), { timeout: TUTORIAL_BOOT_TIMEOUT }).should("be.visible");
   cy.get(ts(TUTORIAL_HUD)).should("not.exist");
+}
+
+/**
+ * R314: nothing in the HUD or the coach's bubble is a Skip step, by its text, its accessible label or
+ * its testid (the page had `tutorial-skip` and `coach-skip` before the button was removed).
+ */
+function expectNoSkip(doc: Document): void {
+  for (const region of [TUTORIAL_HUD, COACH]) {
+    const root = doc.querySelector(ts(region));
+    const skips = Array.from(root?.querySelectorAll("button, [data-testid]") ?? []).filter((element) =>
+      /skip/i.test([element.textContent ?? "", element.getAttribute("aria-label") ?? "", element.getAttribute("data-testid") ?? ""].join(" ")),
+    );
+    expect(
+      skips.map((element) => element.outerHTML),
+      `no Skip step in ${region}`,
+    ).to.deep.eq([]);
+  }
 }
 
 /** Read "Got it" on any tip in the way, so the coach is on a step (or waiting for one). */
@@ -264,7 +280,7 @@ function phoneMoments(remaining: number): void {
   });
 }
 
-describe("23 — the tutorial's lesson path: progress, Skip and Exit, a lesson's fixed deck, the phone (§9.10)", () => {
+describe("23 — the tutorial's lesson path: progress, no Skip step and Exit, a lesson's fixed deck, the phone (§9.10)", () => {
   it("R294 anonymous /practice: the path tops the page, lesson 1 is open, the others are locked and start nothing", () => {
     lessons().then((data) => {
       visitTutorial(PRACTICE_PATH, { progress: null });
@@ -333,7 +349,7 @@ describe("23 — the tutorial's lesson path: progress, Skip and Exit, a lesson's
     });
   });
 
-  it("R290 R291 lesson 2 from the path: its seed, decks and handicap; Skip moves the step on; Exit asks, Stay stays, Exit leaves", () => {
+  it("R290 R291 R314 lesson 2 from the path: its seed, decks and handicap; no Skip step anywhere; Exit asks, Stay stays, Exit leaves", () => {
     lessons().then((data) => {
       const [first, second] = data.lessons as [TutorialLessonData, TutorialLessonData];
       const done = { v: TUTORIAL_PROGRESS_VERSION, completed: [first.id] };
@@ -345,15 +361,15 @@ describe("23 — the tutorial's lesson path: progress, Skip and Exit, a lesson's
       expectLessonGame(data, second);
       cy.get(ts(heroId("opponent"))).find(healthIs(TUTORIAL_HANDICAP.heroHealth)).should("exist");
 
-      // Skip step: the counter moves on.
+      // No Skip step (R314), in the HUD or the bubble, while the HUD counts the lesson's steps and
+      // Exit tutorial is there.
       coachOnAStep();
-      stepCounter().then((before) => {
-        cy.get(ts(TUTORIAL_SKIP)).should("not.be.disabled").click();
-        cy.document().should((doc) => {
-          const now = stepCounterIn(doc);
-          expect(now?.of, "the same lesson's steps").to.eq(before.of);
-          expect(now?.step ?? 0, `Skip step moves the counter past step ${String(before.step)}`).to.be.greaterThan(before.step);
-        });
+      stepCounter().then((counter) => {
+        expect(counter.of, "the HUD counts the lesson's steps").to.be.greaterThan(0);
+      });
+      cy.get(ts(TUTORIAL_HUD)).find(ts(TUTORIAL_EXIT)).should("be.visible").and("have.attr", "aria-label", "Exit tutorial");
+      cy.document().should((doc) => {
+        expectNoSkip(doc);
       });
 
       // Exit tutorial asks first; Stay keeps the game exactly where it was.

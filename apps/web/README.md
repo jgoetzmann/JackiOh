@@ -46,7 +46,10 @@ src/
                         Heroic Power's rolled power, which Board, Prompt and DragLayer provide from their view
     Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1; a graveyard or exile pile that
                         holds cards (public on both seats, §10.8) opens its cards on hover and in a dialog on a
-                        click (cards/inspect/CardList.tsx), and a log line that names a card opens that card
+                        click (cards/inspect/CardList.tsx), and so does your own library, from the list without
+                        order the view carries for it (`SideView.ownLibrary`, R310–R313): grouped with counts,
+                        "Order hidden", unknown cards as backs; the opponent's library is a count. A log line
+                        that names a card opens that card
     actions.ts Prompt.tsx                                               M5-T2
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
@@ -259,7 +262,7 @@ routes/practice.tsx   the route: the tutorial path, setup, HUD, and Game.tsx unc
 
 ## The tutorial
 
-The practice lobby opens with the tutorial (SPEC §9.10, R290–R294): four lessons on a path, each
+The practice lobby opens with the tutorial (SPEC §9.10, R290–R294, R320–R322): four lessons on a path, each
 a practice game with two fixed decks, a fixed seed and seat, and the tutorial handicap on the AI
 seat (`AI_TUTORIAL`, the tier below Easy). A lesson is a practice config whose `lesson` names it
 (`tutorial/start.ts`), so the same worker, controller and board play it; the worker reads the
@@ -269,29 +272,45 @@ decks from `tutorial/lessons/<id>.ts` and nothing else the page sends changes th
 src/tutorial/
   lessons.ts lessons/*.ts   each lesson as data: title, mechanics, seed, seat, both decks, retry tip
   scripts/*.ts              each lesson's coach script: steps in order and reactive tips (page only)
-  coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, skip, display (R292)
+  coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, display (R292, R314)
   steps.ts targets.ts       reads of the view and legal actions, step factories, anchors → board testids
   tracker.ts                feeds every controller snapshot to the coach and holds the AI for `holdAi`
   Coach.tsx layout.ts       the ring, and the bubble placed clear of what it points at (a panel above the board on phones)
-  TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done)
-  TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (Skip step, Exit tutorial) and its result dialog
-  progress.ts               completed lessons in localStorage `jackioh.tutorial.v1`, try/catch (R294)
+  TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done), with Hide / Show
+                            tutorial (R322; its look in path-visibility.css)
+  TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (step counter, Exit tutorial) and its result dialog
+  progress.ts               completed lessons and the Hide/Show choice in localStorage `jackioh.tutorial.v1`,
+                            try/catch (R294), and R321's merge with another copy (a union, the newest choice)
+  accountSync.ts            an active account's copy (`GET`/`PUT /api/tutorial`, R320) kept level with the
+                            device's (R321); the practice route mounts it
   harness.ts                test support only: a lesson played through the real core by a policy (R293)
   config.ts testids.ts devHandle.ts   the numbers, the testids (mirrored in e2e), `window.__jackiohTutorial`
 ```
 
 - The coach reads the snapshot the page already holds (`view`, `legal`, `aiToAct`) and nothing
   else, and never sends an action (rule 7). A step points at a board element by its testid and
-  completes when the view shows it done; "Skip step" always moves on, and a step expires after
-  `TUTORIAL_STEP_TURNS_MAX` of the player's own turns, so nothing strands a lesson.
+  completes when the view shows it done. There is no Skip step, and nothing needs one (R314): only
+  a tip or an `info` step holds the AI, and each shows "Got it"; an action step never holds it; a
+  step expires after `TUTORIAL_STEP_TURNS_MAX` of the player's own turns (the lesson's `final` step
+  ends with the game); and Exit tutorial is in the HUD throughout. Nothing strands a lesson.
 - The bubble adopts a new step only once the board has caught up (no `data-animating`), so it never
   points at a card the board has not drawn; a step or tip with `holdAi` holds the AI through
-  `setHold("coach", …)`.
+  `setHold("coach", …)` until its "Got it".
 - `?lesson=<id>` starts a lesson at once (`&pace=fast` works as for practice); `?seed=` and
   `?seat=` never override a lesson's own. `window.__jackiohTutorial` (dev builds only) exposes the
   coach's display and the action its current step asks for, which spec 22 performs through the UI.
 - `pnpm --dir apps/web exec tsx scripts/lesson-deal.ts <lessonId> [seed | --scan …]` prints a
   lesson's deal, which is how a lesson's seed is picked.
+- Progress lives on the device and, for an active account, on the account too (R320, R321). The
+  device's copy is the one the page renders; `accountSync.ts` reads the account's once per visit,
+  merges it in (the union of completed lessons, the newest Hide/Show choice by the time it was
+  made), sends up what the account lacks, and after that sends each change as it happens. A request
+  that fails changes nothing on screen and throws nothing; the next visit catches the account up.
+  Signed out, pending or banned, nothing is sent at all.
+- Hide tutorial (R322) sits in the path's header while a lesson is still to do and folds the path to
+  one Show tutorial button in its place; focus moves to the button that undoes the press. The choice
+  is stored with the progress, so it holds on the next visit and on the account; a finished path
+  folds to its header by itself and offers no Hide.
 
 ## Regenerating the voice lines
 

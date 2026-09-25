@@ -291,7 +291,7 @@ describe("R293 lesson basics", () => {
         expect(run.coach.finished, `policy seed ${String(n)}: the coach is finished`).toBe(true);
         for (const step of script.steps) {
           const outcome = run.outcomes[step.id];
-          if (outcome !== undefined) expect(["done", "skipped", "moot", "expired"]).toContain(outcome);
+          if (outcome !== undefined) expect(["done", "moot", "expired"]).toContain(outcome);
         }
       }
     },

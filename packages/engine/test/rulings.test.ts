@@ -246,6 +246,28 @@ const WEB_TUTORIAL_LESSON_TESTS = [
   "../../../apps/web/src/tutorial/scripts/traps.test.ts",
   "../../../apps/web/src/tutorial/scripts/advanced.test.ts",
 ] as const;
+/** R310 to R314's proofs: the viewer's own library list (§10.8) and the tutorial without Skip step. */
+const WEB_PILE_BROWSER_TEST = "../../../apps/web/src/game/PileBrowser.test.tsx";
+const WEB_PRACTICE_TUTORIAL_TEST = "../../../apps/web/src/routes/practice-tutorial.test.tsx";
+const CARD_TESTS_R311 = [
+  "../../cards/test/033-unstable-clone-machine.test.ts",
+  "../../cards/test/090-cn-viral-injection.test.ts",
+  "../../cards/test/042-eugenics.test.ts",
+] as const;
+const CARD_TESTS_R312 = [
+  "../../cards/test/087-pocket-chaos.test.ts",
+  "../../cards/test/083-transmogulate.test.ts",
+  "../../ai/test/observe.test.ts",
+] as const;
+/** R320 to R322's proofs: tutorial progress and the hidden path on the account (§9.10). */
+const SERVER_TUTORIAL_API_TEST = "../../../apps/server/test/api/tutorial.test.ts";
+const SERVER_TUTORIAL_SQL = "../../../apps/server/test/sql/05_tutorial_progress.sql";
+const SERVER_RLS_SQL = "../../../apps/server/test/sql/02_rls_as_client.sql";
+const WEB_TUTORIAL_ACCOUNT_SYNC_TEST = "../../../apps/web/src/tutorial/accountSync.test.ts";
+const WEB_PRACTICE_ROUTE_TEST = "../../../apps/web/src/routes/practice.test.tsx";
+const WEB_TUTORIAL_PATH_TEST = "../../../apps/web/src/tutorial/TutorialPath.test.tsx";
+/** R323's proof of the verifier itself; the auth-flow, redirect and login proofs are R192–R194's own. */
+const WEB_PKCE_TEST = "../../../apps/web/src/auth/pkce.test.ts";
 /** R315 to R319's proofs: the overflow events, what each seat reads of them, and how the board and the speakers play them. */
 const OVERFLOW_EVENTS_TEST = "overflow-events.test.ts";
 const WEB_OVERFLOW_TEST = "../../../apps/web/src/game/overflow.test.tsx";
@@ -2323,6 +2345,35 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(294, WEB_TUTORIAL_PROGRESS_TEST);
   });
 
+  // Proved by ownLibrary.test.ts "R310 …": the list's order, grouping and fields, the opponent's
+  // library left a count, and two orders of the same library giving the same view.
+  it("R310 gives the viewer their own library as a list without its order", () => {
+    provenIn(310, "ownLibrary.test.ts");
+  });
+
+  // Proved by ownLibrary.test.ts "R311 …" (the deck, a mulligan's returns, a shuffle-in, a change
+  // inside the library) and again by the cards that shuffle in or change a library card: #33, #90, #42.
+  it("R311 lists what the owner was shown of each card going in, and not what changed unseen", () => {
+    provenIn(311, "ownLibrary.test.ts", ...CARD_TESTS_R311);
+  });
+
+  // Proved by ownLibrary.test.ts "R312 …", by #87's library swap and #83's library replacements, and
+  // by packages/ai's observe.test.ts: the AI's own redacted state hides what its list counts unknown.
+  it("R312 counts a card its owner was never shown as unknown", () => {
+    provenIn(312, "ownLibrary.test.ts", ...CARD_TESTS_R312);
+  });
+
+  // Proved by apps/web game/PileBrowser.test.tsx "R313 …": the library pile's preview and dialog.
+  it("R313 lets the viewer look through their own library pile, and not the opponent's", () => {
+    provenIn(313, WEB_PILE_BROWSER_TEST);
+  });
+
+  // Proved by apps/web tutorial/coach.test.ts "R314 …" (every lesson's steps and tips, and expiry)
+  // and routes/practice-tutorial.test.tsx "R314 …" (no Skip step on the page; Got it and Exit are).
+  it("R314 has no Skip step in the tutorial, and nothing that strands the player", () => {
+    provenIn(314, WEB_TUTORIAL_COACH_TEST, WEB_PRACTICE_TUTORIAL_TEST);
+  });
+
   // Proved by overflow-events.test.ts "R315 …": a fatigue draw through `reduce` reports `fatigue`
   // before its hit on both seats, one per draw of a draw N, still when Armor takes the hit whole, and
   // never for a draw #75 replaces.
@@ -2353,6 +2404,37 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by apps/web audio/cues.test.ts "R319 …": each overflow's own sound, the same for any card.
   it("R319 gives each overflow a sound of its own that says nothing of the card", () => {
     provenIn(319, WEB_AUDIO_CUES_TEST);
+  });
+
+  // Proved by apps/server test/api/tutorial.test.ts (the routes: active only, the union, the clamped
+  // choice, the body's checks), test/db/contract.ts (both stores), and the SQL suite's 05 (the merge
+  // function) and 02 (a player reads only its own row and writes none) headings.
+  it("R320 keeps an active account's tutorial progress on the server, merged and never removed", () => {
+    provenIn(320, SERVER_TUTORIAL_API_TEST, SERVER_STORE_CONTRACT, SERVER_TUTORIAL_SQL, SERVER_RLS_SQL);
+  });
+
+  // Proved by apps/web tutorial/accountSync.test.ts (load, push-up, one request at a time, failures
+  // dropped), tutorial/progress.test.ts (the union and the newest choice) and routes/practice.test.tsx.
+  it("R321 merges the device's tutorial progress with the account's as a union, never stepping back", () => {
+    provenIn(321, WEB_TUTORIAL_ACCOUNT_SYNC_TEST, WEB_TUTORIAL_PROGRESS_TEST, WEB_PRACTICE_ROUTE_TEST);
+  });
+
+  // Proved by apps/web tutorial/TutorialPath.test.tsx "R322 …": Hide and Show, focus, touch size.
+  it("R322 lets the player hide the lesson path while a lesson is still to do, and show it again", () => {
+    provenIn(322, WEB_TUTORIAL_PATH_TEST);
+  });
+
+  // Proved by apps/web auth/pkce.test.ts (the verifier, its challenge and where it is kept),
+  // net/auth-flows.test.ts (the mailers' challenge, the exchange), auth/redirect.test.ts (the code
+  // read on /login and / only, and scrubbed) and routes/login-flows.test.tsx (a code on the screen).
+  it("R323 sends a PKCE challenge with every mailer and exchanges a returning code for the link's session", () => {
+    provenIn(323, WEB_PKCE_TEST, WEB_AUTH_FLOWS_TEST, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST);
+  });
+
+  // Proved by the same files' "R324 …" tests: no verifier here, a refused code, a browser that
+  // cannot hash, and an implicit-flow link mailed before the switch.
+  it("R324 confirms a link opened elsewhere without an error, and still reads a link from before", () => {
+    provenIn(324, WEB_AUTH_FLOWS_TEST, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST);
   });
 
   // Proved by series-rules.test.ts "R330 …" (a deck that wins is locked, a lost one comes back, three

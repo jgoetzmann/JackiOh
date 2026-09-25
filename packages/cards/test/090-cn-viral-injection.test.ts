@@ -203,6 +203,50 @@ describe("#90 CN-Viral Injection — radiant", () => {
 });
 
 // =============================================================================================
+// R311: what the library's owner is shown of a virus going in (SPEC §10.8)
+// =============================================================================================
+
+describe("#90 and #90.1 — R311 the owner's library list", () => {
+  it("R311 the victim's list names the virus the opponent's Injection shuffled in, Radiant on the Radiant face", () => {
+    const s = scenario({
+      seed: "core-090-r311",
+      p1: { hand: [{ def: INJECTION, radiant: true }, "core-005"], library: filler(3) },
+      p2: { hand: ["core-005"], library: filler(4) },
+    });
+
+    s.play(INJECTION);
+
+    // The play was public and its text names the card, so p2 knows what went in; never where.
+    // Both cost 1, so the list goes by name (R310): CN-Virus before Stockpile.
+    expect(s.view("p2").you.ownLibrary).toEqual({
+      cards: [
+        { defId: VIRUS, radiant: true, count: 1 },
+        { defId: "core-005", radiant: false, count: 4 },
+      ],
+      unknown: 0,
+    });
+    // The caster reads p2's library as a count and nothing else.
+    expect(s.view("p1").opponent.ownLibrary).toBeUndefined();
+    expect(s.view("p1").opponent.libraryCount).toBe(5);
+  });
+
+  it("R311 a virus's own copies are listed as their owner saw them go in", () => {
+    const s = scenario({
+      seed: "core-090-1-r311",
+      p1: { hand: [VIRUS, "core-005"], library: filler(3) },
+      p2: { hand: ["core-005"] },
+    });
+
+    s.play(VIRUS);
+
+    const list = s.view("p1").you.ownLibrary;
+    expect(list?.unknown).toBe(0);
+    expect(list?.cards).toContainEqual({ defId: VIRUS, radiant: false, count: 2 });
+    expect(list?.cards).toContainEqual({ defId: "core-005", radiant: false, count: 3 });
+  });
+});
+
+// =============================================================================================
 // #90.1 CN-Virus — base, played from hand (the `cry` with no draw around it)
 // =============================================================================================
 

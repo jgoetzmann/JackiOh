@@ -11,7 +11,9 @@
 // step (`setHold("coach", …)`) from the moment the snapshot that shows it arrives, synchronously,
 // before the controller can schedule that step. The page shows a new display only once the board
 // has caught up (Coach.tsx), and while the board animates the controller is held by the board
-// anyway, so holding on the newest display holds exactly while the shown one asks for it.
+// anyway, so holding on the newest display holds exactly while the shown one asks for it. Only a
+// display with "Got it" ever asks (a tip or an `info` step, coach.ts, R314), so the player can
+// always let go.
 //
 // Rule 7: the tracker reads what the page already holds (the view, the legal actions, `aiToAct`)
 // and never sends an action.
@@ -27,7 +29,6 @@ import {
   coachAck,
   coachDisplay,
   coachObserve,
-  coachSkip,
   type CoachCtx,
   type CoachDisplay,
   type CoachState,
@@ -52,8 +53,8 @@ export type CoachView = {
   /** It is the AI's turn, or the AI owes an answer: what the waiting bubble says. */
   aiBusy: boolean;
   /**
-   * The human's own main phase, nothing open: the waiting bubble says whose move it is, and has no
-   * Skip step (a step waiting on its moment retires by itself, TUTORIAL_STEP_TURNS_MAX).
+   * The human's own main phase, nothing open: the waiting bubble says it is their move (a step
+   * waiting on its moment retires by itself, TUTORIAL_STEP_TURNS_MAX).
    */
   yourMove: boolean;
 };
@@ -67,8 +68,6 @@ export type CoachTracker = {
    * press on a bubble the board has not caught up with yet never answers one the player has not seen.
    */
   ack(expected?: string): void;
-  /** "Skip step", guarded the same way. */
-  skip(expected?: string): void;
   dispose(): void;
 };
 
@@ -154,14 +153,6 @@ export function createCoachTracker(source: CoachSource, script: LessonScript): C
       if (disposed || ctx === null) return;
       if (expected !== undefined && expected !== displayKey(state.display)) return;
       const next = coachAck(script, coach, ctx);
-      if (next === coach) return;
-      coach = next;
-      publish();
-    },
-    skip(expected) {
-      if (disposed || ctx === null) return;
-      if (expected !== undefined && expected !== displayKey(state.display)) return;
-      const next = coachSkip(script, coach, ctx);
       if (next === coach) return;
       coach = next;
       publish();

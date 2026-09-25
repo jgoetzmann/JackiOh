@@ -670,8 +670,9 @@ named above through `provenIn`.
 
 - The `/practice` route and the AI. Task 3 builds them. This branch only links to `/practice`, which
   shows the 404 panel until task 3 merges.
-- PKCE flow, magic-link or OTP sign-in, OAuth providers, CAPTCHA, MFA, email change and account
-  deletion.
+- PKCE flow (brought in later, on 2026-09-25: the three mailers send a PKCE challenge and `/login`
+  exchanges the returning code, R323, R324), magic-link or OTP sign-in, OAuth providers, CAPTCHA,
+  MFA, email change and account deletion.
 - The server's fixture-only `/api/auth/signup` and `/api/auth/signin` (R160 already covers them), and
   §9.4's optional trusted devices.
 - (Brought into scope by the panel for the account's own tries: `CodeStore.oldestAttemptAtByProfile`.) An exact "try again at" time for redemption. It would need a new `Store` port method on both stores
