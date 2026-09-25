@@ -1,25 +1,26 @@
-// #81 Radiant Saintess (SPEC §8.4 row 81): Unit, Human, cost 1, Epic, 2/2 → 4/4.
-//   Base:    "Cry and Death: all your units become Radiant"
-//   Radiant: "Reborn; same"
+// #81 Radiant Saintess (SPEC §8.4 row 81; R22, R78, R177, R275, R276): Unit, Human, cost 1, Epic,
+// 2/2 → 4/4.
+//   Base:    "Reborn; Death: all your other units become Radiant"
+//   Radiant: "Reborn; Death: all your other units and every card in your hand become Radiant"
 //
-// THE RADIANT FACE HAS NO EXTRA CODE. §8's Conventions: a radiant cell that lists keywords without
-// "Plus" gives the radiant form's complete keyword list, and "same" says the text is unchanged.
-// Reborn is PRINTED on the radiant face (`catalog.json` core-081 `radiant.keywords`), which
-// `layers.faceOf` already reads off the instance's radiant flag, so the radiant script below is the
-// base script. Nothing here restates a stat, a cost or a keyword (the `def` above is the only
-// source of those).
+// THE RADIANT FACE WIDENS THE SCOPE (R275: "a broader scope"): her Death radiates your hand as well
+// as your board, the way #29 GIGA Glowy Jelly Bean radiates a hand — one `setRadiant` per card,
+// named by id, never a random pick. A hand is its owner's alone (§9.1), so whether each of those
+// cards was base-face is hidden from the opponent, and R177 is what keeps the cue from telling:
+// `setRadiant` reports a `radiantSet` for a named hidden card whether or not the flag changed, so
+// the opponent's stream holds one redacted cue per hand card either way.
+//
+// Reborn is PRINTED on both faces (`catalog.json` core-081 `keywords`), which `layers.faceOf`
+// reads off the instance's radiant flag, so no line of script grants it. Nothing here restates a
+// stat, a cost or a keyword (the `def` above is the only source of those).
 //
 // R22 "Radiant on the field": "Base layer swaps, damage and buffs stay, Cry does not re-fire;
 // Saintess includes itself". `setRadiant` is exactly that — it sets the instance's `radiant` flag
 // and nothing else (`effects/radiant.ts`), so §10.4's printed-stat layer swaps on the next read
 // while layer 4's buffs and the instance's damage are untouched, and no card re-enters the field,
-// so no Cry fires again. Two consequences the row's Engine cell spells out:
-//   - "Includes itself on Cry (ruling), so it is 4/4 Reborn immediately": the Cry radiates `self`.
-//     §10.5 puts the unit on the field at step 4 and runs the Cry at step 5, so `self` is already
-//     one of `activeUnitsOf`; naming it anyway is what R22 asks the card to be explicit about, and
-//     the duplicate is free because `setRadiant` skips a card that is already Radiant (§6.3).
-//   - "its Reborn body fires Death again": that is R8 ("Death fires on both deaths") plus §4.5
-//     step 4, both the state check's, not this file's.
+// so no Cry fires again. R22's "Saintess includes itself" was about her old Cry, which is gone; her
+// Death never includes her (below). "Her Reborn body fires Death again" (§8's Engine cell) is R8
+// ("Death fires on both deaths") plus §4.5 step 4, both the state check's, not this file's.
 //
 // R78 is why Death does NOT name `self`. Leaving the field resets an instance and "effects that
 // react to a card leaving read its last-known state from just before it left": `stateCheck` moves
@@ -37,7 +38,7 @@
 // `summonedTurn`, so it is summoning sick) are both the engine's; this card only sets flags.
 
 import type { Effect, EffectContext, Hook, Script } from "@jackioh/engine";
-import { activeUnitsOf } from "@jackioh/engine";
+import { activeUnitsOf, zoneCards } from "@jackioh/engine";
 import { setRadiant } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
@@ -70,7 +71,19 @@ function radiateYourUnits(ctx: EffectContext, includeSelf: boolean): Effect[] {
  */
 const death: Hook = (ctx) => radiateYourUnits(ctx, false);
 
+/**
+ * "…and every card in your hand": the controller's hand, read through `zoneCards` (a copy) and named
+ * card by card, as #29 does. Every card, so no rng is drawn (§9.3), and a card already Radiant is
+ * still named — `setRadiant` cues it without changing it (R177), which is what hides the hand's
+ * faces from the opponent.
+ */
+function radiateYourHand(ctx: EffectContext): Effect[] {
+  return zoneCards(ctx.state, ctx.controller, "hand").map((card) => setRadiant({ instanceId: card.id }));
+}
+
+/** Radiant Death: the board first, in the order the text names it, then the hand. */
+const radiantDeath: Hook = (ctx) => [...radiateYourUnits(ctx, false), ...radiateYourHand(ctx)];
+
 export const base: Script = { death };
 
-/** "Reborn; same": Reborn is printed on the radiant face, so the text — and the code — is the base. */
-export const radiant: Script = { death };
+export const radiant: Script = { death: radiantDeath };

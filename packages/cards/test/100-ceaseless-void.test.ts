@@ -1,20 +1,15 @@
 // #100 Ceaseless Void — SPEC §8.5, §6.3 (Cost, Exile), §10.4, §10.5, R11, R55, R65, R70.
 //
 // BUILD M4-T4 row 100: "Cost = 100 − (drawn + played + destroyed + exiled by both players),
-// floor 0 (R55); Cry exiles every other permanent; radiant Charge".
+// floor 0 (R55); Cry exiles every other permanent; radiant Charge". R275 doubles the radiant face's
+// stats: it is a 20/20 with Charge.
 //
 // The cost half is complete and is tested THROUGH the cost pipeline — `printedCost`,
 // `effectiveCost` and the play validator's own refusal — never by reading the hook's return value
 // or the catalog's 100 back to itself.
 //
-// KNOWN FAILING: THE CRY. `src/scripts/100-ceaseless-void.ts` says so in its header. The engine has
-// the verb — `effects/move.ts` exports `exileAll(args: BoardScope)`, written for exactly this card
-// ("#100 Ceaseless Void … `{ side: "any", rows: ["units", "backrow"], excludeSelf: true }`") — but
-// `effects/index.ts` re-exports only `bounce, counter, discard, discardRandom, exile` from that
-// module, and that barrel "is the entire vocabulary a card file has" (packages/cards/README §1). So
-// `exileEveryOtherPermanent()` returns `[]` and the Cry does nothing. The `it`s below are written
-// for the card §8.5 describes and fail on that one missing re-export; #2, #17, #43 and #88 are
-// blocked on the `destroyAll` half of the same gap.
+// The Cry is `exileAll({ side: "any", rows: ["units", "backrow"], excludeSelf: true })`, the
+// board-wide exile the effects barrel exports.
 
 import { describe, expect, it } from "vitest";
 import type { GameEvent, PlayerId } from "@jackioh/shared";
@@ -24,7 +19,7 @@ import { cardDef } from "../src/catalog-data";
 import { base as voidBase, radiant as voidRadiant } from "../src/scripts/100-ceaseless-void";
 import { scenario, type Scenario, type SideSetup } from "./_harness";
 
-const VOID = "core-100"; // Unit, 100, Mythic, 10/10 → 10/10 plus Charge
+const VOID = "core-100"; // Unit, 100, Mythic, 10/10 → 20/20 plus Charge
 const PRINTED = 100;
 
 /** #11 Tempo Timmy, a 1-cost 3/3 Unit. #58 Rush Token Farm, a 2-cost Field Spell with no triggers
@@ -102,37 +97,37 @@ function held(s: Scenario): CardInstance {
 // ---------------------------------------------------------------------------
 
 describe("#100 Ceaseless Void — the card", () => {
-  it("§8.5 is a Mythic 10/10 Unit printed at 100, with Charge only on the radiant face", () => {
+  it("§8.5 is a Mythic 10/10 → 20/20 Unit printed at 100, with Charge only on the radiant face", () => {
     const def = cardDef(VOID);
     expect(def.type).toBe("Unit");
     expect(def.cost).toBe(PRINTED);
     expect(def.rarity).toBe("Mythic");
-    for (const face of [def.base, def.radiant]) {
-      expect(face.attack).toBe(10);
-      expect(face.health).toBe(10);
-    }
+    expect([def.base.attack, def.base.health]).toEqual([10, 10]);
+    // R275: a Radiant Unit's attack and health are each at least double its base face's.
+    expect([def.radiant.attack, def.radiant.health]).toEqual([20, 20]);
     // §8 Conventions: "Plus X" adds keyword X and restates no clause.
     expect(def.base.keywords.map((keyword) => keyword.kind)).not.toContain("Charge");
     expect(def.radiant.keywords.map((keyword) => keyword.kind)).toEqual(["Charge"]);
   });
 
   it("§10.9 one script serves both faces: the cost hook and the Cry, and nothing else", () => {
-    // "Plus Charge" is a printed keyword and so a §10.4 layer, not a line of script, which is why
-    // the two faces are the same object and both of the row's clauses are kept.
+    // "Plus Charge" and the 20/20 are printed on the radiant face and so §10.4 layer 1, not a line
+    // of script, which is why the two faces are the same object and both of the row's clauses are
+    // kept.
     expect(voidRadiant).toBe(voidBase);
     expect(Object.keys(voidBase).sort()).toEqual(["cost", "cry"]);
   });
 
-  it("§10.4 both faces read 10/10 through the layers", () => {
+  it("§10.4 R275 the base face reads 10/10 and the radiant face 20/20 through the layers", () => {
     const s = scenario({
       p1: { field: [VOID], hand: [SPARE] },
       p2: { field: [{ def: VOID, radiant: true }] },
     });
     s.expectStats(must(s.unit("p1", 1), "the base Void"), { attack: 10, health: 10, maxHealth: 10 });
     s.expectStats(must(s.unit("p2", 1), "the radiant Void"), {
-      attack: 10,
-      health: 10,
-      maxHealth: 10,
+      attack: 20,
+      health: 20,
+      maxHealth: 20,
     });
   });
 });
@@ -392,13 +387,14 @@ describe("#100 Ceaseless Void — radiant 'Plus Charge'", () => {
     return s;
   }
 
-  it("§6.1 Charge: the radiant face may attack the enemy hero the turn it is played", () => {
+  it("§6.1 Charge: the radiant face may attack the enemy hero the turn it is played, for 20", () => {
     const s = playFreely(true);
     const card = must(s.unit("p1", 1), "the radiant Void");
     expect(s.stats(card).keywords.map((keyword) => keyword.kind)).toContain("Charge");
+    s.expectStats(card, { attack: 20, health: 20, maxHealth: 20 });
 
     s.attack(card, "hero");
-    s.expectHealth("p2", 20); // 30 − 10
+    s.expectHealth("p2", 10); // 30 − 20
   });
 
   it("§4.1 the base face is summoning sick, so it may attack nothing on its own turn", () => {

@@ -1,18 +1,11 @@
-// #80 Zao Gao — SPEC §8.3, R16, R21, R64, R11, §5.2, §7, §9.3, §10.6.
+// #80 Zao Gao — SPEC §8.3, R16, R21, R64, R11, R275, R276, §5.2, §7, §9.3, §10.6.
 //
 // BUILD M4-T4: "Discard prompt for 2 or fewer; two Rush Tokens each with two distinct pool
 // keywords".
 //
-// Zao Gao has no radiant form (§5.2, R74), so the two faces are the same Script object and the
-// radiant block below re-proves the base behaviour through a Radiant instance rather than asserting
-// anything different.
-//
-// Two tests here are RED on engine gaps rather than on this card, and each says so where it sits:
-//   * the keyword rolls need `summon`'s proposed `randomKeywords` argument (there is no way for a
-//     script to name a token it has just summoned);
-//   * the "parked tail" test needs `reduce.playCard` to resolve a Cry through
-//     `prompts.runHookResumable` instead of `resolve.runHook`.
-// Everything else is green, the empty-hand path included.
+// Radiant (R276): "summon 2 Radiant Rush Tokens, each with 2 random keywords". Each token is
+// summoned on its Radiant face (§7: 6/6, Rush, Cleave) and then rolls its two keywords, which never
+// repeat one it has (R21) — so neither Rush nor Cleave is ever one of the two.
 
 import { describe, expect, it } from "vitest";
 import { RANDOM_KEYWORD_POOL } from "@jackioh/engine/config";
@@ -37,17 +30,34 @@ function keywordKinds(s: Scenario, lane: number): string[] {
   return view.keywords.map((keyword) => keyword.kind);
 }
 
-/** R21 on one token: printed Rush (§7) plus exactly two more, all distinct, all from the pool. */
-function expectTwoPoolKeywords(s: Scenario, lane: number): void {
+/** §7: the Rush Token's printed keywords on each face. */
+const BASE_PRINTED = ["Rush"] as const;
+const RADIANT_PRINTED = ["Rush", "Cleave"] as const;
+
+/**
+ * R21 on one token: its printed keywords (§7) plus exactly two more, all distinct, all from the
+ * pool, and neither of the two one it already printed.
+ */
+function expectTwoPoolKeywords(
+  s: Scenario,
+  lane: number,
+  printed: readonly string[] = BASE_PRINTED,
+): void {
   const kinds = keywordKinds(s, lane);
-  expect(kinds).toContain("Rush");
+  for (const kind of printed) expect(kinds).toContain(kind);
   // R21: "no repeats on one unit".
   expect(new Set(kinds).size).toBe(kinds.length);
-  const granted = kinds.filter((kind) => kind !== "Rush");
+  const granted = kinds.filter((kind) => !printed.includes(kind));
   expect(granted).toHaveLength(2);
   for (const kind of granted) expect(POOL_KINDS.has(kind)).toBe(true);
-  // R21: a unit never gets a keyword it already has, so Rush is never one of the two.
-  expect(granted).not.toContain("Rush");
+
+  // The `keywordGranted` events for this token are the roll itself: two, never a printed keyword.
+  const tokenId = s.unit("p1", lane)!.id;
+  const rolled = s.events.flatMap((event) =>
+    event.type === "keywordGranted" && event.instanceId === tokenId ? [event.keyword.kind] : [],
+  );
+  expect(rolled).toHaveLength(2);
+  for (const kind of printed) expect(rolled).not.toContain(kind);
 }
 
 function occupiedLanes(s: Scenario): number[] {
@@ -108,15 +118,24 @@ describe("#80 Zao Gao — base", () => {
     expect(s.state.work).toHaveLength(0);
   });
 
+  it("§7 the base face's tokens are base Rush Tokens: 3/3, not Radiant", () => {
+    const s = board(false, DISCARDABLE);
+
+    s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
+
+    for (const lane of [1, 2]) {
+      const token = s.unit("p1", lane)!;
+      expect(token.radiant).toBe(false);
+      s.expectStats(token, { attack: 3, health: 3, maxHealth: 3 });
+    }
+  });
+
   it("§9.3 the summons wait for the answer: the tail of the list is parked, not stepped over", () => {
     const s = board(false, DISCARDABLE);
 
     s.play(ZAO_GAO);
 
-    // ENGINE GAP (reported): `reduce.playCard` resolves a Cry through `resolve.runHook`, whose
-    // `applyEffects` walks the whole list and parks nothing, so the two summons land while the
-    // prompt is still open. §9.3 and `prompts.applyResumable` say the tail belongs in `state.work`
-    // until the answer; the fix is `playCard` calling `prompts.runHookResumable`.
+    // `prompts.applyResumable` parks the tail of the Cry's list in `state.work` until the answer.
     expect(occupiedLanes(s)).toEqual([]);
     expect(s.state.work.length).toBeGreaterThan(0);
   });
@@ -126,9 +145,7 @@ describe("#80 Zao Gao — base", () => {
 
     s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
 
-    // ENGINE GAP (reported): `summon` has no `randomKeywords` argument and `TargetSpec` has no
-    // "last summoned" case, so a script cannot reach the token it just made. Until one of the two
-    // lands, each token has only its printed Rush.
+    // `summon`'s `randomKeywords` rolls on the token it just made (a script cannot name it).
     expectTwoPoolKeywords(s, 1);
     expectTwoPoolKeywords(s, 2);
     // Rolled independently: two grants of two draws each come off the seeded rng.
@@ -204,11 +221,11 @@ describe("#80 Zao Gao — base", () => {
 });
 
 describe("#80 Zao Gao — radiant", () => {
-  it("§5.2, R74 no radiant form: the radiant face IS the base Script object", () => {
-    expect(radiant).toBe(base);
+  it("R276 the radiant face is its own Script: it no longer shares the base object", () => {
+    expect(radiant).not.toBe(base);
   });
 
-  it("a Radiant Zao Gao discards two chosen cards and summons two Rush Tokens", () => {
+  it("a Radiant Zao Gao discards two chosen cards and summons two Radiant Rush Tokens", () => {
     const s = board(true, DISCARDABLE);
 
     s.play(ZAO_GAO);
@@ -222,17 +239,39 @@ describe("#80 Zao Gao — radiant", () => {
       [DISCARDABLE[0], DISCARDABLE[1], ZAO_GAO].sort(),
     );
     expect(occupiedLanes(s)).toEqual([1, 2]);
-    expect(s.unit("p1", 1)?.defId).toBe(RUSH_TOKEN);
+    for (const lane of [1, 2]) {
+      const token = s.unit("p1", lane)!;
+      expect(token.defId).toBe(RUSH_TOKEN);
+      // §7: the Radiant Rush Token is 6/6 with Rush and Cleave.
+      expect(token.radiant).toBe(true);
+      s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
+    }
   });
 
-  it("R21 a Radiant Zao Gao's tokens roll two pool keywords each", () => {
+  it("R21 a Radiant Zao Gao's tokens roll two pool keywords each, never Rush or Cleave", () => {
     const s = board(true, DISCARDABLE);
 
     s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
 
-    // Same ENGINE GAP as the base R21 test: `summon` cannot roll keywords yet.
-    expectTwoPoolKeywords(s, 1);
-    expectTwoPoolKeywords(s, 2);
+    expectTwoPoolKeywords(s, 1, RADIANT_PRINTED);
+    expectTwoPoolKeywords(s, 2, RADIANT_PRINTED);
+  });
+
+  it("R21 the roll reads the Radiant face on every seed: Cleave is never rolled onto a token that prints it", () => {
+    // Each token's two draws come from the nine pool keywords a Radiant Rush Token lacks; were the
+    // roll made before the flag set (or off the base face), Cleave would be offered and, over
+    // enough seeds, rolled.
+    const SEEDS = 40;
+    for (let n = 0; n < SEEDS; n += 1) {
+      const s = scenario({
+        seed: `core-080-radiant-roll-${n}`,
+        p1: { hand: [{ def: ZAO_GAO, radiant: true }, ...DISCARDABLE], library: [...LIBRARY] },
+        p2: { hand: ["core-005"], field: ["core-019"], library: [...LIBRARY] },
+      });
+      s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
+      expectTwoPoolKeywords(s, 1, RADIANT_PRINTED);
+      expectTwoPoolKeywords(s, 2, RADIANT_PRINTED);
+    }
   });
 
   it("§5.2, R74 the radiant flag still sets, so counting effects see a Radiant card", () => {
@@ -246,12 +285,33 @@ describe("#80 Zao Gao — radiant", () => {
     expect(s.card(self).radiant).toBe(true);
   });
 
-  it("an empty hand opens no prompt on the radiant face either", () => {
+  it("an empty hand opens no prompt on the radiant face either, and its tokens are Radiant", () => {
     const s = board(true, []);
 
     s.play(ZAO_GAO);
 
     expect(s.state.pending).toBeNull();
     expect(occupiedLanes(s)).toEqual([1, 2]);
+    expect(s.unit("p1", 1)?.radiant).toBe(true);
+    expect(s.unit("p1", 2)?.radiant).toBe(true);
+  });
+
+  it("R64 a nearly full board gets one Radiant token and the extra summon fizzles", () => {
+    const s = scenario({
+      p1: {
+        hand: [{ def: ZAO_GAO, radiant: true }, ...DISCARDABLE],
+        field: ["core-019", "core-019", "core-019", "core-019"],
+        library: [...LIBRARY],
+      },
+      p2: { hand: ["core-005"], field: ["core-019"], library: [...LIBRARY] },
+    });
+
+    s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
+
+    expect(occupiedLanes(s)).toEqual([1, 2, 3, 4, 5]);
+    const token = s.unit("p1", 5)!;
+    expect(token.defId).toBe(RUSH_TOKEN);
+    expect(token.radiant).toBe(true);
+    expectTwoPoolKeywords(s, 5, RADIANT_PRINTED);
   });
 });

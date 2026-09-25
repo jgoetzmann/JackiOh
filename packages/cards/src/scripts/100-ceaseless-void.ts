@@ -1,10 +1,10 @@
-// #100 Ceaseless Void (SPEC §8.5, §6.3 Cost and Exile, §10.4, R55, R65, R70). Unit, cost 100,
-// 10/10 → 10/10, Mythic.
+// #100 Ceaseless Void (SPEC §8.5, §6.3 Cost and Exile, §10.4, R55, R65, R70, R275). Unit, cost 100,
+// 10/10 → 20/20, Mythic.
 //   Base:    "Cry: exile all other permanents on both sides. Costs 1 less per card drawn, played,
 //             destroyed or exiled this game by either player"
-//   Radiant: "Plus Charge" — §8 Conventions: "Plus X" adds keyword X to the base keywords and
-//            restates no clause, so both clauses above are kept unchanged and the only difference
-//            is a printed keyword on the catalog's radiant face.
+//   Radiant: "Charge. Cry: …; same" — §8 Conventions: "Plus X" adds keyword X to the base keywords
+//            and restates no clause, so both clauses above are kept unchanged. The differences are
+//            catalog data on the radiant face: the printed Charge, and R275's doubled stats.
 //   Engine:  "Four game-level counters; cost recomputed on read; floor 0".
 //
 // THE COST (R55, R65, §10.9). R55: "Count both players' draws, plays, destructions and exiles from
@@ -81,8 +81,9 @@ function exileEveryOtherPermanent(): Effect[] {
 }
 
 /**
- * One script for both faces: "Plus Charge" is a printed keyword on the catalog's radiant face, so
- * it is a §10.4 keyword layer and not a line of script, and both of the row's clauses are kept.
+ * One script for both faces: "Plus Charge" is a printed keyword on the catalog's radiant face and
+ * the 20/20 its printed stats, so both are §10.4 layer 1 and not a line of script, and both of the
+ * row's clauses are kept.
  */
 const void_: Script = {
   cost: ({ state }) => costNow(state),

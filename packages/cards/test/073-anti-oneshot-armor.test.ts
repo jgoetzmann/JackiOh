@@ -1,5 +1,5 @@
 // #73 Anti-oneshot Armor — SPEC §8.3, BUILD M4-T4: "A 12 hit becomes 5 (radiant 3), per instance,
-// hero only; Cry draws 1", plus R18's "lose health bypasses the cap".
+// hero only; Cry draws 1 (radiant 2, R275)", plus R18's "lose health bypasses the cap".
 //
 // The 12-damage hit is a radiant core-002 Bigot (12/2). Its script is a Cry only, and a unit placed
 // by a `field` setup never fires one (R1), so the attack is a bare 12-damage instance through the
@@ -171,21 +171,40 @@ describe("#73 Anti-oneshot Armor (radiant)", () => {
     expect(damageTo(s, "hero-p1")).toEqual([3]);
   });
 
-  it("radiant keeps the Cry (\"Cap 3\" changes only that number, §8 Conventions)", () => {
+  it("radiant Cry: draw 2 (R275: the cap tightens and the Cry doubles)", () => {
     const s = scenario({
       seed: "core-073-radiant-cry",
       p1: {
         hand: [{ def: "core-073", radiant: true }, "core-005"],
-        library: ["core-035", "core-036"],
+        library: ["core-035", "core-036", "core-037"],
       },
       p2: { hand: ["core-005"] },
     });
 
     s.play("core-073");
 
-    expect(s.hand("p1")).toHaveLength(2);
-    s.expectEvents("cardPlayed", "summoned", "drawn");
+    // Two in hand, one played, two drawn — the top two, the third left in the library.
+    expect(s.hand("p1")).toHaveLength(3);
+    expect(s.hand("p1").map((card) => card.defId)).toEqual(
+      expect.arrayContaining(["core-035", "core-036"]),
+    );
+    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual(["core-037"]);
+    expect(s.events.filter((event) => event.type === "drawn")).toHaveLength(2);
+    s.expectEvents("cardPlayed", "summoned", "drawn", "drawn");
     expect(s.backrow("p1", 1)?.radiant).toBe(true);
+  });
+
+  it("the base Cry still draws exactly 1 beside the radiant's 2", () => {
+    const s = scenario({
+      seed: "core-073-base-cry-count",
+      p1: { hand: ["core-073", "core-005"], library: ["core-035", "core-036", "core-037"] },
+      p2: { hand: ["core-005"] },
+    });
+
+    s.play("core-073");
+
+    expect(s.events.filter((event) => event.type === "drawn")).toHaveLength(1);
+    expect(s.pile("p1", "library")).toHaveLength(2);
   });
 
   it("R18: a 5-point \"lose health\" goes through in full past the radiant cap of 3", () => {

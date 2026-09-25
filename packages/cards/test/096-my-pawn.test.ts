@@ -1,22 +1,21 @@
-// #96 My Pawn — SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R84.
+// #96 My Pawn — SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R84, R283.
 // BUILD M4-T4 row 96: "Lethal detection accounts for armor and the cap (R44); attack cancelled;
 // AI finishes the turn deterministically from the seed; opponent's actions rejected until end of
-// turn".
+// turn". R276 gave it a Radiant face, "… cancel it, destroy the attacker, and an AI plays the rest
+// of their turn …", and R283 orders it: the destroy lands after the cancel and is collected by a
+// state check before the AI takes the turn. Those cases play real attacks through the harness (the
+// base face's played-out behaviour is proved the same way in my-pawn.test.ts).
 //
-// WHY THE CONDITION IS TESTED THROUGH `when` AND NOT THROUGH `s.attack(...)`.
-// `reduce`'s `attack` case is still the placeholder "combat arrives with M2", so the harness falls
-// back to calling `combat.declareAttack` itself — which runs no resolution loop, so no event is
-// ever offered to the traps and no trap can fire in a scenario yet. On top of that, §4.2 step 4's
-// trap window does not exist in `declareAttack` at all: it pushes `attackDeclared` and calls
-// `resolveCombat` on the next line, so even a wired `reduce` would dispatch the event after the
-// damage. The card's OWN contribution — "would be lethal to your hero", the whole of the M4-T4
-// row's first clause — is the `when` predicate, and that is a pure function of the state and the
-// event, so it is called directly here with a context built the way `traps.fireTrap` builds it.
-// Everything downstream of `when` is `it.todo` below, blocked on the engine, never weakened.
+// WHY THE CONDITION IS TESTED THROUGH `when`. The card's OWN contribution to "would be lethal to
+// your hero" — the whole of the M4-T4 row's first clause — is the `when` predicate, a pure function
+// of the state and the event, so it is called directly here with a context built the way
+// `traps.fireTrap` builds it, which pins each lethal boundary without an AI turn in the way. (This
+// file was written while `reduce` could not yet fire a trap; the `it.todo`s below date from then,
+// and my-pawn.test.ts now plays the base face's cancel, lockout and AI turn through real attacks.)
 
 import { describe, expect, it } from "vitest";
-import type { GameEvent } from "@jackioh/shared";
-import type { TrapTrigger } from "@jackioh/engine";
+import type { GameEvent, PlayerId } from "@jackioh/shared";
+import type { CardInstance, TrapTrigger } from "@jackioh/engine";
 import { createRng, makeContext } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
 import { base, radiant } from "../src/scripts/096-my-pawn";
@@ -30,9 +29,9 @@ const ANTI_ONESHOT = "core-073";
 const SMALL = "core-t-felinor";
 
 /** The only trigger the card registers; `when` is where every arming condition lives (R61). */
-function trigger(): TrapTrigger {
-  const found = base.triggers?.[0] as TrapTrigger | undefined;
-  if (found === undefined) throw new Error("#96 registers no trigger");
+function trigger(face: "base" | "radiant" = "base"): TrapTrigger {
+  const found = (face === "base" ? base : radiant).triggers?.[0] as TrapTrigger | undefined;
+  if (found === undefined) throw new Error(`#96's ${face} face registers no trigger`);
   return found;
 }
 
@@ -79,8 +78,11 @@ describe("#96 My Pawn — the trigger it registers", () => {
     expect(typeof trigger().when).toBe("function");
   });
 
-  it("§8.5: no radiant form, so the radiant face runs the base script", () => {
-    expect(radiant).toBe(base);
+  it("R276: the radiant face registers its own trigger, on the same event and the same condition", () => {
+    expect(radiant).not.toBe(base);
+    expect(radiant.triggers).toHaveLength(1);
+    expect(trigger("radiant").on).toEqual(trigger("base").on);
+    expect(trigger("radiant").when).toBe(trigger("base").when);
   });
 });
 
@@ -215,4 +217,131 @@ describe("#96 My Pawn — the body of the trap", () => {
       "it armed and face-down — blocked on `reduce`'s `attack` case, which still answers 'combat " +
       "arrives with M2', so no `attackDeclared` event reaches `traps.fireTrapsFor` in a scenario",
   );
+});
+
+// ---------------------------------------------------------------------------------------------
+// Radiant: "cancel it, destroy the attacker, and an AI plays the rest of their turn" (R283)
+// ---------------------------------------------------------------------------------------------
+
+/** #68, a 5/5 with nothing that fires in combat: the plain lethal swing at a 5-health hero. */
+const SORCERER = "core-068";
+/** #81 Radiant Saintess, 2/2 Reborn: lethal at 2 health, and back at 1 health when destroyed. */
+const SAINTESS = "core-081";
+/** #56 Jilliax: its radiant face is a 6/4 with Charge, Taunt, Lifesteal and Indestructible. */
+const JILLIAX = "core-056";
+/** Cards for the AI's turn, as the other My Pawn tests give it (my-pawn.test.ts). */
+const STOCKPILE = "core-005";
+const TIMMY = "core-011";
+const GIGA = "core-029";
+
+/**
+ * p1 swings `attacker` from lane 1 at p2's hero, which is at `health` behind a face-down My Pawn of
+ * the given face. p1 holds cards for the AI turn the trap hands over.
+ */
+function pawnGame(
+  attacker: string | { def: string; radiant: true },
+  health: number,
+  face: "base" | "radiant" = "radiant",
+): { s: Scenario; attacker: CardInstance } {
+  const s = scenario({
+    seed: "my-pawn-r283",
+    p1: { field: [attacker], hand: [STOCKPILE, TIMMY], library: [GIGA, GIGA, GIGA] },
+    p2: {
+      health,
+      hand: [STOCKPILE],
+      backrow: [{ def: MY_PAWN, lane: 1, faceUp: false, radiant: face === "radiant" }],
+      library: [GIGA, GIGA],
+    },
+  });
+  const unit = s.unit("p1", 1);
+  if (unit === null) throw new Error("p1 should have an attacker in lane 1");
+  s.attack(unit, "hero");
+  return { s, attacker: unit };
+}
+
+/** The event types from the trap's cancel on, `count` of them: what the trap's list did first. */
+function fromCancel(s: Scenario, count: number): string[] {
+  const at = s.events.findIndex((event) => event.type === "attackCancelled");
+  if (at < 0) throw new Error("no attack was cancelled");
+  return s.events.slice(at, at + count).map((event) => event.type);
+}
+
+function eventsOn(s: Scenario, id: string, type: GameEvent["type"]): number {
+  return s.events.filter((event) => event.type === type && "instanceId" in event && event.instanceId === id).length;
+}
+
+function turnWentOn(s: Scenario, from: PlayerId): void {
+  // The AI played the rest of the turn out and ended it (R44, R152).
+  expect(s.events.some((event) => event.type === "turnEnded")).toBe(true);
+  expect(s.state.active).not.toBe(from);
+  expect(s.state.players[from].aiTurn).toBe(false);
+}
+
+describe("#96 My Pawn — radiant (R283)", () => {
+  it("R283 cancels the lethal attack, then destroys the attacker, and the check collects it before the AI takes the turn", () => {
+    const { s, attacker } = pawnGame(SORCERER, 5);
+
+    // Cancelled: no combat, so the hero took nothing (R44).
+    s.expectHealth("p2", 5);
+    expect(s.events.filter((event) => event.type === "attackCancelled")).toHaveLength(1);
+    expect(s.events.some((event) => event.type === "damage")).toBe(false);
+
+    // The attacker is destroyed, after the cancel, and collected right then — before any event of
+    // the AI's turn.
+    expect(fromCancel(s, 3)).toEqual(["attackCancelled", "destroyed", "enteredGraveyard"]);
+    expect(eventsOn(s, attacker.id, "destroyed")).toBe(1);
+    s.expectInZone(attacker, "graveyard");
+
+    // …and the AI still plays out the rest of the turn.
+    turnWentOn(s, "p1");
+  });
+
+  it("R283 the destroy is ordinary: a Reborn attacker comes back, before the AI takes the turn", () => {
+    const { s, attacker } = pawnGame(SAINTESS, 2);
+
+    s.expectHealth("p2", 2);
+    // §4.5 step 4: Reborn returns it to the zone it reserved (R64), at 1 health, straight after the
+    // collection and ahead of the AI turn.
+    expect(fromCancel(s, 3)).toEqual(["attackCancelled", "destroyed", "summoned"]);
+    expect(s.card(attacker).rebornSpent).toBe(true);
+    s.expectInZone(attacker, "field");
+    turnWentOn(s, "p1");
+  });
+
+  it("R283, R46 an Indestructible attacker is knocked down instead, and the attack is cancelled either way", () => {
+    const { s, attacker } = pawnGame({ def: JILLIAX, radiant: true }, 6);
+
+    // Cancelled: the 6 never landed, so its Lifesteal had nothing to heal off.
+    s.expectHealth("p2", 6);
+    expect(s.events.some((event) => event.type === "damage" && event.sourceId === attacker.id)).toBe(false);
+
+    // R46: the mark does not kill it. It is in Attack Position already, so the knock-down reports
+    // only the Taunt it loses, and it does so before the AI takes the turn.
+    expect(fromCancel(s, 2)).toEqual(["attackCancelled", "keywordGranted"]);
+    const lost = s.events.find(
+      (event) => event.type === "keywordGranted" && event.instanceId === attacker.id,
+    );
+    expect(lost?.type === "keywordGranted" && lost.keyword.kind === "Taunt" && lost.lost === true).toBe(true);
+    expect(eventsOn(s, attacker.id, "destroyed")).toBe(0);
+    s.expectInZone(attacker, "field");
+    turnWentOn(s, "p1");
+  });
+
+  it("the base face does not destroy the attacker: it only cancels and hands the turn over", () => {
+    const { s, attacker } = pawnGame(SORCERER, 5, "base");
+
+    s.expectHealth("p2", 5);
+    expect(eventsOn(s, attacker.id, "destroyed")).toBe(0);
+    s.expectInZone(attacker, "field");
+    turnWentOn(s, "p1");
+  });
+
+  it("R61 a non-lethal swing leaves the radiant trap armed and the attacker standing", () => {
+    const { s, attacker } = pawnGame(SORCERER, 30);
+
+    s.expectHealth("p2", 25);
+    expect(s.events.some((event) => event.type === "trapFired")).toBe(false);
+    expect(s.backrow("p2", 1)?.faceUp).toBe(false);
+    s.expectInZone(attacker, "field");
+  });
 });
