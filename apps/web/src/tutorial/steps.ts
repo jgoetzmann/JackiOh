@@ -182,9 +182,13 @@ export function attackWith(options: Common & { attacker: string; target?: Attack
     anchor: defaultAnchor,
     ...rest,
     when: (ctx) => myMain(ctx) && legalAttacks(ctx, attacker, target).length > 0 && (when === undefined || when(ctx)),
-    done: (ctx) => {
-      const unit = unitOf(ctx.view, "you", attacker);
+    // The attacker is the instance the step showed on (two tokens share a definition): done once it
+    // has declared an attack or is no longer on the field.
+    done: (ctx, since) => {
+      const unit = unitOf(since, "you", attacker) ?? unitOf(ctx.view, "you", attacker);
       if (unit === undefined) return true;
+      const onField = unitsOf(ctx.view, "you").some((candidate) => candidate.instanceId === unit.instanceId);
+      if (!onField) return true;
       return freshOf(ctx, "attackDeclared").some((event) => event.attackerId === unit.instanceId && !event.forced);
     },
     moot: (ctx, since) => {
@@ -196,7 +200,10 @@ export function attackWith(options: Common & { attacker: string; target?: Attack
   };
 }
 
-/** "End your turn." Shows on the human's main phase; done once the turn has passed. */
+/**
+ * "End your turn." Shows on the human's main phase; done once the turn has passed; retired if the
+ * turn it was about ended by itself before it showed (`turnBound`).
+ */
 export function endTurn(options: Common): CoachStep {
   const { when, ...rest } = options;
   return {
@@ -205,6 +212,8 @@ export function endTurn(options: Common): CoachStep {
     ...rest,
     when: (ctx) => myMain(ctx) && (when === undefined || when(ctx)),
     done: (ctx, since) => ctx.view.turn !== since.turn,
+    // A turn that ended by itself (R82) before this showed must not have the next one ended for it.
+    turnBound: true,
     expect: (action) => action.type === "endTurn",
   };
 }

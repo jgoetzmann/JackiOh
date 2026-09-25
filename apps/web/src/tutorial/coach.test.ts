@@ -134,9 +134,55 @@ describe("R292 the coach", () => {
     const after = coachObserve(script, state, ctx(board([{ ...attacker, canAct: false }, null, null, null, null]), [], [declared]));
     expect(after.outcomes["hit"]).toBe("done");
 
-    // The same step, but the player ends the turn instead: it goes without a word.
-    state = coachObserve(script, state, ctx(aiTurnView(6), [], [], true));
+    // The same step, but the player ends the turn instead, the unit still standing: it goes without a word.
+    const unused = aiTurnView(6, { you: emptySide("p1", { units: [attacker, null, null, null, null], hand: [] }) });
+    state = coachObserve(script, state, ctx(unused, [], [], true));
     expect(state.outcomes["hit"]).toBe("moot");
+  });
+
+  it("R292 counts an attack that also ends the turn by itself as done, and follows the very instance that showed", () => {
+    const tokenA = unit("p1", { instanceId: "t1", defId: "core-t-rush" });
+    const tokenB = unit("p1", { instanceId: "t2", defId: "core-t-rush" });
+    const board = (units: PlayerView["you"]["units"], over: Partial<PlayerView> = {}): PlayerView =>
+      myTurn(5, [], { you: emptySide("p1", { units, hand: [] }), ...over });
+    const attack: ActionBody = { type: "attack", attackerId: "t1", targetId: "hero-p2" };
+    const script: LessonScript = {
+      lessonId: "t",
+      steps: [attackWith({ id: "hit", title: "Attack", text: "Hit the hero.", attacker: "core-t-rush", target: "hero" })],
+      tips: [],
+    };
+    const view = board([tokenA, tokenB, null, null, null]);
+    const shown = coachObserve(script, COACH_START, ctx(view, [attack]));
+    expect(activeStep(script, shown)?.id).toBe("hit");
+
+    // The first token attacks and dies; its twin is still on the field, and the step is still done.
+    const traded = board([null, tokenB, null, null, null]);
+    const declared: GameEvent = { type: "attackDeclared", attackerId: "t1", targetId: "hero-p2", forced: false };
+    expect(coachObserve(script, shown, ctx(traded, [], [declared])).outcomes["hit"]).toBe("done");
+
+    // The attack left nothing to do and the turn ended by itself (R82) in the same action: done, not moot.
+    const autoEnded = aiTurnView(6, { you: emptySide("p1", { units: [tokenA, tokenB, null, null, null], hand: [] }) });
+    expect(coachObserve(script, shown, ctx(autoEnded, [], [declared], true)).outcomes["hit"]).toBe("done");
+  });
+
+  it("R292 retires an End turn step whose turn ended by itself before it showed", () => {
+    const script: LessonScript = {
+      lessonId: "t",
+      steps: [
+        info({ id: "read", title: "Read", text: "Read this first." }),
+        endTurn({ id: "end", title: "End turn", text: "End your turn." }),
+        info({ id: "next", title: "Next", text: "Next." }),
+      ],
+      tips: [],
+    };
+    let state = coachObserve(script, COACH_START, ctx(myTurn(3), [{ type: "endTurn" }]));
+    // The turn passes (it ended by itself) while the player is still reading the info step.
+    state = coachObserve(script, state, ctx(aiTurnView(4), [], [], true));
+    state = coachAck(script, state, ctx(aiTurnView(4), [], [], true));
+    // "End turn" belonged to turn 3; it is not asked on turn 5.
+    state = coachObserve(script, state, ctx(myTurn(5), [{ type: "endTurn" }]));
+    expect(state.outcomes["end"]).toBe("moot");
+    expect(activeStep(script, state)?.id).toBe("next");
   });
 
   it("R292 retires a step whose card is gone before it ever showed", () => {

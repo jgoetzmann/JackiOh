@@ -75,12 +75,16 @@ function isPlay(action: ActionBody): action is Extract<ActionBody, { type: "play
   return action.type === "play";
 }
 
-/** A target that belongs to the human: their own unit, or their own hero. */
+/** A target that belongs to the human: their own unit or backrow card, a zone of theirs, or their hero. */
 function hitsOwnSide(view: PlayerView, action: Extract<ActionBody, { type: "play" }>): boolean {
-  const own = new Set(view.you.units.filter((unit) => unit !== null).map((unit) => unit.instanceId));
+  const own = new Set<string>();
+  for (const unit of view.you.units) if (unit !== null) own.add(unit.instanceId);
+  for (const card of view.you.backrow) if (card !== null && !card.faceDown) own.add(card.instanceId);
   return (action.targets ?? []).some(
     (target) =>
-      (target.pick === "instance" && own.has(target.instanceId)) || (target.pick === "hero" && target.player === view.viewer),
+      (target.pick === "instance" && own.has(target.instanceId)) ||
+      (target.pick === "hero" && target.player === view.viewer) ||
+      (target.pick === "zone" && target.player === view.viewer && target.row === "backrow"),
   );
 }
 

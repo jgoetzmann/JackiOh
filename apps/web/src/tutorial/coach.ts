@@ -99,6 +99,11 @@ export type CoachStep = {
   holdAi?: boolean;
   /** The lesson's last step: it never expires, it ends with the game. */
   final?: boolean;
+  /**
+   * The step belongs to the player-turn it became current on: if that turn passes before it shows
+   * (the turn ended by itself, R82), it retires rather than show on a later turn it is not about.
+   */
+  turnBound?: boolean;
 };
 
 export type CoachTip = {
@@ -127,6 +132,8 @@ export type CoachState = {
   since: PlayerView | null;
   /** The player's own turn starts seen while the current step has been current. */
   turnsOnStep: number;
+  /** The view's `turn` when the current step became current; null until a view has seen it. */
+  currentFrom: number | null;
   /** How each step before `index` ended. */
   outcomes: Readonly<Record<string, StepOutcome>>;
   /** Tips already shown (or dismissed), in order. */
@@ -143,6 +150,7 @@ export const COACH_START: CoachState = {
   index: 0,
   since: null,
   turnsOnStep: 0,
+  currentFrom: null,
   outcomes: {},
   tipsSeen: [],
   tipQueue: [],
@@ -174,6 +182,7 @@ function retire(state: CoachState, step: CoachStep, outcome: StepOutcome): Coach
     index: state.index + 1,
     since: null,
     turnsOnStep: 0,
+    currentFrom: null,
     outcomes: { ...state.outcomes, [step.id]: outcome },
   };
 }
@@ -181,6 +190,10 @@ function retire(state: CoachState, step: CoachStep, outcome: StepOutcome): Coach
 /**
  * Walk the steps from `state.index` on the newest view: retire what is moot or already done,
  * activate what may show, stop at the first step that waits or is showing.
+ *
+ * A waiting step is asked `moot` first: a card gone before its step ever showed was not played on
+ * the coach's word. A showing step is asked `done` first: an attack that also ended the turn by
+ * itself (R82) was done, not overtaken.
  */
 function settleSteps(script: LessonScript, start: CoachState, ctx: CoachCtx): CoachState {
   let state = start;
@@ -188,21 +201,30 @@ function settleSteps(script: LessonScript, start: CoachState, ctx: CoachCtx): Co
   for (;;) {
     const step = script.steps[state.index];
     if (step === undefined) return { ...state, finished: true, since: null };
+    if (state.currentFrom === null) state = { ...state, currentFrom: ctx.view.turn };
 
-    const since = state.since;
-    if (step.moot !== undefined && safely(() => step.moot?.(ctx, since) === true)) {
-      state = retire(state, step, "moot");
-      continue;
-    }
+    const isMoot = (since: PlayerView | null): boolean =>
+      step.moot !== undefined && safely(() => step.moot?.(ctx, since) === true);
+    const isDone = (since: PlayerView): boolean =>
+      step.done !== undefined && safely(() => step.done?.(ctx, since) === true);
 
-    if (since === null) {
+    if (state.since === null) {
+      const turnPassed = step.turnBound === true && ctx.view.turn !== state.currentFrom;
+      if (turnPassed || isMoot(null)) {
+        state = retire(state, step, "moot");
+        continue;
+      }
       if (step.when !== undefined && !safely(() => step.when?.(ctx) === true)) return state;
       state = { ...state, since: ctx.view };
     }
 
-    const activeSince = state.since ?? ctx.view;
-    if (step.done !== undefined && safely(() => step.done?.(ctx, activeSince) === true)) {
+    const since = state.since ?? ctx.view;
+    if (isDone(since)) {
       state = retire(state, step, "done");
+      continue;
+    }
+    if (isMoot(since)) {
+      state = retire(state, step, "moot");
       continue;
     }
     return state;
