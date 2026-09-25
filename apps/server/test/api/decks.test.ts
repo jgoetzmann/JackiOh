@@ -913,7 +913,7 @@ describe("assertNotInSeries (R264)", () => {
     const error = await apiError(() => assertNotInSeries(deps, PROFILE));
     expect(error.code).toBe("already_in_match");
     expect(error.status).toBe(409);
-    expect(error.message).toBe("Finish your best-of-three series first.");
+    expect(error.message).toBe("Finish your Conquest series first.");
     expect(error.details).toEqual({ seriesId: "series-picking" });
   });
 

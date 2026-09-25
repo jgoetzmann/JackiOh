@@ -1,13 +1,14 @@
-// `/series/<id>` — a Best-of-3 series between its games (SPEC §9.5, R259–R262).
+// `/series/<id>` — a Conquest series between its games (SPEC §9.5, R330–R338, R262).
 //
 // It renders the server's projection for this player (`GET /api/series/:id`, a `SeriesView`) and
-// nothing else (CLAUDE.md rule 7). Which slots may be picked, when the clock runs out, who goes
-// first and when the series ends are all the server's: the Pick buttons offer the unplayed slots
-// the view lists, and a refusal is shown as the server wrote it. R259's hidden picks hold here by
-// construction: the view carries only whether the opponent has picked and which of their slots have
-// been played, never a name, a card or a pick, so there is nothing to leak.
+// nothing else (CLAUDE.md rule 7). Which decks may be picked, when the clock runs out, who goes
+// first and when the series ends are all the server's: the picker (`SeriesPicker.tsx`, R338) offers
+// the decks the view says have not won, and a refusal is shown as the server wrote it. The hidden
+// picks hold here by construction (R331, R336): the view carries only whether the opponent has
+// picked and which of their decks have won, never a name, a card or a pick, so there is nothing to
+// leak. Both sides' won decks — each locked for the rest of the series (R330) — are on screen.
 //
-// THE CLOCK (R260). `pickDeadline` is the server's epoch ms, and this device's clock may be minutes
+// THE CLOCK (R333). `pickDeadline` is the server's epoch ms, and this device's clock may be minutes
 // off. The view also carries the server's `now`, so the deadline is re-based onto this device's
 // clock at the moment the view arrived (`receivedAt + pickDeadline - now`) and counted down from
 // there, on the clock rather than in timer ticks (`auth/cooldown.ts`).
@@ -24,7 +25,9 @@ import { ApiRequestError, forfeitSeries, getSeries, pickSeriesDeck, type SeriesV
 import { navigate, paths } from "../net/navigate.ts";
 import { BackLink, followInApp } from "./nav.tsx";
 import { SERIES_OUTCOME_HEADLINE } from "./SeriesBanner.tsx";
+import SeriesPicker, { deckStanding, seriesPickerTestid } from "./SeriesPicker.tsx";
 import "./lobby.css";
+import "./series-picker.css";
 
 /** Unit conversion, not configuration. */
 const MS_PER_SECOND = 1000;
@@ -37,16 +40,20 @@ export const seriesTestid = {
   error: "series-error",
   /** `data-you`, `data-opponent`: the game wins so far. */
   score: "series-score",
-  /** One of your three decks: `data-played`, `data-picked`. */
+  /** One of your three decks in the standings: `data-won` (locked, R330), `data-picked`. */
   deck: (slot: number): string => `series-deck-${String(slot)}`,
-  /** Its Pick button, while picking and only for an unplayed deck. */
-  pick: (slot: number): string => `series-pick-${String(slot)}`,
-  /** One of the opponent's slots: `data-played` and nothing else (R259). */
+  /** The deck-selection panel and its parts (R338): `SeriesPicker.tsx`. */
+  picker: seriesPickerTestid.picker,
+  /** A deck in the picker: selects it; disabled once it has won. */
+  pick: seriesPickerTestid.choice,
+  /** Seals the selected deck as the pick (R331). */
+  lockIn: seriesPickerTestid.lockIn,
+  /** One of the opponent's decks: `data-won` and nothing else (R336). */
   opponentDeck: (slot: number): string => `series-opponent-deck-${String(slot)}`,
-  /** The pick clock's whole seconds left (`data-seconds`), R260. */
-  clock: "series-pick-clock",
+  /** The pick clock's whole seconds left (`data-seconds`), R333. */
+  clock: seriesPickerTestid.clock,
   /** "Opponent is choosing…" or "Opponent has picked" (`data-picked`). */
-  opponentStatus: "series-opponent-status",
+  opponentStatus: seriesPickerTestid.opponentStatus,
   /** The running game's board, while a game is on. */
   openMatch: "series-open-match",
   forfeit: "series-forfeit",
@@ -68,20 +75,20 @@ const GAME_RESULT_WORD: Readonly<Record<"win" | "loss" | "draw", string>> = {
   draw: "Draw",
 };
 
-/** Why the series ended, from this player's side (R259–R261). */
+/** Why the series ended, from this player's side (R330, R333, R334). */
 export function endReasonWords(result: SeriesResult, winsNeeded: number, maxGames: number): string {
   switch (result.endReason) {
     case "decided":
       return result.outcome === "win"
-        ? `You reached ${String(winsNeeded)} game wins first.`
-        : `Your opponent reached ${String(winsNeeded)} game wins first.`;
+        ? `You won a game with each of your ${String(winsNeeded)} decks.`
+        : `Your opponent won a game with each of their ${String(winsNeeded)} decks.`;
     case "exhausted":
-      if (result.outcome === "draw") return `All ${String(maxGames)} games were played and the wins are level.`;
-      return `All ${String(maxGames)} games were played, and ${result.outcome === "win" ? "you" : "your opponent"} won more of them.`;
+      if (result.outcome === "draw") return `The series reached its ${String(maxGames)}-game limit with the wins level.`;
+      return `The series reached its ${String(maxGames)}-game limit, and ${result.outcome === "win" ? "you" : "your opponent"} had won more games.`;
     case "forfeit":
       return result.outcome === "win" ? "Your opponent forfeited the series." : "You forfeited the series.";
     case "abandoned":
-      return "Neither player picked a deck in time, so the series ended without a winner.";
+      return "The series ended without a winner: nobody picked a deck in time, or a game could not be started.";
   }
 }
 
@@ -200,6 +207,7 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
       });
   }
 
+  /** R331: seals `slot` as this player's pick. */
   function onPick(slot: number): void {
     act(() => pickSeriesDeck(token, seriesId, slot));
   }
@@ -232,12 +240,11 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
   const yourDecks = [...you.decks].sort((a, b) => a.slot - b.slot);
   const theirDecks = [...opponent.decks].sort((a, b) => a.slot - b.slot);
   const deckName = (slot: number): string => you.decks.find((deck) => deck.slot === slot)?.name ?? `Deck ${String(slot + 1)}`;
-  const picked = you.pick === null ? null : deckName(you.pick);
 
   return (
     <div className="app-shell series" data-testid={seriesTestid.screen} data-status={view.status}>
       <BackLink to={paths.play} />
-      <h1>JackiOh — best of {String(view.maxGames)}</h1>
+      <h1>JackiOh — Conquest</h1>
 
       <section className="series-panel">
         <p
@@ -249,7 +256,9 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
           <span>
             You {String(you.wins)} – {String(opponent.wins)} Opponent
           </span>
-          <span className="series-score__first">First to {String(view.winsNeeded)} wins</span>
+          <span className="series-score__first">
+            Win with all {String(view.winsNeeded)} decks · game {String(view.gameNo)} of at most {String(view.maxGames)}
+          </span>
         </p>
         <p className="series-deck__meta">Your trio: {you.trioName}</p>
       </section>
@@ -265,33 +274,16 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
           >
             Open game {String(view.gameNo)}
           </a>
-          {/* R261: a game is conceded on the board; the series can only be forfeited between games. */}
+          {/* R334: a game is conceded on the board; the series can only be forfeited between games. */}
           <p className="series-deck__meta">To give up this game, concede it on the board.</p>
         </section>
       ) : null}
 
-      {picking ? (
-        <section className="series-panel">
-          <h2>Game {String(view.gameNo)}: pick a deck</h2>
-          <p>
-            Time left to pick:{" "}
-            <span className="series-clock" data-testid={seriesTestid.clock} data-seconds={secondsLeft}>
-              {String(secondsLeft)} s
-            </span>
-          </p>
-          <p data-testid={seriesTestid.opponentStatus} data-picked={opponent.picked ? "true" : "false"}>
-            {opponent.picked ? "Opponent has picked." : "Opponent is choosing…"}
-          </p>
-          <p className="series-deck__meta">
-            {picked === null
-              ? "Picks stay hidden until both players have picked. If the clock runs out, your first unplayed deck is picked for you."
-              : `You picked ${picked}. You can change it until your opponent picks.`}
-          </p>
-        </section>
-      ) : null}
+      {picking ? <SeriesPicker view={view} secondsLeft={secondsLeft} busy={busy} onLockIn={onPick} /> : null}
 
       <section className="series-panel">
         <h2>Your decks</h2>
+        <p className="series-deck__meta">A deck that wins a game is locked for the rest of the series.</p>
         <ul className="series-decks">
           {yourDecks.map((deck) => {
             const isPick = you.pick === deck.slot;
@@ -300,45 +292,31 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
                 key={deck.slot}
                 className="series-deck"
                 data-testid={seriesTestid.deck(deck.slot)}
-                data-played={deck.played ? "true" : "false"}
+                data-won={deck.won ? "true" : "false"}
                 data-picked={isPick ? "true" : "false"}
               >
                 <span className="series-deck__name">{deck.name}</span>
-                <span className="series-deck__meta">
-                  {deck.played ? "Played" : `${String(deck.cards.length)} cards`}
-                  {isPick ? " · your pick" : ""}
+                <span className="series-standing" data-won={deck.won ? "true" : "false"}>
+                  {deckStanding(deck)}
                 </span>
-                {picking && !deck.played ? (
-                  <button
-                    type="button"
-                    data-testid={seriesTestid.pick(deck.slot)}
-                    disabled={busy || isPick}
-                    aria-pressed={isPick}
-                    onClick={() => {
-                      onPick(deck.slot);
-                    }}
-                  >
-                    {isPick ? "Picked" : "Pick"}
-                  </button>
-                ) : null}
+                {isPick ? <span className="series-deck__meta">Your pick for game {String(view.gameNo)}</span> : null}
               </li>
             );
           })}
         </ul>
-        <p className="series-deck__meta">
-          Their decks:{" "}
-          {theirDecks.map((deck, index) => (
-            <span
+        <h2>Their decks</h2>
+        <ul className="series-opponent-decks" aria-label="Your opponent's decks">
+          {theirDecks.map((deck) => (
+            <li
               key={deck.slot}
+              className="series-standing"
               data-testid={seriesTestid.opponentDeck(deck.slot)}
-              data-played={deck.played ? "true" : "false"}
+              data-won={deck.won ? "true" : "false"}
             >
-              {index > 0 ? " · " : null}
-              deck {String(deck.slot + 1)}
-              {deck.played ? " (played)" : ""}
-            </span>
+              Deck {String(deck.slot + 1)}: {deck.won ? "won · locked" : "not won yet"}
+            </li>
           ))}
-        </p>
+        </ul>
       </section>
 
       {view.games.length === 0 ? null : (

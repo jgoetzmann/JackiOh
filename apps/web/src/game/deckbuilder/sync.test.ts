@@ -2,6 +2,7 @@
 // (or broken) storage and a manual clock, so "after the debounce", "offline" and "a new visit"
 // are exact moments rather than real waits.
 
+import { checkImportRoom } from "@jackioh/validator";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -18,11 +19,13 @@ import {
   type DecksResponse,
   type SavedDeck,
   type SavedTrio,
+  type TrioImportInput,
   type TrioInput,
   type TrioSlots,
 } from "../../net/api.ts";
 import { fixtureCardId } from "./fixtures.ts";
 import {
+  IMPORT_OFFLINE_MESSAGE,
   UNTITLED_DECK,
   UNTITLED_TRIO,
   browserStorage,
@@ -111,7 +114,11 @@ function brokenStorage(): StorageLike {
   return { getItem: refuse, setItem: refuse, removeItem: refuse };
 }
 
-type Call = { op: "putDeck" | "deleteDeck" | "putTrio" | "deleteTrio"; id: string; body?: DeckInput | TrioInput };
+type Call = {
+  op: "putDeck" | "deleteDeck" | "putTrio" | "deleteTrio" | "importTrio";
+  id: string;
+  body?: DeckInput | TrioInput | TrioImportInput;
+};
 
 /** An in-memory server with the refusals `apps/server/src/api/decks.ts` makes that matter here. */
 function fakeServer() {
@@ -163,6 +170,24 @@ function fakeServer() {
     async deleteTrio(id: string) {
       await gate({ op: "deleteTrio", id });
       return { deleted: trios.delete(id) };
+    },
+    /** R341: all or nothing, under the caps, as `POST /api/trios/import` is. */
+    async importTrio(input: TrioImportInput) {
+      await gate({ op: "importTrio", id: input.trio.id, body: input });
+      const adding = input.slots.filter((deck) => deck !== null && !decks.has(deck.id)).length;
+      if (decks.size + adding > MAX_SAVED_DECKS || (!trios.has(input.trio.id) && trios.size >= MAX_SAVED_TRIOS)) {
+        throw new ApiRequestError(409, { code: "conflict", message: "No room. Nothing was imported." });
+      }
+      for (const deck of input.slots) {
+        if (deck !== null) decks.set(deck.id, { name: deck.name, cards: deck.cards, catalogVersion: input.catalogVersion });
+      }
+      trios.set(input.trio.id, { name: input.trio.name, deckIds: input.slots.map((deck) => deck?.id ?? null) as TrioSlots });
+      return {
+        decks: input.slots
+          .filter((deck) => deck !== null)
+          .map((deck) => savedDeck(deck.id, deck.name, [...deck.cards], 5_000)),
+        trio: savedTrio(input.trio.id, input.trio.name, input.slots.map((deck) => deck?.id ?? null) as TrioSlots, 5_000),
+      };
     },
   };
 
@@ -687,5 +712,100 @@ describe("the name a save sends", () => {
   it("R256 a name with a control character saves as the fallback", () => {
     expect(deckNameForSave("Aggro\u0007", DECK_NAME_MAX_LENGTH)).toBe(UNTITLED_DECK);
     expect(trioNameForSave("Ladder\u0000", DECK_NAME_MAX_LENGTH)).toBe(UNTITLED_TRIO);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// A trio import (R340, R341)
+// ---------------------------------------------------------------------------------------------
+
+describe("a trio import", () => {
+  const code = {
+    name: "Shared trio",
+    slots: [
+      { name: "One", cards: [fixtureCardId(1), fixtureCardId(2)] },
+      null,
+      { name: "Three", cards: [fixtureCardId(3)] },
+    ],
+  } as const;
+
+  it("R341 makes the decks and the trio in one request, and lists them as saved", async () => {
+    const server = fakeServer();
+    const store = open({ api: server.api });
+    const result = await store.importTrio(code);
+    expect(result.ok).toBe(true);
+    expect(server.calls.map((call) => call.op)).toEqual(["importTrio"]);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.decks.map((deck) => deck.name)).toEqual(["One", "Three"]);
+    expect(snapshot.unsynced.size).toBe(0);
+    const trio = snapshot.trios[0];
+    expect(result.ok ? result.trioId : "").toBe(trio?.id);
+    expect(trio?.deckIds).toEqual([snapshot.decks[0]?.id, null, snapshot.decks[1]?.id]);
+    expect(trio?.name).toBe("Shared trio");
+    // Nothing is left for the autosave to send.
+    await settle();
+    expect(server.calls).toHaveLength(1);
+  });
+
+  it("R340 refuses at the caps before sending anything, with exactly the slots it needs", async () => {
+    const server = fakeServer();
+    const full = Array.from({ length: MAX_SAVED_DECKS - 1 }, (_unused, at) => savedDeck(mint(), `D${String(at)}`, [], at));
+    for (const deck of full) server.decks.set(deck.id, { name: deck.name, cards: deck.cards, catalogVersion: CATALOG_VERSION });
+    const store = open({ api: server.api, server: response(full) });
+    const result = await store.importTrio(code);
+    // The shared validator's sentence (R340), never one of the client's own.
+    const room = checkImportRoom({
+      saved: { decks: MAX_SAVED_DECKS - 1, trios: 0 },
+      limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS },
+      adding: { decks: 2, trios: 1 },
+    });
+    expect(room).toMatchObject({ ok: false, decksShort: 1, triosShort: 0 });
+    expect(result).toEqual({ ok: false, message: room.ok ? "" : room.message });
+    expect(server.calls).toEqual([]);
+    expect(store.getSnapshot().decks).toHaveLength(MAX_SAVED_DECKS - 1);
+    expect(store.getSnapshot().trios).toEqual([]);
+  });
+
+  it("R341 sends what is unsaved first, so a deck deleted to make room is gone at the server too", async () => {
+    const server = fakeServer();
+    const full = Array.from({ length: MAX_SAVED_DECKS }, (_unused, at) => savedDeck(mint(), `D${String(at)}`, [], at));
+    for (const deck of full) server.decks.set(deck.id, { name: deck.name, cards: deck.cards, catalogVersion: CATALOG_VERSION });
+    const store = open({ api: server.api, server: response(full) });
+    store.deleteDeck(full[0]?.id ?? "");
+    store.deleteDeck(full[1]?.id ?? "");
+    const result = await store.importTrio(code);
+    expect(result.ok).toBe(true);
+    expect(server.calls.map((call) => call.op)).toEqual(["deleteDeck", "deleteDeck", "importTrio"]);
+    expect(store.getSnapshot().decks).toHaveLength(MAX_SAVED_DECKS);
+  });
+
+  it("R341 offline makes nothing, and a retry of the same import reuses its ids", async () => {
+    const server = fakeServer();
+    const store = open({ api: server.api });
+    server.state.offline = true;
+    expect(await store.importTrio(code)).toEqual({ ok: false, message: IMPORT_OFFLINE_MESSAGE });
+    expect(store.getSnapshot().decks).toEqual([]);
+    expect(store.getSnapshot().trios).toEqual([]);
+    const first = server.calls.find((call) => call.op === "importTrio")?.body as TrioImportInput | undefined;
+
+    server.state.offline = false;
+    expect((await store.importTrio(code)).ok).toBe(true);
+    const second = server.calls.filter((call) => call.op === "importTrio").at(-1)?.body as TrioImportInput | undefined;
+    expect(second?.trio.id).toBe(first?.trio.id);
+    expect(second?.slots.map((deck) => deck?.id ?? null)).toEqual(first?.slots.map((deck) => deck?.id ?? null));
+  });
+
+  it("R341 shows a refusal in the server's words and makes nothing", async () => {
+    const server = fakeServer();
+    const failing = {
+      ...server.api,
+      importTrio: async () => {
+        throw new ApiRequestError(400, { code: "bad_request", message: "The server refused deck 1." });
+      },
+    };
+    const refusing = open({ api: failing });
+    expect(await refusing.importTrio(code)).toEqual({ ok: false, message: "The server refused deck 1." });
+    expect(refusing.getSnapshot().decks).toEqual([]);
+    expect(refusing.getSnapshot().trios).toEqual([]);
   });
 });

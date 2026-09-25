@@ -338,6 +338,30 @@ export function putTrio(token: string, id: string, input: TrioInput): Promise<{ 
   });
 }
 
+/** One deck of an imported trio: its id (minted here, R256), name and cards. */
+export type ImportedDeckInput = { id: string; name: string; cards: readonly string[] };
+
+/** `POST /api/trios/import`'s body (R341): the trio and its three slots, an empty one null. */
+export type TrioImportInput = {
+  catalogVersion: string;
+  trio: { id: string; name: string };
+  slots: [ImportedDeckInput | null, ImportedDeckInput | null, ImportedDeckInput | null];
+};
+
+/**
+ * `POST /api/trios/import` (R340, R341): makes the decks and the trio naming them, all or nothing.
+ * Refusals: 400 for a draft rule (the deck named in the message), 409 `conflict` with
+ * `details.decksShort` / `details.triosShort` when the caps would be passed (R340), 409
+ * `update_required` for a stale catalog. Sending the same ids again is safe.
+ */
+export function importTrio(token: string, input: TrioImportInput): Promise<{ decks: SavedDeck[]; trio: SavedTrio }> {
+  return apiRequest<{ decks: SavedDeck[]; trio: SavedTrio }>("/api/trios/import", {
+    method: "POST",
+    token,
+    body: input,
+  });
+}
+
 export function deleteTrio(token: string, id: string): Promise<{ deleted: boolean }> {
   return apiRequest<{ deleted: boolean }>(`/api/trios/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -357,7 +381,7 @@ export type ModeChoice =
   | { mode: "bo3"; trioId: string }
   | { mode: "random" };
 
-/** `POST /api/queue`. `matchId` for a paired Best-of-1 or All Random game, `seriesId` for Best-of-3. */
+/** `POST /api/queue`. `matchId` for a paired Best-of-1 or All Random game, `seriesId` for Conquest. */
 export type EnqueueResponse = {
   ticketId: string;
   status: "open" | "matched" | "cancelled";
@@ -439,7 +463,7 @@ export function roomModeOf(error: unknown): QueueMode | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The Best-of-3 series (SPEC §9.5, R259–R263). The server's projection for the caller: the other
+// The Conquest series (SPEC §9.5, R330–R336). The server's projection for the caller: the other
 // side's pick is never in it before both have picked, and the other side's deck names never are.
 // ---------------------------------------------------------------------------------------------
 
@@ -450,9 +474,11 @@ export type SeriesView = {
   status: "picking" | "playing" | "over";
   /** The game being picked for or played, or the last one played once the series is over. */
   gameNo: number;
+  /** R330: game wins that take the series, one with each deck of the trio. */
   winsNeeded: number;
+  /** R334: the most games the series plays, drawn games included. */
   maxGames: number;
-  /** Epoch ms the pick clock runs out (R260), or null outside the pick phase. */
+  /** Epoch ms the pick clock runs out (R333), or null outside the pick phase. */
   pickDeadline: number | null;
   /** The server's clock when it answered, so a countdown does not depend on this device's. */
   now: number;
@@ -462,15 +488,18 @@ export type SeriesView = {
     seat: "p1" | "p2";
     wins: number;
     trioName: string;
-    decks: { slot: number; name: string; cards: string[]; played: boolean }[];
-    /** Your pick for the next game, or null. */
+    /** `won`: the deck has won a game in this series and is locked (R330); `games`: games it played. */
+    decks: { slot: number; name: string; cards: string[]; won: boolean; games: number }[];
+    /** Your sealed pick for the next game, or null (R331). */
     pick: number | null;
+    /** R332: your pick was made for you, because one deck is left that has not won. */
+    autoPick: boolean;
   };
   opponent: {
     wins: number;
-    /** Only which slots have been played: names and cards stay hidden (R259). */
-    decks: { slot: number; played: boolean }[];
-    /** Whether they have picked; never what. */
+    /** Only which slots have won: names, cards and picks stay hidden (R336). */
+    decks: { slot: number; won: boolean }[];
+    /** Whether their pick is in; never what (R331). */
     picked: boolean;
   };
   games: {
@@ -500,7 +529,10 @@ export function getSeriesForMatch(token: string, matchId: string): Promise<{ ser
   return apiRequest<{ series: SeriesView | null }>(`/api/matches/${encodeURIComponent(matchId)}/series`, { token });
 }
 
-/** `POST /api/series/:id/pick` with a trio slot (0-based). Answers with the new projection. */
+/**
+ * `POST /api/series/:id/pick` with a trio slot (0-based). Answers with the new projection. A pick
+ * is sealed (R331): another slot afterwards is a 409, and the same slot again answers as success.
+ */
 export function pickSeriesDeck(token: string, seriesId: string, slot: number): Promise<SeriesView> {
   return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}/pick`, {
     method: "POST",
@@ -509,7 +541,7 @@ export function pickSeriesDeck(token: string, seriesId: string, slot: number): P
   });
 }
 
-/** `POST /api/series/:id/forfeit`: between games only (R261). */
+/** `POST /api/series/:id/forfeit`: between games only (R334). */
 export function forfeitSeries(token: string, seriesId: string): Promise<SeriesView> {
   return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}/forfeit`, {
     method: "POST",

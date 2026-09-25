@@ -26,7 +26,7 @@
 // goes again in the same flush. Deletions go last so a deck is never deleted before a trio PUT
 // that still names it has cleared the slot.
 
-import { checkDeckDraft, checkTrioDraft, normalizeName } from "@jackioh/validator";
+import { checkDeckDraft, checkImportRoom, checkTrioDraft, normalizeName } from "@jackioh/validator";
 
 import {
   DECK_AUTOSAVE_DEBOUNCE_MS,
@@ -40,6 +40,7 @@ import {
   ApiUnreachableError,
   type DeckInput,
   type DecksResponse,
+  type TrioImportInput,
   type TrioInput,
   type TrioSlots,
 } from "../../net/api.ts";
@@ -67,13 +68,24 @@ export type WorkshopSnapshot = {
   limits: WorkshopLimits;
 };
 
-/** The four writes, bound to the session's token by the route (`routes/decks.tsx`). */
+/** The writes, bound to the session's token by the route (`routes/decks.tsx`). */
 export type DeckSyncApi = {
   putDeck(id: string, input: DeckInput): Promise<unknown>;
   deleteDeck(id: string): Promise<unknown>;
   putTrio(id: string, input: TrioInput): Promise<unknown>;
   deleteTrio(id: string): Promise<unknown>;
+  /** R341: a trio code's decks and the trio, all or nothing, in one request. */
+  importTrio(input: TrioImportInput): Promise<unknown>;
 };
+
+/** What a trio import makes (R339): the trio's name, and each slot's deck or nothing. */
+export type TrioImport = {
+  name: string;
+  slots: readonly ({ name: string; cards: readonly string[] } | null)[];
+};
+
+/** How an import ended: the new trio's id, or the sentence saying why nothing was made (R340). */
+export type TrioImportResult = { ok: true; trioId: string } | { ok: false; message: string };
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -109,6 +121,15 @@ export type DeckStore = {
   createTrio(init: { name: string; deckIds?: TrioSlots }): string | null;
   updateTrio(id: string, patch: { name?: string; deckIds?: TrioSlots }): void;
   deleteTrio(id: string): void;
+  /**
+   * R340, R341: imports a trio code's decks and the trio, all or nothing, in one request — never
+   * through the autosave, which would leave half an import behind a refusal. What is unsaved goes
+   * first (a deck deleted to make room is then gone at the server too), the caps are checked here
+   * for a sentence without a round trip, and on success the decks and the trio join the list as
+   * saved. The ids are minted once per import and reused when the same import is tried again, so a
+   * retry after a lost answer updates what the first attempt made instead of making it twice.
+   */
+  importTrio(init: TrioImport): Promise<TrioImportResult>;
   /** Saves now (the debounce is skipped); settles once this flush and any re-run it caused have. */
   flush(): Promise<void>;
   /** Saves on `pagehide`, on the page going hidden and on coming back online. Idempotent. */
@@ -300,6 +321,9 @@ function randomId(): string {
 
 /** What the status line says while a failed save waits to go again. */
 export const OFFLINE_MESSAGE = "Offline — your changes are kept on this device.";
+
+/** R341: why an import made nothing, when the server could not be asked. */
+export const IMPORT_OFFLINE_MESSAGE = "You’re offline, so nothing was imported. Try again once you’re back online.";
 
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_TIMEOUT = 408;
@@ -657,6 +681,87 @@ export function createDeckStore(options: DeckStoreOptions): DeckStore {
     return running;
   }
 
+  /** The ids of the import last tried, so trying the same import again reuses them (R341). */
+  let lastImport: { key: string; trioId: string; deckIds: readonly string[] } | null = null;
+
+  function importedDeck(value: unknown, fallback: DeckItem): DeckItem {
+    const read = deckFrom(value);
+    return read !== null && read.id === fallback.id ? read : fallback;
+  }
+
+  function importedTrio(value: unknown, fallback: TrioItem): TrioItem {
+    const read = trioFrom(value);
+    return read !== null && read.id === fallback.id ? read : fallback;
+  }
+
+  async function importTrio(init: TrioImport): Promise<TrioImportResult> {
+    await flush();
+    const filled = init.slots.filter((slot) => slot !== null).length;
+    const room = checkImportRoom({
+      saved: { decks: decks.length, trios: trios.length },
+      limits: { decks: limits.decks, trios: limits.trios },
+      adding: { decks: filled, trios: 1 },
+    });
+    if (!room.ok) return { ok: false, message: room.message };
+
+    const key = JSON.stringify(init);
+    const ids =
+      lastImport !== null && lastImport.key === key
+        ? lastImport
+        : { key, trioId: newId(), deckIds: init.slots.map(() => newId()) };
+    lastImport = ids;
+
+    const now = clock.now();
+    const deckItems = init.slots.map((slot, at): DeckItem | null =>
+      slot === null
+        ? null
+        : { id: ids.deckIds[at] ?? newId(), name: deckNameForSave(slot.name, limits.nameLength), cards: [...slot.cards], createdAt: now, updatedAt: now },
+    );
+    const slotIds = [0, 1, 2].map((at) => deckItems[at]?.id ?? null) as TrioSlots;
+    const trioItem: TrioItem = {
+      id: ids.trioId,
+      name: trioNameForSave(init.name, limits.nameLength),
+      deckIds: slotIds,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const input: TrioImportInput = {
+      catalogVersion,
+      trio: { id: trioItem.id, name: trioItem.name },
+      slots: [0, 1, 2].map((at) => {
+        const deck = deckItems[at] ?? null;
+        return deck === null ? null : { id: deck.id, name: deck.name, cards: [...deck.cards] };
+      }) as TrioImportInput["slots"],
+    };
+
+    let answer: unknown;
+    try {
+      answer = await api.importTrio(input);
+    } catch (cause: unknown) {
+      const failure = failureOf(cause);
+      if (failure.kind === "offline") return { ok: false, message: IMPORT_OFFLINE_MESSAGE };
+      if (failure.kind === "transient") return { ok: false, message: `Nothing was imported (${failure.message}). Try again.` };
+      return { ok: false, message: failure.message };
+    }
+    lastImport = null;
+
+    const body = isRecord(answer) ? answer : {};
+    const answered = Array.isArray(body.decks) ? body.decks : [];
+    const known = new Set(decks.map((entry) => entry.item.id));
+    for (const deck of deckItems) {
+      if (deck === null || known.has(deck.id)) continue;
+      const saved = importedDeck(answered.find((entry) => isRecord(entry) && entry.id === deck.id), deck);
+      decks = [...decks, tracked(saved, false)];
+    }
+    decks.sort(byAge);
+    if (!trios.some((entry) => entry.item.id === trioItem.id)) {
+      trios = [...trios, tracked(importedTrio(body.trio, trioItem), false)];
+      trios.sort(byAge);
+    }
+    changed();
+    return { ok: true, trioId: trioItem.id };
+  }
+
   const onPageHide = (): void => {
     void flush();
   };
@@ -764,6 +869,8 @@ export function createDeckStore(options: DeckStoreOptions): DeckStore {
       changed();
       schedule();
     },
+
+    importTrio,
 
     flush,
 

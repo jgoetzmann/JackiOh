@@ -384,7 +384,7 @@ describe("the lobby's answers", () => {
     vi.mocked(enqueue).mockRejectedValue(
       new ApiRequestError(409, {
         code: "already_in_match",
-        message: "Finish your best-of-three series first.",
+        message: "Finish your Conquest series first.",
         details: { seriesId: "series-9" },
       }),
     );
@@ -392,7 +392,7 @@ describe("the lobby's answers", () => {
     fireEvent.click(screen.getByTestId(playTestid.queue));
 
     const error = await screen.findByTestId(playTestid.error);
-    expect(error).toHaveTextContent("Finish your best-of-three series first.");
+    expect(error).toHaveTextContent("Finish your Conquest series first.");
     expect(screen.getByTestId(playTestid.seriesLink)).toHaveAttribute("href", "/series/series-9");
   });
 
@@ -435,7 +435,7 @@ describe("the lobby's answers", () => {
     vi.mocked(joinRoom).mockRejectedValue(
       new ApiRequestError(409, {
         code: "conflict",
-        message: "This room plays Best of 3: pick one of your trios.",
+        message: "This room plays Conquest: pick one of your trios.",
         details: { mode: "bo3" },
       }),
     );

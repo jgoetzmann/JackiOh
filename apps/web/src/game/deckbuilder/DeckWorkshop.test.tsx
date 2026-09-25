@@ -1,14 +1,15 @@
 // The deck workshop (SPEC §9.4, R250–R256): the list of decks and trios, making, renaming, filling
 // and deleting a deck, comparing it with other decks (R251), the trio editor and its verdict
-// (R252, R253), import and copy of deck codes (R255), and the autosave the player sees (R256).
+// (R252, R253), import and copy of deck codes (R255) and of trio codes (R339–R341), and the autosave
+// the player sees (R256).
 //
 // The pool browser, the filters and the tiles are browse.test.tsx's; the store's own rules are
 // sync.test.ts's. Every validator sentence here is computed with the validator, never typed
 // (messages.test.ts fails any client source that spells one out).
 
 import type { CardDef } from "@jackioh/shared";
-import { validateDeck, validateTrio, type Collection } from "@jackioh/validator";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { checkImportRoom, validateDeck, validateTrio, type Collection } from "@jackioh/validator";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DECK_AUTOSAVE_DEBOUNCE_MS, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../../../server/src/config.ts";
@@ -20,6 +21,7 @@ import DeckWorkshop, { syncWords, type WorkshopOpen } from "./DeckWorkshop.tsx";
 import { TOKEN_ID, fixtureCardId, fixtureCardName, fixtureCatalog, fixtureCollection, legalDecks } from "./fixtures.ts";
 import { droppedLines } from "./ImportPanel.tsx";
 import { OFFLINE_MESSAGE, UNTITLED_DECK, mirrorKey } from "./sync.ts";
+import { TRIO_CODE_MESSAGES, decodeTrioCode, encodeTrioCode } from "./trioCode.ts";
 import {
   TEST_PROFILE,
   decksResponse,
@@ -54,10 +56,20 @@ import {
   DECK_VERDICT,
   SYNC_STATUS,
   TRIO_CAP_REASON,
+  TRIO_CODE_OUTPUT,
   TRIO_COMPARE,
+  TRIO_COPY_CODE,
   TRIO_DELETE,
   TRIO_DELETE_CONFIRM,
   TRIO_EDITOR,
+  TRIO_IMPORT,
+  TRIO_IMPORT_CAP_REASON,
+  TRIO_IMPORT_ERROR,
+  TRIO_IMPORT_INPUT,
+  TRIO_IMPORT_OPEN,
+  TRIO_IMPORT_PREVIEW,
+  TRIO_IMPORT_SHARED,
+  TRIO_IMPORT_SUBMIT,
   TRIO_NAME_INPUT,
   TRIO_NEW,
   TRIO_VERDICT,
@@ -70,6 +82,7 @@ import {
   loadoutErrorId,
   poolCardId,
   trioCardId,
+  trioImportSlotId,
   trioOpenDeckId,
   trioRowId,
   trioSlotId,
@@ -380,11 +393,11 @@ describe("comparing a deck with others (R251)", () => {
 describe("a trio", () => {
   const full = [savedDeck("a", "Aggro", ONE, 1), savedDeck("c", "Control", TWO, 2), savedDeck("m", "Midrange", THREE, 3)];
 
-  it("R253 three full decks with no card in common are Ready for Best of 3", () => {
+  it("R253 three full decks with no card in common are Ready for Conquest", () => {
     mount({ decks: full, trios: [savedTrio("t", "Ladder", ["a", "c", "m"], 4)], initialOpen: { kind: "trio", id: "t" } });
     const verdict = screen.getByTestId(TRIO_VERDICT);
     expect(verdict).toHaveAttribute("data-ready", "true");
-    expect(verdict).toHaveTextContent("Ready for Best of 3");
+    expect(verdict).toHaveTextContent("Ready for Conquest");
     expect(screen.getByTestId(trioRowId("t"))).toHaveAttribute("data-ready", "true");
     expect(screen.getByTestId(trioCardId(1, ONE[0] ?? ""))).toHaveAttribute("data-conflict", "false");
   });
@@ -588,6 +601,138 @@ describe("deck codes (R255)", () => {
     expect(screen.getByTestId(DECK_IMPORT_PREVIEW)).toHaveAttribute("data-ok", "true");
     expect(screen.getByTestId(DECK_IMPORT_SUBMIT)).toBeDisabled();
     expect(screen.getByTestId(DECK_IMPORT_CAP_REASON)).toHaveTextContent(String(MAX_SAVED_DECKS));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Trio codes (R339–R341)
+// ---------------------------------------------------------------------------------------------
+
+describe("trio codes (R339–R341)", () => {
+  function stubClipboard(writeText: (text: string) => Promise<void>): void {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  const trioDecks = (): SavedDeck[] => [savedDeck("a", "Aggro", ONE, 1), savedDeck("b", "Control", TWO, 2), savedDeck("c", "Ramp", THREE, 3)];
+
+  it("R339 Copy trio code puts the code on the clipboard and in the field, and it reads back as the trio", async () => {
+    const writeText = vi.fn(async () => {});
+    stubClipboard(writeText);
+    mount({ decks: trioDecks(), trios: [savedTrio("t", "Main trio", ["a", null, "c"], 1)], initialOpen: { kind: "trio", id: "t" } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(TRIO_COPY_CODE));
+      await Promise.resolve();
+    });
+    const code = (screen.getByTestId(TRIO_CODE_OUTPUT) as HTMLInputElement).value;
+    expect(writeText).toHaveBeenCalledWith(code);
+    const decoded = decodeTrioCode(code, catalog, collection);
+    expect(decoded.ok && decoded.name).toBe("Main trio");
+    expect(decoded.ok && decoded.slots.map((slot) => slot?.name ?? null)).toEqual(["Aggro", null, "Ramp"]);
+    expect(decoded.ok && decoded.slots[2]?.cards).toEqual(THREE);
+    expect(screen.getByTestId(TRIO_EDITOR)).toHaveTextContent("Trio code copied");
+  });
+
+  it("R341 an import previews every deck, flags shared cards, and makes three new decks and a trio in one request", async () => {
+    const { server } = mount({ decks: [savedDeck("a", "Aggro", ONE, 1)], initialOpen: { kind: "deck", id: "a" } });
+    const shared = [TWO[0] ?? "", TWO[1] ?? ""];
+    const code = encodeTrioCode(
+      "Friend's trio",
+      [
+        { name: "Tempo", cards: TWO.slice(0, 8) },
+        { name: "Burn", cards: [...shared, ...THREE.slice(0, 4)] },
+        { name: "Walls", cards: THREE.slice(10, 13) },
+      ],
+      catalog,
+    );
+    fireEvent.click(screen.getByTestId(TRIO_IMPORT_OPEN));
+    expect(screen.getByTestId(TRIO_IMPORT)).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId(TRIO_IMPORT_INPUT), { target: { value: code } });
+    const preview = screen.getByTestId(TRIO_IMPORT_PREVIEW);
+    expect(preview).toHaveAttribute("data-ok", "true");
+    expect(preview).toHaveTextContent("Friend's trio");
+    expect(screen.getByTestId(trioImportSlotId(1))).toHaveAttribute("data-count", "8");
+    expect(screen.getByTestId(trioImportSlotId(2))).toHaveTextContent("Burn");
+    expect(screen.getByTestId(TRIO_IMPORT_SHARED)).toHaveAttribute("data-count", "2");
+    expect(screen.getByTestId(TRIO_IMPORT_SHARED)).toHaveTextContent(nameOf(shared[0] ?? ""));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(TRIO_IMPORT_SUBMIT));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId(TRIO_EDITOR)).toHaveAttribute("data-trio", "new-1");
+    });
+    expect(server.calls.filter((call) => call.op !== "putDeck")).toEqual([
+      expect.objectContaining({ op: "importTrio", id: "new-1" }),
+    ]);
+    expect(screen.getByTestId(TRIO_NAME_INPUT)).toHaveValue("Friend's trio");
+    expect(screen.getByTestId(trioRowId("new-1"))).toBeInTheDocument();
+    expect(server.decks.get("new-2")).toMatchObject({ name: "Tempo", cards: TWO.slice(0, 8) });
+    // The shared cards are marked in the trio editor, as any trio's are (R251).
+    expect(screen.getByTestId(trioCardId(1, shared[0] ?? ""))).toHaveAttribute("data-conflict", "true");
+    expect(screen.getByTestId(deckRowId("a")), "what was there is untouched").toHaveAttribute("data-count", String(DECK_SIZE));
+  });
+
+  it("R340 at the caps the import is off, with exactly the slots it needs, and nothing is made", () => {
+    const decks = Array.from({ length: MAX_SAVED_DECKS - 1 }, (_unused, index) => savedDeck(`d${String(index)}`, `Deck ${String(index)}`, [], index));
+    const { server } = mount({ decks, initialOpen: { kind: "trio-import" } });
+    fireEvent.change(screen.getByTestId(TRIO_IMPORT_INPUT), {
+      target: {
+        value: encodeTrioCode(
+          "Too many",
+          [
+            { name: "A", cards: ONE.slice(0, 2) },
+            { name: "B", cards: TWO.slice(0, 2) },
+            { name: "C", cards: THREE.slice(0, 2) },
+          ],
+          catalog,
+        ),
+      },
+    });
+    const room = checkImportRoom({
+      saved: { decks: MAX_SAVED_DECKS - 1, trios: 0 },
+      limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS },
+      adding: { decks: 3, trios: 1 },
+    });
+    const reason = screen.getByTestId(TRIO_IMPORT_CAP_REASON);
+    expect(reason).toHaveTextContent(room.ok ? "" : room.message);
+    expect(reason).toHaveAttribute("data-decks-short", "2");
+    expect(screen.getByTestId(TRIO_IMPORT_SUBMIT)).toBeDisabled();
+    fireEvent.click(screen.getByTestId(TRIO_IMPORT_SUBMIT));
+    expect(server.calls).toEqual([]);
+  });
+
+  it("R341 a refusal is shown in the server's words, and nothing is made", async () => {
+    const server = fakeDeckServer();
+    server.state.refusals.set(
+      "new-1",
+      new ApiRequestError(409, { code: "conflict", message: "Your decks changed while this import was on its way." }),
+    );
+    mount({ server, initialOpen: { kind: "trio-import" } });
+    fireEvent.change(screen.getByTestId(TRIO_IMPORT_INPUT), {
+      target: { value: encodeTrioCode("Refused", [{ name: "A", cards: ONE.slice(0, 2) }, null, null], catalog) },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(TRIO_IMPORT_SUBMIT));
+      await Promise.resolve();
+    });
+    expect(await screen.findByTestId(TRIO_IMPORT_ERROR)).toHaveTextContent("Your decks changed while this import was on its way.");
+    expect(screen.getByTestId(TRIO_IMPORT)).toBeInTheDocument();
+    expect(screen.queryByTestId(trioRowId("new-1"))).toBeNull();
+  });
+
+  it("R339 a deck code or a damaged code shows the decoder's own sentence and imports nothing", () => {
+    mount({ initialOpen: { kind: "trio-import" } });
+    fireEvent.change(screen.getByTestId(TRIO_IMPORT_INPUT), { target: { value: encodeDeckCode("Deck", ONE.slice(0, 2), catalog) } });
+    expect(screen.getByTestId(TRIO_IMPORT_PREVIEW)).toHaveTextContent(TRIO_CODE_MESSAGES.deckCode);
+    expect(screen.getByTestId(TRIO_IMPORT_SUBMIT)).toBeDisabled();
+    fireEvent.change(screen.getByTestId(TRIO_IMPORT_INPUT), { target: { value: "JKT1.AAAA" } });
+    expect(screen.getByTestId(TRIO_IMPORT_PREVIEW)).toHaveAttribute("data-ok", "false");
+    expect(screen.getByTestId(TRIO_IMPORT_SUBMIT)).toBeDisabled();
   });
 });
 

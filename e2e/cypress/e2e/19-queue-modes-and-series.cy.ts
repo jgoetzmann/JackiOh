@@ -671,7 +671,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
         expect(response.status, "R264: a choice in another mode is a conflict").to.eq(409);
         expect(response.body.error.code).to.eq("conflict");
         expect(response.body.error.details, "and names the room's mode").to.deep.eq({ mode: "bo3" });
-        expect(response.body.error.message).to.eq("This room plays Best of 3: pick one of your trios.");
+        expect(response.body.error.message).to.eq("This room plays Conquest: pick one of your trios.");
       });
     });
     // The refusal claimed nothing: the room still takes the right choice.

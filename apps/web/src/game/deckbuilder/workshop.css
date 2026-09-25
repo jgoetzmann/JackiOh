@@ -674,6 +674,25 @@
   color: var(--ws-amber);
 }
 
+/* A trio import's preview (TrioImportPanel.tsx, R339): one entry per slot, then the shared cards. */
+.ws-import-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.ws-import-slots > li[data-empty="true"] {
+  color: var(--text-dim);
+}
+
+.deckbuilder.app-shell .ws-import-shared {
+  margin: 0;
+  color: var(--ws-amber);
+  font-size: 12.5px;
+}
+
 /* --- widths -------------------------------------------------------------------------------------- */
 
 /* Side by side, the rail and the deck's sidebar each give up some width, so the filters stay on two

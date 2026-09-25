@@ -435,7 +435,7 @@ describe("R264 — rooms carry a mode (§9.5, R257)", () => {
       const refused = await readJson<ErrorBody>(response);
       expect(response.status).toBe(409);
       expect(refused.error.code).toBe("conflict");
-      expect(refused.error.message).toBe("This room plays Best of 3: pick one of your trios.");
+      expect(refused.error.message).toBe("This room plays Conquest: pick one of your trios.");
       expect(refused.error.details).toEqual({ mode: "bo3" });
     }
     // Refused before anything was claimed: the room is still open to the right choice.

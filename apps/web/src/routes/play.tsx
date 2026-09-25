@@ -28,7 +28,7 @@ import {
   type LoadoutResult,
 } from "@jackioh/validator";
 
-import { SERIES_MAX_GAMES, SERIES_POLL_SECONDS, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
+import { SERIES_POLL_SECONDS, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
 import {
   ApiRequestError,
   createRoom,
@@ -99,10 +99,13 @@ export function playModeTestid(mode: QueueMode): string {
   return MODE_TESTID[mode];
 }
 
-/** What each mode is called on every screen (the lobby, the room code, the series screen). */
+/**
+ * What each mode is called on every screen (the lobby, the room code, the series screen). The trio
+ * mode keeps its wire name `bo3` and is called Conquest since R330.
+ */
 export const MODE_LABEL: Readonly<Record<QueueMode, string>> = {
   bo1: "Best of 1",
-  bo3: `Best of ${String(SERIES_MAX_GAMES)}`,
+  bo3: "Conquest",
   random: "All Random",
 };
 
@@ -110,8 +113,8 @@ export const MODE_LABEL: Readonly<Record<QueueMode, string>> = {
 export const MODE_HINT: Readonly<Record<QueueMode, string>> = {
   bo1: "One game with one of your decks.",
   bo3:
-    `First to ${String(SERIES_WINS_NEEDED)} wins; you play each deck of a trio at most once; ` +
-    "picks are hidden until both players pick.",
+    `Win a game with each of your trio's ${String(SERIES_WINS_NEEDED)} decks; a deck that wins is locked. ` +
+    "Both players pick a deck before each game, hidden until both have picked.",
   random: "Both players get a fresh random deck, dealt with a sensible mana curve.",
 };
 

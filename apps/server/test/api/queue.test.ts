@@ -826,7 +826,7 @@ describe("R264 — a series that is not over holds its players out of the queue"
 
     expect(response.status).toBe(409);
     expect(body.error?.code).toBe("already_in_match");
-    expect(body.error?.message).toBe("Finish your best-of-three series first.");
+    expect(body.error?.message).toBe("Finish your Conquest series first.");
     expect(body.error?.details).toEqual({ seriesId: "series-of-mid-series" });
     expect(deps.store.tables.tickets).toEqual([]);
 

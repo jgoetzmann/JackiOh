@@ -1,8 +1,9 @@
-// The trio editor: a name, three slots over the saved decks, R253's Best-of-3 verdict, and the
-// three decks side by side with every shared card marked (SPEC §9.4, R251–R253).
+// The trio editor: a name, three slots over the saved decks, R253's Conquest verdict, the three
+// decks side by side with every shared card marked (SPEC §9.4, R251–R253), and the trio's code
+// (R339).
 //
 // A trio is saved loose (R252): a slot may be empty and its decks may share cards, and neither
-// stops a save. Both stop it from queueing Best of 3, and the verdict says so in `validateTrio`'s
+// stops a save. Both stop it from queueing Conquest, and the verdict says so in `validateTrio`'s
 // own words, naming the decks as they are saved. The side-by-side view is the same fact from each
 // deck's side: `trioConflicts` finds the shared cards (R251: a card is its catalog id), and every
 // one is marked "Also in <deck>" where it sits, so the player can see what to swap and where.
@@ -10,7 +11,7 @@
 // The one thing the slots refuse is T3's "the same deck twice": a deck already in another slot is
 // disabled in this slot's list, so the state is never built rather than refused after the fact.
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from "react";
 
 import type { CardCost } from "@jackioh/shared";
 import type { CatalogSnapshot, Collection } from "@jackioh/validator";
@@ -21,7 +22,9 @@ import { deckListOrder } from "./filters.ts";
 import { UNTITLED_TRIO, type DeckItem, type TrioItem, type WorkshopLimits } from "./sync.ts";
 import {
   LOADOUT_ERRORS,
+  TRIO_CODE_OUTPUT,
   TRIO_COMPARE,
+  TRIO_COPY_CODE,
   TRIO_DELETE,
   TRIO_DELETE_CANCEL,
   TRIO_DELETE_CONFIRM,
@@ -34,6 +37,7 @@ import {
   trioOpenDeckId,
   trioSlotId,
 } from "./testids.ts";
+import { encodeTrioCode } from "./trioCode.ts";
 import { clampName, deckLabel, trioLabel, trioSharedCards, trioSlots, trioVerdict } from "./workshop.ts";
 import type { TrioSlots } from "../../net/api.ts";
 
@@ -71,6 +75,8 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
   const { trio, decks, catalog, collection, limits, refusal, onRename, onSlots, onDelete, onOpenDeck, onBack } = props;
   const label = trioLabel(trio, limits.nameLength);
   const [confirming, setConfirming] = useState(false);
+  const [codeShown, setCodeShown] = useState(false);
+  const [codeStatus, setCodeStatus] = useState<string | null>(null);
   const keepButton = useRef<HTMLButtonElement>(null);
   const nameId = useId();
   const slotIdBase = useId();
@@ -88,6 +94,43 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
     [trio, decks, catalog, collection, limits.nameLength],
   );
   const errors = verdict.ok ? [] : verdict.errors;
+
+  // R339: the trio as a code — its name and each slot's deck, names as they are saved, and an empty
+  // slot left empty — shown in a field and copied where the browser allows it, as a deck's is.
+  const code = useMemo(
+    () =>
+      codeShown
+        ? encodeTrioCode(
+            label,
+            slots.map((deck) => (deck === null ? null : { name: deckLabel(deck, limits.nameLength), cards: deck.cards })),
+            catalog,
+          )
+        : "",
+    [codeShown, label, slots, limits.nameLength, catalog],
+  );
+  const copyCode = useCallback(() => {
+    setCodeShown(true);
+    const text = encodeTrioCode(
+      label,
+      slots.map((deck) => (deck === null ? null : { name: deckLabel(deck, limits.nameLength), cards: deck.cards })),
+      catalog,
+    );
+    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+    const fallback = "Copy the code below to share this trio.";
+    if (clipboard === undefined || typeof clipboard.writeText !== "function") {
+      setCodeStatus(fallback);
+      return;
+    }
+    // Without clipboard permission the code is still in the field under the button.
+    clipboard.writeText(text).then(
+      () => {
+        setCodeStatus("Trio code copied. Paste it anywhere to share this trio and its three decks.");
+      },
+      () => {
+        setCodeStatus(fallback);
+      },
+    );
+  }, [label, slots, limits.nameLength, catalog]);
 
   const setSlot = (slot: number, deckId: string | null): void => {
     const next = [...trio.deckIds] as TrioSlots;
@@ -128,7 +171,7 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
         </div>
 
         <p className="ws-hint">
-          Three decks with no card in common make a trio for Best of 3. You pick one before each game.
+          Three decks with no card in common make a trio for Conquest: win a game with each of them. You pick one before each game.
         </p>
 
         <div className="ws-slots" role="group" aria-label="The trio's decks">
@@ -181,7 +224,7 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
 
         <section className="ws-verdict" data-testid={TRIO_VERDICT} data-ready={verdict.ok ? "true" : "false"} aria-labelledby={verdictTitleId}>
           <h3 className="ws-verdict-title" id={verdictTitleId}>
-            {verdict.ok ? "Ready for Best of 3" : "Before this trio can queue Best of 3"}
+            {verdict.ok ? "Ready for Conquest" : "Before this trio can queue Conquest"}
           </h3>
           <ul
             className="db-errors"
@@ -263,6 +306,9 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
         </div>
 
         <div className="ws-actions ws-actions--trio">
+          <button type="button" className="ws-action" data-testid={TRIO_COPY_CODE} onClick={copyCode}>
+            Copy trio code
+          </button>
           <button
             type="button"
             className="ws-action ws-action--danger"
@@ -275,6 +321,25 @@ export default function TrioEditor(props: TrioEditorProps): ReactElement {
             Delete trio
           </button>
         </div>
+        {codeStatus === null ? null : (
+          <p className="ws-hint" role="status">
+            {codeStatus}
+          </p>
+        )}
+        {codeShown ? (
+          <label className="ws-code">
+            <span className="ws-field-label">Trio code</span>
+            <input
+              className="ws-code-input"
+              data-testid={TRIO_CODE_OUTPUT}
+              readOnly
+              value={code}
+              onFocus={(event) => {
+                event.currentTarget.select();
+              }}
+            />
+          </label>
+        ) : null}
         {confirming ? (
           <div className="ws-confirm" role="group" aria-labelledby={confirmTextId}>
             <p id={confirmTextId}>{`Delete “${label}”? Its decks stay saved. This can’t be undone.`}</p>

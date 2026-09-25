@@ -507,7 +507,7 @@ export function readModeChoice(body: Readonly<Record<string, unknown>>): ModeCho
 
   if (mode === "bo3") {
     const trioId = savedIdOf(body["trioId"]);
-    if (trioId === null) throw badRequest('Best of 3 needs "trioId", the id of one of your trios');
+    if (trioId === null) throw badRequest('Conquest needs "trioId", the id of one of your trios');
     return { mode, trioId };
   }
 
@@ -648,7 +648,7 @@ export async function freezeChoice(
 export async function assertNotInSeries(deps: ServerDeps, profileId: string): Promise<void> {
   const series = await deps.store.series.activeFor(profileId);
   if (series !== null) {
-    throw new ApiError("already_in_match", "Finish your best-of-three series first.", {
+    throw new ApiError("already_in_match", "Finish your Conquest series first.", {
       seriesId: series.id,
     });
   }
