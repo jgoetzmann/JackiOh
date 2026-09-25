@@ -9,29 +9,49 @@
  *    set a seed, and `e2e/cypress/e2e/05-reconnect.cy.ts` and `06-room-code.cy.ts` both post one.
  *  - **R149**, the bounded mint: a code is retried a fixed number of times against the codes still
  *    in use, and then the caller is told none is available rather than the server retrying for ever.
+ *  - **R264**, the room's mode: a room is made in the host's mode with their deck or trio frozen
+ *    into it, a join in another mode is refused with the room's mode named, a Best-of-3 join makes
+ *    the series and an All Random join deals both decks.
  *
- * `createRoomRoutes` takes its loadout module as a parameter (`LoadLoadouts`), which is the seam
- * these tests drive it through: the room rules are what is under test, not the ledger behind them.
+ * The rooms run the real `freezeChoice` (`src/api/decks.ts`) over decks saved straight into the
+ * store, with the permissive validator: the room rules are what is under test, not L1–L6.
  */
 
 import { describe, expect, it } from "vitest";
 
+import { createDeckRoutes } from "../../src/api/decks";
 import { createRouter, type Router } from "../../src/api/http";
-import { createLoadoutRoutes, deckFor, validateStoredLoadout } from "../../src/api/loadouts";
-import type { Ids, ServerDeps, StoredLoadout } from "../../src/api/ports";
-import { CODE_ALPHABET, ROOM_CODE_LENGTH } from "../../src/config";
-import {
-  createRoomRoutes,
-  e2eRoomSeedCount,
-  type LoadLoadouts,
-} from "../../src/match/rooms";
+import type { FrozenTrio, Ids } from "../../src/api/ports";
+import { CODE_ALPHABET, MAX_SAVED_DECKS, MAX_SAVED_TRIOS, ROOM_CODE_LENGTH } from "../../src/config";
+import { createRoomRoutes, e2eRoomSeedCount } from "../../src/match/rooms";
 import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
 
 const DECK = ["core-001", "core-002", "core-003"];
 const HOST = "host";
 const GUEST = "guest";
 
-type ErrorBody = { error: { code: string; message: string } };
+type ErrorBody = { error: { code: string; message: string; details?: unknown } };
+
+/** A client-minted id (R256). */
+function uuid(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/** Saves a deck for a profile straight into the store. */
+async function saveDeck(
+  deps: TestDeps,
+  profileId: string,
+  id: string,
+  cards: readonly string[],
+  name = `${profileId}'s deck`,
+): Promise<void> {
+  const at = deps.timers.now();
+  const outcome = await deps.store.decks.upsert(
+    { id, profileId, name, cards: [...cards], catalogVersion: deps.catalog.version, createdAt: at, updatedAt: at },
+    MAX_SAVED_DECKS,
+  );
+  expect(outcome).toBe("created");
+}
 
 /**
  * `createFakeIds().code()` emits codes containing `1`, which §9.4's alphabet excludes and which
@@ -58,26 +78,22 @@ function roomIds(codes?: readonly string[]): Ids {
   };
 }
 
-/** The `LoadoutsModule` seam: one stored loadout whose deck 0 is `DECK`. */
-const loadouts: LoadLoadouts = async () => ({
-  validateStoredLoadout: async (deps: ServerDeps): Promise<StoredLoadout> => ({
-    catalogVersion: deps.catalog.version,
-    decks: [[...DECK], [], []],
-    updatedAt: 0,
-  }),
-  deckFor: (loadout, deckIndex) => [...(loadout.decks[deckIndex] ?? [])],
-});
-
-function harness(
+/**
+ * Host and guest, active, each with one saved deck — `DECK` — so the legacy `{ deckIndex: 0 }` the
+ * helpers below send is Best of 1 on it (R257).
+ */
+async function harness(
   options: { e2e?: boolean; codes?: readonly string[] } = {},
-): { deps: TestDeps; router: Router; host: string; guest: string } {
+): Promise<{ deps: TestDeps; router: Router; host: string; guest: string }> {
   const deps = createTestDeps({ ids: roomIds(options.codes) });
   if (options.e2e === true) deps.e2e = true;
   const host = deps.auth.addUser({ userId: "user-host", email: "host@example.test" });
   const guest = deps.auth.addUser({ userId: "user-guest", email: "guest@example.test" });
   deps.store.seedProfile({ id: HOST, userId: "user-host", status: "active" });
   deps.store.seedProfile({ id: GUEST, userId: "user-guest", status: "active" });
-  return { deps, router: createRouter(createRoomRoutes(loadouts), deps), host, guest };
+  await saveDeck(deps, HOST, uuid(1), DECK);
+  await saveDeck(deps, GUEST, uuid(2), DECK);
+  return { deps, router: createRouter(createRoomRoutes(), deps), host, guest };
 }
 
 function create(router: Router, token: string, body: Record<string, unknown>): Promise<Response> {
@@ -97,7 +113,7 @@ function join(
 
 /** Creates a room and joins it, returning the code and the match the join started. */
 async function playThrough(
-  h: ReturnType<typeof harness>,
+  h: Awaited<ReturnType<typeof harness>>,
   body: Record<string, unknown> = {},
   joinBody: Record<string, unknown> = {},
 ): Promise<{ code: string; seed: string }> {
@@ -115,11 +131,13 @@ async function playThrough(
 
 describe("the room-code challenge (§9.5)", () => {
   it("creates a room and starts the match on the join, with the host as p1", async () => {
-    const h = harness();
+    const h = await harness();
     const { code } = await playThrough(h);
 
     expect(code).toHaveLength(ROOM_CODE_LENGTH);
     const started = h.deps.matches.started[0];
+    // The frozen decks, host first.
+    expect(started?.seats.map((seat) => seat.deck)).toEqual([DECK, DECK]);
     expect(started?.seats.map((seat) => seat.profileId)).toEqual([HOST, GUEST]);
     expect(started?.seats.map((seat) => seat.player)).toEqual(["p1", "p2"]);
     // §9.5: both ends of the lifecycle read the in-match flag.
@@ -130,7 +148,7 @@ describe("the room-code challenge (§9.5)", () => {
 
 describe("R143 — the optional seed on the room endpoints", () => {
   it("R143 rejects `seed` on POST /api/rooms outside end-to-end mode, and mints no room", async () => {
-    const h = harness();
+    const h = await harness();
 
     const response = await create(h.router, h.host, { seed: "05-reconnect" });
 
@@ -143,7 +161,7 @@ describe("R143 — the optional seed on the room endpoints", () => {
   });
 
   it("R143 rejects `seed` on the join endpoint outside end-to-end mode", async () => {
-    const h = harness();
+    const h = await harness();
     const created = await create(h.router, h.host, {});
     const { code } = await readJson<{ code: string }>(created);
 
@@ -155,7 +173,7 @@ describe("R143 — the optional seed on the room endpoints", () => {
   });
 
   it("R143 uses the host's seed verbatim for the match the join creates, in end-to-end mode", async () => {
-    const h = harness({ e2e: true });
+    const h = await harness({ e2e: true });
 
     const { seed } = await playThrough(h, { seed: "06-room-code" });
 
@@ -165,25 +183,25 @@ describe("R143 — the optional seed on the room endpoints", () => {
   });
 
   it("R143 takes the joiner's seed when the host supplied none, and the host's when both did", async () => {
-    const joinerOnly = harness({ e2e: true });
+    const joinerOnly = await harness({ e2e: true });
     expect((await playThrough(joinerOnly, {}, { seed: "from-the-joiner" })).seed).toBe(
       "from-the-joiner",
     );
 
     // Both: the room was created first, so its seed is the one the match runs on.
-    const both = harness({ e2e: true });
+    const both = await harness({ e2e: true });
     expect((await playThrough(both, { seed: "from-the-host" }, { seed: "from-the-joiner" })).seed)
       .toBe("from-the-host");
     expect(e2eRoomSeedCount()).toBe(0);
   });
 
   it("R143 still mints a seed when none is supplied (§9.3: the server owns it)", async () => {
-    const h = harness({ e2e: true });
+    const h = await harness({ e2e: true });
     expect((await playThrough(h)).seed).toMatch(/^seed-/u);
   });
 
   it("R143 refuses a `seed` that is not a non-empty string, even in end-to-end mode", async () => {
-    const h = harness({ e2e: true });
+    const h = await harness({ e2e: true });
 
     expect((await create(h.router, h.host, { seed: 7 })).status).toBe(400);
     expect((await create(h.router, h.host, { seed: "" })).status).toBe(400);
@@ -191,7 +209,7 @@ describe("R143 — the optional seed on the room endpoints", () => {
   });
 
   it("R143 drops a seed whose room expired, so an unjoined room cannot leak one", async () => {
-    const h = harness({ e2e: true, codes: ["AAA234", "BBB234"] });
+    const h = await harness({ e2e: true, codes: ["AAA234", "BBB234"] });
     await create(h.router, h.host, { seed: "never-joined" });
     expect(e2eRoomSeedCount()).toBe(1);
 
@@ -209,7 +227,7 @@ describe("R143 — the optional seed on the room endpoints", () => {
 describe("R149 — the bounded room-code mint (§9.5, R110)", () => {
   it("R149 retries past a code that is already in use and mints the next one", async () => {
     // The first two attempts collide with the room the host already opened; the third is free.
-    const h = harness({ codes: ["AAA234", "AAA234", "AAA234", "BBB234"] });
+    const h = await harness({ codes: ["AAA234", "AAA234", "AAA234", "BBB234"] });
 
     const first = await create(h.router, h.host, {});
     expect((await readJson<{ code: string }>(first)).code).toBe("AAA234");
@@ -221,7 +239,7 @@ describe("R149 — the bounded room-code mint (§9.5, R110)", () => {
 
   it("R149 gives up after a bounded number of collisions and says no code is available", async () => {
     // Every attempt mints the same code, which the host's room already holds.
-    const h = harness({ codes: ["AAA234"] });
+    const h = await harness({ codes: ["AAA234"] });
     expect((await create(h.router, h.host, {})).status).toBe(200);
 
     const response = await create(h.router, h.guest, {});
@@ -245,15 +263,11 @@ describe("R149 — the bounded room-code mint (§9.5, R110)", () => {
 /**
  * The room half of §9.8's "Deck swapped after matchmaking → decks are frozen into the ticket". A
  * room has the same exposure as a queue ticket and a wider window for it: `src/match/rooms.ts`
- * freezes the host's deck at `POST /api/rooms` ("the chosen deck is frozen into the room the moment
- * it is created, so editing the loadout afterwards cannot change the match") and the match is not
- * created until somebody joins — which may be up to `roomCodeTtlMs` later, with the deckbuilder
- * open the whole time.
+ * freezes the host's deck at `POST /api/rooms` and the match is not created until somebody joins —
+ * which may be up to `roomCodeTtlMs` later, with the deck builder open the whole time.
  *
- * Unlike the blocks above, these run the **real** `src/api/loadouts.ts` through the `LoadLoadouts`
- * seam and put the real `PUT /api/loadout` on the same router, so "the host saves a different
- * loadout" is the endpoint a player would use and the freeze under test is the production one. The
- * stub `loadouts` the rest of this file uses answers with a constant and could not express a swap.
+ * These put the real `PUT /api/decks/:id` on the same router, so "the host edits the deck" is the
+ * endpoint a player would use and the freeze under test is the production one.
  */
 describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () => {
   /** Three disjoint decks out of the test catalog: A, B and C, eight ids each. */
@@ -267,8 +281,8 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
     ];
   }
 
-  /** The real loadout module behind the seam `createRoomRoutes` was given for exactly this. */
-  const realLoadouts: LoadLoadouts = async () => ({ validateStoredLoadout, deckFor });
+  const HOST_DECK = uuid(11);
+  const GUEST_DECK = uuid(12);
 
   function freezeHarness(): {
     deps: TestDeps;
@@ -284,7 +298,7 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
     deps.store.seedProfile({ id: GUEST, userId: "user-guest", status: "active" });
     return {
       deps,
-      router: createRouter([...createRoomRoutes(realLoadouts), ...createLoadoutRoutes()], deps),
+      router: createRouter([...createRoomRoutes(), ...createDeckRoutes()], deps),
       host,
       guest,
       decks: decksOf(deps),
@@ -294,13 +308,14 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
   function save(
     h: ReturnType<typeof freezeHarness>,
     token: string,
-    decks: string[][],
+    deckId: string,
+    cards: string[],
   ): Promise<Response> {
     return h.router(
       jsonRequest(
         "PUT",
-        "/api/loadout",
-        { catalogVersion: h.deps.catalog.version, decks },
+        `/api/decks/${deckId}`,
+        { name: "Deck", cards, catalogVersion: h.deps.catalog.version },
         { token },
       ),
     );
@@ -312,33 +327,33 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
     return started?.seats.find((seat) => seat.profileId === profileId)?.deck;
   }
 
-  it("a loadout saved between the create and the join does not change the host's deck (§9.8)", async () => {
+  it("a deck saved between the create and the join does not change the host's deck (§9.8)", async () => {
     const h = freezeHarness();
     const [a, b, c] = h.decks;
 
     // PREMISE: the deck the host freezes and the one they swap to share no card, so "the match used
-    // the frozen deck" and "the match used the current loadout" cannot both be true.
+    // the frozen deck" and "the match used the saved deck" cannot both be true.
     expect(a).not.toHaveLength(0);
     expect(a.filter((cardId) => c.includes(cardId))).toEqual([]);
 
-    expect((await save(h, h.host, [a, b, c])).status).toBe(200);
-    expect((await save(h, h.guest, [a, b, c])).status).toBe(200);
+    expect((await save(h, h.host, HOST_DECK, a)).status).toBe(200);
+    expect((await save(h, h.guest, GUEST_DECK, b)).status).toBe(200);
 
-    // 1. The host opens a room on deck 0. The freeze happens here.
-    const created = await create(h.router, h.host, { deckIndex: 0 });
+    // 1. The host opens a room on the deck. The freeze happens here.
+    const created = await create(h.router, h.host, { mode: "bo1", deckId: HOST_DECK });
     expect(created.status).toBe(200);
     const { code } = await readJson<{ code: string }>(created);
     expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(a);
 
     // 2. The swap, while the room sits open waiting for somebody to type the code.
-    expect((await save(h, h.host, [c, b, a])).status).toBe(200);
+    expect((await save(h, h.host, HOST_DECK, c)).status).toBe(200);
     // PREMISE: the save landed — otherwise there is nothing that could leak into the match.
-    expect((await h.deps.store.loadouts.get(HOST))?.decks[0]).toEqual(c);
+    expect((await h.deps.store.decks.get(HOST_DECK))?.cards).toEqual(c);
     // …and the room is untouched by it.
     expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(a);
 
-    // 3. The guest joins on deck 1, which is neither of the host's two, so each seat is identifiable.
-    expect((await join(h.router, h.guest, code, { deckIndex: 1 })).status).toBe(200);
+    // 3. The guest joins on their own deck, so each seat is identifiable.
+    expect((await join(h.router, h.guest, code, { mode: "bo1", deckId: GUEST_DECK })).status).toBe(200);
 
     expect(deckInMatchFor(h, HOST)).toEqual(a);
     expect(deckInMatchFor(h, GUEST)).toEqual(b);
@@ -347,20 +362,203 @@ describe("§9.8 — the host's deck is frozen into the room (§9.4, §9.5)", () 
   });
 
   it("the control: the same swap made BEFORE the create is the deck the room freezes", async () => {
-    // Without this, the test above would pass against a room that ignored loadouts entirely.
+    // Without this, the test above would pass against a room that ignored saved decks entirely.
     // Exactly one thing moves between the two: whether the save happens before or after the create.
     const h = freezeHarness();
     const [a, b, c] = h.decks;
 
-    expect((await save(h, h.host, [a, b, c])).status).toBe(200);
-    expect((await save(h, h.guest, [a, b, c])).status).toBe(200);
-    expect((await save(h, h.host, [c, b, a])).status).toBe(200);
+    expect((await save(h, h.host, HOST_DECK, a)).status).toBe(200);
+    expect((await save(h, h.guest, GUEST_DECK, b)).status).toBe(200);
+    expect((await save(h, h.host, HOST_DECK, c)).status).toBe(200);
 
-    const created = await create(h.router, h.host, { deckIndex: 0 });
+    const created = await create(h.router, h.host, { mode: "bo1", deckId: HOST_DECK });
     const { code } = await readJson<{ code: string }>(created);
     expect(h.deps.store.tables.rooms.at(-1)?.hostDeck).toEqual(c);
 
-    expect((await join(h.router, h.guest, code, { deckIndex: 1 })).status).toBe(200);
+    expect((await join(h.router, h.guest, code, { mode: "bo1", deckId: GUEST_DECK })).status).toBe(200);
     expect(deckInMatchFor(h, HOST)).toEqual(c);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R264 — rooms carry a mode
+// ---------------------------------------------------------------------------
+
+describe("R264 — rooms carry a mode (§9.5, R257)", () => {
+  /** Saves three decks and a trio for a profile, returning the trio's id. */
+  async function saveTrio(deps: TestDeps, profileId: string, base: number): Promise<string> {
+    const ids = [uuid(base), uuid(base + 1), uuid(base + 2)] as [string, string, string];
+    for (const [index, id] of ids.entries()) {
+      await saveDeck(deps, profileId, id, [`core-00${String(index + 1)}`], `${profileId} ${String(index + 1)}`);
+    }
+    const trioId = uuid(base + 3);
+    const outcome = await deps.store.trios.upsert(
+      { id: trioId, profileId, name: `${profileId}'s trio`, deckIds: ids, createdAt: 0, updatedAt: 0 },
+      MAX_SAVED_TRIOS,
+    );
+    expect(outcome).toBe("created");
+    return trioId;
+  }
+
+  async function createIn(h: Awaited<ReturnType<typeof harness>>, body: Record<string, unknown>): Promise<string> {
+    const response = await h.router(jsonRequest("POST", "/api/rooms", body, { token: h.host }));
+    expect(response.status).toBe(200);
+    return (await readJson<{ code: string }>(response)).code;
+  }
+
+  function joinWith(h: Awaited<ReturnType<typeof harness>>, code: string, body: Record<string, unknown>): Promise<Response> {
+    return h.router(jsonRequest("POST", `/api/rooms/${code}/join`, body, { token: h.guest }));
+  }
+
+  it("R264 answers a create with the room's code, expiry and mode, and freezes the choice", async () => {
+    const h = await harness();
+    const response = await h.router(
+      jsonRequest("POST", "/api/rooms", { mode: "bo1", deckId: uuid(1) }, { token: h.host }),
+    );
+    const body = await readJson(response);
+    const room = h.deps.store.tables.rooms[0];
+    // `CreateRoomResponse` in apps/web's api.ts, exactly.
+    expect(body).toEqual({ code: room?.code, expiresAt: room?.expiresAt, mode: "bo1" });
+    expect(room).toMatchObject({ mode: "bo1", hostDeck: DECK, hostTrio: null });
+  });
+
+  it("R264 refuses a join in another mode than the room's, naming the room's mode", async () => {
+    const h = await harness();
+    const hostTrio = await saveTrio(h.deps, HOST, 20);
+    const code = await createIn(h, { mode: "bo3", trioId: hostTrio });
+
+    // A Best-of-1 joiner, and a legacy body with no mode at all (which is Best of 1).
+    for (const body of [{ mode: "bo1", deckId: uuid(2) }, { deckIndex: 0 }, { mode: "random" }]) {
+      const response = await joinWith(h, code, body);
+      const refused = await readJson<ErrorBody>(response);
+      expect(response.status).toBe(409);
+      expect(refused.error.code).toBe("conflict");
+      expect(refused.error.message).toBe("This room plays Best of 3: pick one of your trios.");
+      expect(refused.error.details).toEqual({ mode: "bo3" });
+    }
+    // Refused before anything was claimed: the room is still open to the right choice.
+    expect(h.deps.store.tables.rooms[0]?.guestProfileId).toBeNull();
+
+    // An All Random room names its own mode the same way.
+    const random = await createIn(h, { mode: "random" });
+    const wrong = await joinWith(h, random, { deckIndex: 0 });
+    expect(wrong.status).toBe(409);
+    expect((await readJson<ErrorBody>(wrong)).error.details).toEqual({ mode: "random" });
+  });
+
+  it("R264 makes the series when a Best-of-3 room is joined, the host as series p1 and no match yet", async () => {
+    const h = await harness({ e2e: true });
+    const hostTrio = await saveTrio(h.deps, HOST, 20);
+    const guestTrio = await saveTrio(h.deps, GUEST, 30);
+    const code = await createIn(h, { mode: "bo3", trioId: hostTrio, seed: "room-series" });
+    const room = h.deps.store.tables.rooms[0];
+    expect(room?.mode).toBe("bo3");
+    expect(room?.hostDeck).toEqual([]);
+    expect(room?.hostTrio?.decks.map((deck) => deck.name)).toEqual(["host 1", "host 2", "host 3"]);
+
+    const response = await joinWith(h, code, { mode: "bo3", trioId: guestTrio });
+    expect(response.status).toBe(200);
+
+    const [series] = h.deps.store.tables.series;
+    expect(await readJson(response)).toEqual({
+      matchId: null,
+      seriesId: series?.id,
+      code,
+      seat: "p2",
+      mode: "bo3",
+    });
+    expect(series?.sides.map((side) => side.profileId)).toEqual([HOST, GUEST]);
+    expect(series?.sides[0]?.trio).toEqual(room?.hostTrio);
+    expect(series?.sides[1]?.trio.name).toBe("guest's trio");
+    // R263: game 1's match id is the one the claim reserved; R143: the host's seed is the base.
+    expect(series?.nextMatchId).toBe(h.deps.store.tables.rooms[0]?.matchId);
+    expect(series?.seedBase).toBe("room-series");
+    expect(e2eRoomSeedCount()).toBe(0);
+    // The series opens on its pick phase: no match, nobody in one.
+    expect(h.deps.matches.started).toEqual([]);
+    expect(h.deps.store.tables.profiles.every((row) => row.inMatchId === null)).toBe(true);
+  });
+
+  it("R264 deals both decks when an All Random room is joined, and needs no saved deck", async () => {
+    const h = await harness();
+    // Neither player's saved deck is used: All Random asks for none (R258).
+    h.deps.store.tables.decks.length = 0;
+    const code = await createIn(h, { mode: "random" });
+    expect(h.deps.store.tables.rooms[0]).toMatchObject({ mode: "random", hostDeck: [], hostTrio: null });
+
+    const response = await joinWith(h, code, { mode: "random" });
+    expect(response.status).toBe(200);
+
+    const started = h.deps.matches.started[0];
+    const seed = started?.seed ?? "";
+    expect(await readJson(response)).toEqual({
+      matchId: started?.matchId,
+      seriesId: null,
+      code,
+      seat: "p2",
+      mode: "random",
+    });
+    expect(started?.seats.map((seat) => seat.profileId)).toEqual([HOST, GUEST]);
+    expect(started?.seats.map((seat) => seat.deck)).toEqual([
+      h.deps.dealRandomDeck(`${seed}:p1-deck`),
+      h.deps.dealRandomDeck(`${seed}:p2-deck`),
+    ]);
+    expect((await h.deps.store.profiles.getById(HOST))?.inMatchId).toBe(started?.matchId);
+    expect((await h.deps.store.profiles.getById(GUEST))?.inMatchId).toBe(started?.matchId);
+  });
+
+  it("R264 keeps a profile in a series from creating or joining a room", async () => {
+    const h = await harness();
+    const code = await createIn(h, { deckIndex: 0 });
+    const trio: FrozenTrio = { name: "t", decks: [{ name: "a", cards: [] }, { name: "b", cards: [] }, { name: "c", cards: [] }] };
+    await h.deps.store.series.create({
+      id: "series-1",
+      sides: [
+        { profileId: GUEST, trio, wins: 0, pick: null },
+        { profileId: "someone", trio, wins: 0, pick: null },
+      ],
+      catalogVersion: h.deps.catalog.version,
+      seedBase: "s",
+      status: "picking",
+      games: [],
+      nextMatchId: "reserved",
+      pickDeadline: null,
+      winner: null,
+      endReason: null,
+      ratingBefore: null,
+      ratingAfter: null,
+      createdAt: 0,
+      updatedAt: 0,
+      endedAt: null,
+      version: 1,
+    });
+
+    const joined = await join(h.router, h.guest, code);
+    expect(joined.status).toBe(409);
+    const body = await readJson<ErrorBody>(joined);
+    expect(body.error.code).toBe("already_in_match");
+    expect(body.error.details).toEqual({ seriesId: "series-1" });
+    expect(h.deps.store.tables.rooms[0]?.guestProfileId).toBeNull();
+
+    const created = await create(h.router, h.guest, {});
+    expect(created.status).toBe(409);
+    expect((await readJson<ErrorBody>(created)).error.code).toBe("already_in_match");
+    expect(h.deps.store.tables.rooms).toHaveLength(1);
+  });
+
+  it("a join whose host has gone into another game is refused, and the room stays open", async () => {
+    const h = await harness();
+    const code = await createIn(h, { deckIndex: 0 });
+    await h.deps.store.profiles.setInMatch(HOST, "elsewhere");
+
+    const refused = await join(h.router, h.guest, code);
+    expect(refused.status).toBe(409);
+    expect((await readJson<ErrorBody>(refused)).error.code).toBe("conflict");
+    expect(h.deps.store.tables.rooms[0]?.guestProfileId).toBeNull();
+    expect(h.deps.matches.started).toEqual([]);
+
+    // The control: once the host is free the same join goes through.
+    await h.deps.store.profiles.setInMatch(HOST, null);
+    expect((await join(h.router, h.guest, code)).status).toBe(200);
   });
 });

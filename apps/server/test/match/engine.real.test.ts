@@ -108,3 +108,40 @@ describe("the real engine port (src/match/engine.real.ts)", () => {
     expect(port.viewFor(state, "p1")).not.toBeNull();
   });
 });
+
+/**
+ * R258's deal, through the real port: `buildAiDeck` over the registered catalog, nothing banned.
+ * The deck size is not imported (see `decksTheEngineAccepts`): it is whatever size the real engine
+ * accepts, and the dealt pair must be a game `createGame` takes as it is.
+ */
+describe("All Random's deal (R258, src/match/engine.real.ts)", () => {
+  it("R258 deals twenty distinct deckable cards the real engine accepts, the same for the same seed", async () => {
+    const catalog = await loadCatalog();
+    const port = enginePort();
+    const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
+    // The smallest deck the engine accepts is the one size it accepts: L2's `DECK_SIZE`.
+    const size = decksTheEngineAccepts(port, pool, "r258-size").decks[0].length;
+
+    const p1 = port.dealRandomDeck("r258-match:p1-deck");
+    const p2 = port.dealRandomDeck("r258-match:p2-deck");
+
+    for (const deck of [p1, p2]) {
+      expect(deck).toHaveLength(size);
+      // Distinct (MAX_COPIES is one) and deckable: every id a catalog card and none a Token.
+      expect(new Set(deck).size).toBe(deck.length);
+      for (const cardId of deck) {
+        expect(catalog.cardIds, cardId).toContain(cardId);
+        expect(catalog.isToken(cardId), cardId).toBe(false);
+      }
+    }
+    // The dealt pair is a game the engine starts, exactly as the match row will hand it over.
+    const state = port.createGame({ seed: "r258-match", decks: [p1, p2] });
+    expect(port.snapshot(state).phase).toBe("setup");
+
+    // Seeded: the same seed deals the same deck, in the same order, every time and in any process…
+    expect(port.dealRandomDeck("r258-match:p1-deck")).toEqual(p1);
+    expect(enginePort().dealRandomDeck("r258-match:p1-deck")).toEqual(p1);
+    // …and another seed deals another deck.
+    expect(p2).not.toEqual(p1);
+  });
+});

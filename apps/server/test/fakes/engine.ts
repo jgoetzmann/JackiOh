@@ -355,9 +355,27 @@ export function createFakeEngine(): EnginePort {
         result: fake.result,
       };
     },
+
+    // R258's port method, scripted: `fakeDeck()` rotated by a hash of the seed, so the same seed
+    // deals the same deck and two seeds (almost always) deal two orders of it.
+    dealRandomDeck: (seed) => {
+      const deck = fakeDeck();
+      const offset = seedHash(seed) % deck.length;
+      return [...deck.slice(offset), ...deck.slice(0, offset)];
+    },
   };
 
   return port;
+}
+
+/** A small, stable string hash for the scripted deals (FNV-1a); not a random source. */
+export function seedHash(seed: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
 }
 
 /** A 20-card deck of scripted ids, with `extra` cards placed in the opening hand. */

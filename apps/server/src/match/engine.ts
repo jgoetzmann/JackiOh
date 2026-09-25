@@ -69,6 +69,13 @@ export type EnginePort = {
   fold: (args: FoldArgs) => { state: EngineState; errors: { nonce: string; error: string }[] };
   hashState: (state: EngineState) => string;
   snapshot: (state: EngineState) => MatchSnapshot;
+  /**
+   * SPEC §11 R258: an All Random deck of card ids in library order, from the game's own weighted
+   * random deck-builder with nothing banned, seeded so the same seed deals the same deck in any
+   * process. The composition root binds `ServerDeps.dealRandomDeck` to it; it lives on this port
+   * because the deck-builder needs the registered catalog, and this port is the one path to it.
+   */
+  dealRandomDeck: (seed: string) => string[];
 };
 
 /** The exports `engine.real.ts` needs from `@jackioh/engine`, for the missing-export report. */
@@ -80,6 +87,7 @@ export const REQUIRED_ENGINE_EXPORTS = [
   "viewFor",
   "fold",
   "hashState",
+  "createRng",
 ] as const;
 
 export class EngineUnavailableError extends Error {

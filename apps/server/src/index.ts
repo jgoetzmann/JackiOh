@@ -27,14 +27,15 @@ import { VITE_DEV_ORIGINS, withCors } from "./api/cors";
 import { createHashes, systemIds } from "./api/crypto";
 import { consoleLogger, defaultConfig, defaultLimits } from "./api/deps";
 import { createE2EAuth, seedE2EFixtures } from "./api/e2e";
+import { createDeckRoutes } from "./api/decks";
 import { createE2EStore, type E2EStore } from "./api/e2e-store";
 import { createRouter, type RequestContext, type Route } from "./api/http";
-import { createLoadoutRoutes } from "./api/loadouts";
 import { sharedLoadoutValidator } from "./api/loadout-validator";
 import type { Logger, ServerDeps, Store } from "./api/ports";
 import { systemTimers } from "./api/ports";
 import { createQueueRoutes, startMatchmaker } from "./api/queue";
 import { createRecordResult, reapStuckMatches } from "./api/results";
+import { createSeriesRoutes, startSeriesSweeper } from "./api/series";
 import { MATCH_REAPER_INTERVAL_SECONDS } from "./config";
 import { loadEnv, type ServerEnv } from "./env";
 import { createMatchClock } from "./match/clock";
@@ -207,6 +208,8 @@ export async function createRuntime(
     limits: overrides.limits ?? defaultLimits(),
     catalog,
     validateLoadout: overrides.validateLoadout ?? sharedLoadoutValidator,
+    // R258: All Random's decks come from the engine port, the one path to the card catalog.
+    dealRandomDeck: overrides.dealRandomDeck ?? engine.dealRandomDeck,
     // Replaced two lines down; a placeholder rather than a lie, so a mistake is loud.
     matches: {
       start: async () => {
@@ -243,9 +246,10 @@ export function allRoutes(): Route[] {
     ...createCatalogRoutes(),
     ...createCodesRoutes(),
     ...createCollectionRoutes(),
-    ...createLoadoutRoutes(),
+    ...createDeckRoutes(),
     ...createQueueRoutes(),
     ...createRoomRoutes(),
+    ...createSeriesRoutes(),
   ];
 }
 
@@ -299,6 +303,8 @@ export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningSe
 
   // §9.5: pairing runs on enqueue plus a sweeper, and a reaper resolves anything past the ceiling.
   const matchmaker = startMatchmaker(deps);
+  // R260, R263: the series sweeper runs the pick clock and starts a game a restart left unstarted.
+  const seriesSweeper = startSeriesSweeper(deps);
 
   let reaper = deps.timers.after(MATCH_REAPER_INTERVAL_SECONDS * 1000, sweep);
   let stopped = false;
@@ -321,6 +327,7 @@ export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningSe
     close: async () => {
       stopped = true;
       matchmaker.stop();
+      seriesSweeper.stop();
       reaper.cancel();
       await sockets.close();
       await new Promise<void>((resolve) => {

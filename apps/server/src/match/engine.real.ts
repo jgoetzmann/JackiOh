@@ -19,8 +19,16 @@
 // Nothing here decides a rule. It renames engine functions onto the port and projects the public
 // bookkeeping the clock needs; the `as` casts only strip the opaque `EngineState` brand that
 // keeps the rest of the server from reading hidden information (SPEC §10.8).
+//
+// All Random's deck (R258) is dealt here too, by `@jackioh/ai`'s `buildAiDeck` — the same weighted
+// draw `apps/web/src/practice/core.ts` deals a human who asks for a random deck, with nothing
+// banned. It reads the registered catalog, so it belongs behind the same `registerAll()` as the
+// match itself, and the ai package is pure and seeded like the engine: one seed, one deck, in any
+// process.
 
 import * as engine from "@jackioh/engine";
+import { DECK_SIZE } from "@jackioh/engine/config";
+import { buildAiDeck } from "@jackioh/ai";
 import { registerAll } from "@jackioh/cards";
 
 import { EngineUnavailableError, REQUIRED_ENGINE_EXPORTS } from "./engine.ts";
@@ -70,5 +78,8 @@ export function enginePort(): EnginePort {
         result: raw.result,
       };
     },
+    // R258: `banned: []` is practice's "random deck for a human" (no shadow-ban: R186's list shapes
+    // the AI's own decks, not a player's), and `DECK_SIZE` is the size L2 asks of every deck.
+    dealRandomDeck: (seed) => buildAiDeck(engine.createRng(seed), DECK_SIZE, { banned: [] }),
   };
 }

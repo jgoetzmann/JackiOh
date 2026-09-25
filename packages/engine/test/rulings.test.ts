@@ -129,7 +129,6 @@ const SERVER_AUTH_TEST = "../../../apps/server/test/api/auth.test.ts";
 const SERVER_CODES_TEST = "../../../apps/server/test/api/codes.test.ts";
 const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
 const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
-const SERVER_LOADOUTS_TEST = "../../../apps/server/test/api/loadouts.test.ts";
 const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
 
 /** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
@@ -1521,12 +1520,12 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(164, SERVER_CATALOG_TEST);
   });
 
-  // Proved at the port by apps/server loadouts.test.ts "R165 makes queueing without a saved
-  // loadout a loadout failure, not a missing resource", and at the endpoint by queue.test.ts
-  // "R165 reports a loadout failure, never a 404, for a profile that has never saved one", whose
-  // control queues the same profile successfully the moment it has a loadout.
+  // Proved at the port by apps/server decks.test.ts "R165 makes queueing with nothing saved a deck
+  // failure (422)…" and "R165 answers a deck or trio that is gone…" (R253 carried the rule from the
+  // one loadout to saved decks and trios), and at the endpoint by queue.test.ts "R165 …", whose
+  // control queues the same profile successfully the moment it has a deck.
   it("R165 reports queueing with no loadout as a loadout failure, not a 404", () => {
-    provenIn(165, SERVER_LOADOUTS_TEST, SERVER_QUEUE_TEST);
+    provenIn(165, SERVER_DECKS_TEST, SERVER_QUEUE_TEST);
   });
 
   // Proved by apps/server queue.test.ts "R166 pairs the oldest ticket against the oldest opponent
