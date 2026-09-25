@@ -1,6 +1,6 @@
 // #73 Anti-oneshot Armor (SPEC §8.3): "Your hero can't take more than 5 damage in one instance.
-// Cry: draw 1", radiant "Cap 3" — the radiant cell changes only that number, so the Cry is kept on
-// both faces (§8 Conventions).
+// Cry: draw 1", radiant "Your hero can't take more than 3 damage in one instance. Cry: draw 2" (§8's
+// cell "Cap 3; Cry: draw 2", R275: the cap is tightened AND the Cry draws twice as many).
 //
 // The cap is not an effect and not an aura: it is step 3 of the §4.4 damage pipeline
 // ("Hero cap: if the target is a hero with Anti-oneshot Armor, clamp to 5 (radiant 3)"), so the card
@@ -12,7 +12,8 @@
 //   - it is hero-only — `heroDamageCap` is consulted only for `target.kind === "hero"` — so units
 //     take their full hit;
 //   - the radiant number comes from `@jackioh/engine/config`, not from this file, which is why
-//     "Cap 3" needs no radiant-specific code at all.
+//     "Cap 3" needs no radiant-specific code at all. The Cry's draw count is the one number the
+//     two faces differ in here.
 //
 // R18 is likewise the engine's: "lose health" is not damage — no Armor, no Anti-oneshot cap — and
 // `damage.ts loseHealth` never calls `heroDamageCap`. #27 Blood Ridden Glowy Jelly Bean's "you lose
@@ -28,18 +29,21 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-073");
 
+/** "Cry: draw 1", radiant "Cry: draw 2". */
+const BASE_DRAW = 1;
+const RADIANT_DRAW = 2;
+
 /**
- * Both faces are the same script. The cap's VALUE is the radiant difference and it lives in
- * `ANTI_ONESHOT_CAP` (engine/src/config.ts), read off the instance's radiant flag by the pipeline —
- * so there is no number to parameterise here.
+ * The cap's VALUE is read off the instance's radiant flag by the pipeline from `ANTI_ONESHOT_CAP`
+ * (engine/src/config.ts), so the only thing the two faces parameterise here is the Cry's draw.
  */
-function antiOneshotArmor(): Script {
+function antiOneshotArmor(draws: number): Script {
   return {
     staticFlags: { antiOneshot: true },
-    cry: () => [draw({ count: 1 })],
+    cry: () => [draw({ count: draws })],
   };
 }
 
-export const base: Script = antiOneshotArmor();
+export const base: Script = antiOneshotArmor(BASE_DRAW);
 
-export const radiant: Script = antiOneshotArmor();
+export const radiant: Script = antiOneshotArmor(RADIANT_DRAW);

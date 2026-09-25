@@ -62,10 +62,9 @@ function heightFor(width: number): number {
   return Math.round(width / FACE_ASPECT);
 }
 
-/** What the face prints: its text and, on a radiant face, the clause under the gold rule. */
+/** What the face prints: its whole text, a radiant face's included (R277). */
 function printedLength(def: CardDef, radiant: boolean): number {
-  const text = faceModel({ defId: def.id, def, radiant }).text;
-  return text.base.length + (text.radiant?.length ?? 0);
+  return faceModel({ defId: def.id, def, radiant }).text.full.length;
 }
 
 function FaceGrid({ width, radiant }: { width: number; radiant: boolean }) {
@@ -146,7 +145,7 @@ function fitProblems(doc: Document, def: CardDef, box: FitBox, radiant: boolean)
 }
 
 describe("B15: every catalog face fits its name and rules text at 270 px and 170 px", () => {
-  it("B15 the premise: the clamp allowance covers exactly the four longest faces (core-093, 095, 098, 051 radiant)", () => {
+  it("B15 the premise: the clamp allowance covers exactly the three longest cards (core-093, 095, 098)", () => {
     const long = DEFS.flatMap((def) =>
       FACES.filter((face) => printedLength(def, face.radiant) > TEXT_TIER_MAX.xl).map((face) => `${def.id} ${face.label}`),
     );
@@ -158,7 +157,6 @@ describe("B15: every catalog face fits its name and rules text at 270 px and 170
       "core-095 radiant",
       "core-098 base",
       "core-098 radiant",
-      "core-051 radiant",
     ]);
   });
 

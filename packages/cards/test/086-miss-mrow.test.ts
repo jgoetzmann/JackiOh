@@ -1,6 +1,8 @@
 // #86 "Miss" Mrow (SPEC §8.5, BUILD M4-T4 row 86): "Cannot attack; Death steals enemy units in
-// lane order, each placed per R15, excess stay; radiant may attack".
+// lane order, each placed per R15, excess stay; radiant may attack". R275: the radiant face now
+// prints Taunt ("Taunt. Death: steal all enemy units"), so it may attack and must be attacked first.
 
+import { keywordsOf } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario } from "./_harness";
 
@@ -32,6 +34,7 @@ describe('#86 "Miss" Mrow — base', () => {
 
     // §8 Conventions: `Can't attack` is printed on the base face, read as a §10.4 layer-1 keyword
     // by `combat.ts`, so the script contributes nothing to this clause.
+    expect(keywordsOf(s.state, s.card(MROW))).toEqual([{ kind: "Can't attack" }]);
     expect(() => s.attack(MROW, "hero")).toThrow(/cannot attack/);
     expect(() => s.attack(MROW, GARY)).toThrow(/cannot attack/);
   });
@@ -138,7 +141,7 @@ describe('#86 "Miss" Mrow — base', () => {
 });
 
 describe('#86 "Miss" Mrow — radiant', () => {
-  it("may attack: the radiant face prints no keywords, so nothing refuses the declaration", () => {
+  it("R275 may attack: the radiant face prints Taunt and not `Can't attack`", () => {
     const s = scenario({
       seed: SEED,
       p1: { hand: [FILLER], field: [{ def: MROW, radiant: true }] },
@@ -146,10 +149,42 @@ describe('#86 "Miss" Mrow — radiant', () => {
     });
 
     // §8 Conventions: a radiant cell listing keywords without "Plus" gives the COMPLETE list, and
-    // #86's radiant face lists none — so "Can attack" is the absence of the base keyword.
+    // #86's radiant face lists Taunt alone — so the base face's `Can't attack` is gone.
+    expect(keywordsOf(s.state, s.card(MROW))).toEqual([{ kind: "Taunt" }]);
     s.expectStats(MROW, { attack: 2, maxHealth: 2 });
     s.attack(MROW, "hero");
     s.expectHealth("p2", 28).expectEvents("attackDeclared", "damage");
+  });
+
+  it("R275 Taunt: an enemy attack must target the radiant Mrow first (§4.2 step 3)", () => {
+    const s = scenario({
+      seed: SEED,
+      active: "p2",
+      p1: { hand: [FILLER], field: [{ def: MROW, radiant: true, lane: 1 }, { def: GARY, lane: 2 }] },
+      p2: { hand: [FILLER], field: [{ def: FELINORS, lane: 1 }] },
+    });
+
+    // The wall: neither the hero nor the other unit may be the target while Mrow stands.
+    expect(() => s.attack(FELINORS, "hero")).toThrow(/Taunt/);
+    expect(() => s.attack(FELINORS, s.unit("p1", 2)!)).toThrow(/Taunt/);
+
+    // Mrow is the legal target; the 3/4 kills the 2/2 and her Death steals it.
+    s.attack(FELINORS, MROW);
+    s.expectInZone(MROW, "graveyard");
+    expect(s.unit("p1", 1)?.defId).toBe(FELINORS);
+    expect(s.unit("p1", 1)?.owner).toBe("p2");
+  });
+
+  it("the base face has no Taunt: an enemy attack may go past it to the hero", () => {
+    const s = scenario({
+      seed: SEED,
+      active: "p2",
+      p1: { hand: [FILLER], field: [{ def: MROW, lane: 1 }] },
+      p2: { hand: [FILLER], field: [{ def: FELINORS, lane: 1 }] },
+    });
+
+    s.attack(FELINORS, "hero");
+    s.expectHealth("p1", 27);
   });
 
   it('"same": the radiant Death steals every enemy unit in lane order too', () => {

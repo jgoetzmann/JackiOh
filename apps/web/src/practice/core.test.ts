@@ -561,12 +561,16 @@ function handOf(snapshot: PracticeSnapshot): string[] {
   return Array.isArray(hand) ? hand.map((card) => card.instanceId) : [];
 }
 
+/**
+ * The seeds deal player 1 a play on turn 1 in all four runs, so R82 does not end that turn before the
+ * view is read. The Radiant pass's shadow ban (R186) changed the AI's random deck and moved them.
+ */
 describe("R265 the practice mulligan: the AI answers its own at once, and the human answers before or after it", () => {
   for (const human of ["p1", "p2"] as const) {
     it(`R265 seated ${human}: the AI answers first without waiting, the human's picker stays open, and the human's answer starts the game`, { timeout: 60_000 }, () => {
       const ai = opponentOf(human);
       const d = driver();
-      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-ai-first-${human}`, humanSeat: human }) }));
+      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-ai-first-${human}-c`, humanSeat: human }) }));
       expect(started.aiToAct, "the AI owes its mulligan from the start").toBe(true);
       expect(started.view.mulligan).toEqual({ youReady: false, opponentReady: false });
       const keep = keepAll(started);
@@ -597,7 +601,7 @@ describe("R265 the practice mulligan: the AI answers its own at once, and the hu
     it(`R265 seated ${human}: the human answers first and waits with its answer sealed, and the AI's answer starts the game`, { timeout: 60_000 }, () => {
       const ai = opponentOf(human);
       const d = driver();
-      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-human-first-${human}`, humanSeat: human }) }));
+      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-human-first-${human}-c`, humanSeat: human }) }));
       const hand = handOf(started);
       const kept = hand.slice(1);
       const sealed = snapshotOf(d.send({ type: "act", action: { type: "mulligan", keep: kept } }));

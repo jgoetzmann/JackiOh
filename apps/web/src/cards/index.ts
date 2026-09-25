@@ -4,7 +4,18 @@
 // by path and never through this barrel, so it cannot create an import cycle.
 
 export { faceModel } from "./model.ts";
-export type { FaceCost, FaceLayout, FaceModel, FaceSource, FaceStats, InPlay, StatTone } from "./model.ts";
+export type { FaceCost, FaceLayout, FaceModel, FaceSource, FaceStats, FaceText, InPlay, StatTone } from "./model.ts";
+
+// The three marks on a face's text (SPEC §10.10): the Radiant diff (R277), references (R279) and,
+// through FaceModel.values, what a formula comes to now (R280).
+export { markedText, radiantMarks } from "./radiantDiff.ts";
+export type { TextRange } from "./radiantDiff.ts";
+export { findRefs, namesOf } from "./refs.ts";
+export type { RefMatch } from "./refs.ts";
+export { CardDefsProvider, RefsInteractive, useDefResolver } from "./refContext.tsx";
+export type { DefResolver } from "./refContext.tsx";
+export { CardRef, REF_TOOLTIP_TESTID } from "./CardRef.tsx";
+export { RulesText } from "./RulesText.tsx";
 
 // What a face in play prints where play and print part ways (SPEC §10.10).
 export { CONCEALED_TAG, CONCEALED_TEXT, HEROIC_POWER_ID, POWER_WORDS, VANILLA_TEXT, concealedInPlay, powerText } from "./inPlay.ts";
@@ -23,6 +34,9 @@ export {
   FACE_ASPECT,
   FACE_TEXT_MIN_HEIGHT_PX,
   FIT_MIN,
+  REF_HOVER_DELAY_MS,
+  REF_PANEL_FACE_HEIGHT_PX,
+  REF_TOOLTIP_HEIGHT_PX,
   FIT_STEPS,
   NAME_TIER_MAX,
   TEXT_TIER_MAX,
@@ -53,6 +67,7 @@ export {
   INSPECT_GLOSSARY,
   INSPECT_HOVER,
   INSPECT_PRINTED,
+  INSPECT_REFS,
   INSPECT_LIST_BACK,
   INSPECT_LIST_CARD,
   INSPECT_LIST_COUNT,

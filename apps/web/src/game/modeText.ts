@@ -53,11 +53,12 @@ export const MODE_TEXT: Readonly<Record<string, Readonly<Record<string, ModeText
  * missing here reads the same on both faces.
  */
 export const RADIANT_MODE_TEXT: Readonly<Record<string, Readonly<Record<string, ModeText>>>> = {
-  // #24 Efficiency Dividend, radiant: "Uses X+1" (§8 #24), for every mode.
+  // #24 Efficiency Dividend, radiant: "deal 2X damage to a target; heal a target 4X; gain X mana
+  // next turn" (§8 #24, R275), every mode doubled.
   "core-024": {
-    damage: { label: "Deal X+1 damage", detail: "Deal X+1 damage to a target." },
-    heal: { label: "Heal 2(X+1)", detail: "Heal a target by twice X+1." },
-    mana: { label: "Mana next turn", detail: "Gain half of X+1, rounded down, as mana next turn." },
+    damage: { label: "Deal 2X damage", detail: "Deal twice X damage to a target." },
+    heal: { label: "Heal 4X", detail: "Heal a target by four times X." },
+    mana: { label: "Mana next turn", detail: "Gain X mana next turn." },
   },
 };
 

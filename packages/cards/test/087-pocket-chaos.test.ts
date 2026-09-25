@@ -1,6 +1,8 @@
 // #87 Pocket Chaos (SPEC §8.5, BUILD M4-T4 row 87): "Health swap, lane-preserving board swap
 // including face-down traps with locks staying put, library swap that transfers ownership of the
-// swapped cards (R73); opponent gains a Pocket Chaos; exiled; radiant may skip the gift".
+// swapped cards (R73); opponent gains a Pocket Chaos; exiled; radiant may skip the gift". R275 adds a
+// draw to the radiant face: "…; then you may add a Pocket Chaos to the opponent's hand; draw 1;
+// exile this".
 
 import { describe, expect, it } from "vitest";
 import { isLocked, lockZone } from "@jackioh/engine";
@@ -76,6 +78,20 @@ describe("#87 Pocket Chaos — base", () => {
     // §8.5: "exile this". The play pipeline must not then send it on to the graveyard.
     s.expectInZone(self, "exile").expectEvents("swapped", "addedToHand", "exiled");
     expect(s.state.counters.exiled).toBe(1);
+  });
+
+  it("the base face draws nothing: the draw is the radiant face's", () => {
+    const s = scenario({
+      seed: SEED,
+      p1: { hand: [CHAOS, FILLER], library: [GARY, RENO] },
+      p2: { hand: [FILLER] },
+    });
+
+    s.play(CHAOS, { modes: ["health"] });
+
+    expect(s.events.some((event) => event.type === "drawn")).toBe(false);
+    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([GARY, RENO]);
+    expect(s.hand("p1").map((card) => card.defId)).toEqual([FILLER]);
   });
 
   it("R73 swaps the board lane by lane in both rows: control changes, ownership does not", () => {
@@ -200,10 +216,10 @@ describe("#87 Pocket Chaos — base", () => {
 });
 
 describe("#87 Pocket Chaos — radiant", () => {
-  it("may skip adding it: the swap and the exile still happen, the opponent gains nothing", () => {
+  it("may skip adding it: the swap, the draw and the exile still happen, the opponent gains nothing", () => {
     const s = scenario({
       seed: SEED,
-      p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], health: 12 },
+      p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], health: 12, library: [GARY] },
       p2: { hand: [FILLER], health: 25 },
     });
     const self = s.card(CHAOS);
@@ -212,14 +228,33 @@ describe("#87 Pocket Chaos — radiant", () => {
 
     s.expectHealth("p1", 25).expectHealth("p2", 12);
     expect(s.hand("p2").filter((card) => card.defId === CHAOS)).toHaveLength(0);
+    expect(s.hand("p1").map((card) => card.defId)).toEqual([FILLER, GARY]);
+    s.expectInZone(self, "exile").expectEvents("swapped", "drawn", "exiled");
+  });
+
+  it("R275 draw 1 comes after the gift and before the exile", () => {
+    const s = scenario({
+      seed: SEED,
+      p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], library: [GARY, RENO] },
+      p2: { hand: [FILLER] },
+    });
+    const self = s.card(CHAOS);
+
+    s.play(self, { modes: ["health", "gift"] });
+
+    s.expectEvents("swapped", "addedToHand", "drawn", "exiled");
+    // Exactly one card: the top of the caster's library.
+    expect(s.events.filter((event) => event.type === "drawn")).toHaveLength(1);
+    expect(s.hand("p1").map((card) => card.defId)).toEqual([FILLER, GARY]);
+    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([RENO]);
     s.expectInZone(self, "exile");
   });
 
-  it('"gift" is still an option, and the radiant copy hands over a base one', () => {
+  it('"gift" is still an option, the radiant copy hands over a base one, and the draw is from the swapped library', () => {
     const s = scenario({
       seed: SEED,
       p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], library: [GARY] },
-      p2: { hand: [FILLER], library: [RENO] },
+      p2: { hand: [FILLER], library: [RENO, POSTDOC] },
     });
     const self = s.card(CHAOS);
 
@@ -230,14 +265,23 @@ describe("#87 Pocket Chaos — radiant", () => {
     // R57's "a copy carries the radiant flag" is about copies of an existing card; the gift is a
     // fresh card, and neither #87's text nor its radiant cell makes it Radiant.
     expect(gifts[0]?.radiant).toBe(false);
-    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([RENO]);
+    // R73: the libraries swapped first, so the draw takes the top of what was p2's library, and the
+    // drawn card is p1's now (R12's exception).
+    const drawn = s.hand("p1").find((card) => card.defId === RENO);
+    expect(drawn?.owner).toBe("p1");
+    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([POSTDOC]);
+    expect(s.pile("p2", "library").map((card) => card.defId)).toEqual([GARY]);
     s.expectInZone(self, "exile");
   });
 
   it("skipping the gift does not skip the board swap either", () => {
     const s = scenario({
       seed: SEED,
-      p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], field: [{ def: GARY, lane: 2 }] },
+      p1: {
+        hand: [{ def: CHAOS, radiant: true }, FILLER],
+        field: [{ def: GARY, lane: 2 }],
+        library: [RENO],
+      },
       p2: { hand: [FILLER] },
     });
     const self = s.card(CHAOS);
@@ -248,5 +292,20 @@ describe("#87 Pocket Chaos — radiant", () => {
     expect(s.unit("p2", 2)?.id).toBe(gary.id);
     expect(s.card(gary).controller).toBe("p2");
     expect(s.hand("p2").filter((card) => card.defId === CHAOS)).toHaveLength(0);
+    // The draw is still the caster's, board swap or not.
+    expect(s.hand("p1").map((card) => card.defId)).toEqual([FILLER, RENO]);
+  });
+
+  it("§2.4 an empty library makes the radiant draw a fatigue hit", () => {
+    const s = scenario({
+      seed: SEED,
+      p1: { hand: [{ def: CHAOS, radiant: true }, FILLER], health: 12 },
+      p2: { hand: [FILLER], health: 25 },
+    });
+
+    s.play(CHAOS, { modes: ["health", "skip"] });
+
+    // Health swapped to 25, then the first fatigue draw deals 1.
+    s.expectHealth("p1", 24).expectHealth("p2", 12);
   });
 });

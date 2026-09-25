@@ -1,6 +1,6 @@
 -- R254's input: a loadout saved the way the server saved one before migration 0007.
 --
--- run.sh applies this AFTER migrations 0001-0006 and BEFORE 0007-0009, which is the moment a
+-- run.sh applies this AFTER migrations 0001-0006 and BEFORE 0007-0010, which is the moment a
 -- real database that predates the decks meets 0007: its loadouts exist, public.decks does not.
 -- 0007's data migration then turns this loadout into three decks and one trio, and
 -- 04_decks_and_series.sql checks what it made.

@@ -5,6 +5,7 @@
 //                        virus is radiant".
 // BUILD M4-T4 row 90.1: "On draw: 1 damage through the pipeline (Going Long reduces it), 2 copies
 //                        shuffled, draw again; a chain stops at 20 casts (R58); radiant 3 copies".
+//                        R275 scales the radiant face's damage too: "take 2 damage; 3 copies".
 //
 // The two cards are tested in one file because #90's whole effect is to hand #90.1 to the OTHER
 // player: ownership (R12) is what makes the token's cast-on-draw chain run on the opponent's draws
@@ -180,7 +181,7 @@ describe("#90 CN-Viral Injection — radiant", () => {
     expect(s.state.players.p2.library).toHaveLength(5);
   });
 
-  it("the Radiant virus runs its radiant face when drawn, shuffling 3 copies instead of 2", () => {
+  it("the Radiant virus runs its radiant face when drawn: 2 damage and 3 copies instead of 1 and 2", () => {
     // The virus sits on top of its owner's library, so the very next draw casts it.
     const s = scenario({
       seed: "core-090-radiant-face",
@@ -194,6 +195,10 @@ describe("#90 CN-Viral Injection — radiant", () => {
     const copies = shuffledIn(s, "p1").filter((event) => event.defId === VIRUS);
     expect(copies.length).toBeGreaterThanOrEqual(3);
     expect(s.state.players.p1.library.filter((card) => card.defId === VIRUS).every((c) => c.radiant)).toBe(true);
+    // Every cast in the chain is a radiant face, so every hit is 2.
+    const hits = damageTo(s, "hero-p1");
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+    expect(hits.every((amount) => amount === 2)).toBe(true);
   });
 });
 
@@ -346,7 +351,7 @@ describe("#90.1 CN-Virus — cast on draw (R58, R70)", () => {
 });
 
 describe("#90.1 CN-Virus — radiant", () => {
-  it('"3 copies": only the number changes (§8 Conventions)', () => {
+  it('R275 "take 2 damage; 3 copies": both numbers scale on the radiant face', () => {
     const s = scenario({
       seed: "core-090-1-radiant-cry",
       p1: { hand: [{ def: VIRUS, radiant: true }, "core-005"], library: filler(3) },
@@ -356,15 +361,32 @@ describe("#90.1 CN-Virus — radiant", () => {
     s.play(VIRUS);
 
     expect(shuffledIn(s, "p1").filter((e) => e.defId === VIRUS)).toHaveLength(3);
-    // The damage clause is untouched by the radiant cell.
+    s.expectHealth("p1", 28);
+    expect(damageTo(s, "hero-p1")).toEqual([2]);
+    s.expectHealth("p2", 30);
+  });
+
+  it("§4.4 the radiant 2 is one damage instance: 1 Armor leaves 1, and the copies still land", () => {
+    const s = scenario({
+      seed: "core-090-1-radiant-armor",
+      p1: { hand: [{ def: VIRUS, radiant: true }, "core-005"], library: filler(3), armor: 1 },
+      p2: { hand: ["core-005"] },
+    });
+
+    s.play(VIRUS);
+
     s.expectHealth("p1", 29);
     expect(damageTo(s, "hero-p1")).toEqual([1]);
+    expect(shuffledIn(s, "p1").filter((e) => e.defId === VIRUS)).toHaveLength(3);
   });
 
   it("R57 a Radiant virus breeds Radiant viruses, so the whole chain stays radiant", () => {
+    // 20 casts of 2 is 40, more than a 30-health hero has, so the hero starts higher to let R58's
+    // cap be what stops the chain here (the lethal chain is the next test).
+    const HEALTH = 50;
     const s = scenario({
       seed: "core-090-1-radiant-chain",
-      p1: { library: [{ def: VIRUS, radiant: true }], hand: [] },
+      p1: { library: [{ def: VIRUS, radiant: true }], hand: [], health: HEALTH },
       p2: { hand: ["core-005"] },
     });
 
@@ -372,12 +394,25 @@ describe("#90.1 CN-Virus — radiant", () => {
 
     // 3 copies per cast for all 20 casts: every drawn copy ran the radiant face, not the base one.
     expect(shuffledIn(s, "p1").filter((e) => e.defId === VIRUS)).toHaveLength(CHAIN_CAP * 3);
-    expect(damageTo(s, "hero-p1")).toHaveLength(CHAIN_CAP);
-    s.expectHealth("p1", 30 - CHAIN_CAP);
+    expect(damageTo(s, "hero-p1")).toEqual(Array.from({ length: CHAIN_CAP }, () => 2));
+    s.expectHealth("p1", HEALTH - CHAIN_CAP * 2);
     // 1 + 3·20 created, 21 drawn.
     expect(s.state.players.p1.library).toHaveLength(1 + CHAIN_CAP * 3 - (CHAIN_CAP + 1));
     expect(s.state.players.p1.library.every((card) => card.radiant)).toBe(true);
     expect(s.hand("p1")[0]?.radiant).toBe(true);
+  });
+
+  it("§2.5, R59 a radiant chain on a 30-health hero is lethal before R58's cap: 15 casts of 2", () => {
+    const s = scenario({
+      seed: "core-090-1-radiant-lethal",
+      p1: { library: [{ def: VIRUS, radiant: true }], hand: [] },
+      p2: { hand: ["core-005"] },
+    });
+
+    s.startTurn();
+
+    expect(damageTo(s, "hero-p1")).toEqual(Array.from({ length: 30 / 2 }, () => 2));
+    expect(s.state.result?.winner).toBe("p2");
   });
 });
 

@@ -62,7 +62,7 @@ describe("#16 Hit Job (base)", () => {
     s.play("core-016", { targets: aim(survivor) });
 
     s.expectInZone(survivor, "field");
-    s.expectStats(survivor, { attack: 7, health: 7, maxHealth: 7 });
+    s.expectStats(survivor, { attack: 14, health: 14, maxHealth: 14 });
   });
 
   it("destroys an ally as readily as an enemy: \"target unit\" is narrowed to neither side", () => {

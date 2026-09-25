@@ -1311,7 +1311,8 @@ describe("SPEC §11 rulings R43–R84 (M3 gate)", () => {
     const generated = state.players.p1.hand.find((card) => card.id !== held.id);
     expect(generated?.radiant).toBe(true);
 
-    // A card with no radiant form is unchanged, but the flag still sets.
+    // A definition whose radiant face is its base face is unchanged, but the flag still sets. No
+    // Core card is one any more (R276); the engine still reads such a face, as this fixture shows.
     const formless = put(state, sameFace.id, slot("p1", "units", 2));
     applyEffects([setRadiant({ instanceId: formless.id })], ctx);
     expect(formless.radiant).toBe(true);

@@ -34,6 +34,8 @@ export const FILTER_TAGS: readonly Tag[] = [
   "Fruit",
   "Call to Chaos",
   "Quickdraw",
+  // R278: #13 and #14's.
+  "Jlockeed",
 ];
 
 export const FILTER_RARITIES: readonly Rarity[] = ["Common", "Rare", "Epic", "Legendary", "Mythic"];

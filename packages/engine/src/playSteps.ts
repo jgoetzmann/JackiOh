@@ -25,6 +25,7 @@
 import type { ActionBody, PlayerId, Selection } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import { defOf } from "./catalog";
+import { QUICKSTRIKER_COMBO_MULTIPLE } from "./config";
 import { dealDamage } from "./damage";
 import { draw } from "./draw";
 import {
@@ -754,50 +755,58 @@ function stillResolving(state: GameState, run: PlayRun): CardInstance | null {
 }
 
 /**
- * How many times #38 Quickstriker's lasting effect (`staticFlags.quickstriker`) is granted from this
- * player's side of the field: once per Quickstriker, and a card fused from two carries both (R102).
+ * #38 Quickstriker's lasting effect (`staticFlags.quickstriker`) as it is granted from this player's
+ * side of the field: one entry per grant, each the multiple of X that grant deals as one hit — its
+ * granting card's own face's (`QUICKSTRIKER_COMBO_MULTIPLE`, R281), so a base and a Radiant
+ * Quickstriker give `[1, 2]`, and a card fused from two carries both texts at its one face (R102).
  * The played card is never one of them: a permanent does not answer its own arrival (R119), and a
  * Quickstriker being played is on the field by step 5. Nor is one that arrived on the field during
  * the play (`arrivedDuring`): a copy a tributed Cube's Death summoned at step 2, one #95's first
  * resolution summoned, met again by the Echo repeat of that same play (R119).
  */
-function quickstrikerGrants(state: GameState, run: PlayRun, played: CardInstance): number {
+function quickstrikerGrants(state: GameState, run: PlayRun, played: CardInstance): number[] {
   const arrived = new Set(arrivedDuring(state, run));
-  let grants = 0;
+  const multiples: number[] = [];
   for (const row of ["units", "backrow"] as const) {
     for (const ref of slotsOf(run.player, row)) {
       const held = cardAt(state, ref);
       if (held === null || held.id === played.id || arrived.has(held.id)) continue;
       const flag = flagsOf(held).quickstriker;
-      grants += flag === true ? 1 : typeof flag === "number" ? Math.max(0, Math.trunc(flag)) : 0;
+      const grants = flag === true ? 1 : typeof flag === "number" ? Math.max(0, Math.trunc(flag)) : 0;
+      const multiple = QUICKSTRIKER_COMBO_MULTIPLE[held.radiant ? "radiant" : "base"];
+      for (let grant = 0; grant < grants; grant += 1) multiples.push(multiple);
     }
   }
-  return grants;
+  return multiples;
 }
 
 /**
  * #38 Quickstriker: "your cards gain 'Combo X: deal X damage to the enemy hero', X = cards you
- * played earlier this turn" — one of the two granted Combo parts §10.5 step 5 resolves before the
- * card's own script. It is the Field Spell's lasting effect, so it is read off the permanents on the
- * field now (one hit per Quickstriker) rather than from a trigger on `cardPlayed`, which popped
- * whenever that event was dispatched: a cast's events wait for the loop of the effect that cast it
- * (R70), so a cast-on-draw chain of two read the count after the chain, 1 and 1, instead of 0 and 1.
- * A `quickstrikerDamage` modifier counts the same way.
+ * played earlier this turn" (radiant 2X) — one of the two granted Combo parts §10.5 step 5 resolves
+ * before the card's own script. It is the Field Spell's lasting effect, so it is read off the
+ * permanents on the field now (one hit per grant) rather than from a trigger on `cardPlayed`, which
+ * popped whenever that event was dispatched: a cast's events wait for the loop of the effect that
+ * cast it (R70), so a cast-on-draw chain of two read the count after the chain, 1 and 1, instead of
+ * 0 and 1. R281: each grant's hit is X times its face's multiple, dealt as ONE damage instance
+ * (§4.4), so Armor and the Anti-oneshot cap apply to a Radiant one's 2X once; the grants go in board
+ * order, each its own hit. A `quickstrikerDamage` modifier counts as one more grant of X.
  */
 function quickstrikerCombo(sink: EngineSink, run: PlayRun, card: CardInstance): void {
   const state = sink.state;
   const amount = playedEarlierThisTurn(state, run);
   if (amount <= 0) return;
-  const grants =
-    quickstrikerGrants(state, run, card) +
-    state.players[run.player].mods.filter(
-      (mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod) && inPlaceBefore(run, mod.id),
-    ).length;
-  for (let hit = 0; hit < grants; hit += 1) {
+  const riders = state.players[run.player].mods.filter(
+    (mod) => mod.kind === "quickstrikerDamage" && modifierIsLive(state, mod) && inPlaceBefore(run, mod.id),
+  ).length;
+  const multiples = [
+    ...quickstrikerGrants(state, run, card),
+    ...Array.from({ length: riders }, () => QUICKSTRIKER_COMBO_MULTIPLE.base),
+  ];
+  for (const multiple of multiples) {
     dealDamage(sink, {
       source: card,
       target: { kind: "hero", player: opponentOf(run.player) },
-      amount,
+      amount: amount * multiple,
     });
   }
 }

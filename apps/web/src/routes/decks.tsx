@@ -33,6 +33,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import type { CatalogSnapshot, Collection } from "@jackioh/validator";
 
+import { CardDefsProvider } from "../cards/index.ts";
 import DeckWorkshop from "../game/deckbuilder/DeckWorkshop.tsx";
 import { collectionFrom } from "../game/deckbuilder/loadout.ts";
 import type { DeckSyncApi } from "../game/deckbuilder/sync.ts";
@@ -203,15 +204,18 @@ export default function DecksRoute() {
     );
   }
 
+  // R279: a reference in a card's text shows the card the catalog names.
   return (
-    <DeckWorkshop
-      // One store per profile: another account signing in on this device gets its own mirror.
-      key={screen.profileId}
-      catalog={screen.data.catalog}
-      collection={screen.data.collection}
-      data={screen.data.decks}
-      profileId={screen.profileId}
-      api={api}
-    />
+    <CardDefsProvider defs={screen.data.catalog.cards}>
+      <DeckWorkshop
+        // One store per profile: another account signing in on this device gets its own mirror.
+        key={screen.profileId}
+        catalog={screen.data.catalog}
+        collection={screen.data.collection}
+        data={screen.data.decks}
+        profileId={screen.profileId}
+        api={api}
+      />
+    </CardDefsProvider>
   );
 }

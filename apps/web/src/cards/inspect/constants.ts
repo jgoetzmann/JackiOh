@@ -22,6 +22,11 @@ export const PREVIEW_MAX_VIEWPORT_SHARE = 0.8;
 export const PREVIEW_GLOSSARY_WIDTH_PX = 240;
 /** Space between the preview card and its glossary. Mirrors `.inspect-hover`'s `gap`. */
 export const PREVIEW_GLOSSARY_GAP_PX = 10;
+/**
+ * R279: the preview's column of the cards a face's text names, one face under another at
+ * REF_PANEL_FACE_HEIGHT_PX, with the panel's padding. Mirrors `.inspect-hover .inspect-refs`.
+ */
+export const PREVIEW_REFS_WIDTH_PX = 170;
 
 /** A pile's hover preview (CardList.tsx) shows at most this many faces, newest first; the sheet shows them all. */
 export const LIST_PREVIEW_MAX = 8;

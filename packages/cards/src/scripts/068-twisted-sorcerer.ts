@@ -1,8 +1,10 @@
 // #68 Twisted Sorcerer (SPEC §8.3, §4.4, §10.9, R75, R81, R90).
 //
-// Base cell: "Cry: deal 4 damage to a target, 8 if your hero is below 10". Radiant cell: "6, or 12"
-// — a cell that changes only numbers changes only those numbers (§8 Conventions), so the target,
-// the threshold and "your hero" are all kept and only the two amounts move.
+// Base cell: "Cry: deal 4 damage to a target, 8 if your hero is below 10". Radiant: "Cry: deal 8
+// damage to a target, 16 if your hero is below 10" — the §8 cell "8, or 16", which R275 doubled from
+// "6, or 12" to meet the standard. A cell that changes only numbers changes only those numbers (§8
+// Conventions), so the target, the threshold and "your hero" are all kept and only the two amounts
+// move.
 //
 // R75 and §5.3: the source list prints this card as "Spell, Unit"; it is a Unit, which is why the
 // script hangs off `cry` as a unit's Cry rather than as a spell's on-resolve hook.
@@ -74,6 +76,14 @@ function sorcerer(low: number, high: number): Script {
   };
 }
 
-export const base: Script = sorcerer(4, 8);
+/** Base: "deal 4 damage …, 8 if your hero is below 10". */
+const BASE_DAMAGE = 4;
+const BASE_LOW_DAMAGE = 8;
 
-export const radiant: Script = sorcerer(6, 12);
+/** Radiant: "deal 8 damage …, 16 if your hero is below 10" (R275). */
+const RADIANT_DAMAGE = 8;
+const RADIANT_LOW_DAMAGE = 16;
+
+export const base: Script = sorcerer(BASE_DAMAGE, BASE_LOW_DAMAGE);
+
+export const radiant: Script = sorcerer(RADIANT_DAMAGE, RADIANT_LOW_DAMAGE);

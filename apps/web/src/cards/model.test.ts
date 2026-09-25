@@ -7,12 +7,12 @@
 import { describe, expect, it } from "vitest";
 
 import { CATALOG } from "@jackioh/cards";
-import { KEYWORD_KINDS, type CardDef, type CardFace } from "@jackioh/shared";
+import type { CardDef, CardFace } from "@jackioh/shared";
 
 import { fusedDef } from "../test/fixtures.ts";
 import { CONCEALED_TEXT, VANILLA_TEXT } from "./inPlay.ts";
 import { faceModel, type FaceModel, type FaceSource } from "./model.ts";
-import { splitKeywordLine } from "./radiantText.ts";
+import { markedText } from "./radiantDiff.ts";
 import { termsIn } from "./rules.ts";
 
 const DEFS: readonly CardDef[] = Object.values(CATALOG);
@@ -54,43 +54,54 @@ describe("B7: faceModel copies the def and picks the face", () => {
     });
     expect(f.stats).toEqual({ attack: 7, health: 2, maxHealth: 2, attackTone: "base", healthTone: "base" });
     expect(f.keywords).toEqual([{ kind: "First Strike" }]);
-    expect(f.text).toEqual({ base: "First Strike", radiant: null });
+    expect(f.text).toEqual({ full: "First Strike", marks: [] });
   });
 
   it("B7 a radiant face takes stats and keywords from def.radiant, and its keyword list replaces the base one", () => {
     const f = face("core-011", true);
     expect(f.radiant).toBe(true);
-    expect(f.stats).toEqual({ attack: 6, health: 6, maxHealth: 6, attackTone: "base", healthTone: "base" });
+    expect(f.stats).toEqual({
+      attack: 6,
+      health: 6,
+      maxHealth: 6,
+      attackTone: "base",
+      healthTone: "base",
+      grew: { attack: true, health: true },
+    });
     expect(f.keywords).toEqual([{ kind: "Charge" }, { kind: "First Strike" }]);
-    // §8: "a cell that lists keywords without 'Plus' gives the radiant form's complete keyword
-    // list", so base's Rush is not printed on the radiant face.
-    expect(f.text).toEqual({ base: "Charge, First Strike", radiant: null });
+    // The catalog prints the radiant face whole, so base's Rush is not printed on it (R277).
+    expect(f.text.full).toBe("Charge, First Strike");
+    expect(markedText(f.text.full, f.text.marks)).toEqual(["Charge"]);
   });
 
-  it("B7 a base face never carries a radiant clause, even when the radiant cell differs", () => {
+  it("B7 a base face prints its base text and marks nothing, even when the radiant text differs", () => {
     const f = face("core-002", false);
     expect(def("core-002").radiant.text).not.toBe(def("core-002").base.text);
-    expect(f.text).toEqual({ base: "Cry: destroy target enemy non-Human unit", radiant: null });
+    expect(f.text).toEqual({ full: "Cry: destroy target enemy non-Human unit", marks: [] });
   });
 
-  it("B7 the radiant clause is null when the radiant cell equals the base text (core-008)", () => {
+  it("R277 a radiant face that adds a keyword marks just the keyword (core-008)", () => {
     const f = face("core-008", true);
-    expect(f.text).toEqual({ base: "Immutable", radiant: null });
+    expect(f.text.full).toBe("Immutable, Divine Shield");
+    expect(markedText(f.text.full, f.text.marks)).toEqual(["Divine Shield"]);
     // Stats still come from the radiant face.
     expect(f.stats?.attack).toBe(7);
     expect(f.stats?.maxHealth).toBe(7);
   });
 
-  it("B7 the radiant clause is null when the radiant cell is empty (core-t-felinor)", () => {
+  it("R277 a face whose base text is empty marks the whole radiant text (core-t-felinor, core-t-bread)", () => {
     const f = face("core-t-felinor", true);
-    expect(f.text).toEqual({ base: "", radiant: null });
-    expect(f.stats).toEqual({ attack: 2, health: 2, maxHealth: 2, attackTone: "base", healthTone: "base" });
-  });
-
-  it("B7 an empty base text does not suppress a non-empty radiant cell (core-t-bread)", () => {
-    // The cell is a keyword line, so it prints as the radiant form's keyword line.
-    expect(face("core-t-bread", true).text).toEqual({ base: "Armor X", radiant: null });
-    expect(face("core-t-bread", false).text).toEqual({ base: "", radiant: null });
+    expect(f.text).toEqual({ full: "Rush", marks: [{ start: 0, end: 4 }] });
+    expect(f.stats).toEqual({
+      attack: 2,
+      health: 2,
+      maxHealth: 2,
+      attackTone: "base",
+      healthTone: "base",
+      grew: { attack: true, health: true },
+    });
+    expect(face("core-t-bread", true).text).toEqual({ full: "Armor X", marks: [{ start: 0, end: 7 }] });
+    expect(face("core-t-bread", false).text).toEqual({ full: "", marks: [] });
   });
 
   it("B7 every catalog card, both faces: identity copied from the def, keywords and stats from the printed face", () => {
@@ -110,10 +121,9 @@ describe("B7: faceModel copies the def and picks the face", () => {
         expect(f.set, where).toBe(card.set);
         expect(f.radiant, where).toBe(radiant);
         expect(f.keywords, where).toEqual(shown.keywords);
-        // A base face prints its text; a radiant face's reading is the "Radiant text" block below.
-        if (!radiant) expect(f.text, where).toEqual({ base: card.base.text, radiant: null });
-        const unchanged = card.radiant.text === "" || card.radiant.text === card.base.text;
-        if (radiant && unchanged) expect(f.text, where).toEqual({ base: card.base.text, radiant: null });
+        // Each face prints its own catalog text whole; only a radiant face marks anything (R277).
+        expect(f.text.full, where).toBe(shown.text);
+        if (!radiant) expect(f.text.marks, where).toEqual([]);
 
         if (card.type === "Unit") {
           expect(f.stats, where).toEqual({
@@ -122,6 +132,14 @@ describe("B7: faceModel copies the def and picks the face", () => {
             maxHealth: shown.health,
             attackTone: "base",
             healthTone: "base",
+            ...(radiant
+              ? {
+                  grew: {
+                    attack: (card.radiant.attack ?? 0) > (card.base.attack ?? 0),
+                    health: (card.radiant.health ?? 0) > (card.base.health ?? 0),
+                  },
+                }
+              : {}),
           });
         } else {
           expect(f.stats, where).toBeNull();
@@ -164,7 +182,7 @@ describe("B7: faceModel copies the def and picks the face", () => {
     expect(f.set).toBeNull();
     expect(f.stats).toBeNull();
     expect(f.keywords).toEqual([]);
-    expect(f.text.radiant).toBeNull();
+    expect(f.text).toEqual({ full: "", marks: [] });
   });
 
   it("B7 with a def present, the def's name wins over the CardInfo name fallback", () => {
@@ -176,144 +194,61 @@ describe("B7: faceModel copies the def and picks the face", () => {
 
 /* ------------------------------------------------------------------------------ Radiant text */
 
-// SPEC §8's reading rule for a Radiant cell: "a cell that lists keywords without 'Plus' gives the
-// radiant form's complete keyword list; 'Plus X' adds keyword X to the base keywords; a cell that
-// names no keywords keeps the base keywords. A clause the cell restates replaces the base version
-// and every base clause it does not restate is kept". A radiant face prints that reading, never
-// the base text and the whole cell one after the other.
+// R277: the catalog carries each Radiant face's whole text (§8's cell read by its Conventions and
+// written out), and a radiant face prints it as it stands, marking the stretches the base face's
+// text does not have (radiantDiff.ts). These pin the reading on real cards; radiantDiff.test.ts
+// proves the diff itself.
 
-/** Everything a face prints in its rules box, as one string. */
-function printedText(f: FaceModel): string {
-  return f.text.radiant === null ? f.text.base : `${f.text.base} ${f.text.radiant}`;
+function marksOf(id: string): string[] {
+  const f = face(id, true);
+  return markedText(f.text.full, f.text.marks);
 }
 
-/** The §6.1 keyword kinds a text's opening keyword line names ("Charge, Taunt; …" → Charge, Taunt). */
-function keywordLineKinds(text: string): string[] {
-  return splitKeywordLine(text)
-    .terms.map((term) => term.term)
-    .filter((term) => (KEYWORD_KINDS as readonly string[]).includes(term));
-}
+describe("R277: a Radiant face prints its whole text and marks what differs from the base", () => {
+  it("R277 a changed number is the only mark (core-044, core-053, core-013, core-047)", () => {
+    expect(face("core-044", true).text.full).toBe("Deal 9 damage to a target, ignoring Armor; exile this");
+    expect(marksOf("core-044")).toEqual(["9"]);
+    expect(marksOf("core-053")).toEqual(["60", "60"]);
+    expect(marksOf("core-013")).toEqual(["5"]);
+    expect(marksOf("core-047")).toEqual(["50"]);
+  });
 
-describe("B7: a Radiant face reads its cell by SPEC §8's rule", () => {
-  it("B7 a keyword list without Plus is the complete list: base keywords it drops are not printed (core-056, core-025, core-011)", () => {
+  it("R277 a keyword line prints the radiant form's whole list and marks what it adds (core-056, core-055, core-019)", () => {
     const jilliax = face("core-056", true);
-    expect(jilliax.text).toEqual({ base: "Charge, Taunt, Lifesteal, Indestructible", radiant: null });
-    expect(printedText(jilliax)).not.toMatch(/Rush|Divine Shield/);
-    expect(face("core-025", true).text).toEqual({ base: "Indestructible", radiant: null });
-    expect(printedText(face("core-025", true))).not.toContain("Armor 7");
-    expect(face("core-011", true).text).toEqual({ base: "Charge, First Strike", radiant: null });
+    expect(jilliax.text.full).toBe("Charge, Taunt, Lifesteal, Indestructible");
+    expect(jilliax.text.full).not.toMatch(/Rush|Divine Shield/);
+    expect(marksOf("core-056")).toEqual(["Charge", "Indestructible"]);
+    expect(marksOf("core-055")).toEqual(["Indestructible"]);
+    expect(marksOf("core-019")).toEqual(["Immutable"]);
   });
 
-  it("B7 a keyword line with more to say keeps the base clauses after it (core-019, core-045, core-092, core-009, core-050)", () => {
-    expect(face("core-019", true).text).toEqual({ base: "Taunt, Immutable; End of turn: heal to full", radiant: null });
-    expect(face("core-045", true).text).toEqual({
-      base: "Charge, Armor 1; may attack and switch position in the same turn",
-      radiant: null,
-    });
-    expect(face("core-092", true).text.base).toMatch(/^Stack, Charge\. Stats = printed plus/);
-    // A base text with no keyword line gains one at the front.
-    expect(face("core-009", true).text).toEqual({ base: "Armor 1. Start of turn: every enemy unit attacks this", radiant: null });
-    expect(face("core-050", true).text.base).toMatch(/^Divine Shield\. Cry: choose an enemy permanent/);
+  it("R277 an added clause is marked as one phrase (core-003, core-016, core-093)", () => {
+    expect(marksOf("core-003")).toEqual(["Death: summon a base Right-house defender"]);
+    expect(marksOf("core-016")).toEqual(["and the units adjacent to it on its side"]);
+    expect(marksOf("core-093")).toEqual(["Start of turn: add a Combo-Fodder to your hand"]);
   });
 
-  it("B7 Plus adds to the base keywords (core-055, core-066, core-100)", () => {
-    expect(face("core-055", true).text).toEqual({ base: "Tribute 3, Armor 3, Taunt, Indestructible; may tribute enemy units", radiant: null });
-    expect(face("core-066", true).text).toEqual({ base: "Tribute 1, Indestructible, Immutable", radiant: null });
-    expect(face("core-100", true).text.base).toMatch(/^Charge\. Cry: exile all other permanents/);
-    expect(face("core-100", true).text.radiant).toBeNull();
+  it("R277 a word the radiant face drops is simply absent, and case alone marks nothing (core-067, core-017)", () => {
+    expect(face("core-067", true).text.full).not.toContain("1-cost");
+    expect(marksOf("core-067")).toEqual(["Radiant"]);
+    // "Bounce all units on both sides" reappears lower-case inside the radiant Choose one.
+    expect(marksOf("core-017").join(" | ")).not.toContain("bounce all units on both sides");
   });
 
-  it("B7 a cell that names no keywords drops a base keyword the radiant form lacks (core-086's Can't attack)", () => {
-    expect(def("core-086").radiant.keywords).toEqual([]);
-    const f = face("core-086", true);
-    expect(f.text).toEqual({ base: "Death: steal all enemy units", radiant: "Can attack" });
-    expect(printedText(f)).not.toContain("Can't attack");
-  });
-
-  it("B7 a restated clause replaces the base version (core-002, core-015, core-046, core-010, core-030, core-007)", () => {
-    expect(face("core-002", true).text).toEqual({ base: "", radiant: "Cry: destroy all enemy non-Human units" });
-    // Three Rush Tokens, not one and then three more.
-    expect(face("core-015", true).text).toEqual({ base: "", radiant: "Cry: summon 3 Rush Tokens" });
-    // §8 #46: the radiant form hits enemy units only.
-    expect(face("core-046", true).text).toEqual({ base: "", radiant: "Aura: enemy units −4/−4 (paid 4: −10/−10)" });
-    expect(printedText(face("core-046", true))).not.toContain("all units");
-    expect(face("core-010", true).text).toEqual({ base: "", radiant: "Combo 3: draw 6" });
-    expect(face("core-030", true).text).toEqual({ base: "", radiant: "Cry: draw both" });
-    expect(face("core-007", true).text).toEqual({ base: "", radiant: "Cry: Discover a 3-cost card; it costs 1 less" });
-  });
-
-  it("B7 a restated clause replaces only its own sentence; the others are kept (core-022, core-065-1)", () => {
-    expect(face("core-022", true).text).toEqual({
-      base: "Cry: Tribute one of your other permanents and remember it.",
-      radiant: "Death: fill your board with copies",
-    });
-    expect(face("core-065-1", true).text).toEqual({
-      base: "Cannot be in Defense Position.",
-      radiant: "Aura: your non-Spikey-Pillow units have −2 attack",
-    });
-  });
-
-  it("B7 a new clause or a changed number follows the base text (core-003, core-004, core-058, core-093)", () => {
-    expect(face("core-003", true).text).toEqual({
-      base: "Taunt, Divine Shield, Reborn",
-      radiant: "Death: summon a base Right-house defender",
-    });
-    expect(face("core-004", true).text).toEqual({
-      base: def("core-004").base.text,
-      radiant: "7 coins; +2 per heads, +2 per tails",
-    });
-    // "same" only says the rest is kept, so it is not printed.
-    expect(face("core-058", true).text).toEqual({ base: "Start of turn: summon a Rush Token", radiant: "Aura: your Rush Tokens +3/+3" });
-    expect(face("core-093", true).text.radiant).toBe("Start of turn: add a Combo-Fodder to your hand");
-    expect(face("core-093", true).text.base).toBe(def("core-093").base.text);
-  });
-
-  it("B7 a cell that is only a number changes only that number: the clause restated with it, never a stray number (core-028, core-044, core-047, core-053)", () => {
-    // Integration QA: radiant Reno printed "set it to 30", a gold rule, and then just "60".
-    expect(face("core-053", true).text).toEqual({ base: "", radiant: "Cry: if your hero is below 60, set it to 60" });
-    expect(face("core-044", true).text).toEqual({ base: "", radiant: "Deal 9 damage to a target, ignoring Armor; exile this" });
-    expect(face("core-047", true).text).toEqual({ base: "", radiant: "Heal a target 50" });
-    expect(face("core-028", true).text).toEqual({
-      base: "",
-      radiant: "5 random cards among your library, hand and field become Radiant",
-    });
-    for (const id of ["core-028", "core-044", "core-047", "core-053"]) {
-      expect(face(id, true).text.radiant, id).not.toMatch(/^\d+$/);
-    }
-  });
-
-  it("B7 'Same' alone prints the base text once (core-012), and a re-spelled token line prints once (core-t-rush)", () => {
-    expect(face("core-012", true).text).toEqual({ base: "Cry: summon a copy of this unit", radiant: null });
-    expect(face("core-t-rush", true).text).toEqual({ base: "Rush", radiant: null });
-  });
-
-  it("B7 every catalog radiant face: its keyword line names only the radiant form's keywords, and every radiant keyword is printed", () => {
+  it("R277 every catalog radiant face prints its catalog text and marks at least one stretch the base text lacks", () => {
     for (const card of DEFS) {
       const f = face(card.id, true);
-      const radiantKinds = card.radiant.keywords.map((keyword) => keyword.kind);
-      for (const kind of keywordLineKinds(f.text.base)) {
-        expect(radiantKinds, `${card.id} prints ${kind} in its keyword line`).toContain(kind);
+      expect(f.text.full, card.id).toBe(card.radiant.text);
+      if (card.radiant.text === card.base.text) {
+        expect(f.text.marks, card.id).toEqual([]);
+        continue;
       }
-      const printed = termsIn(printedText(f));
-      for (const kind of radiantKinds) {
-        expect(printed, `${card.id} never prints its radiant keyword ${kind}`).toContain(kind);
+      expect(f.text.marks.length, `${card.id} marks nothing`).toBeGreaterThan(0);
+      // Every radiant keyword is printed somewhere on the face.
+      const printed = termsIn(f.text.full);
+      for (const keyword of card.radiant.keywords) {
+        expect(printed, `${card.id} never prints its radiant keyword ${keyword.kind}`).toContain(keyword.kind);
       }
-      // A keyword only the base form has is never in the radiant face's keyword line.
-      for (const keyword of card.base.keywords) {
-        if (radiantKinds.includes(keyword.kind)) continue;
-        expect(keywordLineKinds(f.text.base), `${card.id} keeps base ${keyword.kind}`).not.toContain(keyword.kind);
-      }
-    }
-  });
-
-  it("B7 every catalog radiant face: no clause is printed twice, and a trigger the cell restates is printed once", () => {
-    for (const card of DEFS) {
-      const f = face(card.id, true);
-      if (f.text.radiant === null) continue;
-      expect(f.text.base, card.id).not.toContain(f.text.radiant);
-      const trigger = /^(Cry|Death|Aura|Combo \d+|Start of turn|End of turn):/.exec(f.text.radiant)?.[0];
-      if (trigger === undefined) continue;
-      expect(f.text.base.includes(trigger), `${card.id} prints ${trigger} in both parts`).toBe(false);
     }
   });
 });
@@ -466,7 +401,15 @@ describe("B9: faceModel stat tones", () => {
 
   it("B9 printed stats with no live numbers give base tones and health equal to max health", () => {
     const f = face("core-022", true);
-    expect(f.stats).toEqual({ attack: 8, health: 12, maxHealth: 12, attackTone: "base", healthTone: "base" });
+    // R277: a printed radiant face also says which stats it raised over the base face's.
+    expect(f.stats).toEqual({
+      attack: 8,
+      health: 12,
+      maxHealth: 12,
+      attackTone: "base",
+      healthTone: "base",
+      grew: { attack: true, health: true },
+    });
   });
 });
 
@@ -475,15 +418,15 @@ describe("B9: faceModel stat tones", () => {
 describe("a face in play is the card as the view says it stands; the collection's is the card as printed", () => {
   it("a face with no `inPlay` is the collection's: printed text, no marks, nothing held beside it", () => {
     const f = face("core-089", false);
-    expect(f).toMatchObject({ inPlay: false, vanilla: false, gained: [], printed: null });
-    expect(f.text.base).toBe(def("core-089").base.text);
+    expect(f).toMatchObject({ inPlay: false, vanilla: false, gained: [], printed: null, values: [] });
+    expect(f.text.full).toBe(def("core-089").base.text);
   });
 
   it("R243 a hand Corpse Eater shows the stats it has grown to, toned as a buff (#89)", () => {
     const f = face("core-089", false, { liveCost: 4, inPlay: { handStats: { attack: 9, health: 11 } } });
     expect(f.stats).toEqual({ attack: 9, health: 11, maxHealth: 11, attackTone: "buffed", healthTone: "buffed" });
     // Its text and keywords are still the card's own: a meal changes numbers, not words.
-    expect(f.text.base).toBe(def("core-089").base.text);
+    expect(f.text.full).toBe(def("core-089").base.text);
     expect(f.keywords).toEqual(def("core-089").base.keywords);
     expect(f.printed).toBeNull();
     // The collection's Corpse Eater is the printed 2/2.
@@ -498,35 +441,37 @@ describe("a face in play is the card as the view says it stands; the collection'
   it("R43 a Heroic Power in play prints only the power it rolled, with its X on the gem", () => {
     const f = face("core-098", false, { liveCost: 3, inPlay: { power: { name: "recruit", x: 3 } } });
     expect(f.text).toEqual({
-      base: "Indestructible. Once per turn, spend 3: Recruit a permanent. Playing it activates it once",
-      radiant: null,
+      full: "Indestructible. Once per turn, spend 3: Recruit a permanent. Playing it activates it once",
+      marks: [],
     });
     expect(f.cost).toEqual({ text: "3", value: "3", tone: "base", alt: null });
     for (const other of ["7 random powers", "Felinor Token", "Discover a Unit", "lose 2 health"]) {
-      expect(f.text.base).not.toContain(other);
+      expect(f.text.full).not.toContain(other);
     }
     // The printed list of seven is held beside it for the inspect overlays.
-    expect(f.printed).toEqual({ base: def("core-098").base.text, radiant: null });
+    expect(f.printed).toEqual({ full: def("core-098").base.text, marks: [] });
   });
 
   it("R43 a radiant Heroic Power prints its rolled power's radiant clause", () => {
     const f = face("core-098", true, { liveCost: 1, inPlay: { power: { name: "felinor", x: 1 } } });
-    expect(f.text.base).toBe("Indestructible. Once per turn, spend 1: Summon two Felinor Tokens. Playing it activates it once");
-    expect(f.printed?.radiant).not.toBeNull();
+    expect(f.text.full).toBe("Indestructible. Once per turn, spend 1: Summon two Felinor Tokens. Playing it activates it once");
+    // R277: the rolled power is marked against the same power's base words.
+    expect(markedText(f.text.full, f.text.marks)).toEqual(["two", "Tokens"]);
+    expect(f.printed?.full).toBe(def("core-098").radiant.text);
   });
 
   it("a Heroic Power in the collection keeps the list of seven and the X on its gem", () => {
     const f = face("core-098", false);
-    expect(f.text.base).toContain("gain one of 7 random powers");
+    expect(f.text.full).toContain("gain one of 7 random powers");
     expect(f.cost.text).toBe("X");
     // In play with no power named (one that has not rolled, R43), it prints the card as printed.
-    expect(face("core-098", false, { inPlay: {} }).text.base).toContain("gain one of 7 random powers");
+    expect(face("core-098", false, { inPlay: {} }).text.full).toContain("gain one of 7 random powers");
   });
 
   it("Call to Chaos reads ??? in play on both faces, and keeps no printed text beside it", () => {
     for (const radiant of [false, true]) {
       const f = face("core-095", radiant, { liveCost: 4, inPlay: {} });
-      expect(f.text, `radiant ${String(radiant)}`).toEqual({ base: CONCEALED_TEXT, radiant: null });
+      expect(f.text, `radiant ${String(radiant)}`).toEqual({ full: CONCEALED_TEXT, marks: [] });
       expect(f.printed).toBeNull();
       // Everything else about it is the card's: its name, tags, rarity and cost.
       expect(f).toMatchObject({ name: "Call to Chaos (Core Edition)", tags: ["Call to Chaos"], rarity: "Legendary" });
@@ -534,8 +479,8 @@ describe("a face in play is the card as the view says it stands; the collection'
   });
 
   it("Call to Chaos in the collection prints its real text, both faces", () => {
-    expect(face("core-095", false).text.base).toBe(def("core-095").base.text);
-    expect(face("core-095", true).text.radiant).toContain("cast a random Call to Chaos");
+    expect(face("core-095", false).text.full).toBe(def("core-095").base.text);
+    expect(face("core-095", true).text.full).toContain("cast a random Call to Chaos");
   });
 
   it("R243 a Vanilla unit says its text is gone, and prints the keywords it still has as gained", () => {
@@ -545,9 +490,9 @@ describe("a face in play is the card as the view says it stands; the collection'
       inPlay: { vanilla: true },
     });
     expect(f.vanilla).toBe(true);
-    expect(f.text).toEqual({ base: VANILLA_TEXT, radiant: null });
+    expect(f.text).toEqual({ full: VANILLA_TEXT, marks: [] });
     expect(f.gained).toEqual([{ kind: "Taunt" }]);
-    expect(f.printed).toEqual({ base: def("core-091").base.text, radiant: null });
+    expect(f.printed).toEqual({ full: def("core-091").base.text, marks: [] });
   });
 
   it("a unit in play prints the keywords it has gained since it was printed, and only those", () => {
@@ -562,7 +507,7 @@ describe("a face in play is the card as the view says it stands; the collection'
       inPlay: {},
     });
     expect(f.gained).toEqual([{ kind: "Poisonous" }, { kind: "Taunt" }, { kind: "Armor", n: 1 }]);
-    expect(f.text.base).toBe("First Strike");
+    expect(f.text.full).toBe("First Strike");
     expect(f.printed).toBeNull();
   });
 
@@ -570,17 +515,30 @@ describe("a face in play is the card as the view says it stands; the collection'
     const fused = fusedDef([def("core-011"), def("core-089")]);
     const f = faceModel({ defId: fused.id, def: fused, radiant: false, liveCost: 4, inPlay: {} });
     expect(f).toMatchObject({ known: true, name: "Tempo Timmy + Corpse Eater", type: "Unit", tags: ["Human"] });
-    expect(f.text.base).toBe(`${def("core-011").base.text}\n${def("core-089").base.text}`);
+    expect(f.text.full).toBe(`${def("core-011").base.text}\n${def("core-089").base.text}`);
     expect(f.keywords.map((keyword) => keyword.kind)).toEqual(["Rush", "First Strike"]);
     expect(f.stats).toMatchObject({ attack: 5, health: 5 });
   });
 
-  it("R102 a radiant fused face reads each ingredient's radiant cell against its own base line", () => {
+  it("R102 R277 a radiant fused face marks each ingredient's radiant line against its own base line", () => {
     const fused = fusedDef([def("core-011"), def("core-002")]);
     const f = faceModel({ defId: fused.id, def: fused, radiant: true, inPlay: {} });
-    // Tempo Timmy's radiant keyword line replaces its base one; Bigot's radiant Cry replaces its own,
-    // which leaves Bigot no kept line and its new Cry under the gold rule.
-    expect(f.text.base.split("\n")).toEqual(["Charge, First Strike"]);
-    expect(f.text.radiant).toBe(def("core-002").radiant.text);
+    expect(f.text.full.split("\n")).toEqual([def("core-011").radiant.text, def("core-002").radiant.text]);
+    // Tempo Timmy's Charge, and Bigot's "all … units", each against its own base line.
+    expect(markedText(f.text.full, f.text.marks)).toEqual(["Charge", "all", "units"]);
+  });
+
+  it("R280 a face in play carries the values its view names; the collection's carries none", () => {
+    const preview = [{ label: "Fib(cost+1)", value: 2 }];
+    expect(face("core-031", false, { liveCost: 2, inPlay: { preview } }).values).toEqual(preview);
+    expect(face("core-031", false).values).toEqual([]);
+    // A card whose words in play are not its printed ones prints no value for a formula it hides.
+    expect(face("core-095", false, { inPlay: { preview } }).values).toEqual([]);
+  });
+
+  it("R279 a face lists the cards its definition names, in the collection and in play", () => {
+    expect(face("core-090", true).refs).toEqual(["core-090-1"]);
+    expect(face("core-041", false, { inPlay: {} }).refs).toEqual(["core-t-sheep", "core-055"]);
+    expect(face("core-002", false).refs).toEqual([]);
   });
 });

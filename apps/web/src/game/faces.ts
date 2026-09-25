@@ -3,7 +3,8 @@
 //
 // A face in play is the card as the view says it stands (R243): the cost the view gives it, a Unit
 // card's stats in its owner's hand, a unit's numbers, keywords and Vanilla mark on the field, the
-// power a Heroic Power rolled, and a match-made definition's own name and text. Everything is read
+// power a Heroic Power rolled, a match-made definition's own name and text, and what the card's
+// formula comes to now (`CardView.preview`, R280). Everything is read
 // off the view — never worked out — so none of it is a rule (CLAUDE.md rule 7). The collection's
 // faces, the card as printed, are the deck builder's own (`faceModel` with no `inPlay`).
 //
@@ -56,6 +57,8 @@ export function liveFace(info: CardInfo, card: CardView, facts: LiveFacts = {}):
   const power = card.power !== undefined ? { name: card.power, x: card.cost } : facts.fieldPower;
   if (power !== undefined) inPlay.power = power;
   if (unit?.vanilla === true) inPlay.vanilla = true;
+  // R280: what the card's formula comes to now, where the view says (never in the collection).
+  if (card.preview !== undefined && card.preview.length > 0) inPlay.preview = card.preview;
   return faceModel({
     defId: card.defId,
     def: info.def,

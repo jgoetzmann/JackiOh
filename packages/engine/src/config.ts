@@ -79,6 +79,11 @@ export const HERO_ARMOR = {
   base: { paid: 2, embiggen: 5 },
   radiant: { paid: 4, embiggen: 10 },
 } as const;
+/**
+ * §8 #38 Quickstriker, R281: the multiple of X each granted Combo deals to the enemy hero, by the
+ * granting card's face — "Combo X: deal X damage", radiant "deal 2X damage", one hit either way.
+ */
+export const QUICKSTRIKER_COMBO_MULTIPLE = { base: 1, radiant: 2 } as const;
 
 /** R21: Plastic Surgery and Zao Gao draw from this pool; a unit never gets a keyword it has. */
 export const RANDOM_KEYWORD_POOL = [

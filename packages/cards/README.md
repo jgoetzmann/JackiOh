@@ -76,12 +76,19 @@ export const radiant: Script = {
 - **`def` always comes from `cardDef("core-NNN")`.** Never retype stats, cost, tags or rarity in a
   script file: `catalog.json` is the data and `test/catalog.test.ts` is what proves it against
   SPEC §8. A hand-written `def` is a second source of truth and will be rejected in review.
-- **`base` and `radiant` are both required**, even when they are the same object — cards with no
-  radiant text in §8 (#38, #80, #93.1, #95.1, #96 and the shared tokens) still become Radiant as a
-  flag (SPEC §5.2), so write `export const radiant = base;` and say so in a comment.
+- **The catalog entry is the printed card.** `radiant.text` is the Radiant face written out in full
+  (SPEC §8's cell read by its Conventions, R277), never shorthand, because the client prints it
+  whole and marks what differs from `base.text`; every Radiant face meets R275's standard
+  (`test/radiant-standard.test.ts`, `docs/radiant-audit.md`); and `refs` lists every card or token
+  the entry's texts name, by id (R279) — `test/references.test.ts` proves it against the texts both
+  ways, so a text that names a card must list it.
+- **`base` and `radiant` are both required**, even when they are the same object — a card whose
+  Radiant face differs only in what the engine reads off the catalog or its config (its stats and
+  keywords, or #38's Combo multiple, `QUICKSTRIKER_COMBO_MULTIPLE`) runs the same script on both
+  faces, so write `export const radiant = base;` and say so in a comment.
 - The `Script` shape is `{ cost?, cry?, death?, startOfGame?, resume?, delayed?, setStat?,
   startOfTurn?, endOfTurn?, aura?, triggers?, activate?, onPlayHook?, handTriggers?, staticFlags?,
-  targets?, modes?, conditionMet? }` (`packages/engine/src/script.ts`, SPEC §10.9). `resume` is the named
+  targets?, modes?, conditionMet?, preview? }` (`packages/engine/src/script.ts`, SPEC §10.9). `resume` is the named
   continuation a prompt answer re-enters (R113), `delayed` the hook a scheduled effect lands on
   (R126), and `setStat` layer 2's stat hook (R116) — 13 card files already export one of them. A spell's script hangs off `cry`: that is the
   on-resolve hook for a Spell as well as the Cry of a permanent.
@@ -90,6 +97,17 @@ export const radiant: Script = {
   played now, `"field"` as the card in play reads it), built on the same local predicate the card's
   own resolution uses so the two cannot disagree; it never writes, never draws from `rng` and never
   reads `state.active` (use `yourTurn`).
+- `preview` is R280's number a formula comes to now: a pure read of the same context (the card's
+  own controller, its running face, the zone, `yourTurn`) that returns `{ label, value }[]`. Each
+  `label` is an exact substring of the running face's catalog text — the formula as printed,
+  `"Fib(cost+1)"` — because the client prints `{value}` right after its first occurrence; each
+  `value` is what the formula comes to if the card resolved now, computed by the same local function
+  the card's own hook deals or gains with. `viewFor` shows it wherever the viewer may read the card,
+  the other seat's public cards included, so a hook reads only public facts and the card's own face
+  and counters — a hero's health, a pile's size, the plays this turn, the active player's mana —
+  never a library's contents or order or a hand's cards, and never `state.active`. An empty list is
+  no preview. The Core cards with one are #18, #31, #38, #40, #70 and #91; a fixed number already on
+  the face (#92's stats, #100's cost, #89's hand stats) and an X chosen at play (#24, #74) have none.
 
 **Purity (CLAUDE.md rules 4 and 5).** A hook is `(ctx: EffectContext) => Effect[]`. It reads
 `ctx` and returns effects; it never assigns to `ctx.state`, never calls an engine mutator, never
@@ -112,6 +130,7 @@ from `@jackioh/engine`, except `instanceOf`, which the effects barrel exports be
 | `zoneCards(state, player, zone)` | one off-field pile as a `readonly` copy, `library[0]` first (#30, #51, #83) |
 | `zoneCount(state, player, zone)` | how many cards are in it (#70's exile, #71's libraries, #76's hand) |
 | `cardsPlayedThisTurn(state, player)` | §10.5 step 4's counter, already counting the card being played (#38) |
+| `unspentManaOf(state, player)` | the mana a player holds now, which `turnEnded.unspentMana` is as the turn ends (#18's preview) |
 | `playedIdsThisTurn(state, player)` | the instance ids played this turn, in order, copied (#39) |
 | `playedEarlier(state, player, card)` | §6.2's Combo count: the plays before this card's play, at play time, so a card its own resolution casts is not one; for a card in hand, every play so far; for `null` (a `ctx.self` that has ceased to exist), every play but the latest (#10) |
 | `wasPlayedThisTurn(state, player, card)` | the one-shot gate §5.1's "return to hand" spells need (#23, #24, #31) |
@@ -340,6 +359,12 @@ hook against the branch its own resolution then takes (SPEC §10.9). Those proof
 reading `conditionActive` off `s.view(...)`; the card's own test file names that file in its header.
 The same file pins the set of cards that declare the hook to R195's list, so a card that adds one
 fails `pnpm test` until its proof and the ruling's list are updated.
+
+A card whose script declares `preview` (R280) proves, on both faces, that each value its view
+carries is what its own resolution then deals or gains, that each label sits in its face's text,
+and what the hook may read. Those proofs live together in `test/preview.test.ts`, which also pins
+the set of cards that declare the hook to R280's six and fences every library and hand off from the
+hooks; the card's own test file names that file in its header.
 
 A card is done when its tests are green, `pnpm lint` and `pnpm typecheck` are clean, and the fuzz
 gate still passes with the card in the pool.

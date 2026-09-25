@@ -1,5 +1,5 @@
 // #25 4-mana 7/7 — SPEC §8.2, BUILD M4-T4 row 25: "Armor 7 zeroes a 7 hit; radiant Indestructible:
-// no damage, sacrifice and exile still remove it".
+// no damage, sacrifice and exile still remove it". The Radiant body is a 14/14 (R275).
 //
 // The §8.2 Engine cell is "Keywords only", so both scripts are empty and these fixtures prove the
 // keywords printed on the catalog faces do the work through §4.4 and §4.5. The removals need a
@@ -57,6 +57,18 @@ describe("#25 4-mana 7/7", () => {
   });
 
   describe("radiant", () => {
+    it("R275 the Radiant face is a 14/14 with Indestructible and no Armor", () => {
+      const s = scenario({
+        seed: "big-radiant-face",
+        p1: { hand: [FILLER], field: [{ def: BIG, radiant: true }] },
+        p2: { hand: [FILLER] },
+      });
+
+      s.expectStats(BIG, { attack: 14, health: 14, maxHealth: 14 });
+      expect(unitViewOf(s, "p1", 1)?.keywords).toEqual([{ kind: "Indestructible" }]);
+      expect(unitViewOf(s, "p1", 1)?.armor).toBe(0);
+    });
+
     it("§4.4 step 4: Indestructible takes no damage at all", () => {
       const s = scenario({
         seed: "big-indestructible",
@@ -70,13 +82,14 @@ describe("#25 4-mana 7/7", () => {
       s.endTurn();
       s.attack(theirs, mine);
 
-      s.expectStats(mine, { health: 7, maxHealth: 7 });
+      s.expectStats(mine, { health: 14, maxHealth: 14 });
       s.expectInZone(mine, "field");
       // It has no Armor of its own, so it is step 4 and not step 2 that stopped the hit.
       expect(unitViewOf(s, "p1", 1)?.armor).toBe(0);
       expect(unitViewOf(s, "p1", 1)?.keywords).toEqual([{ kind: "Indestructible" }]);
-      // The radiant 7/7 struck back for 7, which the attacker's own Armor 7 absorbed.
-      s.expectStats(theirs, { health: 7 });
+      // The radiant 14/14 struck back for 14: the attacker's Armor 7 took 7 of it (§4.4 step 2) and
+      // the other 7 killed the base 7/7.
+      s.expectInZone(theirs, "graveyard");
     });
 
     it("§6.1, §6.3 a sacrifice still removes it", () => {

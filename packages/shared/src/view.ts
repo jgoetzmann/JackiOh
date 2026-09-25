@@ -28,7 +28,18 @@ export type CardView = {
    * cards. `UnitView` and the public `BackrowView` inherit it.
    */
   conditionActive?: true;
+  /**
+   * R280, §10.8: what the card's formula comes to now, one entry per labelled number its script's
+   * `preview` hook returns — the label the formula as the running face prints it, the value what it
+   * would come to if the card resolved now. Only on a card view the viewer may read: its own hand, a
+   * unit on top of its pile, a face-up backrow card, a face-down one for its controller. Absent when
+   * the hook returns nothing or the card has none.
+   */
+  preview?: PreviewValue[];
 };
+
+/** R280: one number a card's formula comes to now, and the formula it is ("+1 per card in your exile"). */
+export type PreviewValue = { label: string; value: number };
 
 export type UnitView = CardView & {
   owner: PlayerId;

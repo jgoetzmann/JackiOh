@@ -117,6 +117,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `CAST_ON_DRAW_CHAIN_CAP` | 20 | R58 |
 | `LIBRARY_CAP` | 60 | R80 |
 | `ANTI_ONESHOT_CAP` | `{ base: 5, radiant: 3 }` | §8 #73 |
+| `QUICKSTRIKER_COMBO_MULTIPLE` | `{ base: 1, radiant: 2 }`: the X each Quickstriker's granted Combo deals, as one hit | §8 #38, R281 |
 | `RANDOM_KEYWORD_POOL` | Taunt, Armor 1, Rush, Charge, First Strike, Poisonous, Lifesteal, Reborn, Divine Shield, Trample, Cleave | R21 |
 | `FIB` | `[0,1,1,2,3,5,8,13,21,34,55,89]`, index clamps at 11 | R25 |
 | `FUSE_COST_CAP` | 4 | §6.3 |
@@ -294,8 +295,8 @@ Acceptance (`catalog.test.ts`):
 - Exactly 100 entries with `token: false` and 10 with `token: true`; indices 1–100 each present once.
 - For every entry, `cost`, `type`, `tags`, `rarity`, `base.attack/health`, `radiant.attack/health` equal the values in SPEC §8 (encode §8 as a fixture table in the test; the test is the diff).
 - Rarity counts: 35 Common, 37 Rare, 16 Epic, 7 Legendary, 5 Mythic.
-- Every `tags` value is one of Human, Felinor, KY, CN, Fruit, "Call to Chaos", Quickdraw, Token.
-- Cards with no radiant text in §8 (#38, #80, #93.1, #95.1, #96 and the shared tokens) have `radiant` equal to `base`.
+- Every `tags` value is one of Human, Felinor, KY, CN, Fruit, "Call to Chaos", Quickdraw, Jlockeed (R278), Token.
+- Every entry's `radiant` face differs from its `base` face (R276), and every Radiant Unit's attack and health are at least twice its base's (R275, `radiant-standard.test.ts`). `radiant.text` is the §8 Radiant cell written out in full (R277), and `refs` lists the cards a text names (R279, `references.test.ts`).
 
 **M4-T2 Script contract and registry.** Files: `cards/src/index.ts`, `cards/src/scripts/NNN-slug.ts`.
 Each script file exports `{ def: CardDef, base: Script, radiant: Script }` with `Script = { cost?, cry?, death?, startOfGame?, resume?, delayed?, setStat?, startOfTurn?, endOfTurn?, aura?, triggers?, activate?, onPlayHook?, handTriggers?, staticFlags?, targets?, modes? }` (§10.9). `targets` and `modes` declare the prompts the play action needs so the client and `legalActions` can build them without running the script. Hooks return `Effect[]`. `catalog.query({ type, cost, costRange, tags, notTags, rarity, set, excludeIndex })` lives here and is the only random-pool source (§5.1).
@@ -316,11 +317,11 @@ Acceptance: `pnpm test --filter cards` runs 110 test files; a script that lists 
 | 5 | Stockpile | 1 | Draw 2, heal 2 (hero may exceed 30); hand cap burns; radiant 5/5 |
 | 6 | Mana Well | 1 | Turn-4 player has 5 mana; leaves → back to 4; radiant 6 |
 | 7 | Jewelosco Scarab | 1 | Discover offers 3 distinct 2-cost non-token cards, never #7; radiant 3-cost pick costs 2 |
-| 8 | Mr. Vanilla | 1 | Sheepish fires and does nothing; Fuse-onto refused; Vanilla copy by Postdoc still allowed (copy is stats only) |
+| 8 | Mr. Vanilla | 1 | Sheepish fires and does nothing; Fuse-onto refused; Vanilla copy by Postdoc still allowed (copy is stats only); radiant Divine Shield, gained at once when made Radiant on the field |
 | 9 | Moths to the Flame | 2 | Each enemy unit attacks it in lane order at controller's start of turn, no exertion spent, sick units included, each attack is its own combat, stops when Moths dies (R53); radiant Armor 1 reduces each hit (R53) |
 | 10 | Rapid Replenish | 1 | 2 prior plays → no draw; 3 → draw 3; radiant 6; counts as played either way |
 | 11 | Tempo Timmy | 1 | Attacks a unit on summon turn, not the hero; kills a 3-health unit unharmed; radiant may hit the hero |
-| 12 | Duplicating Felinors | 2 | Copy lands in the leftmost free zone (R64), its Cry does not fire, buffs copied, damage not (R57); board full → no copy |
+| 12 | Duplicating Felinors | 2 | Copy lands in the leftmost free zone (R64), its Cry does not fire, buffs copied, damage not (R57); board full → no copy; radiant 6/9 and its copy too |
 | 13 | Jlockeed Shredder-10 | 1 | Controller's end of turn: 2 to every enemy unit and hero as separate instances; units it kills die after all hits land (R59); not on the opponent's end; radiant 5 (R51) |
 | 14 | Jlockeed's Weapons | 1 | Allies +4 attack, Rush, First Strike while present; later summons get it; gone when destroyed; radiant +10 |
 | 15 | Me and Mr Token | 1 | 1 Rush Token; radiant 3; fewer when the board is nearly full |
@@ -332,23 +333,23 @@ Acceptance: `pnpm test --filter cards` runs 110 test files; a script that lists 
 | 21 | Hinder | 2 | Auto-casts on draw and draws again; opponent's next refresh −1 floored at 0; counts as played (R40, R70); radiant −2 |
 | 22 | Carnivorous Cube | 2 | The Tribute choice travels in the play action (R81) and excludes itself, chosen permanent sacrificed and remembered; Death → 2 copies (radiant fills board), backrow permanents copy to backrow, copies keep `statsOverride` (R41); nothing eaten → Death does nothing (R41) |
 | 23 | Reoccurring Dream | 2 | Seeded 30% roll on a non-Radiant hand card (R60); returns to hand at end of turn; hand full → burned; radiant two rolls at 40% keeping a success |
-| 24 | Efficiency Dividend | 2 | X chosen with the play, bounded by mana (R81); three modes; next-turn mana +floor(X/2); returns to hand; radiant uses X+1 |
-| 25 | 4-mana 7/7 | 1 | Armor 7 zeroes a 7 hit; radiant Indestructible: no damage, sacrifice and exile still remove it |
+| 24 | Efficiency Dividend | 2 | X chosen with the play, bounded by mana (R81); three modes; next-turn mana +floor(X/2); returns to hand; radiant 2X damage, 4X heal, X mana next turn |
+| 25 | 4-mana 7/7 | 1 | Armor 7 zeroes a 7 hit; radiant 14/14 Indestructible: no damage, sacrifice and exile still remove it |
 | 26 | Glowy Jelly Bean | 1 | Chosen hand card gets radiant flag, picked as part of the play rather than a prompt (R81); radiant chooses 2, or the one card available |
 | 27 | Blood Ridden Glowy Jelly Bean | 2 | Cast on draw; a random non-Radiant hand card becomes Radiant (R60); 5 health lost ignoring Going Long (R18); radiant 2 cards |
 | 28 | Knockoff Temu Glowy Jelly Bean | 1 | 2 different non-Radiant cards across library+hand+field (R60); a field unit swaps base stats in place keeping damage (R22); radiant 5 |
 | 29 | GIGA Glowy Jelly Bean | 1 | Uncastable at 4 mana, castable at 6 after gains; whole hand radiant; radiant also permanents |
 | 30 | Archivist | 2 | Mode chosen with the play (R81); highest/lowest by current cost, ties nearest top, X counts 0 (R24); radiant draws both |
-| 31 | KY's Math Equation | 2 | Cost 1 → 1 damage, returns at cost 2 → 2, cost 3 → 3, cost 4 → 5; clamps at 89 (R25); player discounts don't change the damage (R67); radiant Fib(cost+2) |
+| 31 | KY's Math Equation | 2 | Cost 1 → 1 damage, returns at cost 2 → 2, cost 3 → 3, cost 4 → 5; clamps at 89 (R25); player discounts don't change the damage (R67); radiant Fib(cost+3); its preview is the damage (R280) |
 | 32 | Prem Panther | 2 | Rush; draw 2 on a combat kill, none when it dies without killing; radiant Cleave kills draw per kill (R42) |
-| 33 | Unstable Clone Machine | 2 | After each play, library +3 fresh copies with the radiant flag preserved; token spells copied (R34); nothing is added to a 60-card library (R80); radiant one radiant copy |
+| 33 | Unstable Clone Machine | 2 | After each play, library +3 fresh copies with the radiant flag preserved; token spells copied (R34); nothing is added to a 60-card library (R80); radiant all three copies Radiant |
 | 34 | Collateral Damage | 1 | Exiles an Indestructible permanent and a random opponent library card; radiant same-row neighbours too |
 | 35 | Lunar Eclipse | 2 | 3 damage; next spell this turn −1; a unit play does not consume it; expires at cleanup; radiant 6 / −2 |
 | 36 | Magic Jammed | 2 | Destroy backrow and lock zone, locked zone rejects play; radiant steals into same-lane zone else first free, original zone locked, trap identity visible to thief (R33) |
 | 37 | Gravedigger | 1 | Random GY card to hand at start of turn before the draw; empty GY nothing; radiant Discover at −1 |
-| 38 | Quickstriker | 2 | First play deals 0, second 1, third 2 to the enemy hero; nothing when not on the field; no radiant change |
-| 39 | Recycling Initiative | 2 | Exiled on play; end of turn adds copies of every other card played this turn, including later ones (R71); radiant copies cost 1 less |
-| 40 | Echoes of the Forgotten | 1 | Start of turn: damage = exile count, then bottom card exiled; empty library → no exile, no fatigue; radiant +3 |
+| 38 | Quickstriker | 2 | First play deals 0, second 1, third 2 to the enemy hero; nothing when not on the field; radiant 2X as one hit (R281); its preview is the next play's X (R280) |
+| 39 | Recycling Initiative | 2 | Exiled on play; end of turn adds copies of every other card played this turn, including later ones (R71); radiant copies Radiant and 1 less |
+| 40 | Echoes of the Forgotten | 1 | Start of turn: damage = exile count, then bottom card exiled; empty library → no exile, no fatigue; radiant twice the exile count; its preview is the damage (R280) |
 | 41 | Sheepish | 2 | Opponent's unit becomes a Sheep before its Cry (R17); trap consumed; Immutable target → consumed with no effect; radiant adds 0-cost Lava Golem |
 | 42 | Eugenics | 1 | 8 random exiled (all if fewer); 30% per remaining card; radiant two rolls at 40% |
 | 43 | Big Felinor | 1 | Non-Felinors on both sides destroyed, Felinors and itself survive; radiant enemy side only |
@@ -358,12 +359,12 @@ Acceptance: `pnpm test --filter cards` runs 110 test files; a script that lists 
 | 47 | Fig of Life | 1 | Heals a unit up to max or the hero without cap (R19); radiant 50 |
 | 48 | 5pek Controller | 1 | Every unit switches, exertion untouched (R20), Spikey Pillow stays ATK; radiant enemy-only mode |
 | 49 | Snom Bunny Mind Control | 1 | Steal placement per R15; radiant sets the flag on the stolen card |
-| 50 | Kpop Fanatic | 2 | Steal fires at your next start of turn even if it died (R76); fizzles if the target left; radiant Divine Shield |
+| 50 | Kpop Fanatic | 2 | Steal fires at your next start of turn even if it died (R76); fizzles if the target left; radiant Divine Shield, and the stolen card becomes Radiant only when the steal lands (R282) |
 | 51 | KY's Private Tutor | 2 | Only types and brackets with a match offered; 3 random matches revealed; no match → Notebook; Field Trap counts as Trap; radiant runs twice |
 | 51.1 | KY's Empty Notebook | 1 | Draw 1; radiant 2; absent from every random pool |
 | 52 | Silly Silas | 3 | Rotate both rings either direction, control changes on crossing, damage travels, Silas moves too; Locked destination bounces; radiant bounces the cards that would cross to the opponent to their owner's hand at cost 0, while the opponent's crossing cards still change control (R14) |
 | 53 | Reno | 1 | 12 → 30; 35 stays 35; radiant 60 |
-| 54 | Straaza | 1 | 2 random units of cost 3 or 4, no tokens, not #54, cost override 1; radiant 0 |
+| 54 | Straaza | 1 | 2 random units of cost 3 or 4, no tokens, not #54, cost override 1; radiant Radiant units at 0 |
 | 55 | Lava Golem | 2 | Tribute 3 counts enemy units and Sheep as 2, enemies sacrificed; Taunt and Armor 3; radiant Indestructible; Sheepish's free copy still needs tributes |
 | 56 | Jilliax | 1 | All four keywords; radiant Charge and Indestructible |
 | 57 | Conjure KY | 1 | Pool exactly #31, #51, #82 with repeats allowed; radiant 2 base + 2 radiant |
@@ -377,44 +378,44 @@ Acceptance: `pnpm test --filter cards` runs 110 test files; a script that lists 
 | 65 | Masochism Mask | 2 | In opening hand (Quickdraw); start-of-turn mode prompt; "lose 3" ignores armor; radiant two picks including "nothing" |
 | 65.1 | Spikey Pillow | 2 | Cannot switch to DEF; your units −2 attack floored at 0; radiant excludes other Pillows |
 | 66 | The Rock | 2 | Play refused without a tribute; Indestructible; radiant Immutable |
-| 67 | Zoomerbin Oomen | 2 | Random trap face-down and unpaid into own lane's backrow; occupied or Locked → nothing (R47); pool = six traps |
-| 68 | Twisted Sorcerer | 1 | 4 damage, 8 when hero < 10 at resolution; radiant 6 / 12 |
+| 67 | Zoomerbin Oomen | 2 | Random trap face-down and unpaid into own lane's backrow; occupied or Locked → nothing (R47); pool = six traps; radiant the trap is Radiant, still hidden from the opponent |
+| 68 | Twisted Sorcerer | 1 | 4 damage, 8 when hero < 10 at resolution; radiant 8 / 16 |
 | 69 | Call to Arms | 1 | Three top-down recruits of cost ≤1, library order otherwise kept, stops when the board fills; radiant ≤2 |
-| 70 | Spiteful Stab | 1 | 2 + floor(missing/5) + exile count; radiant 4 + floor(missing/3) + exile |
+| 70 | Spiteful Stab | 1 | 2 + floor(missing/5) + exile count; radiant 4 + floor(missing/3) + 2 × exile; its preview is the damage (R280) |
 | 71 | Intern Stimmy | 2 | Trap window at the end of any turn with library > opponent's → recruit ≤1 (R62); fires again next qualifying turn; radiant ≤2 |
 | 72 | Reminisce | 1 | Discover from the GY including spell tokens (R50); chosen card −1 (radiant 0); exiled; empty GY → nothing |
-| 73 | Anti-oneshot Armor | 2 | A 12 hit becomes 5 (radiant 3), per instance, hero only; Cry draws 1 |
+| 73 | Anti-oneshot Armor | 2 | A 12 hit becomes 5 (radiant 3), per instance, hero only; Cry draws 1 (radiant 2) |
 | 74 | Adaptive UI | 1 | X=2: 2 damage, heal 2, draw 2, a 2/2 Rush Token; radiant 4 / 6 / 4 / 6-6; X=0 nothing but counts as played |
 | 75 | Infinite Reserves | 2 | Empty-library draw yields a Rush Token card and no fatigue damage; radiant Cry draws 3 |
 | 76 | Field of Dreams | 2 | Hand of N → N Reminisce, old cards in GY (R31); exiled; radiant gives radiant Reminisce |
 | 77 | Professor Curvature | 2 | Next turn only: current-cost-4 cards −1 (radiant −2); not this turn; expires (R48) |
 | 78 | /fullsend | 2 | +4 mana; −1 cost this turn; each play draws 1; hand exiled at end of turn; radiant −2 |
 | 79 | Twinspell | 2 | Next spell echoes once (radiant twice); consumed to GY on use (R30); survives cleanup |
-| 80 | Zao Gao | 2 | Discard prompt for 2 or fewer; two Rush Tokens each with two distinct pool keywords |
-| 81 | Radiant Saintess | 2 | Cry makes every unit you control radiant including itself (R22); Death does it again; radiant Reborn body fires Death on its second death |
+| 80 | Zao Gao | 2 | Discard prompt for 2 or fewer; two Rush Tokens each with two distinct pool keywords; radiant the tokens are Radiant 6/6 Rush, Cleave, and roll no keyword they have |
+| 81 | Radiant Saintess | 2 | Death makes every other unit you control Radiant; Reborn body fires Death on its second death; radiant also every card in your hand, hidden from the opponent (R177) |
 | 82 | KY's Trial | 2 | Three distinct numbers 1–100 never 82 or a token index (R54); chosen card is radiant; radiant costs 0 |
 | 83 | Transmogulate | 3 | Zone counts preserved; board cards replaced by same-type Legendaries in place; pool is exactly #52, #85, #87, #92, #93, #95, and a Field Trap becomes Unlicensed Experimentation (R35); radiant gives radiant cards |
 | 84 | Going Long | 2 | In opening hand; embiggen 2 → Armor 2, 4 → Armor 5 on the hero; radiant 4 / 10 |
 | 85 | Unlicensed Experimentation | 3 | Fires after the Cry of a permanent the opponent played (R17); tokens, Recruit and copies don't set it off (R61); fuses onto a random same-type permanent per R77: stats summed, keywords unioned, cost capped at 4, the target instance kept with its damage and position; opponent's card gone with no Death trigger; Immutable permanents are never chosen and with no legal target the trap is consumed for nothing (R61); radiant fuses onto all |
-| 86 | "Miss" Mrow | 2 | Cannot attack; Death steals enemy units in lane order, each placed per R15, excess stay; radiant may attack |
-| 87 | Pocket Chaos | 3 | Health swap, lane-preserving board swap including face-down traps with locks staying put, library swap that transfers ownership of the swapped cards (R73); opponent gains a Pocket Chaos; exiled; radiant may skip the gift |
+| 86 | "Miss" Mrow | 2 | Cannot attack; Death steals enemy units in lane order, each placed per R15, excess stay; radiant may attack and has Taunt |
+| 87 | Pocket Chaos | 3 | Health swap, lane-preserving board swap including face-down traps with locks staying put, library swap that transfers ownership of the swapped cards (R73); opponent gains a Pocket Chaos; exiled; radiant may skip the gift and draws 1 |
 | 88 | Twisting Nether | 1 | Every permanent on both rows destroyed, Indestructibles survive; radiant enemy-only mode |
 | 89 | Corpse Eater | 2 | In hand it gains the dying unit's current attack and max health from either side, tokens excluded (R11); stats per R38; stops once on the field; radiant double |
 | 90 | CN-Viral Injection | 1 | Virus shuffled into the opponent's library at a random position; radiant virus is radiant |
-| 90.1 | CN-Virus | 2 | On draw: 1 damage through the pipeline (Going Long reduces it), 2 copies shuffled, draw again; a chain stops at 20 casts (R58); radiant 3 copies |
-| 91 | Fed Fauci | 2 | One Plague Token per damage instance; +1 mana per token at start of turn (radiant +2); counters reset on leaving |
+| 90.1 | CN-Virus | 2 | On draw: 1 damage through the pipeline (Going Long reduces it), 2 copies shuffled, draw again; a chain stops at 20 casts (R58); radiant 2 damage and 3 copies |
+| 91 | Fed Fauci | 2 | One Plague Token per damage instance; +1 mana per token at start of turn (radiant +2); counters reset on leaving; its preview is the mana (R280) |
 | 92 | Felinor Fiender | 3 | Plays onto an occupied zone; card beneath is dormant; stats = printed + all your Felinors including dormant ones (R13, R39); radiant Charge |
 | 93 | Combo-Index | 3 | Grade 1 needs 1 play, grade 2 needs 2; cascade E→new grade in order; E adds a copy (R27); S terminal (R27); radiant adds Combo-Fodder each start of turn |
-| 93.1 | Combo-Fodder | 1 | 2 damage with Lifesteal; no radiant change |
+| 93.1 | Combo-Fodder | 1 | 2 damage with Lifesteal; radiant 4 |
 | 94 | Genn's Greed | 2 | Draws every 2-cost card; odd current-cost cards exiled from library, hand and GY, X-cost exempt (R26, R66); +2 mana (radiant +6) |
 | 95 | Call to Chaos (Core Edition) | 3 | Each of the 10 effects has a test; recursion stops at 20 (R28); radiant rolls the recursion plus one of the other 9 effects (R28) |
-| 95.1 | Chaos Golem | 1 | 10/10 with all four keywords |
-| 96 | My Pawn | 3 | Lethal detection accounts for armor and the cap (R44); attack cancelled; AI finishes the turn deterministically from the seed; opponent's actions rejected until end of turn |
+| 95.1 | Chaos Golem | 1 | 10/10 with all four keywords; radiant 20/20 with Charge for Rush |
+| 96 | My Pawn | 3 | Lethal detection accounts for armor and the cap (R44); attack cancelled; AI finishes the turn deterministically from the seed; opponent's actions rejected until end of turn; radiant destroys the attacker with the cancel, before the AI turn, an Indestructible one knocked down, and the AI turn starts from a settled board (R283) |
 | 97 | Zephyrs | 3 | Scorer deterministic; a lethal-enabling card ranks first when lethal exists; Discover offers the top 3 (R29); exiled; radiant picks are radiant |
 | 98 | Heroic Power | 3 | In opening hand; power chosen at start of game from the seed; playing costs the power's X and activates once; a copy created mid-game, mulliganed back into the library, or bounced to hand still has a power (R43); once per turn afterwards; Indestructible; each radiant power variant |
-| 99 | Craft a Card | 3 | Two Discovers, fused def in `transientDefs` with both forms fused, no on-field target and the ingredients' shared type (R77), cost 0 in hand, making it Radiant later switches to the fused radiant form; radiant three |
-| 100 | Ceaseless Void | 2 | Cost = 100 − (drawn + played + destroyed + exiled by both players), floor 0 (R55); Cry exiles every other permanent; radiant Charge |
-| T | Rush, Sheep, Felinor, Bread Tokens | 1 | Vanish on leaving the field; Sheep counts 2 toward Tribute; Bread is X/X with no text; none in random pools |
+| 99 | Craft a Card | 3 | Two Discovers, fused def in `transientDefs` with both forms fused, no on-field target and the ingredients' shared type (R77), cost 0 in hand, making it Radiant later switches to the fused radiant form; radiant three, then draw 1 |
+| 100 | Ceaseless Void | 2 | Cost = 100 − (drawn + played + destroyed + exiled by both players), floor 0 (R55); Cry exiles every other permanent; radiant 20/20 with Charge |
+| T | Rush, Sheep, Felinor, Bread Tokens | 1 | Vanish on leaving the field; Sheep counts 2 toward Tribute; Bread is X/X with no text; none in random pools; radiant Rush Token 6/6 Rush, Cleave, Felinor Token 2/2 Rush |
 | T-coin | The Coin | 1 | Dealt to the seat going second after the mulligan, a handicapped one too, never a draw (R244); gain 1 mana this turn, above the cap, gone at the next refresh; radiant 2; a play that goes to the graveyard; never in a deck or a random pool (R245) |
 
 **M4 gate.** `cards/test/fuzz.test.ts`: 1,000 games per wave (seeds 1–1000) with decks drawn randomly from all implemented cards, played by `aiPolicy`, never throw, always terminate (hero death or cap), and replay to the same hash. Any card that appears in a failing seed is listed in the failure message. A fuzz game is bounded at `TURN_CAP_PLAYER_TURNS` × `AI_PLAYOUT_STEP_CAP` actions. The bound is a failure condition, not a pass condition: a game that reaches it is reported as non-terminating rather than left to hang CI, and a policy that returns no action while the game is live is reported as a stall, since R82 should have ended the turn.

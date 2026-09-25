@@ -11,8 +11,17 @@ export function opponentOf(player: PlayerId): PlayerId {
 /** §5.1 */
 export type CardType = "Unit" | "Spell" | "Field Spell" | "Trap" | "Field Trap";
 
-/** §5: tribes and tags. */
-export type Tag = "Human" | "Felinor" | "KY" | "CN" | "Fruit" | "Call to Chaos" | "Quickdraw" | "Token";
+/** §5: tribes and tags. "Jlockeed" is #13 and #14's (R278). */
+export type Tag =
+  | "Human"
+  | "Felinor"
+  | "KY"
+  | "CN"
+  | "Fruit"
+  | "Call to Chaos"
+  | "Quickdraw"
+  | "Jlockeed"
+  | "Token";
 
 /** §8: assigned by mechanical complexity; every token carries "Token". */
 export type Rarity = "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Token";
@@ -84,7 +93,10 @@ export type CardFace = {
   attack?: number;
   health?: number;
   keywords: Keyword[];
-  /** The §8 cell this face implements, for the client and for test readability. */
+  /**
+   * The face's printed text: the base face's §8 cell, or the Radiant face's cell read by §8's
+   * Conventions and written out in full (R277), so a client can print it whole and mark what differs.
+   */
   text: string;
 };
 
@@ -100,6 +112,13 @@ export type CardDef = {
   rarity: Rarity;
   token: boolean;
   cost: CardCost;
+  /**
+   * R279: the cards and tokens this card's text names, by id — a name in its base or Radiant text,
+   * alone or plural, or a name before its parenthesis (#95's "Call to Chaos"). A client links each
+   * such name to the card it names. Absent when the text names none. A fused definition's is the
+   * union of its ingredients' (R102).
+   */
+  refs?: string[];
   base: CardFace;
   radiant: CardFace;
 };

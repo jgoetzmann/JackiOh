@@ -1,9 +1,10 @@
-// #96 My Pawn (SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R84).
-// Trap, cost 1, Mythic.
+// #96 My Pawn (SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R84,
+// R276, R283). Trap, cost 1, Mythic.
 //   Base:    "When the opponent declares an attack that would be lethal to your hero: cancel it,
 //             and an AI plays the rest of their turn with random legal actions"
-//   Radiant: "No radiant form" — the catalog's radiant face text is the base text word for word,
-//            so the two Scripts are the same object (§8 Conventions).
+//   Radiant: "When the opponent declares an attack that would be lethal to your hero: cancel it,
+//             destroy the attacker, and an AI plays the rest of their turn with random legal
+//             actions" (§8's cell "Also destroy the attacker"; R276 gave the card its Radiant face).
 //
 // WHAT FIRES IT. §4.2 step 4: "Declaring the attack has now spent the attacker's exertion, before
 // any damage. Trap window: My Pawn checks whether the hit would be lethal and, if so, cancels the
@@ -53,6 +54,18 @@
 // their own — the attack this trap answers has to be cancelled while it is still the open one.
 // `aiPlaysOutTurn` last for a second reason `effects/combat.ts` spells out: the playout replaces
 // every instance in the state, so no effect after it may hold a `CardInstance` read before it.
+//
+// THE RADIANT FACE (R283) adds "destroy the attacker", after the cancel and before the AI turn. It is
+// an ordinary §6.3 destroy — a mark the state check collects — so an Indestructible attacker is
+// knocked down instead (R46) and a Reborn one comes back, and the attack is cancelled either way
+// (R44). It rides on the cancel (`cancelAttack({ destroyAttacker })`), which names the attacker of
+// the declaration it cancels, on the stay it declared from (R174), and happens only where the cancel
+// does: a Radiant My Pawn fused onto a Radiant My Pawn runs its second half once the first has played
+// the turn out and the window has closed (R102), and so destroys the Reborn body of nothing.
+// R283 has the state check collect it before the AI takes the turn: the destroy is in its place in
+// the list, and `aiPlaysOutTurn`'s `settleFirst` runs the check before the playout's first action,
+// so the AI acts from a board the attacker has already left. The base face has nothing to settle
+// and keeps the playout exactly as it was.
 
 import type { Script, TrapTrigger } from "@jackioh/engine";
 import { attackTargetOf, findInstance, subsystems } from "@jackioh/engine";
@@ -65,36 +78,44 @@ export const def = cardDef("core-096");
 /**
  * "When the opponent declares an attack that would be lethal to your hero". Every clause that must
  * leave the trap armed is here (R61): a declaration (not a forced attack), by the opponent, whose
- * projection lands on this trap's controller's hero, for at least that hero's health (R44).
+ * projection lands on this trap's controller's hero, for at least that hero's health (R44). The
+ * condition is the same on both faces.
  */
-const myPawn: TrapTrigger = {
-  id: "my-pawn",
-  on: ["attackDeclared"],
-  when: (ctx) => {
-    const event = ctx.event;
-    if (event.type !== "attackDeclared") return false;
-    // §4.2's forced attacks are declared by the compelling effect, not by the opponent (R53).
-    if (event.forced) return false;
+const wouldBeLethal: NonNullable<TrapTrigger["when"]> = (ctx) => {
+  const event = ctx.event;
+  if (event.type !== "attackDeclared") return false;
+  // §4.2's forced attacks are declared by the compelling effect, not by the opponent (R53).
+  if (event.forced) return false;
 
-    const attacker = findInstance(ctx.state, event.attackerId);
-    if (attacker === undefined) return false;
-    // "the opponent declares": a trap never answers its own controller's attack.
-    if (attacker.controller !== opponentOf(ctx.controller)) return false;
+  const attacker = findInstance(ctx.state, event.attackerId);
+  if (attacker === undefined) return false;
+  // "the opponent declares": a trap never answers its own controller's attack.
+  if (attacker.controller !== opponentOf(ctx.controller)) return false;
 
-    const target = attackTargetOf(ctx.state, event.targetId);
-    if (target === null) return false;
-    // R44 counts Trample excess from an attack on a unit, so the hero at risk is the projection's,
-    // not the declared target: "lethal to YOUR hero" is that hero being this trap's controller.
-    if (subsystems.defendingHero(target) !== ctx.controller) return false;
+  const target = attackTargetOf(ctx.state, event.targetId);
+  if (target === null) return false;
+  // R44 counts Trample excess from an attack on a unit, so the hero at risk is the projection's,
+  // not the declared target: "lethal to YOUR hero" is that hero being this trap's controller.
+  if (subsystems.defendingHero(target) !== ctx.controller) return false;
 
-    return subsystems.isLethal(ctx.state, attacker, target);
-  },
-  // §8.5's two clauses in its order. `player: "enemy"` is the attacker's side relative to the
-  // trap's controller, which the predicate above has already established.
-  run: () => [cancelAttack(), aiPlaysOutTurn({ player: "enemy" })],
+  return subsystems.isLethal(ctx.state, attacker, target);
 };
 
-export const base: Script = { triggers: [myPawn] };
+/** `destroysAttacker` is the whole of the radiant text (R283). */
+function myPawn(destroysAttacker: boolean): TrapTrigger {
+  return {
+    id: "my-pawn",
+    on: ["attackDeclared"],
+    when: wouldBeLethal,
+    // §8.5's clauses in its order. `player: "enemy"` is the attacker's side relative to the trap's
+    // controller, which the predicate above has already established.
+    run: () => [
+      cancelAttack(destroysAttacker ? { destroyAttacker: true } : {}),
+      aiPlaysOutTurn({ player: "enemy", ...(destroysAttacker ? { settleFirst: true } : {}) }),
+    ],
+  };
+}
 
-/** §8.5: "No radiant form" — the radiant face's text is the base text, so it is the same script. */
-export const radiant: Script = base;
+export const base: Script = { triggers: [myPawn(false)] };
+
+export const radiant: Script = { triggers: [myPawn(true)] };

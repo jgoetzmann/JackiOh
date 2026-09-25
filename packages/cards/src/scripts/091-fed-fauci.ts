@@ -25,8 +25,12 @@
 // the trap path does (`traps.ts`) — so a unit trigger that put its condition only in `when` would
 // make a token off every hit anywhere on the board. Reported with this card; the guard stays
 // correct either way, since a non-trap trigger is not spent by returning nothing.
+//
+// R280: "+1 mana per Plague Token {n}" — the mana it gives at its controller's next start of turn,
+// its own Plague Tokens times the face's rate, off the same `manaNow` the hook gains. It reads the
+// card's own counters, which travel on its public view (§10.8); a card in hand holds none (R78).
 
-import type { EffectContext, Hook, Script, TriggerDef } from "@jackioh/engine";
+import type { CardInstance, EffectContext, Hook, Script, TriggerDef } from "@jackioh/engine";
 import type { GameEvent } from "@jackioh/shared";
 import { gainMana, plague } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
@@ -57,6 +61,14 @@ const takesDamage: TriggerDef = {
   run: (ctx) => (isHitOnSelf(ctx) ? [plague({ amount: TOKENS_PER_DAMAGE })] : []),
 };
 
+/** R280: the formula as each face prints it, which the preview labels its number with. */
+const FORMULA = { base: "+1 mana per Plague Token", radiant: "+2 mana per Plague Token" } as const;
+
+/** The mana the start-of-turn hook gains now: its own Plague Tokens times the face's rate. */
+function manaNow(self: CardInstance | null, perToken: number): number {
+  return Math.max(0, self?.counters.plague ?? 0) * perToken;
+}
+
 /**
  * "Start of turn: +N mana per Plague Token" (§2.2, R62: after the refresh, before the draw). With
  * no tokens the card gains nothing and returns no effect at all, so it emits no `manaChanged` for a
@@ -64,17 +76,20 @@ const takesDamage: TriggerDef = {
  */
 function manaFromTokens(perToken: number): Hook {
   return (ctx) => {
-    const tokens = ctx.self?.counters.plague ?? 0;
-    return tokens <= 0 ? [] : [gainMana({ amount: tokens * perToken })];
+    const amount = manaNow(ctx.self, perToken);
+    return amount <= 0 ? [] : [gainMana({ amount })];
   };
 }
 
-export const base: Script = {
-  triggers: [takesDamage],
-  startOfTurn: manaFromTokens(MANA_PER_TOKEN.base),
-};
+function fedFauci(face: "base" | "radiant"): Script {
+  const perToken = MANA_PER_TOKEN[face];
+  return {
+    triggers: [takesDamage],
+    startOfTurn: manaFromTokens(perToken),
+    preview: (ctx) => [{ label: FORMULA[face], value: manaNow(ctx.self, perToken) }],
+  };
+}
 
-export const radiant: Script = {
-  triggers: [takesDamage],
-  startOfTurn: manaFromTokens(MANA_PER_TOKEN.radiant),
-};
+export const base: Script = fedFauci("base");
+
+export const radiant: Script = fedFauci("radiant");

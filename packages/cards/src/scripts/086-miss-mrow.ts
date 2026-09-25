@@ -1,21 +1,21 @@
-// #86 "Miss" Mrow (SPEC §8.5, R11, R12, R13, R15, R59, R78).
+// #86 "Miss" Mrow (SPEC §8.5, R11, R12, R13, R15, R59, R78, R275).
 //
-// Base: "Can't attack. Death: steal all enemy units". Radiant: "Can attack; same".
+// Base: "Can't attack. Death: steal all enemy units". Radiant: "Taunt. Death: steal all enemy units"
+// (§8's cell "Taunt; same", R275: the radiant face trades the base face's restriction for a keyword).
 //
-// The radiant cell names no effect of its own beyond "same", and §8's Conventions make "same" the
-// explicit "the base clause is kept": so both faces run one Death clause and differ only in the
-// printed face. That difference is entirely the catalog's:
+// The Death clause is "same" on both faces (§8 Conventions), so both faces run one Death hook and
+// differ only in the printed face. That difference is entirely the catalog's:
 //
 //   - the base face prints the keyword `Can't attack`, which `combat.ts`'s `whyAttackRefused`
 //     reads off `unitView(...).keywords` ("that unit cannot attack"), and
-//   - the radiant face prints `keywords: []`, so "Can attack" is simply the absence of that
-//     keyword — a radiant cell that lists keywords without "Plus" gives the radiant form's
-//     COMPLETE keyword list (§8 Conventions).
+//   - the radiant face prints `Taunt` and nothing else — a radiant cell that lists keywords without
+//     "Plus" gives the radiant form's COMPLETE keyword list (§8 Conventions) — so it may attack, and
+//     §4.2 step 3's Taunt wall (`combat.ts tauntWall`) makes an enemy attack target it first.
 //
-// So neither face needs a line of script for the attack clause, and a script that tried would be
-// wrong: the printed keyword is a §10.4 layer-1 value the attack validator already reads. The test
-// proves both halves off the catalog and off `keywordsOf`, so a catalog edit that dropped the
-// keyword would fail there rather than silently making the base face able to attack.
+// So neither face needs a line of script for either keyword, and a script that tried would be
+// wrong: a printed keyword is a §10.4 layer-1 value the attack validator already reads. The test
+// proves both halves off the catalog and off `keywordsOf`, so a catalog edit that dropped a keyword
+// would fail there rather than silently changing what the card may do.
 //
 // The Death clause is one effect. `stealAll` (engine/src/effects/steal.ts) walks
 // `slotsOf(opponent, "units")`, which is lane order (§3.2), and places each card with R15's rule —

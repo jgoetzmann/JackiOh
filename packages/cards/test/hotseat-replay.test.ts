@@ -84,12 +84,17 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * not run the resolution loop, where p2's used to open inside p1's answer and be dispatched there, so
  * one event fewer takes a number: a fold before and after differs in `nextSeq` and the two frontier
  * ids it numbers, 1 lower, and nowhere else.
+ *
+ * The Radiant pass (R275, R276) re-recorded it the same way: its decks hold cards whose Radiant faces
+ * were raised (#8, #25, #73, #81, the Rush and Felinor Tokens), and a Radiant Saintess's Death now
+ * reaches the hand, so the same seed plays a different game. 38 actions, still won by p1 by hero death.
+ * Spec 01 records the same log under the concurrent mulligan, which folds to the hash below.
  */
-const EXPECTED_HASH = "5a9932ce";
+const EXPECTED_HASH = "cc583237";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;
-const EXPECTED_ACTIONS = 51;
+const EXPECTED_ACTIONS = 38;
 
 function read(path: string): Recording {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));

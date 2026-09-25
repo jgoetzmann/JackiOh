@@ -1,9 +1,10 @@
 // T-rush Rush Token (SPEC §7; R11, R74; §3.2, §5.1, §10.4). BUILD M4-T4's token row: "Vanish on
 // leaving the field; … none in random pools".
 //
-// §7 gives this token NO radiant form, so the two `describe`s below prove the same behaviour twice,
-// once on each face, and the data block proves the two faces really are the same face
-// (`def.radiant` equals `def.base`, BUILD M4-T1, and the radiant Script is the base Script).
+// §7 gives this token a Radiant face that is data only: 6/6 with Rush and Cleave (R275: double the
+// stats, and a keyword-only unit adds a keyword). So the radiant Script is still the base Script,
+// and the two `describe`s below prove the shared behaviour on each face plus what the radiant face
+// adds.
 //
 // R11 has two halves and each gets its own case: a unit token leaving the FIELD, and a unit-token
 // CARD leaving a hand or library other than by being drawn or played (#75 Infinite Reserves).
@@ -62,11 +63,12 @@ describe("T-rush Rush Token (SPEC §7)", () => {
       expect(def.base.keywords).toEqual([{ kind: "Rush" }]);
     });
 
-    it("§7 gives the Rush Token a Radiant face: 6/6, Rush (BUILD M4-T1)", () => {
+    it("§7 R275 gives the Rush Token a Radiant face: 6/6, Rush, Cleave (BUILD M4-T1)", () => {
       expect(def.radiant.attack).toBe(6);
       expect(def.radiant.health).toBe(6);
-      expect(def.radiant.keywords).toEqual([{ kind: "Rush" }]);
+      expect(def.radiant.keywords).toEqual([{ kind: "Rush" }, { kind: "Cleave" }]);
       expect(def.base.attack, "and the base face is untouched at 3/3").toBe(3);
+      expect(def.base.keywords, "and prints no Cleave").toEqual([{ kind: "Rush" }]);
     });
 
     it("§7 needs no script for either face, and the radiant Script is the base Script (R74)", () => {
@@ -174,10 +176,10 @@ describe("T-rush Rush Token (SPEC §7)", () => {
     });
   });
 
-  // §7's "Radiant form" column reads "none" for this token, so every case above holds unchanged
-  // for a radiant instance: R74 sets the flag and the flag selects the same face and the same Script.
-  describe("radiant (§7: 6/6, Rush)", () => {
-    it("R74 a radiant Rush Token reads 6/6 and keeps Rush", () => {
+  // §7's radiant face is data: R74 sets the flag, the flag selects the 6/6 Rush, Cleave face, and
+  // the Script is the same. Every base case holds for a radiant instance, and Cleave is added.
+  describe("radiant (§7: 6/6, Rush, Cleave)", () => {
+    it("R74 R275 a radiant Rush Token reads 6/6 with Rush and Cleave", () => {
       const s = scenario({ seed: SEED, p1: { field: [{ def: "core-t-rush", radiant: true }] } });
       const token = s.unit("p1", 1) as CardInstance;
 
@@ -186,16 +188,64 @@ describe("T-rush Rush Token (SPEC §7)", () => {
       // The two faces are no longer the same face — that is the whole change.
       expect(faceOf(s.state, token)).not.toEqual(faceOf(s.state, { ...token, radiant: false }));
       expect(unitView(s.state, token).keywords).toContainEqual({ kind: "Rush" });
-      expect(keywordsOf(s.state, token)).toEqual([{ kind: "Rush" }]);
+      expect(keywordsOf(s.state, token)).toEqual([{ kind: "Rush" }, { kind: "Cleave" }]);
     });
 
-    it('§7 "Stat overrides" on the radiant face: a 5/5 radiant Rush Token shows 5/5 and keeps Rush', () => {
+    it("R275 Cleave: a radiant Rush Token's attack also hits the units beside its target (§3.1, R63)", () => {
+      // #61 Postdoc (2/4), #53 Reno (4/6) and #4 Gary (1/1) have a Cry and nothing else, so a
+      // `field` setup leaves them inert. The token swings at Reno in the middle.
+      const s = scenario({
+        seed: SEED,
+        p1: { field: [{ def: "core-t-rush", radiant: true }], hand: ["core-005"] },
+        p2: { field: ["core-061", "core-053", "core-004"], hand: ["core-005"] },
+      });
+      const token = s.unit("p1", 1) as CardInstance;
+      const [left, target, right] = [1, 2, 3].map((lane) => s.unit("p2", lane) as CardInstance);
+
+      s.attack(token, target!);
+
+      const hits = s.events.flatMap((event) =>
+        event.type === "damage" && event.sourceId === token.id ? [[event.targetId, event.amount]] : [],
+      );
+      expect(hits).toEqual(
+        expect.arrayContaining([
+          [target!.id, 6],
+          [left!.id, 6],
+          [right!.id, 6],
+        ]),
+      );
+      for (const unit of [left!, target!, right!]) s.expectInZone(unit, "graveyard");
+      // Reno's 4 back does not kill a 6/6.
+      s.expectStats(token, { health: 2 });
+    });
+
+    it("the base face has no Cleave: its attack hits the target alone", () => {
+      const s = scenario({
+        seed: SEED,
+        p1: { field: ["core-t-rush"], hand: ["core-005"] },
+        p2: { field: ["core-061", "core-004", "core-061"], hand: ["core-005"] },
+      });
+      const token = s.unit("p1", 1) as CardInstance;
+      const [left, target, right] = [1, 2, 3].map((lane) => s.unit("p2", lane) as CardInstance);
+
+      s.attack(token, target!);
+
+      const hit = s.events.flatMap((event) =>
+        event.type === "damage" && event.sourceId === token.id ? [event.targetId] : [],
+      );
+      expect(hit).toEqual([target!.id]);
+      s.expectStats(left!, { health: 4 });
+      s.expectStats(right!, { health: 4 });
+    });
+
+    it('§7 "Stat overrides" on the radiant face: a 5/5 radiant Rush Token shows 5/5 and keeps Rush and Cleave', () => {
       const s = scenario({ seed: SEED });
       const token = summonRushToken(s, { radiant: true, statsOverride: { attack: 5, health: 5 } });
 
       expect(token.radiant).toBe(true);
       s.expectStats(token, { attack: 5, health: 5, maxHealth: 5 });
       expect(unitHas(s.state, token, "Rush")).toBe(true);
+      expect(unitHas(s.state, token, "Cleave")).toBe(true);
     });
 
     it("R11 a radiant Rush Token that dies in combat ceases to exist just as the base face does", () => {

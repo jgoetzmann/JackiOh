@@ -1,7 +1,8 @@
 // #90.1 CN-Virus (SPEC §8.5, §7, §4.4, R57, R58, R70, R80).
 //
 // Base: "Cast on draw: take 1 damage; shuffle 2 copies of this into your library".
-// Radiant: "3 copies" — §8's Conventions: a cell that changes only a number changes only that one.
+// Radiant: "Cast on draw: take 2 damage; shuffle 3 copies of this into your library" (§8's cell
+// "Take 2 damage; 3 copies", R275: both numbers scale).
 // Engine cell: "Damage goes through the pipeline; cast-on-draw chains, capped by R58; copies stop
 // at the library cap (R80)."
 //
@@ -16,9 +17,9 @@
 // at `CAST_ON_DRAW_CHAIN_CAP` casts — after which the next such card goes to hand uncast and ends
 // the chain (R58). `castCard` makes the cast free, counts it as a card played (R70) and sends the
 // spell to the graveyard afterwards. The flag is on BOTH faces: R58's cap is a property of the
-// draw, not of the card, and the radiant cell changes only the copy count.
+// draw, not of the card, and the radiant cell changes only the two numbers.
 //
-// "TAKE 1 DAMAGE" IS DAMAGE, TO THE DRAWER'S OWN HERO. `{ of: "selfHero" }` resolves to
+// "TAKE 1 DAMAGE" (radiant 2) IS DAMAGE, TO THE DRAWER'S OWN HERO. `{ of: "selfHero" }` resolves to
 // `ctx.controller`, and a cast-on-draw card resolves with `controller === owner` (off the field
 // control follows ownership, R12), so the player who drew it takes the hit — which is exactly why
 // #90 hands the token to the OPPONENT. It is damage and not "lose health" (R18), so it runs the
@@ -28,8 +29,8 @@
 //
 // THE COPIES ARE FRESH INSTANCES CARRYING THE RADIANT FLAG. `shuffleCopiesOfSelf` copies
 // `ctx.self.radiant` onto each new instance, which is R57's rule for copies shuffled into a library
-// and what makes a Radiant virus breed Radiant viruses: each drawn copy casts the radiant face and
-// shuffles 3 more. They go to `playerOf(ctx, "self")`'s own library — "into YOUR library" — and
+// and what makes a Radiant virus breed Radiant viruses: each drawn copy casts the radiant face, takes
+// 2 and shuffles 3 more. They go to `playerOf(ctx, "self")`'s own library — "into YOUR library" — and
 // `shuffleIntoLibrary` places each at a uniformly random position from the match rng, stopping at
 // `LIBRARY_CAP` so a copy that would enter a full library is not created (R80).
 
@@ -39,17 +40,21 @@ import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-090-1");
 
-/** `copies` is the whole of the radiant text: 2 on the base face, 3 on the radiant one. */
-function virus(copies: number): Script {
+/** "take 1 damage; shuffle 2 copies", radiant "take 2 damage; 3 copies". */
+const BASE = { damage: 1, copies: 2 } as const;
+const RADIANT = { damage: 2, copies: 3 } as const;
+
+/** The two numbers are the whole of the radiant text. */
+function virus(face: { damage: number; copies: number }): Script {
   return {
     staticFlags: { castOnDraw: true },
     cry: (): Effect[] => [
-      damage({ to: { of: "selfHero" }, amount: 1 }),
-      shuffleCopiesOfSelf({ count: copies }),
+      damage({ to: { of: "selfHero" }, amount: face.damage }),
+      shuffleCopiesOfSelf({ count: face.copies }),
     ],
   };
 }
 
-export const base: Script = virus(2);
+export const base: Script = virus(BASE);
 
-export const radiant: Script = virus(3);
+export const radiant: Script = virus(RADIANT);
