@@ -20,7 +20,12 @@
  * `app.upsert_trio`), so nothing here reads before it writes.
  */
 
-import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../config";
+import {
+  DECK_NAME_MAX_LENGTH,
+  DRAFT_ISSUES_REPORTED_MAX,
+  MAX_SAVED_DECKS,
+  MAX_SAVED_TRIOS,
+} from "../config";
 import { callerProfile, ownedMap } from "./collection";
 import { ApiError, badRequest, ok, route, str, stringList, type Route } from "./http";
 import { checkDeckDraft, checkTrioDraft, normalizeName } from "./loadout-validator";
@@ -97,6 +102,15 @@ const LIMITS = {
  * reveals nothing about anyone else's decks. With client-minted UUIDs no one can guess one anyway;
  * this keeps the answer honest if one ever leaks.
  */
+/**
+ * A save refused by D1–D4 or T1–T3: the first issue's sentence, and the issues in `details`, at
+ * most `DRAFT_ISSUES_REPORTED_MAX` of them so a body of junk cannot buy an answer many times its
+ * own size.
+ */
+function draftRefused(message: string, issues: readonly unknown[]): ApiError {
+  return new ApiError("bad_request", message, issues.slice(0, DRAFT_ISSUES_REPORTED_MAX));
+}
+
 function notFound(what: "deck" | "trio"): ApiError {
   return new ApiError("not_found", `There is no such ${what}.`);
 }
@@ -194,7 +208,7 @@ export function createDeckRoutes(): Route[] {
         nameMaxLength: DECK_NAME_MAX_LENGTH,
       });
       const first = issues[0];
-      if (first !== undefined) throw new ApiError("bad_request", first.message, issues);
+      if (first !== undefined) throw draftRefused(first.message, issues);
 
       const now = deps.timers.now();
       // `createdAt` is only read on a create; an update keeps the stored one (the store's contract).
@@ -253,7 +267,7 @@ export function createDeckRoutes(): Route[] {
       const name = normalizeName(rawName);
       const issues = checkTrioDraft({ name, deckIds, nameMaxLength: DECK_NAME_MAX_LENGTH });
       const first = issues[0];
-      if (first !== undefined) throw new ApiError("bad_request", first.message, issues);
+      if (first !== undefined) throw draftRefused(first.message, issues);
       // T2 has passed, so there are exactly three slots.
       const slots = deckIds as TrioSlots;
 

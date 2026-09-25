@@ -296,6 +296,10 @@ declare
      $q$select app.upsert_deck('11111111-1111-1111-1111-111111111111', 'a1000000-0000-4000-8000-0000000000f5',
           E'Tab\there', '[]', 'core-1', now(), 10)$q$,
      'deck: the name contains a control character'],
+    ['D1: a right-to-left override',
+     $q$select app.upsert_deck('11111111-1111-1111-1111-111111111111', 'a1000000-0000-4000-8000-0000000000f9',
+          E'Aggro\u202Eorez', '[]', 'core-1', now(), 10)$q$,
+     'deck: the name contains a control character'],
     ['cards not an array',
      $q$select app.upsert_deck('11111111-1111-1111-1111-111111111111', 'a1000000-0000-4000-8000-0000000000f6',
           'Object', '{"core-001": 1}', 'core-1', now(), 10)$q$,
@@ -329,7 +333,7 @@ begin
   if exists (select 1 from public.decks where id::text like 'a1000000-0000-4000-8000-0000000000f%') then
     raise exception 'FAIL (R250): a refused draft left a row behind';
   end if;
-  raise notice 'OK (R250): D1 (blank, too long, control character), D2, D4 and a malformed cards value all refused';
+  raise notice 'OK (R250): D1 (blank, too long, control character, bidi override), D2, D4 and a malformed cards value all refused';
 end $$;
 
 \echo '-- a profile that is not active saves no deck (rolled back)'

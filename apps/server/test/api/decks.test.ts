@@ -30,7 +30,12 @@ import {
 import { ApiError, createRouter, type Router } from "../../src/api/http";
 import { checkDeckDraft, checkTrioDraft, normalizeName } from "../../src/api/loadout-validator";
 import type { FrozenTrio, LoadoutValidateInput, SavedDeck, SeriesRow } from "../../src/api/ports";
-import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../src/config";
+import {
+  DECK_NAME_MAX_LENGTH,
+  DRAFT_ISSUES_REPORTED_MAX,
+  MAX_SAVED_DECKS,
+  MAX_SAVED_TRIOS,
+} from "../../src/config";
 import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
 
 const PROFILE = "p1";
@@ -227,6 +232,17 @@ describe("saved decks (§9.4, R250, R256)", () => {
         expect(deps.store.tables.decks).toEqual([]);
       });
     }
+  });
+
+  it("R250 lists at most DRAFT_ISSUES_REPORTED_MAX issues, so a body of junk cannot buy a huge answer", async () => {
+    const junk = Array.from({ length: DRAFT_ISSUES_REPORTED_MAX * 4 }, (_, i) => `junk-${String(i)}`);
+    const response = await putDeck(deckBody(deps, { cards: junk }));
+    const body = await readJson<ErrorBody>(response);
+    expect(response.status).toBe(400);
+    expect(body.error.details).toHaveLength(DRAFT_ISSUES_REPORTED_MAX);
+    // The first issue is still the message: the one a player reads.
+    expect(body.error.message).toBe(draftIssues(deps, "Aggro", junk)[0]?.message);
+    expect(deps.store.tables.decks).toEqual([]);
   });
 
   it('refuses a stale catalogVersion with 409 "update required", before judging the cards', async () => {

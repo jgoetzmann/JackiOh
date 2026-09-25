@@ -22,7 +22,7 @@ import type { FrozenTrio, Ids, MatchDirectory, SeriesRow } from "../../src/api/p
 import { createRecordResult } from "../../src/api/results";
 import { createSeriesRoutes, ensureSeriesGame, startSeries, sweepSeries } from "../../src/api/series";
 import { gameEnded, pickDeck, type SeriesView } from "../../src/api/series-rules";
-import { SERIES_START_GRACE_SECONDS, eloUpdate } from "../../src/config";
+import { SERIES_START_GIVE_UP_SECONDS, SERIES_START_GRACE_SECONDS, eloUpdate } from "../../src/config";
 import {
   createFakeMatchDirectory,
   createTestDeps,
@@ -37,6 +37,7 @@ const BOB = "profile-bob";
 const SERIES_ID = "series-1";
 const FIRST_MATCH = "match-1";
 const GRACE_MS = SERIES_START_GRACE_SECONDS * 1000;
+const GIVE_UP_MS = SERIES_START_GIVE_UP_SECONDS * 1000;
 
 function trio(owner: string): FrozenTrio {
   const deck = (slot: number) => ({
@@ -164,11 +165,11 @@ describe("R263 — a series survives a restart", () => {
 
     // Inside the grace the sweeper leaves it to the request that may be starting it right now.
     a.deps.timers.advance(GRACE_MS - 1);
-    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(a.deps.matches.started).toEqual([]);
 
     a.deps.timers.advance(1);
-    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [SERIES_ID] });
+    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [SERIES_ID], abandoned: [] });
     expect(a.deps.matches.started).toEqual([
       {
         matchId: FIRST_MATCH,
@@ -184,8 +185,45 @@ describe("R263 — a series survives a restart", () => {
 
     // Running now: the next sweeps do nothing.
     a.deps.timers.advance(GRACE_MS);
-    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(a.deps.matches.started).toHaveLength(1);
+  });
+
+  it("R263 a game that can never be started ends the series abandoned and unrated, and lets both players go", async () => {
+    const a = boot("a");
+    await begin(a);
+    // Every start fails: the frozen decks no longer build a game (a catalog change, say).
+    a.deps.matches.start = async () => {
+      throw new Error("createGame refused the frozen decks");
+    };
+    await pickBoth(a, [1, 2]);
+    expect(await a.deps.store.series.activeFor(ALICE)).not.toBeNull();
+
+    // Inside the give-up window the sweeper keeps trying to start it.
+    a.deps.timers.advance(GIVE_UP_MS - 1);
+    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
+    expect((await row(a.deps.store)).status).toBe("playing");
+
+    a.deps.timers.advance(1);
+    expect(await sweepSeries(a.deps)).toEqual({ timedOut: [], started: [], abandoned: [SERIES_ID] });
+    const ended = await row(a.deps.store);
+    expect(ended).toMatchObject({ status: "over", winner: null, endReason: "abandoned", ratingBefore: null });
+    // The game that never started is not on the record.
+    expect(ended.games).toEqual([]);
+    expect(await a.deps.store.series.activeFor(ALICE)).toBeNull();
+    expect(await a.deps.store.series.activeFor(BOB)).toBeNull();
+    expect((await a.deps.store.profiles.getById(ALICE))?.rating).toBe(1000);
+  });
+
+  it("R263 never gives up a game whose match did start, however long it has run", async () => {
+    const a = boot("a");
+    await begin(a);
+    await pickBoth(a, [0, 0]);
+    // A restart: the match row is live in the store, its actor not yet rebuilt in memory.
+    const b = boot("b", a);
+    b.deps.timers.advance(GIVE_UP_MS * 2);
+    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
+    expect((await row(b.deps.store)).status).toBe("playing");
   });
 
   it("R263 a restart between both picks and the match start heals itself in the new process", async () => {
@@ -203,7 +241,7 @@ describe("R263 — a series survives a restart", () => {
 
     const b = boot("b", a);
     b.deps.timers.advance(GRACE_MS);
-    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [SERIES_ID] });
+    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [SERIES_ID], abandoned: [] });
     expect(b.deps.matches.started[0]).toMatchObject({ matchId: FIRST_MATCH, seed: "seed-base:1" });
     expect(await inMatch(b.deps.store)).toEqual([FIRST_MATCH, FIRST_MATCH]);
   });
@@ -220,7 +258,7 @@ describe("R263 — a series survives a restart", () => {
     b.deps.timers.advance(GRACE_MS);
     // The match exists, so the sweeper does not start it again: the registry folds its log back on
     // the first socket (§9.5).
-    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(b.deps.matches.started).toEqual([]);
 
     // Its actor, rebuilt in the new process, reports the result.
@@ -385,7 +423,7 @@ describe("R263 — every write is a compare-and-set", () => {
 
     const b = boot("b", a);
     b.deps.timers.advance(GRACE_MS);
-    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(await inMatch(b.deps.store)).toEqual([FIRST_MATCH, FIRST_MATCH]);
   });
 
@@ -398,7 +436,7 @@ describe("R263 — every write is a compare-and-set", () => {
 
     const b = boot("b", a);
     b.deps.timers.advance(GRACE_MS);
-    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(b.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(b.deps.matches.started).toEqual([]);
     expect(b.deps.log.entries.some((entry) => entry.event === "series.game_unrecorded")).toBe(true);
     // The rules still refuse to end a game twice.

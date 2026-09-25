@@ -2042,6 +2042,7 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   it("R250 saves a deck as a draft: structure at save, legality at queue, ten decks at most", () => {
     expect(serverConstant(SERVER_CONFIG, "MAX_SAVED_DECKS")).toBe("10");
     expect(serverConstant(SERVER_CONFIG, "DECK_NAME_MAX_LENGTH")).toBe("40");
+    expect(serverConstant(SERVER_CONFIG, "DRAFT_ISSUES_REPORTED_MAX")).toBe("50");
     provenIn(250, VALIDATOR_DRAFTS_TEST, SERVER_STORE_CONTRACT, SERVER_DECKS_TEST);
   });
 
@@ -2127,6 +2128,7 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   it("R263 keeps a series in the database, so it survives a restart", () => {
     expect(serverConstant(SERVER_CONFIG, "SERIES_SWEEP_INTERVAL_SECONDS")).toBe("5");
     expect(serverConstant(SERVER_CONFIG, "SERIES_START_GRACE_SECONDS")).toBe("15");
+    expect(serverConstant(SERVER_CONFIG, "SERIES_START_GIVE_UP_SECONDS")).toBe("120");
     provenIn(263, SERVER_SERIES_RECOVERY_TEST, SERVER_STORE_CONTRACT);
   });
 

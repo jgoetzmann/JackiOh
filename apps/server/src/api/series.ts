@@ -22,6 +22,7 @@
  */
 
 import {
+  SERIES_START_GIVE_UP_SECONDS,
   SERIES_START_GRACE_SECONDS,
   SERIES_SWEEP_INTERVAL_SECONDS,
   SERIES_WRITE_ATTEMPTS,
@@ -32,6 +33,7 @@ import { ApiError, badRequest, ok, route, type ApiRequest, type Route } from "./
 import type { MatchSeat, ServerDeps, SeriesRow, SeriesSeat, Store, Timer } from "./ports";
 import {
   SeriesRefusal,
+  abandonUnstarted,
   forfeitSeries,
   gameEnded,
   gameSeats,
@@ -321,7 +323,7 @@ export async function advanceSeriesInTx(
 // The sweeper (R260, R263)
 // ---------------------------------------------------------------------------
 
-export type SeriesSweep = { timedOut: string[]; started: string[] };
+export type SeriesSweep = { timedOut: string[]; started: string[]; abandoned: string[] };
 
 /**
  * One sweep over every series that is not over:
@@ -329,14 +331,17 @@ export type SeriesSweep = { timedOut: string[]; started: string[] };
  *    or, with no pick at all, the series is abandoned;
  *  - a `playing` series whose match is not running and whose row has not changed for
  *    `SERIES_START_GRACE_SECONDS` gets its match started (R263). The grace is what keeps the
- *    sweeper from racing the request that is starting that match right now.
+ *    sweeper from racing the request that is starting that match right now;
+ *  - one that still has no match row `SERIES_START_GIVE_UP_SECONDS` after its picks is abandoned,
+ *    unrated (R263): its game cannot be started, and its players are let go.
  *
  * One series that fails does not stop the sweep.
  */
 export async function sweepSeries(deps: ServerDeps): Promise<SeriesSweep> {
   const now = deps.timers.now();
   const graceMs = SERIES_START_GRACE_SECONDS * MS_PER_SECOND;
-  const swept: SeriesSweep = { timedOut: [], started: [] };
+  const giveUpMs = SERIES_START_GIVE_UP_SECONDS * MS_PER_SECOND;
+  const swept: SeriesSweep = { timedOut: [], started: [], abandoned: [] };
 
   for (const series of await deps.store.series.active()) {
     try {
@@ -353,6 +358,18 @@ export async function sweepSeries(deps: ServerDeps): Promise<SeriesSweep> {
       if (series.status !== "playing") continue;
       if (now - series.updatedAt < graceMs) continue;
       if (deps.matches.has(series.nextMatchId)) continue;
+      // R263: a game that has had every chance to start and still has no match row cannot be
+      // started, so the series is given up rather than holding both players in it for ever. A
+      // live or finished match row means the game did start, and is never given up here.
+      if (
+        now - series.updatedAt >= giveUpMs &&
+        (await deps.store.matches.get(series.nextMatchId)) === null
+      ) {
+        await writeTransition(deps, series.id, (row) => abandonUnstarted(row, now));
+        swept.abandoned.push(series.id);
+        deps.log.alert("series.game_unstartable", { seriesId: series.id, matchId: series.nextMatchId });
+        continue;
+      }
       if (await startSeriesGame(deps, series)) {
         swept.started.push(series.id);
         deps.log.warn("series.game_recovered", { seriesId: series.id, matchId: series.nextMatchId });

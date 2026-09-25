@@ -294,7 +294,10 @@ begin
     raise exception 'deck: the name is % characters, at most % allowed',
       char_length(p_name), v_name_max;
   end if;
-  if p_name ~ '[[:cntrl:]]' then
+  -- The same characters @jackioh/validator's D1 refuses: the C0/C1 controls and the invisible
+  -- format characters (bidirectional overrides and isolates, zero-width spaces, the byte-order
+  -- mark), the joiners emoji are written with excepted.
+  if p_name ~ '[[:cntrl:]\u00AD\u061C\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]' then
     raise exception 'deck: the name contains a control character';
   end if;
 
@@ -421,7 +424,10 @@ begin
     raise exception 'trio: the name is % characters, at most % allowed',
       char_length(p_name), v_name_max;
   end if;
-  if p_name ~ '[[:cntrl:]]' then
+  -- The same characters @jackioh/validator's D1 refuses: the C0/C1 controls and the invisible
+  -- format characters (bidirectional overrides and isolates, zero-width spaces, the byte-order
+  -- mark), the joiners emoji are written with excepted.
+  if p_name ~ '[[:cntrl:]\u00AD\u061C\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]' then
     raise exception 'trio: the name contains a control character';
   end if;
 

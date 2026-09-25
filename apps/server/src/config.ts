@@ -325,6 +325,13 @@ export const MAX_SAVED_TRIOS = 5;
  * Mirrored in `app.settings` (0007).
  */
 export const DECK_NAME_MAX_LENGTH = 40;
+/**
+ * SPEC §11 R250: the most draft issues one refused save lists in its `details`. A real deck of at
+ * most `DECK_SIZE` cards can break D1–D4 about forty times; a request body of junk ids could break
+ * D3 thousands of times and turn a 64 KiB request into a far larger answer. The first issue is
+ * still the error's message, so nothing a player could fix is hidden.
+ */
+export const DRAFT_ISSUES_REPORTED_MAX = 50;
 /** SPEC §11 R255: the deck-code format's version; a code naming any other version is refused. */
 export const DECK_CODE_VERSION = 1;
 /**
@@ -358,6 +365,13 @@ export const SERIES_SWEEP_INTERVAL_SECONDS = 5;
  * than any request that is starting it itself, so the sweeper never races a live start.
  */
 export const SERIES_START_GRACE_SECONDS = 15;
+/**
+ * SPEC §11 R263: how long a series game may sit with its picks in and no match before the series is
+ * given up as abandoned (unrated). A game that has not started in this long cannot be started — its
+ * frozen decks no longer build a game, say, after a catalog change — and without an end both players
+ * would be held out of the queue by a series that cannot go on. Eight sweeps past the start grace.
+ */
+export const SERIES_START_GIVE_UP_SECONDS = 120;
 /**
  * SPEC §11 R263: how many times one request re-reads a series and re-applies its transition after
  * losing the compare-and-set, before it gives up with a 409. Each loss means another writer's
@@ -433,6 +447,7 @@ export const SERVER_CONFIG = Object.freeze({
   MAX_SAVED_DECKS,
   MAX_SAVED_TRIOS,
   DECK_NAME_MAX_LENGTH,
+  DRAFT_ISSUES_REPORTED_MAX,
   DECK_CODE_VERSION,
   DECK_CODE_MAX_INPUT_LENGTH,
   DECK_AUTOSAVE_DEBOUNCE_MS,
@@ -442,6 +457,7 @@ export const SERVER_CONFIG = Object.freeze({
   SERIES_PICK_SECONDS,
   SERIES_SWEEP_INTERVAL_SECONDS,
   SERIES_START_GRACE_SECONDS,
+  SERIES_START_GIVE_UP_SECONDS,
   SERIES_WRITE_ATTEMPTS,
   SERIES_POLL_SECONDS,
   TURN_CLOCK_MS,

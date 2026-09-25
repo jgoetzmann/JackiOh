@@ -466,11 +466,11 @@ describe("R260 — the pick clock", () => {
     expect((await pick(h, h.tokens.alice, 2)).status).toBe(200);
 
     h.deps.timers.advance(PICK_MS - 1);
-    expect(await sweepSeries(h.deps)).toEqual({ timedOut: [], started: [] });
+    expect(await sweepSeries(h.deps)).toEqual({ timedOut: [], started: [], abandoned: [] });
     expect(h.deps.matches.started).toHaveLength(0);
 
     h.deps.timers.advance(1);
-    expect(await sweepSeries(h.deps)).toEqual({ timedOut: [SERIES_ID], started: [] });
+    expect(await sweepSeries(h.deps)).toEqual({ timedOut: [SERIES_ID], started: [], abandoned: [] });
     expect(h.deps.matches.started[0]?.seats).toEqual([
       { profileId: ALICE, player: "p1", deck: ["alice-card-2a", "alice-card-2b"] },
       { profileId: BOB, player: "p2", deck: ["bob-card-0a", "bob-card-0b"] },

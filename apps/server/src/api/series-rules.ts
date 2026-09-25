@@ -420,6 +420,25 @@ export function timeoutPicks(series: SeriesRow, now: number): SeriesRow {
 }
 
 /**
+ * R263: a game whose picks are in but whose match could not be started for
+ * `SERIES_START_GIVE_UP_SECONDS` ends the series abandoned — no winner, unrated (R262) — so no player
+ * is held in a series that cannot go on. The unplayed game is taken off the record: it never
+ * happened. The sweeper decides the time has come; this only makes the change.
+ */
+export function abandonUnstarted(series: SeriesRow, now: number): SeriesRow {
+  if (series.status === "over") refuse("over", OVER_MESSAGE);
+  if (series.status !== "playing") refuse("not_playing", "No game of this series is waiting to start.");
+  const current = series.games.at(-1);
+  if (current === undefined || current.matchId !== series.nextMatchId || current.winner !== null) {
+    refuse("not_playing", "No game of this series is waiting to start.");
+  }
+  const next = copy(series);
+  next.games.pop();
+  end(next, null, "abandoned", now);
+  return stamp(next, series, now);
+}
+
+/**
  * R261: `seat` leaves the series between games and the other side wins it (`forfeit`). During a
  * game the way out is to concede that game, so a forfeit is refused while one is being played.
  */
