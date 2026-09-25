@@ -46,7 +46,10 @@ src/
                         Heroic Power's rolled power, which Board, Prompt and DragLayer provide from their view
     Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1; a graveyard or exile pile that
                         holds cards (public on both seats, §10.8) opens its cards on hover and in a dialog on a
-                        click (cards/inspect/CardList.tsx), and a log line that names a card opens that card
+                        click (cards/inspect/CardList.tsx), and so does your own library, from the list without
+                        order the view carries for it (`SideView.library`, R310–R313): grouped with counts,
+                        "Order hidden", unknown cards as backs; the opponent's library is a count. A log line
+                        that names a card opens that card
     actions.ts Prompt.tsx                                               M5-T2
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
@@ -250,7 +253,7 @@ routes/practice.tsx   the route: the tutorial path, setup, HUD, and Game.tsx unc
 
 ## The tutorial
 
-The practice lobby opens with the tutorial (SPEC §9.10, R290–R294): four lessons on a path, each
+The practice lobby opens with the tutorial (SPEC §9.10, R290–R294, R320–R322): four lessons on a path, each
 a practice game with two fixed decks, a fixed seed and seat, and the tutorial handicap on the AI
 seat (`AI_TUTORIAL`, the tier below Easy). A lesson is a practice config whose `lesson` names it
 (`tutorial/start.ts`), so the same worker, controller and board play it; the worker reads the
@@ -264,9 +267,13 @@ src/tutorial/
   steps.ts targets.ts       reads of the view and legal actions, step factories, anchors → board testids
   tracker.ts                feeds every controller snapshot to the coach and holds the AI for `holdAi`
   Coach.tsx layout.ts       the ring, and the bubble placed clear of what it points at (a panel above the board on phones)
-  TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done)
+  TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done), with Hide / Show
+                            tutorial (R322; its look in path-visibility.css)
   TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (step counter, Exit tutorial) and its result dialog
-  progress.ts               completed lessons in localStorage `jackioh.tutorial.v1`, try/catch (R294)
+  progress.ts               completed lessons and the Hide/Show choice in localStorage `jackioh.tutorial.v1`,
+                            try/catch (R294), and R321's merge with another copy (a union, the newest choice)
+  accountSync.ts            an active account's copy (`GET`/`PUT /api/tutorial`, R320) kept level with the
+                            device's (R321); the practice route mounts it
   harness.ts                test support only: a lesson played through the real core by a policy (R293)
   config.ts testids.ts devHandle.ts   the numbers, the testids (mirrored in e2e), `window.__jackiohTutorial`
 ```
@@ -285,6 +292,16 @@ src/tutorial/
   coach's display and the action its current step asks for, which spec 22 performs through the UI.
 - `pnpm --dir apps/web exec tsx scripts/lesson-deal.ts <lessonId> [seed | --scan …]` prints a
   lesson's deal, which is how a lesson's seed is picked.
+- Progress lives on the device and, for an active account, on the account too (R320, R321). The
+  device's copy is the one the page renders; `accountSync.ts` reads the account's once per visit,
+  merges it in (the union of completed lessons, the newest Hide/Show choice by the time it was
+  made), sends up what the account lacks, and after that sends each change as it happens. A request
+  that fails changes nothing on screen and throws nothing; the next visit catches the account up.
+  Signed out, pending or banned, nothing is sent at all.
+- Hide tutorial (R322) sits in the path's header while a lesson is still to do and folds the path to
+  one Show tutorial button in its place; focus moves to the button that undoes the press. The choice
+  is stored with the progress, so it holds on the next visit and on the account; a finished path
+  folds to its header by itself and offers no Hide.
 
 ## Regenerating the voice lines
 
