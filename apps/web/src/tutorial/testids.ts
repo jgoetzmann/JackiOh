@@ -18,8 +18,6 @@ export const tutorialTestid = {
   hud: "tutorial-hud",
   /** In the HUD: "Step k of n". */
   step: "tutorial-step",
-  /** In the HUD: the coach's "Skip step". */
-  skip: "tutorial-skip",
   /** In the HUD: back to the lessons; mid-game it opens practice's "Leave this game?" first. */
   exit: "tutorial-exit",
   /** In the HUD once the lesson is over: the outcome, which reopens the result dialog. */
@@ -31,11 +29,6 @@ export const tutorialTestid = {
   coach: "coach",
   /** In the bubble: "Got it", on every tip and info step. */
   coachAck: "coach-ack",
-  /**
-   * In the bubble: "Skip step", on every step and tip it shows and on its waiting line while the AI
-   * plays; not on the waiting line of the player's own turn (the HUD's Skip step is always there).
-   */
-  coachSkip: "coach-skip",
   /** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
   coachRing: "coach-ring",
   /** The end-of-lesson dialog; `data-outcome="win|loss|draw"`, `data-lesson`. */

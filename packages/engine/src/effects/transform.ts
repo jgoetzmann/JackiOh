@@ -83,6 +83,8 @@ function replaceOffField(ctx: EffectContext, old: CardInstance, def: CardDef, ra
   if (index < 0) return null;
 
   ceaseToExist(ctx.state, old);
+  // R312: a new instance with no `knownAs`, so a library replacement is a card its owner was never
+  // shown, and their list counts it unknown (the `transformed` event names it to nobody, R177).
   const replacement = newInstance(ctx.state, def.id, owner, { z: at, player: owner });
   replacement.radiant = radiant;
   moveToZone(ctx.state, replacement, at, { position: index });

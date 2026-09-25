@@ -192,3 +192,26 @@ describe("#83 Transmogulate — radiant", () => {
     expect(s.unit("p1", 2)?.radiant).toBe(false);
   });
 });
+
+describe("#83 Transmogulate — R312 the owner's library list", () => {
+  it("R312 every library replacement is a card its owner was never shown, so the list counts them unknown", () => {
+    const s = board();
+    // Before: p1's own two cards, by printed cost (R310): Pointmaster (2), then the 7/7 (4).
+    expect(s.view("p1").you.library).toEqual({
+      cards: [
+        { defId: "core-020", radiant: false, count: 1 },
+        { defId: "core-025", radiant: false, count: 1 },
+      ],
+      unknown: 0,
+    });
+
+    s.play(TRANSMOGULATE);
+
+    // The same count, none of it named: the Legendaries it rolled stay unread, even by p1.
+    expect(s.view("p1").you.library).toEqual({ cards: [], unknown: 2 });
+    const mine = JSON.stringify(s.view("p1"));
+    for (const card of s.pile("p1", "library")) expect(mine).not.toContain(`"${card.id}"`);
+    // p2's library is untouched and still fully known to p2.
+    expect(s.view("p2").you.library).toEqual({ cards: [{ defId: "core-020", radiant: false, count: 1 }], unknown: 0 });
+  });
+});

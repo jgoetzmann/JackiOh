@@ -124,6 +124,23 @@ export type ModifierView = {
   label: string;
 };
 
+/**
+ * R310: one kind of card left in the viewer's own library: a definition, the face it went in with
+ * (R311) and how many such cards are there. No instance id and no position, so nothing in it can
+ * say where a card lies.
+ */
+export type LibraryEntryView = { defId: string; radiant: boolean; count: number };
+
+/**
+ * R310–R312: the viewer's own library as a list without order. `cards` holds what the viewer was
+ * shown of each card as it went in, one entry per definition and face, sorted by printed cost, then
+ * name, then id, base face first (R310): an order that depends on the cards alone, never on where
+ * they lie. `unknown` counts the cards the viewer was never shown (R312: a library Pocket Chaos
+ * swapped in, Transmogulate's picks), which a client draws as backs. The two add up to
+ * `libraryCount`.
+ */
+export type LibraryView = { cards: LibraryEntryView[]; unknown: number };
+
 export type SideView = {
   player: PlayerId;
   hero: HeroView;
@@ -139,6 +156,11 @@ export type SideView = {
   /** Full cards for the viewer; a count only for the opponent (§10.8). */
   hand: CardView[] | { count: number };
   libraryCount: number;
+  /**
+   * R310: the viewer's own library, as a list without order. Present on the viewer's own side only;
+   * the opponent's library is `libraryCount` and nothing else (§9.1, §10.8).
+   */
+  library?: LibraryView;
   graveyard: CardView[];
   exile: CardView[];
   /**

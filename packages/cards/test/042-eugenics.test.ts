@@ -153,3 +153,17 @@ describe("#42 Eugenics — radiant", () => {
     expect(effectKinds(eugenicsRadiant.cry)).toEqual(["exileRandomFromLibrary", "radiantChance"]);
   });
 });
+
+describe("#42 Eugenics — R311 the owner's library list", () => {
+  it("R311 a card rolled Radiant inside the library is still listed with the face it went in with", () => {
+    const s = cast(58);
+    const remaining = s.pile("p1", "library");
+    expect(remaining.some((card) => card.radiant)).toBe(true);
+
+    // The rolls happened where nobody reads them (R177), so the list shows none of them.
+    expect(s.view("p1").you.library).toEqual({
+      cards: [{ defId: "core-025", radiant: false, count: remaining.length }],
+      unknown: 0,
+    });
+  });
+});

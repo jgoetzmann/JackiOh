@@ -260,12 +260,12 @@ decks from `tutorial/lessons/<id>.ts` and nothing else the page sends changes th
 src/tutorial/
   lessons.ts lessons/*.ts   each lesson as data: title, mechanics, seed, seat, both decks, retry tip
   scripts/*.ts              each lesson's coach script: steps in order and reactive tips (page only)
-  coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, skip, display (R292)
+  coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, display (R292, R314)
   steps.ts targets.ts       reads of the view and legal actions, step factories, anchors → board testids
   tracker.ts                feeds every controller snapshot to the coach and holds the AI for `holdAi`
   Coach.tsx layout.ts       the ring, and the bubble placed clear of what it points at (a panel above the board on phones)
   TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done)
-  TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (Skip step, Exit tutorial) and its result dialog
+  TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (step counter, Exit tutorial) and its result dialog
   progress.ts               completed lessons in localStorage `jackioh.tutorial.v1`, try/catch (R294)
   harness.ts                test support only: a lesson played through the real core by a policy (R293)
   config.ts testids.ts devHandle.ts   the numbers, the testids (mirrored in e2e), `window.__jackiohTutorial`
@@ -273,11 +273,13 @@ src/tutorial/
 
 - The coach reads the snapshot the page already holds (`view`, `legal`, `aiToAct`) and nothing
   else, and never sends an action (rule 7). A step points at a board element by its testid and
-  completes when the view shows it done; "Skip step" always moves on, and a step expires after
-  `TUTORIAL_STEP_TURNS_MAX` of the player's own turns, so nothing strands a lesson.
+  completes when the view shows it done. There is no Skip step, and nothing needs one (R314): only
+  a tip or an `info` step holds the AI, and each shows "Got it"; an action step never holds it; a
+  step expires after `TUTORIAL_STEP_TURNS_MAX` of the player's own turns (the lesson's `final` step
+  ends with the game); and Exit tutorial is in the HUD throughout. Nothing strands a lesson.
 - The bubble adopts a new step only once the board has caught up (no `data-animating`), so it never
   points at a card the board has not drawn; a step or tip with `holdAi` holds the AI through
-  `setHold("coach", …)`.
+  `setHold("coach", …)` until its "Got it".
 - `?lesson=<id>` starts a lesson at once (`&pace=fast` works as for practice); `?seed=` and
   `?seat=` never override a lesson's own. `window.__jackiohTutorial` (dev builds only) exposes the
   coach's display and the action its current step asks for, which spec 22 performs through the UI.

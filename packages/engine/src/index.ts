@@ -24,6 +24,8 @@ export * from "./prompts";
 export * from "./triggers";
 export * from "./traps";
 export * from "./viewFor";
+// R310–R312: what a player may know of their own library, and the record behind it.
+export * from "./ownLibrary";
 export * from "./replay";
 export * as effects from "./effects";
 export * as subsystems from "./subsystems";

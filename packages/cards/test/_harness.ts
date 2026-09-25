@@ -162,6 +162,7 @@ import {
   refreshMana,
   registeredCatalog,
   removeFromAnyZone,
+  showToOwner,
   startTurn as engineStartTurn,
   stateCheck,
   subsystems,
@@ -587,6 +588,8 @@ function placePile(
     applyCostSetup(card, entry);
     // `position: "bottom"` keeps list order, so `library[0]` is the next card drawn (draw.ts).
     const result = moveToZone(state, card, zone, { position: "bottom" });
+    // R311: a scenario's library stands for its owner's deck, which they know.
+    if (zone === "library" && result === "moved") showToOwner(card);
     if (result === "vanished") {
       throw new Error(
         `${at_}: "${defOf(state, defId).name}" is a unit token, and R11 makes one cease to ` +

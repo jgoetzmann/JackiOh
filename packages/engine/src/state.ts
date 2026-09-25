@@ -24,6 +24,7 @@ import {
   type Handicap,
 } from "./config";
 import { registerCatalog, registeredCatalog } from "./catalog";
+import { showToOwner } from "./ownLibrary";
 import { createRng } from "./rng";
 
 export type Phase = "setup" | "mulligan" | "start" | "main" | "end" | "over";
@@ -74,6 +75,14 @@ export type CardInstance = {
   markedDestroyed?: boolean;
   /** Came back through Reborn, so it no longer has it (§4.5 step 4). */
   rebornSpent?: boolean;
+  /**
+   * R311: what this card's owner was shown of it as it went into their library — its definition and
+   * its face — written by `ownLibrary.showToOwner` where a card goes in openly and read by `viewFor`
+   * for the owner's library list (R310) and by nothing else. Absent on a library card its owner was
+   * never shown (R312). A change made to the card inside the library, where nobody sees it, leaves
+   * this record as it was.
+   */
+  knownAs?: { defId: string; radiant: boolean };
 };
 
 /** A unit zone holds a Stack pile, top card first (§3.2). */
@@ -547,6 +556,8 @@ export function createGame(options: CreateGameOptions): GameState {
     const ids = numbering.shuffle(side.library.map((card) => card.id));
     side.library.forEach((card, at) => {
       card.id = ids[at] ?? card.id;
+      // R311: a player's own deck is the first thing they know of their library.
+      showToOwner(card);
     });
 
     // R180: a copy of the five fields and nothing else, so no stray key reaches the state or its hash.

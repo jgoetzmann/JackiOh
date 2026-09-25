@@ -450,7 +450,6 @@
   transition: width calc(240ms * var(--anim-scale, 1)) ease-out;
 }
 
-.practice .tutorial-hud__skip,
 .practice .tutorial-hud__exit {
   flex: none;
   min-height: 44px;
@@ -459,10 +458,6 @@
   background: transparent;
   font-size: 13px;
   white-space: nowrap;
-}
-
-.practice .tutorial-hud__skip {
-  color: var(--text-dim);
 }
 
 @media (max-width: 560px) {
@@ -485,7 +480,6 @@
     width: 32px;
   }
 
-  .practice .tutorial-hud__skip,
   .practice .tutorial-hud__exit {
     padding: 6px 10px;
   }
@@ -638,20 +632,22 @@
   margin-top: 4px;
 }
 
-.app-shell .coach__ack,
-.app-shell .coach__skip {
-  min-height: 40px;
-  padding: 7px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  white-space: nowrap;
+/* A floating bubble with no Got it (an action step, the waiting line; there is no Skip step, R314)
+   lays out no empty row under its text. The phone's panel keeps its row (below). */
+.coach--float .coach__actions:empty {
+  display: none;
 }
 
 .app-shell .coach__ack {
+  min-height: 40px;
+  padding: 7px 16px;
   border-color: color-mix(in srgb, var(--coach) 70%, white);
+  border-radius: 10px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--coach) 85%, white), var(--coach));
   color: var(--coach-ink);
+  font-size: 14px;
   font-weight: 750;
+  white-space: nowrap;
 }
 
 .app-shell .coach__ack:hover:not(:disabled) {
@@ -659,22 +655,16 @@
   background: linear-gradient(180deg, white, color-mix(in srgb, var(--coach) 85%, white));
 }
 
-.app-shell .coach__skip {
-  background: transparent;
-  color: var(--text-dim);
-  font-weight: 600;
-}
-
 /* The slim bubble while the coach waits (the AI's turn, a step whose moment has not come): one
-   line of what is happening, and Skip step (not on your own turn, where the line says it is your
-   move and the step waiting for its moment retires by itself). */
+   line of what is happening, evenly padded, and no buttons (R314: a step waiting for its moment
+   retires by itself). */
 .coach.coach--float.coach--slim {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   width: auto;
   max-width: min(440px, calc(100vw - 16px));
-  padding: 6px 6px 6px 14px;
+  padding: 8px 14px;
   gap: 6px 12px;
 }
 
@@ -691,13 +681,8 @@
   font-size: 13px;
 }
 
-.coach--float.coach--slim .coach__actions {
-  margin: 0 0 0 auto;
-}
-
 @media (max-width: 1024px), (pointer: coarse) {
-  .app-shell .coach__ack,
-  .app-shell .coach__skip {
+  .app-shell .coach__ack {
     min-height: 44px;
   }
 
@@ -714,8 +699,8 @@
    least of all your hand and End turn, which a bubble docked to the bottom edge used to sit on.
 
    The panel keeps one height whatever it shows (a step, a tip, the waiting line), so the board does
-   not resize from one step to the next: a row as tall as its buttons (the eyebrow and the title
-   beside Got it and Skip step), then `--coach-lines` lines of text. A longer text is clamped, and
+   not resize from one step to the next: a row as tall as its button (the eyebrow and the title
+   beside Got it), then `--coach-lines` lines of text. A longer text is clamped, and
    More shows the rest (Less folds it again; a new step starts folded). The lines are what a phone
    can spare while every card keeps its 44 px touch floor (board.css): measured at 360-390 px wide,
    once the turn banner folds away (below), the board has room above that floor for a 1-line panel
@@ -774,7 +759,7 @@
   white-space: nowrap;
 }
 
-/* As tall as its buttons even when it has none (the waiting line on your own turn), so the panel
+/* As tall as Got it even when it is not there (an action step, the waiting line), so the panel
    keeps its height from one display to the next. */
 .coach--panel .coach__actions {
   grid-area: actions;
@@ -784,8 +769,7 @@
   margin: 0;
 }
 
-.app-shell .coach--panel .coach__ack,
-.app-shell .coach--panel .coach__skip {
+.app-shell .coach--panel .coach__ack {
   padding-inline: 11px;
   font-size: 13px;
 }

@@ -55,6 +55,8 @@ function makeRadiant(ctx: EffectContext, card: CardInstance): boolean {
     }
     return false;
   }
+  // R311: a library card's `knownAs` is left as it was, so its owner's list keeps showing the face
+  // it went in with — the change was made where nobody reads it.
   card.radiant = true;
   gainPrintedShield(ctx, card);
   ctx.events.push({ type: "radiantSet", instanceId: card.id, defId: card.defId, zone: card.zone });

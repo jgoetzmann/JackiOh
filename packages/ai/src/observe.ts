@@ -114,6 +114,8 @@ function toPlaceholder(card: CardInstance): void {
   delete card.x;
   delete card.embiggened;
   delete card.returnToHandAtEndOfTurn;
+  // R311: what the card's owner was shown of it going into their library names it too.
+  delete card.knownAs;
 }
 
 type Loose = Record<string, unknown>;

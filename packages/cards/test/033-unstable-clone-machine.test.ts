@@ -250,3 +250,24 @@ describe("R119: a permanent does not answer the play that put it onto the field"
     expect(copiesIn(s.pile("p1", "library"), "core-098")).toHaveLength(0);
   });
 });
+
+describe("#33 Unstable Clone Machine — R311 the owner's library list", () => {
+  it("R311 lists the 3 copies with the face they went in with, Radiant on the radiant face", () => {
+    const s = scenario({
+      seed: "clone-r311",
+      p1: { hand: ["15"], backrow: [{ def: "33", radiant: true }], field: ["43"], library: ["25"] },
+      p2: { field: ["15"] },
+    });
+
+    s.play("15");
+
+    // The copies are of a card p1 played in the open, so p1 knows what went in (never where).
+    const list = s.view("p1").you.library;
+    expect(list?.unknown).toBe(0);
+    expect(list?.cards).toContainEqual({ defId: "core-015", radiant: true, count: 3 });
+    expect(list?.cards).toContainEqual({ defId: "core-025", radiant: false, count: 1 });
+    // p2 reads p1's library as a count and nothing else.
+    expect(s.view("p2").opponent.library).toBeUndefined();
+    expect(s.view("p2").opponent.libraryCount).toBe(4);
+  });
+});

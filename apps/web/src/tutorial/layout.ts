@@ -19,8 +19,8 @@
 //  - No anchor: an info step floats in the middle of the screen (beside an open prompt that sits
 //    there), and the slim "waiting" bubble sits in the bottom-right corner.
 //
-// Nothing is ever placed above `insetTop`, the HUD's lower edge, so Skip step and Exit tutorial
-// stay reachable whatever the coach shows.
+// Nothing is ever placed above `insetTop`, the HUD's lower edge, so Exit tutorial stays reachable
+// whatever the coach shows.
 //
 // This is desktops and tablets only. On the board's phone layouts the coach does not float at all:
 // it is a panel in the page between the HUD and the board (Coach.tsx, tutorial.css), because a

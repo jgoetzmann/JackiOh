@@ -27,6 +27,7 @@ import { opponentOf } from "@jackioh/shared";
 import { enterNewSide } from "../combat";
 import { addToHand } from "../draw";
 import type { Effect, EffectContext } from "../script";
+import { hideFromOwner } from "../ownLibrary";
 import type { CardInstance, GameState } from "../state";
 import {
   cardAt,
@@ -200,6 +201,8 @@ function claimLibrary(cards: readonly CardInstance[], player: PlayerId): void {
     card.owner = player;
     card.controller = player;
     card.zone = { z: "library", player };
+    // R312: its new owner was never shown it, and what its old owner was shown is not theirs.
+    hideFromOwner(card);
   }
 }
 

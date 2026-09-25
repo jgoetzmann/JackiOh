@@ -261,7 +261,7 @@ describe("viewFor (§10.8, M3-T6)", () => {
     expect(Object.keys(view.opponent.hand)).toEqual(["count"]);
   });
 
-  it("§9.1 sends both libraries as a count, and no library card reaches either player's view", () => {
+  it("§9.1 sends both libraries as a count, and no library card's instance reaches either player's view", () => {
     const state = game("libraries");
     const theirLibrary = setLibrary(
       state,
@@ -276,7 +276,9 @@ describe("viewFor (§10.8, M3-T6)", () => {
 
     expect(viewFor(state, "p1").you.libraryCount).toBe(myLibrary.length);
     expect(viewFor(state, "p1").opponent.libraryCount).toBe(theirLibrary.length);
-    // Library order and contents are hidden from *both* players, the owner included.
+    // Library order is hidden from *both* players, the owner included: no instance id ships. The
+    // owner's own library also travels as a list without order (R310, ownLibrary.test.ts), and the
+    // opponent's contents never do.
     for (const card of myLibrary) {
       expect(mine).not.toContain(`"${card.id}"`);
       expect(theirs).not.toContain(`"${card.id}"`);
@@ -628,7 +630,8 @@ describe("viewFor (§10.8, M3-T6)", () => {
       },
     ];
 
-    // A card in a library is readable by nobody, its owner included (§9.1).
+    // An event never reads a card in a library, its owner included (§9.1): the owner's list (R310)
+    // names what is left without saying which instance is which.
     for (const viewer of ["p1", "p2"] as const) {
       const event = at(viewFor(state, viewer).events, 0);
       expect(event.type).toBe("shuffledIn");

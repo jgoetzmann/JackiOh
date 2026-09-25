@@ -1,6 +1,7 @@
 // The bar above a lesson's board (SPEC §9.10): which lesson this is, how far through its steps the
-// player is, the practice HUD's live status (modifiers, "AI is thinking…", the outcome), and the
-// two ways on — Skip step and Exit tutorial — which nothing the coach draws is ever placed over.
+// player is, the practice HUD's live status (modifiers, "AI is thinking…", the outcome), and Exit
+// tutorial, which nothing the coach draws is ever placed over. There is no Skip step (R314): a step
+// moves on when it is done, by "Got it", or by itself (coach.ts).
 //
 // It replaces the practice HUD for a lesson and wears its look (`practice-hud`), so the board below
 // is laid out exactly as in any practice game.
@@ -101,23 +102,6 @@ export function TutorialHud({
           </button>
         )}
       </span>
-      {over ? null : (
-        <button
-          type="button"
-          className="tutorial-hud__skip"
-          data-testid={tutorialTestid.skip}
-          disabled={!counting}
-          aria-label="Skip step"
-          onClick={() => {
-            tracker.skip();
-          }}
-        >
-          <span className="tutorial-hud__long">Skip step</span>
-          <span className="tutorial-hud__short" aria-hidden="true">
-            Skip
-          </span>
-        </button>
-      )}
       <button
         type="button"
         className="tutorial-hud__exit"

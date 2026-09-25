@@ -590,8 +590,6 @@ export const TUTORIAL_PATH_TOGGLE = "tutorial-path-toggle";
 export const TUTORIAL_HUD = "tutorial-hud";
 /** In the HUD: "Step k of n". */
 export const TUTORIAL_STEP = "tutorial-step";
-/** In the HUD: the coach's "Skip step". */
-export const TUTORIAL_SKIP = "tutorial-skip";
 /** In the HUD: back to the lessons; mid-game it opens PRACTICE_LEAVE first. */
 export const TUTORIAL_EXIT = "tutorial-exit";
 /** In the HUD once the lesson is over: the outcome, which reopens the result dialog. */
@@ -603,11 +601,6 @@ export const TUTORIAL_OUTCOME = "tutorial-outcome";
 export const COACH = "coach";
 /** In the bubble: "Got it", on every tip and info step. */
 export const COACH_ACK = "coach-ack";
-/**
- * In the bubble: "Skip step", on every step and tip it shows and on its waiting line while the AI
- * plays; not on the waiting line of the player's own turn (TUTORIAL_SKIP is always there).
- */
-export const COACH_SKIP = "coach-skip";
 /** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
 export const COACH_RING = "coach-ring";
 /** The end-of-lesson dialog; `data-outcome="win|loss|draw"`, `data-lesson`. */

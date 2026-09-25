@@ -240,6 +240,15 @@ const WEB_TUTORIAL_LESSON_TESTS = [
   "../../../apps/web/src/tutorial/scripts/traps.test.ts",
   "../../../apps/web/src/tutorial/scripts/advanced.test.ts",
 ] as const;
+/** R310 to R314's proofs: the viewer's own library list (§10.8) and the tutorial without Skip step. */
+const WEB_PILE_BROWSER_TEST = "../../../apps/web/src/game/PileBrowser.test.tsx";
+const WEB_PRACTICE_TUTORIAL_TEST = "../../../apps/web/src/routes/practice-tutorial.test.tsx";
+const CARD_TESTS_R311 = [
+  "../../cards/test/033-unstable-clone-machine.test.ts",
+  "../../cards/test/090-cn-viral-injection.test.ts",
+  "../../cards/test/042-eugenics.test.ts",
+] as const;
+const CARD_TESTS_R312 = ["../../cards/test/087-pocket-chaos.test.ts", "../../cards/test/083-transmogulate.test.ts"] as const;
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -2312,6 +2321,34 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by apps/web tutorial/progress.test.ts "R294 …": the on-device store and the unlock order.
   it("R294 keeps tutorial progress on the device and opens the lessons in order", () => {
     provenIn(294, WEB_TUTORIAL_PROGRESS_TEST);
+  });
+
+  // Proved by ownLibrary.test.ts "R310 …": the list's order, grouping and fields, the opponent's
+  // library left a count, and two orders of the same library giving the same view.
+  it("R310 gives the viewer their own library as a list without its order", () => {
+    provenIn(310, "ownLibrary.test.ts");
+  });
+
+  // Proved by ownLibrary.test.ts "R311 …" (the deck, a mulligan's returns, a shuffle-in, a change
+  // inside the library) and again by the cards that shuffle in or change a library card: #33, #90, #42.
+  it("R311 lists what the owner was shown of each card going in, and not what changed unseen", () => {
+    provenIn(311, "ownLibrary.test.ts", ...CARD_TESTS_R311);
+  });
+
+  // Proved by ownLibrary.test.ts "R312 …" and by #87's library swap and #83's library replacements.
+  it("R312 counts a card its owner was never shown as unknown", () => {
+    provenIn(312, "ownLibrary.test.ts", ...CARD_TESTS_R312);
+  });
+
+  // Proved by apps/web game/PileBrowser.test.tsx "R313 …": the library pile's preview and dialog.
+  it("R313 lets the viewer look through their own library pile, and not the opponent's", () => {
+    provenIn(313, WEB_PILE_BROWSER_TEST);
+  });
+
+  // Proved by apps/web tutorial/coach.test.ts "R314 …" (every lesson's steps and tips, and expiry)
+  // and routes/practice-tutorial.test.tsx "R314 …" (no Skip step on the page; Got it and Exit are).
+  it("R314 has no Skip step in the tutorial, and nothing that strands the player", () => {
+    provenIn(314, WEB_TUTORIAL_COACH_TEST, WEB_PRACTICE_TUTORIAL_TEST);
   });
 });
 

@@ -17,15 +17,18 @@
 //    asked. `moot` retires a step that no longer makes sense (the card it names has died, the turn
 //    it was about has ended) without a word.
 //  - `tips`, reactive. A tip shows once, the first time its `when` holds on a view — the AI's Taunt
-//    unit arriving, a trap springing — and goes when the player presses "Got it" or "Skip". While a
-//    tip is up, the current step waits behind it, but its `done` is still checked, so nothing the
-//    player does meanwhile is lost.
+//    unit arriving, a trap springing — and goes when the player presses "Got it". While a tip is up,
+//    the current step waits behind it, but its `done` is still checked, so nothing the player does
+//    meanwhile is lost.
 //
-// Nothing can strand the player. "Skip step" (`coachSkip`) always moves on, and a step that has
-// been current through `TUTORIAL_STEP_TURNS_MAX` of the player's own turn starts expires by itself
-// (a `final` step, the lesson's last, never expires: it ends with the game). When the game is over
-// the coach is finished, whatever step it was on. A script whose steps are all through is not: its
-// tips still come until the game ends.
+// Nothing can strand the player, and there is no "Skip step" (R314). The only thing the coach can
+// stop is the AI (`holdAi`), and only a tip or an `info` step holds it, both of which show "Got it"
+// (`coachDisplay` never lets an `act` step hold it); an `act` step waits for the player with the
+// game going on. A step that has been current through `TUTORIAL_STEP_TURNS_MAX` of the player's own
+// turn starts expires by itself, shown or still waiting for its moment (a `final` step, the
+// lesson's last, never expires: it ends with the game). When the game is over the coach is
+// finished, whatever step it was on. A script whose steps are all through is not: its tips still
+// come until the game ends. And "Exit tutorial" is in the HUD throughout, whatever the coach shows.
 
 import type { ActionBody, GameEvent, PlayerView, Row } from "@jackioh/shared";
 
@@ -101,7 +104,10 @@ export type CoachStep = {
    * what the coach says (R293), and the page may point at the card it names.
    */
   expect?: (action: ActionBody, ctx: CoachCtx) => boolean;
-  /** Hold the AI's next step while this step shows, so the player can read it first. */
+  /**
+   * Hold the AI's next step while this step shows, so the player can read it first. Only an `info`
+   * step holds: its "Got it" lets go. An `act` step's is ignored (`coachDisplay`, R314).
+   */
   holdAi?: boolean;
   /** The lesson's last step: it never expires, it ends with the game. */
   final?: boolean;
@@ -129,7 +135,7 @@ export type LessonScript = {
   tips: readonly CoachTip[];
 };
 
-export type StepOutcome = "done" | "skipped" | "moot" | "expired";
+export type StepOutcome = "done" | "moot" | "expired";
 
 export type CoachState = {
   /** The current step's index; `steps.length` once the script is through. */
@@ -290,15 +296,6 @@ export function coachAck(script: LessonScript, state: CoachState, ctx: CoachCtx)
   return settleSteps(script, retire(state, step, "done"), ctx);
 }
 
-/** "Skip step": the tip showing goes, else the current step, shown or waiting. */
-export function coachSkip(script: LessonScript, state: CoachState, ctx: CoachCtx): CoachState {
-  if (state.finished) return state;
-  if (state.tipQueue.length > 0) return dropTip(state);
-  const step = script.steps[state.index];
-  if (step === undefined) return state;
-  return settleSteps(script, retire(state, step, "skipped"), ctx);
-}
-
 export type CoachDisplay =
   | { mode: "finished" }
   /** Nothing to show yet: the current step waits for its `when` (the AI's turn, say). */
@@ -311,6 +308,7 @@ export type CoachDisplay =
       anchor: CoachAnchor | null;
       /** A "Got it" button: every tip, and an `info` step. */
       ack: boolean;
+      /** Hold the AI while this shows: only ever with `ack`, so "Got it" always lets go (R314). */
       holdAi: boolean;
       stepNumber: number;
       stepCount: number;
@@ -348,7 +346,7 @@ export function coachDisplay(script: LessonScript, state: CoachState, ctx: Coach
     text: textOf(step.text, ctx),
     anchor: anchorOf(step.anchor, ctx),
     ack: step.kind === "info",
-    holdAi: step.holdAi === true,
+    holdAi: step.kind === "info" && step.holdAi === true,
     stepNumber,
     stepCount,
   };

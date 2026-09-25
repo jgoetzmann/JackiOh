@@ -4,6 +4,7 @@ import type { Action, ActionBody, GameEvent, PlayerId, Row } from "@jackioh/shar
 import { registerCatalog } from "../../src/catalog";
 import { AI_END_TURN_PROBABILITY, DECK_SIZE } from "../../src/config";
 import { beginGame, legalActions, reduce, seatToAct } from "../../src/reduce";
+import { showToOwner } from "../../src/ownLibrary";
 import { createRng } from "../../src/rng";
 import type { EngineSink } from "../../src/resolve";
 import { registerScripts } from "../../src/scripts";
@@ -50,8 +51,10 @@ export function inHand(state: GameState, defId: string, player: PlayerId, count 
   });
 }
 
+/** The player's library, top first, as their own deck: each card known to its owner (R311). */
 export function setLibrary(state: GameState, player: PlayerId, defIds: string[]): CardInstance[] {
   const cards = defIds.map((defId) => newInstance(state, defId, player, { z: "library", player }));
+  for (const card of cards) showToOwner(card);
   state.players[player].library = cards;
   return cards;
 }
