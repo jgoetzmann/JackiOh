@@ -19,6 +19,7 @@ e2e/
   cypress/e2e/*.cy.ts      the seventeen specs
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
+  cypress/e2e/20-mulligan-concede-draw.cy.ts  networked, like 06: both seats mulligan at once in either order (R265–R268), Concede's confirmation, and a draw offer declined and then accepted (R36, R269), asserted on the browser's DOM and on seat 2's socket alike
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
@@ -162,6 +163,9 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | `advanceToTurn(turn)` | End turns until `turn`, R82-safe: a turn that ended by itself leaves nothing to press, only a device to hand over. |
 | `{ expectAnimating }` on `playCard` / `attack` / `endTurn` / `switchPosition` / `usePower` | Every acting command drains `data-animating` before it returns, which closes the window BUILD M5-T4 asks three specs to look through. This asserts the animation between the click and the drain, so a spec never has to hand-roll clicks to get in between. |
 | `answerPrompt(kind, { first, embiggen })` | `first: 1` takes the first option offered, which is the only way to answer a Discover (its options are rng-drawn). `embiggen: true` is R81's price as the boolean it is, not the picker's `"true"` key. |
+| `keepMulligans()` | Both opening mulligans are open at once (R265). On `/dev/hotseat` the device follows the seat that still owes one, so this answers both; networked it answers this client's own, after which the picker gives way to `mulligan-waiting`. |
+| `concede()` | The `concede` control only asks ("Concede this game?"); this confirms in the dialog it opens. A spec that clicks `concede` alone has conceded nothing. |
+| `wsPlayer` `awaitView` `where: { mulliganOpponentReady, drawOfferBy }` | R266's "the other seat is ready" and R269's standing offer, read off seat 2's own view (`view.mulligan.opponentReady`, `view.drawOffer.by`). |
 
 ## Which spec needs which milestone
 
@@ -178,6 +182,7 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 15 | Polish 2 (SPEC §10.11): the audio layer on `/dev/hotseat`, M4 + M5, no server. Chrome for the audio context; it asserts the voice request in `window.__jackiohAudio`'s log, never the sound. |
 | 16 | Polish 7 (§10.8, R195): drag to play on `/dev/hotseat` with spec 04's decks and seed, M4 + M5, no server. The gestures are real pointer events from `support/ux.ts`, and the settings panel turns drag to play off. |
 | 17 | M4 + M5 and polish 3 (`/practice`), against `build:e2e` with no server: the opponent's-play showcase, the log's card lines and the pile browser (§10.8, §10.10, R97, R202, R227), with the selectors in `support/testids.ts` block A15. It uses spec 01's and spec 03's decks and seeds, and plays `/practice` at normal pacing, because `?pace=fast` releases the AI without waiting for the showcase. How long the showcase stood is read off a MutationObserver recorder in the page, never off a fixed wait. |
+| 20 | M6 + M7-T1 and a `build:e2e` client, like 05 and 06: a room-code match per case with seat 2 on `cy.task("wsPlayer")`, spec 06's decks, and one seed per case; the selectors are `support/testids.ts` block A16. The draw offer's sound is asserted in `window.__jackiohAudio`'s log, as spec 15 asserts its voice lines. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

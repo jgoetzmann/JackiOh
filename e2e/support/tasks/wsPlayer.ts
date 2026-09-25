@@ -64,6 +64,10 @@ export type ViewPredicate = {
   promptKind?: string;
   hasResult?: boolean;
   turnAtLeast?: number;
+  /** R265, R266: `view.mulligan.opponentReady`; a view outside the mulligan window never matches. */
+  mulliganOpponentReady?: boolean;
+  /** R269: `view.drawOffer.by`, or `null` for "no offer stands". */
+  drawOfferBy?: string | null;
 };
 
 export type WsPlayerResult = {
@@ -114,6 +118,14 @@ function matchesView(view: Record<string, unknown>, where: ViewPredicate): boole
   if (where.phase !== undefined && view.phase !== where.phase) return false;
   if (where.hasResult !== undefined && (view.result !== null && view.result !== undefined) !== where.hasResult) return false;
   if (where.turnAtLeast !== undefined && !(typeof view.turn === "number" && view.turn >= where.turnAtLeast)) return false;
+  if (where.mulliganOpponentReady !== undefined) {
+    const mulligan = isRecord(view.mulligan) ? view.mulligan : null;
+    if (mulligan === null || mulligan.opponentReady !== where.mulliganOpponentReady) return false;
+  }
+  if (where.drawOfferBy !== undefined) {
+    const by = isRecord(view.drawOffer) && typeof view.drawOffer.by === "string" ? view.drawOffer.by : null;
+    if (by !== where.drawOfferBy) return false;
+  }
   if (where.promptKind !== undefined) {
     // §10.6, §10.8: `PendingView` is split on `forYou`, and the player who does NOT hold the
     // prompt gets `{ forYou: false, pendingFor }` — no kind, no options. So a `promptKind`

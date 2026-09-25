@@ -92,6 +92,13 @@ export type GameStateLike = {
   pending:
     | { id?: string; choiceId?: string; kind?: PromptKind; playerId?: PlayerId; player?: PlayerId }
     | null;
+  /**
+   * §2.1 step 3, R265: both seats' opening mulligans while they are open at once — hotseat only,
+   * since it is the raw `GameState` (`packages/engine/src/state.ts` `MulliganSeat`). `pending` is
+   * null for the whole window; `keep` is a seat's sealed answer, null until it gives one. Absent
+   * once the second answer has resolved both, and never on a networked handle.
+   */
+  mulligan?: Record<PlayerId, { prompt?: { id?: string; kind?: PromptKind }; keep: string[] | null }>;
   players: Record<PlayerId, unknown>;
   [key: string]: unknown;
 };
