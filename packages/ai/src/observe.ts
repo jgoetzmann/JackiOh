@@ -11,7 +11,15 @@
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
-import { cloneState, findDef, handicapOf, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
+import {
+  cloneState,
+  findDef,
+  handicapOf,
+  mulliganPromptFor,
+  subsystems,
+  type CardInstance,
+  type GameState,
+} from "@jackioh/engine";
 
 export const HIDDEN_DEF_ID = "ai:hidden";
 
@@ -81,7 +89,7 @@ export function hiddenInstanceIds(state: GameState, seat: PlayerId): Set<string>
     if (n >= low && n <= high) hidden.add(card.id);
   }
 
-  const pending = state.pending;
+  const pending = state.pending ?? mulliganPromptFor(state, seat);
   if (pending !== null && pending.playerId === seat) {
     for (const option of pending.options) {
       if (option.selection.pick === "instance") hidden.delete(option.selection.instanceId);
@@ -217,9 +225,16 @@ export function redact(state: GameState, seat: PlayerId): GameState {
       .map((defId) => [defId, transient[defId] as (typeof next.transientDefs)[string]]),
   );
 
-  // Step 7: the opponent's prompt shows that it is open and whose it is, nothing more (R81).
+  // Step 7: the opponent's prompt shows that it is open and whose it is, nothing more (R81). The
+  // same goes for its mulligan while both are open (R265, R266): that it has answered is public,
+  // and what it was offered and what it kept are not.
   if (next.pending !== null && next.pending.playerId === opp) {
     next.pending = { ...next.pending, options: [] };
+  }
+  const open = next.mulligan;
+  if (open !== undefined) {
+    const theirs = open[opp];
+    open[opp] = { prompt: { ...theirs.prompt, options: [], max: 0 }, keep: theirs.keep === null ? null : [] };
   }
 
   return next;
@@ -239,10 +254,14 @@ export function unansweredDrawOffer(state: GameState, seat: PlayerId): boolean {
   );
 }
 
-/** Whether `seat` owes an action: its prompt, its main phase, or an unanswered draw offer. */
+/**
+ * Whether `seat` owes an action: its prompt, its own mulligan while both are open (R265) — which it
+ * answers without waiting for the other seat's — its main phase, or an unanswered draw offer.
+ */
 export function aiToAct(state: GameState, seat: PlayerId): boolean {
   if (state.result !== null) return false;
   if (state.pending !== null && state.pending.playerId === seat) return true;
+  if (state.pending === null && mulliganPromptFor(state, seat) !== null) return true;
   if (state.pending === null && state.active === seat && state.phase === "main") return true;
   return unansweredDrawOffer(state, seat);
 }

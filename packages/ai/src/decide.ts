@@ -16,7 +16,7 @@
 // `decide` never throws: every internal failure becomes a fallback and is counted in simErrors.
 
 import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { createRng, type GameState } from "@jackioh/engine";
+import { createRng, mulliganPromptFor, type GameState } from "@jackioh/engine";
 import { actionKey, candidateActions } from "./candidates";
 import { AI_BUDGET, AI_EVAL, AI_REPLY, AI_SEARCH } from "./config";
 import { determinize } from "./determinize";
@@ -114,8 +114,8 @@ export function decide(state: GameState, seat: PlayerId, options: AiOptions): De
     // 2. R188.
     if (unansweredDrawOffer(pub, seat)) return immediate({ type: "answerDraw", accept: false }, "draw-offer");
 
-    // 3. The mulligan.
-    if (pub.pending !== null && pub.pending.kind === "mulligan" && pub.pending.playerId === seat) {
+    // 3. The mulligan: its own, at once, whether or not the other seat has answered (R265).
+    if (pub.pending === null && mulliganPromptFor(pub, seat) !== null) {
       return immediate({ type: "mulligan", keep: mulliganKeep(pub, seat) }, "mulligan");
     }
 

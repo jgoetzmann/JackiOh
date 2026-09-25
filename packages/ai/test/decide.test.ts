@@ -7,8 +7,18 @@
 // decline, and never concedes, offers a draw or accepts one.
 
 import { describe, expect, it } from "vitest";
-import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { createRng, defOf, legalActions, queryCost, seatToAct, subsystems, type GameState } from "@jackioh/engine";
+import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
+import {
+  createRng,
+  defOf,
+  legalActions,
+  mulliganPromptFor,
+  queryCost,
+  reduce,
+  seatToAct,
+  subsystems,
+  type GameState,
+} from "@jackioh/engine";
 import {
   AI_GATE_BUDGET,
   AI_MULLIGAN,
@@ -128,11 +138,19 @@ describe("forced moves and nothing to do (B16)", () => {
     expect(decide(s.state, AI, { rng: createRng("decide-null-prompt") })).toBeNull();
   });
 
-  it("B16: during the other seat's mulligan decide returns null", () => {
-    const state = dealtGame("decide-null-mulligan");
-    expect(state.pending?.playerId).toBe("p1");
+  it("R265 B16: both seats owe their mulligan at once, and a seat that has answered owes nothing while the other's is open", () => {
+    const dealt = dealtGame("decide-null-mulligan");
+    expect(dealt.pending).toBeNull();
+    // Neither seat waits on the other: each is asked for its own mulligan straight away.
+    for (const seat of ["p1", "p2"] as const) {
+      expect(aiToAct(dealt, seat), seat).toBe(true);
+      expect(decide(dealt, seat, { rng: createRng(`decide-null-mulligan:${seat}`) })?.reason).toBe("mulligan");
+    }
+    // p2 answers first; its answer is sealed and p1's mulligan is still open (R266).
+    const state = act(dealt, "p2", { type: "mulligan", keep: [] });
     expect(aiToAct(state, "p2")).toBe(false);
     expect(decide(state, "p2", { rng: createRng("decide-null-mulligan") })).toBeNull();
+    expect(aiToAct(state, "p1")).toBe(true);
   });
 
   it("B16: once the game is over decide returns null for both seats", () => {
@@ -157,9 +175,11 @@ describe("the mulligan (B20)", () => {
     for (let n = 1; n <= 8; n += 1) {
       const seed = `decide-mulligan-${n}`;
       let state = dealtGame(seed);
+      const returnedBy: Record<PlayerId, string[]> = { p1: [], p2: [] };
+      let events: GameEvent[] = [];
       for (const seat of ["p1", "p2"] as const) {
-        expect(state.pending?.kind, `${seed} ${seat}`).toBe("mulligan");
-        expect(state.pending?.playerId, `${seed} ${seat}`).toBe(seat);
+        expect(mulliganPromptFor(state, seat)?.kind, `${seed} ${seat}`).toBe("mulligan");
+        expect(mulliganPromptFor(state, seat)?.playerId, `${seed} ${seat}`).toBe(seat);
 
         const hand = state.players[seat].hand;
         const keep = hand
@@ -178,13 +198,23 @@ describe("the mulligan (B20)", () => {
         expect(rng.cursor, `${seed} ${seat}`).toBe(0);
         expect(decision?.stats.score).toBe(0);
 
-        state = act(state, seat, action);
-        // R9: the replacements were drawn before the returned cards went back, so none came back.
-        for (const id of returned) {
-          expect(state.players[seat].hand.some((card) => card.id === id), `${seed} ${seat} ${id}`).toBe(false);
-        }
+        const result = reduce(state, { ...action, playerId: seat, nonce: `${seed}-${seat}` } as Action);
+        expect(result.error, `${seed} ${seat}`).toBeUndefined();
+        state = result.state;
+        events = result.events;
+        returnedBy[seat] = returned;
         returnedTotal += returned.length;
         keptTotal += keep.length;
+      }
+      // Both answers are in, so both resolved in the second one (R265). R9: the replacements were
+      // drawn before the returned cards went back, so none of setup's draws brought one back.
+      const setupEvents = events.slice(0, events.findIndex((event) => event.type === "turnStarted"));
+      for (const seat of ["p1", "p2"] as const) {
+        const drawn = setupEvents.flatMap((event) => (event.type === "drawn" && event.player === seat ? [event.instanceId] : []));
+        const shuffled = setupEvents.flatMap((event) => (event.type === "shuffledIn" && event.player === seat ? [event.instanceId] : []));
+        expect(drawn, `${seed} ${seat}`).toHaveLength(returnedBy[seat].length);
+        expect(shuffled.sort(), `${seed} ${seat}`).toEqual([...returnedBy[seat]].sort());
+        for (const id of returnedBy[seat]) expect(drawn, `${seed} ${seat} ${id}`).not.toContain(id);
       }
     }
     // Not vacuous: the seeds dealt both kinds of card.
@@ -221,10 +251,17 @@ describe("the mulligan at its bounds (B20)", () => {
     const decision = mustDecide(state, "p1", "decide-mulligan-return-all");
     expect(decision.reason).toBe("mulligan");
     expect(decision.action).toEqual({ type: "mulligan", keep: [] });
-    const after = act(state, "p1", decision.action);
-    for (const card of state.players.p1.hand) {
-      expect(after.players.p1.hand.some((kept) => kept.id === card.id)).toBe(false);
-    }
+    // Sealed until p2 answers (R265); p2's answer resolves both, and every card p1 held goes back.
+    const sealed = act(state, "p1", decision.action);
+    const resolved = reduce(sealed, {
+      type: "mulligan",
+      keep: sealed.players.p2.hand.map((card) => card.id),
+      playerId: "p2",
+      nonce: "decide-mulligan-return-all-p2",
+    });
+    expect(resolved.error).toBeUndefined();
+    const shuffled = resolved.events.flatMap((event) => (event.type === "shuffledIn" && event.player === "p1" ? [event.instanceId] : []));
+    expect(shuffled.sort()).toEqual(state.players.p1.hand.map((card) => card.id).sort());
   });
 });
 
