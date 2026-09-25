@@ -234,7 +234,7 @@
 }
 
 .db-search {
-  flex: 1 1 220px;
+  flex: 1 1 140px;
   min-width: 0;
   max-width: 100%;
   font: inherit;
@@ -1110,14 +1110,24 @@
     min-height: 0;
   }
 
-  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them: the card
-     width follows the screen's height (the page above the pool, with the chip rows folded, is
-     about 220 px), within a range where rules text still reads. The columns keep that width and
-     centre, rather than stretching every card back to one tall row. */
-  .db-pool {
-    --db-card-w: clamp(150px, calc((100dvh - 220px) * 5 / 14), 220px);
+  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them. The frame
+     around the pool takes whatever height the filters above leave (however many rows they wrap
+     to), and is a size container, so a card's width is read off that height: two cards of 5:7, a
+     10 px gap, the pool's 10 px padding and its border fill it, within a range where rules text
+     still reads. The columns keep that width and centre, rather than stretching every card back
+     to one tall row. */
+  .db-pool-frame {
     flex: 1 1 auto;
     min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    container-type: size;
+  }
+
+  .db-pool {
+    --db-card-w: clamp(150px, calc((100cqh - 34px) * 5 / 14), 220px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     grid-template-columns: repeat(auto-fill, min(var(--db-card-w), calc(50% - 5px)));

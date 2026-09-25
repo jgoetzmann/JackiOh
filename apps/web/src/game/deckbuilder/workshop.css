@@ -676,12 +676,22 @@
 
 /* --- widths -------------------------------------------------------------------------------------- */
 
-/* Side by side: the status toast centres on the pool, between the rail (232 px and a 14 px gap) and
-   the deck's sidebar (340 px and a 14 px gap). */
+/* Side by side, the rail and the deck's sidebar each give up some width, so the filters stay on two
+   rows at 1280 px and the pool keeps two whole rows of cards on a 720 px screen. The status toast
+   centres on the pool, between the rail (208 px and a 14 px gap) and the sidebar (300 px and a
+   14 px gap). */
 @media (min-width: 1101px) {
+  .ws-layout {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+
+  .workshop .db-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  }
+
   .db-deck-status {
-    left: calc(50% - 54px);
-    max-width: calc(100vw - 680px);
+    left: calc(50% - 47px);
+    max-width: calc(100vw - 600px);
   }
 }
 
@@ -735,14 +745,11 @@
     flex-direction: column;
   }
 
-  /* The deck's tiles keep about six rows however much sits under them (the comparison, the
-     verdict, the code): the sidebar scrolls instead of squeezing the list to a sliver. */
+  /* The deck keeps its head, its curve and about six tiles however much sits under it (the
+     comparison, the verdict, a code, a confirm): past that the sidebar scrolls, rather than the
+     list being squeezed to a sliver. */
   .ws-editor--deck .db-deck {
-    min-height: auto;
-  }
-
-  .ws-editor--deck .db-deck-list {
-    min-height: min(230px, 34vh);
+    min-height: 360px;
   }
 
   .ws-editor--deck .db-sidebar > :not(.db-deck) {
@@ -765,8 +772,34 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .deckbuilder.app-shell .ws-sync {
-    margin-left: 0;
+  /* The pool's first row belongs on a phone's first screen, so the editor's head spends no height
+     on what the fields already say: the name field's label is kept for a screen reader only, and
+     "Compare with" sits beside its select. */
+  .ws-name .ws-field-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .ws-editor-head {
+    align-items: center;
+  }
+
+  .ws-compare-pick {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ws-compare-pick .ws-field-label {
+    flex: none;
+  }
+
+  .ws-compare-pick .ws-select {
+    flex: 1 1 auto;
   }
 
   /* 16 px keeps a phone from zooming into a field when it takes focus. */
@@ -775,6 +808,24 @@
   .ws-import-input,
   .ws-code-input {
     font-size: 16px;
+  }
+}
+
+/* A phone: the title keeps its words for a screen reader but draws only "Decks", so the save
+   status fits on the row with Back and the gear instead of taking a row of its own. */
+@media (max-width: 560px) {
+  .workshop .db-title-brand,
+  .workshop .db-title-sep {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .workshop .db-header {
+    column-gap: 10px;
   }
 }
 

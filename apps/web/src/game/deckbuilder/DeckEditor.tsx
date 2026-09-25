@@ -509,24 +509,28 @@ export default function DeckEditor(props: DeckEditorProps): ReactElement {
           <p className="db-deck-status" data-testid={DECK_STATUS} role="status" aria-live="polite">
             {status ?? ""}
           </p>
-          <PoolGrid
-            ids={pool}
-            deckName={label}
-            catalog={catalog}
-            collection={collection}
-            inDeck={inDeck}
-            holders={holders}
-            refusedCardId={refusedCardId}
-            onAdd={add}
-            onInspect={openDetail}
-            onDragStart={startDrag}
-            onDragEnd={endDrag}
-          />
-          {pool.length === 0 ? (
-            <p className="db-empty" data-testid={DB_EMPTY}>
-              No card matches these filters.
-            </p>
-          ) : null}
+          {/* The frame is what the pool's cards are sized against on a desktop (deckbuilder.css): its
+              height is whatever the filters above leave, and two rows of cards fill it. */}
+          <div className="db-pool-frame">
+            <PoolGrid
+              ids={pool}
+              deckName={label}
+              catalog={catalog}
+              collection={collection}
+              inDeck={inDeck}
+              holders={holders}
+              refusedCardId={refusedCardId}
+              onAdd={add}
+              onInspect={openDetail}
+              onDragStart={startDrag}
+              onDragEnd={endDrag}
+            />
+            {pool.length === 0 ? (
+              <p className="db-empty" data-testid={DB_EMPTY}>
+                No card matches these filters.
+              </p>
+            ) : null}
+          </div>
         </section>
       </div>
 
