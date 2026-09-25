@@ -13,7 +13,7 @@
 // The core runs with a frozen clock and the gates' budget, as core.test.ts does, so the AI's
 // decisions are a pure function of the node budget and a game replays exactly.
 
-import { AI_GATE_BUDGET } from "@jackioh/ai";
+import { AI_GATE_BUDGET, type SearchBudget } from "@jackioh/ai";
 import { createRng } from "@jackioh/engine";
 import type { Action, ActionBody, PlayerId, PlayerView } from "@jackioh/shared";
 
@@ -37,6 +37,22 @@ import { heroTargetId, myMain, mulliganOpen } from "./steps.ts";
 
 /** Most requests one lesson game sends before the harness calls it stuck. */
 const LESSON_REQUEST_CAP = 1500;
+
+/**
+ * The AI's budget when the human plays at random. That run proves the coach neither breaks nor
+ * stalls, which does not depend on how well the AI plays, and a random player's games run long, so
+ * the AI searches a tenth as much there and the run stays affordable in `pnpm test`.
+ */
+export const RANDOM_POLICY_AI_BUDGET: SearchBudget = {
+  nodes: 60,
+  lethalNodes: 20,
+  determinizations: 1,
+  beamWidth: 2,
+  rootBranching: 8,
+  branching: 3,
+  maxDepth: 4,
+  finalists: 1,
+};
 
 export type LessonPolicy = "coach" | "autopilot" | "random";
 
@@ -69,6 +85,8 @@ type Options = {
   seed?: string;
   /** For `"random"`: the policy's own stream. */
   policySeed?: string;
+  /** The AI's budget; default the gates' own, or RANDOM_POLICY_AI_BUDGET under `"random"`. */
+  budget?: SearchBudget;
 };
 
 function isPlay(action: ActionBody): action is Extract<ActionBody, { type: "play" }> {
@@ -147,7 +165,8 @@ export function playLesson(lessonId: string, options: Options = {}): LessonRun {
   const policy = options.policy ?? "coach";
   const rng = createRng(options.policySeed ?? `${lessonId}:policy`);
 
-  const core = createPracticeCore({ now: () => 0, dev: true, budget: AI_GATE_BUDGET });
+  const budget = options.budget ?? (policy === "random" ? RANDOM_POLICY_AI_BUDGET : AI_GATE_BUDGET);
+  const core = createPracticeCore({ now: () => 0, dev: true, budget });
   const counter = { n: 0 };
   let snapshot = snapshotOf(
     send(core, counter, {
