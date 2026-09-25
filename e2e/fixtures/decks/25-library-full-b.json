@@ -1,0 +1,27 @@
+{
+  "id": "25-library-full-b",
+  "spec": "25-overflow-animations.cy.ts",
+  "description": "Player 2's deck for the other seat's view of R316: 08-do-nothing-b with #100 Ceaseless Void swapped for #90 CN-Viral Injection (1 mana, \"Shuffle a CN-Virus into the opponent's library\"). After seat 1 has filled its library to LIBRARY_CAP (25-library-full-a), seat 2 plays it on turn 2 on its own 1 mana and the full library refuses the CN-Virus, which is never created: a `libraryOverflow` for seat 1's library on seat 2's device, naming the CN-Virus (a card that copies nothing reads openly to both players, R316). The spec's seed deals it to seat 2 by turn 2. Every other card costs 3 or more and none acts from a hand or a library by itself (08-do-nothing-b), and The Coin keeps seat 2's turn from ending by itself (R82).",
+  "cards": [
+    "core-090",
+    "core-006",
+    "core-013",
+    "core-014",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-026",
+    "core-029",
+    "core-034",
+    "core-038",
+    "core-043",
+    "core-070",
+    "core-076",
+    "core-078",
+    "core-088",
+    "core-094",
+    "core-095",
+    "core-099"
+  ]
+}

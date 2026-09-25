@@ -109,6 +109,8 @@ const SAMPLES: { [K in GameEventType]: Extract<GameEvent, { type: K }> } = {
   exiled: { type: "exiled", instanceId: "u2", defId: "core-011", owner: "p1" },
   bounced: { type: "bounced", instanceId: "u3", defId: "core-017", owner: "p1" },
   burned: { type: "burned", instanceId: "cX", defId: "core-041", owner: "p2" },
+  fatigue: { type: "fatigue", player: "p1", count: 2, amount: 2 },
+  libraryOverflow: { type: "libraryOverflow", player: "p2", instanceId: "cV", defId: "core-090-1", outcome: "graveyard" },
   discarded: { type: "discarded", instanceId: "c11", defId: "core-002", owner: "p1" },
   drawn: { type: "drawn", player: "p1", instanceId: "cY", defId: "core-055" },
   addedToHand: { type: "addedToHand", player: "p2", instanceId: "cZ", defId: "core-060" },
@@ -189,6 +191,8 @@ const S4_RECIPES: Record<GameEventType, string | null> = {
   exiled: "void",
   bounced: "bounce",
   burned: "burn",
+  fatigue: "fatigue",
+  libraryOverflow: "overflow",
   discarded: "discard",
   drawn: "draw",
   addedToHand: "handGlint",
@@ -252,6 +256,8 @@ const FX_RECIPES = [
   "fizzle",
   "mana",
   "banner",
+  "fatigue",
+  "overflow",
 ];
 
 /** The pre-task table's `animation`, `durationMs` and `testid` per row, which S4 keeps byte for byte. */
@@ -267,7 +273,10 @@ const KEPT: Record<GameEventType, readonly [string, number, string]> = {
   enteredGraveyard: ["jk-pile-pulse", 150, "graveyard-<side>"],
   exiled: ["jk-exile-fade", 350, "card-<instanceId>"],
   bounced: ["jk-bounce-to-hand", 350, "card-<instanceId>"],
-  burned: ["jk-burn-away", 400, "hand-<side>"],
+  // R318 made the burn the full hand's own motion, and added the two library overflows.
+  burned: ["jk-hand-full", 700, "hand-<side>"],
+  fatigue: ["jk-fatigue", 600, "library-<side>"],
+  libraryOverflow: ["jk-library-full", 500, "library-<side>"],
   discarded: ["jk-discard-drop", 300, "hand-card-<instanceId>"],
   drawn: ["jk-draw-slide", 250, "library-<side>"],
   addedToHand: ["jk-hand-edge", 250, "hand-<side>"],
@@ -300,10 +309,10 @@ const KEPT: Record<GameEventType, readonly [string, number, string]> = {
 };
 
 describe("B1 the fx column of ANIMATIONS", () => {
-  it("B1 exactly the 30 rows of S4 carry fx with the listed recipe and the other 11 carry none", () => {
+  it("B1 exactly the 32 rows of S4 carry fx with the listed recipe and the other 11 carry none", () => {
     const actual = Object.fromEntries(GAME_EVENT_TYPES.map((t) => [t, ANIMATIONS[t].fx?.recipe ?? null]));
     expect(actual).toEqual(S4_RECIPES);
-    expect(GAME_EVENT_TYPES.filter((t) => ANIMATIONS[t].fx !== undefined)).toHaveLength(30);
+    expect(GAME_EVENT_TYPES.filter((t) => ANIMATIONS[t].fx !== undefined)).toHaveLength(32);
   });
 
   it("B1 an fx descriptor is data only: one recipe field and nothing else", () => {

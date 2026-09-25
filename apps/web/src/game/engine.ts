@@ -10,6 +10,7 @@
 // the action builders and the animation table all compile and test with no engine at all.
 
 import type { Action, ActionBody, CardDefs, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
+import type { Handicap } from "@jackioh/engine/config";
 
 declare const engineStateBrand: unique symbol;
 
@@ -27,6 +28,12 @@ export type CreateGameArgs = {
   /** Two decks of card ids, in library order; the engine shuffles them with the match rng. */
   decks: [string[], string[]];
   catalog?: CardDefs;
+  /**
+   * A seat's resources when they are not SPEC's own (R180): practice's tiers, and the E2E build of
+   * `/dev/hotseat`, whose fixture decks may carry one (R316's full library, R315's fatigue). The
+   * engine validates it (R184) and folds it into the replay like the decks.
+   */
+  handicaps?: Partial<Record<PlayerId, Handicap>>;
 };
 
 export type EnginePort = {

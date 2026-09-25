@@ -17,7 +17,7 @@
 // drop has just played is marked `data-landing` (drag/landing.ts), which board.css takes out of
 // the fan while the board catches up with the play.
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 
 import type { CardView } from "@jackioh/shared";
 
@@ -32,6 +32,8 @@ export type HandProps = {
   highlight?: Highlight;
   animating?: AnimatingMap;
   onClick?: (target: ClickTarget) => void;
+  /** R318: the card a full hand burned, drawn over the hand (OverflowNotices.tsx `BurnNotice`). */
+  notice?: ReactNode;
 };
 
 export function handCount(hand: CardView[] | { count: number }): number {
@@ -123,6 +125,7 @@ export default function Hand(props: HandProps): ReactElement {
               </div>
             ))}
       </div>
+      {props.notice}
     </div>
   );
 }

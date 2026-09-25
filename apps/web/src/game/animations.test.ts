@@ -60,7 +60,9 @@ const BUILD_DURATIONS: Record<GameEventType, number> = {
   gameOver: 0,
   healthLost: 300,
   enteredGraveyard: 150,
-  burned: 400,
+  burned: 700,
+  fatigue: 600,
+  libraryOverflow: 500,
   discarded: 300,
   addedToHand: 250,
   shuffledIn: 300,
@@ -105,6 +107,8 @@ const SAMPLES: { [K in GameEventType]: Extract<GameEvent, { type: K }> } = {
   exiled: { type: "exiled", instanceId: "u2", defId: "core-011", owner: "p1" },
   bounced: { type: "bounced", instanceId: "u3", defId: "core-017", owner: "p1" },
   burned: { type: "burned", instanceId: "cX", defId: "core-041", owner: "p2" },
+  fatigue: { type: "fatigue", player: "p1", count: 2, amount: 2 },
+  libraryOverflow: { type: "libraryOverflow", player: "p2", instanceId: "cV", defId: "core-090-1", outcome: "notCreated" },
   discarded: { type: "discarded", instanceId: "c11", defId: "core-002", owner: "p1" },
   drawn: { type: "drawn", player: "p1", instanceId: "cY", defId: "core-055" },
   addedToHand: { type: "addedToHand", player: "p2", instanceId: "cZ", defId: "core-060" },
@@ -215,7 +219,7 @@ describe("ANIMATIONS covers every event type", () => {
     expect(rows).toEqual(types);
     // `GAME_EVENT_TYPES` in @jackioh/shared is the source of truth; the literal is the second
     // pair of eyes on it, so it moves only when a type is deliberately added there.
-    expect(rows).toHaveLength(41);
+    expect(rows).toHaveLength(43);
   });
 
   it("gives every row an animation name and a testid template", () => {

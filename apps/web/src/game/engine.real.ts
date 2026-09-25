@@ -30,7 +30,7 @@ export function enginePort(): EnginePort {
   registerAll();
 
   const api = engine as unknown as {
-    createGame: (args: { seed: string; decks: [string[], string[]]; catalog?: unknown }) => unknown;
+    createGame: (args: { seed: string; decks: [string[], string[]]; catalog?: unknown; handicaps?: unknown }) => unknown;
     beginGame: (state: unknown) => { state: unknown; events: unknown[]; error?: string };
     reduce: (state: unknown, action: unknown) => { state: unknown; events: unknown[]; error?: string };
     legalActions: (state: unknown, player: unknown) => unknown[];

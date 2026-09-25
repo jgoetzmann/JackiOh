@@ -569,7 +569,7 @@ function drawOfferView(state: GameState): { drawOffer?: { by: PlayerId } } {
  * this viewer may not read keeps its type and every field §10.10's animation table needs, with the
  * identity replaced by `HIDDEN_ID`: redacted, never dropped, so the cue still plays as a card back.
  *
- * The switch is exhaustive over all 40 event types on purpose (§10.3): with no `default`, adding an
+ * The switch is exhaustive over all 43 event types on purpose (§10.3): with no `default`, adding an
  * event type does not compile until someone decides what it reveals.
  */
 function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, replaced: Replacements): GameEvent {
@@ -615,6 +615,22 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
+    // R316: a card a full library refused is judged like the cards below: one that went to the
+    // graveyard reads as long as it stays there. One never created is in no pile and never was
+    // anywhere hidden, so it reads as the card it copies does (`copyOf`), and openly when it copies
+    // none — #33's copy of a Trap set face-down names the trap no more than the trap does. `copyOf`
+    // is the engine's bookkeeping and never travels.
+    case "libraryOverflow": {
+      const { copyOf, ...shown } = event;
+      const unread = hidden(event.instanceId) || (copyOf !== undefined && hidden(copyOf));
+      if (!unread) return shown;
+      // The face it would have had is the card's too, so it goes with the identity.
+      const { radiant: _face, ...rest } = shown;
+      return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
+    }
+
+    // R317: a burned card lands in its owner's graveyard, or ceases to exist (R11), so both seats read
+    // it — the hand it never entered is not where it is — until something takes it somewhere hidden.
     case "enteredGraveyard":
     case "exiled":
     case "bounced":
@@ -732,7 +748,9 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
 
     // Public through and through: these name a player, a zone or a number, never a card. A
     // `promptOpened` event says a prompt is open and whose, which is all §10.6 grants.
+    // R315: a fatigue draw names a player and two numbers, and the fatigue count is public (§10.8).
     case "healthLost":
+    case "fatigue":
     case "modifierChanged":
     case "rotated":
     case "swapped":

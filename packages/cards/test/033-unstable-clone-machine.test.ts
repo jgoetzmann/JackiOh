@@ -224,6 +224,50 @@ describe("#33 Unstable Clone Machine — radiant", () => {
   });
 });
 
+describe("R316: what a full library turns away", () => {
+  it("R316 reports each of the three copies a 60-card library refuses as notCreated, naming the played card to both seats", () => {
+    const s = scenario({
+      seed: "clone-overflow",
+      p1: { hand: ["31"], backrow: ["33"], field: ["43"], library: FULL_LIBRARY },
+      p2: { field: ["15"] },
+    });
+
+    s.play("31", { targets: [{ pick: "hero", player: "p2" }] });
+
+    const refused = s.lastEvents.filter((e) => e.type === "libraryOverflow");
+    expect(refused.map((e) => (e.type === "libraryOverflow" ? [e.player, e.defId, e.outcome] : null))).toEqual([
+      ["p1", "core-031", "notCreated"],
+      ["p1", "core-031", "notCreated"],
+      ["p1", "core-031", "notCreated"],
+    ]);
+    // The spell was played face-up, so its copies read openly on both seats.
+    for (const viewer of ["p1", "p2"] as const) {
+      const seen = s.view(viewer).events.filter((e) => e.type === "libraryOverflow");
+      expect(seen.map((e) => (e.type === "libraryOverflow" ? e.defId : null)), viewer).toEqual(["core-031", "core-031", "core-031"]);
+    }
+  });
+
+  it("R316 keeps the copies of a Trap set face-down as secret as the trap: the other seat reads the sentinel", () => {
+    const s = scenario({
+      seed: "clone-overflow-trap",
+      p1: { hand: ["41"], backrow: ["33"], field: ["43"], library: FULL_LIBRARY },
+      p2: { field: ["15"] },
+    });
+
+    s.play("41", { zone: 2 });
+
+    const mine = s.view("p1").events.filter((e) => e.type === "libraryOverflow");
+    const theirs = s.view("p2").events.filter((e) => e.type === "libraryOverflow");
+    expect(mine.map((e) => (e.type === "libraryOverflow" ? e.defId : null))).toEqual(["core-041", "core-041", "core-041"]);
+    expect(theirs).toHaveLength(3);
+    for (const event of theirs) {
+      expect(event).toEqual({ type: "libraryOverflow", player: "p1", instanceId: "hidden", defId: "hidden", outcome: "notCreated" });
+    }
+    // Nothing in the other seat's view names the trap.
+    expect(JSON.stringify(s.view("p2"))).not.toContain("core-041");
+  });
+});
+
 describe("R119: a permanent does not answer the play that put it onto the field", () => {
   it("R119 a Clone Machine a played Heroic Power's Recruit put on the field does not answer that play", () => {
     const s = scenario({

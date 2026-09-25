@@ -91,6 +91,8 @@ function samplesFor(view: PlayerView): { [K in GameEventType]: Extract<GameEvent
     exiled: { type: "exiled", instanceId: unit, defId: "core-004", owner: "p1" },
     bounced: { type: "bounced", instanceId: unit, defId: "core-004", owner: "p1" },
     burned: { type: "burned", instanceId: "gone", defId: "core-041", owner: "p2" },
+    fatigue: { type: "fatigue", player: "p1", count: 1, amount: 1 },
+    libraryOverflow: { type: "libraryOverflow", player: "p2", instanceId: "gone", defId: "core-090-1", outcome: "notCreated" },
     discarded: { type: "discarded", instanceId: hand, defId: "core-002", owner: "p1" },
     drawn: { type: "drawn", player: "p1", instanceId: "gone", defId: "core-055" },
     addedToHand: { type: "addedToHand", player: "p2", instanceId: "gone", defId: "core-060" },
