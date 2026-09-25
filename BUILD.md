@@ -117,6 +117,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `CAST_ON_DRAW_CHAIN_CAP` | 20 | R58 |
 | `LIBRARY_CAP` | 60 | R80 |
 | `ANTI_ONESHOT_CAP` | `{ base: 5, radiant: 3 }` | §8 #73 |
+| `QUICKSTRIKER_COMBO_MULTIPLE` | `{ base: 1, radiant: 2 }`: the X each Quickstriker's granted Combo deals, as one hit | §8 #38, R281 |
 | `RANDOM_KEYWORD_POOL` | Taunt, Armor 1, Rush, Charge, First Strike, Poisonous, Lifesteal, Reborn, Divine Shield, Trample, Cleave | R21 |
 | `FIB` | `[0,1,1,2,3,5,8,13,21,34,55,89]`, index clamps at 11 | R25 |
 | `FUSE_COST_CAP` | 4 | §6.3 |
