@@ -811,6 +811,8 @@ export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | 
     clockMs,
     ...mulliganView(state, playerId),
     ...drawOfferView(state),
+    // R345: the viewer's own preference, and only when it is off, so every other view is unchanged.
+    ...(state.players[playerId].autoEndTurn === false ? { autoEndTurn: false as const } : {}),
   };
   const defs = matchDefsIn(state, view);
   return Object.keys(defs).length === 0 ? view : { ...view, defs };

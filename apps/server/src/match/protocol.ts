@@ -90,6 +90,7 @@ export const CLIENT_ACTION_TYPES = [
   "answerDraw",
   "concede",
   "endTurn",
+  "setAutoEndTurn",
 ] as const satisfies readonly Exclude<ActionType, ServerOnlyActionType>[];
 
 export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];
@@ -365,6 +366,10 @@ function parseActionBody(raw: Record<string, unknown>): ActionBody | MalformedMe
       return { type: "concede" };
     case "endTurn":
       return { type: "endTurn" };
+    case "setAutoEndTurn": {
+      if (!isBool(raw.enabled)) return malformed(`"setAutoEndTurn.enabled" must be a boolean`);
+      return { type: "setAutoEndTurn", enabled: raw.enabled };
+    }
   }
 }
 
