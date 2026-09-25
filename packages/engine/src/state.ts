@@ -377,9 +377,17 @@ export function handicapOf(side: PlayerState): Handicap {
   return side.handicap ?? HUMAN_HANDICAP;
 }
 
+/** R290: the health a seat's hero starts with — its handicap's `heroHealth`, else §2's HERO_HEALTH. */
+export function startingHeroHealth(handicap: Handicap | undefined): number {
+  return handicap?.heroHealth ?? HERO_HEALTH;
+}
+
 /** R180: whether a handicap is exactly a human's, which is what `createGame` declines to store. */
 function isHumanHandicap(handicap: Handicap): boolean {
-  return HANDICAP_FIELDS.every((field) => handicap[field] === HUMAN_HANDICAP[field]);
+  return (
+    HANDICAP_FIELDS.every((field) => handicap[field] === HUMAN_HANDICAP[field]) &&
+    startingHeroHealth(handicap) === HERO_HEALTH
+  );
 }
 
 /**
@@ -397,6 +405,11 @@ export function validateHandicap(handicap: Handicap, label: string): void {
     throw new Error(
       `${label}: handicap deckSize must be between 1 and ${LIBRARY_CAP} (R184), got ${handicap.deckSize}`,
     );
+  }
+  // R290: optional, and when given a hero that starts alive.
+  const heroHealth: unknown = handicap.heroHealth;
+  if (heroHealth !== undefined && (typeof heroHealth !== "number" || !Number.isInteger(heroHealth) || heroHealth < 1)) {
+    throw new Error(`${label}: handicap heroHealth must be a positive integer (R290), got ${String(heroHealth)}`);
   }
 }
 
@@ -523,15 +536,20 @@ export function createGame(options: CreateGameOptions): GameState {
     });
 
     // R180: a copy of the five fields and nothing else, so no stray key reaches the state or its hash.
+    // R290: `heroHealth` joins them only when it moves the hero off HERO_HEALTH, so a tier that does
+    // not set it stores exactly what it stored before the field existed.
     const handicap = handicaps[player];
     if (handicap !== undefined && !isHumanHandicap(handicap)) {
+      const heroHealth = startingHeroHealth(handicap);
       side.handicap = {
         deckSize: handicap.deckSize,
         manaBonus: handicap.manaBonus,
         manaCap: handicap.manaCap,
         extraOpeningCards: handicap.extraOpeningCards,
         extraDrawsPerTurn: handicap.extraDrawsPerTurn,
+        ...(heroHealth === HERO_HEALTH ? {} : { heroHealth }),
       };
+      side.hero.health = heroHealth;
     }
   });
 

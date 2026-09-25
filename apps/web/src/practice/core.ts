@@ -26,11 +26,12 @@ import {
   type GameState,
   type Rng,
 } from "@jackioh/engine";
-import { AI_DIFFICULTY, DECK_SIZE, type Handicap } from "@jackioh/engine/config";
+import { AI_DIFFICULTY, AI_TUTORIAL, DECK_SIZE, type Handicap } from "@jackioh/engine/config";
 import { AI_BUDGET, aiToAct, buildAiDeck, decide, type SearchBudget } from "@jackioh/ai";
 import { opponentOf, type Action, type ActionBody, type PlayerId } from "@jackioh/shared";
 
 import { PRACTICE_AI_CLOCK_MS } from "./config.ts";
+import { lessonById } from "../tutorial/lessons.ts";
 import { presetById } from "./decks.ts";
 import type {
   PracticeDebug,
@@ -101,12 +102,27 @@ function humanDeckFor(seed: string, choice: PracticeDeckChoice): string[] {
   }
 }
 
+/**
+ * §9.10, R291: a lesson's two fixed decks and the tutorial handicap (R290), or the free game's: the
+ * difficulty's handicap, the chosen deck and a dealt AI deck (§9.9).
+ */
+function decksAndHandicap(config: PracticeStartConfig): { humanDeck: string[]; aiDeck: string[]; handicap: Handicap } {
+  if (config.lesson !== undefined) {
+    const lesson = lessonById(config.lesson);
+    if (lesson === undefined) throw new Error(`unknown tutorial lesson "${config.lesson}"`);
+    return { humanDeck: [...lesson.humanDeck], aiDeck: [...lesson.aiDeck], handicap: AI_TUTORIAL };
+  }
+  const handicap = AI_DIFFICULTY[config.difficulty];
+  return {
+    humanDeck: humanDeckFor(config.seed, config.deck),
+    aiDeck: buildAiDeck(createRng(`${config.seed}:ai-deck`), handicap.deckSize, { manaCap: handicap.manaCap }),
+    handicap,
+  };
+}
+
 function startGame(config: PracticeStartConfig): PracticeGame {
   const aiSeat = opponentOf(config.humanSeat);
-  const handicap = AI_DIFFICULTY[config.difficulty];
-
-  const humanDeck = humanDeckFor(config.seed, config.deck);
-  const aiDeck = buildAiDeck(createRng(`${config.seed}:ai-deck`), handicap.deckSize, { manaCap: handicap.manaCap });
+  const { humanDeck, aiDeck, handicap } = decksAndHandicap(config);
   const decks: [string[], string[]] = config.humanSeat === "p1" ? [humanDeck, aiDeck] : [aiDeck, humanDeck];
   const handicaps: Partial<Record<PlayerId, Handicap>> = { [aiSeat]: { ...handicap } };
 
@@ -228,6 +244,7 @@ export function createPracticeCore(env: PracticeCoreEnv): PracticeCore {
       hash: hashState(active.state),
       difficulty: active.config.difficulty,
       humanSeat: active.config.humanSeat,
+      ...(active.config.lesson === undefined ? {} : { lesson: active.config.lesson }),
     };
   }
 
