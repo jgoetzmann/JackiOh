@@ -1,11 +1,12 @@
-// #80 Zao Gao — SPEC §8.3, R16, R21, R64, R11, R275, R276, §5.2, §7, §9.3, §10.6.
+// #80 Zao Gao — SPEC §8.3, R11, R16, R21, R64, R215, R275, R276, §5.2, §7, §9.3, §10.6.
 //
 // BUILD M4-T4: "Discard prompt for 2 or fewer; two Rush Tokens each with two distinct pool
-// keywords".
+// keywords; radiant the tokens are Radiant 6/6 Rush, Cleave, and roll no keyword they have".
 //
-// Radiant (R276): "summon 2 Radiant Rush Tokens, each with 2 random keywords". Each token is
-// summoned on its Radiant face (§7: 6/6, Rush, Cleave) and then rolls its two keywords, which never
-// repeat one it has (R21) — so neither Rush nor Cleave is ever one of the two.
+// Radiant (R276): "Discard 2 cards of your choice; summon 2 Radiant Rush Tokens, each with 2 random
+// keywords". Each token is summoned on its Radiant face (§7: 6/6, Rush, Cleave) and then rolls its
+// two keywords, which never repeat one it has (R21) — so neither Rush nor Cleave is ever one of the
+// two.
 
 import { describe, expect, it } from "vitest";
 import { RANDOM_KEYWORD_POOL } from "@jackioh/engine/config";
@@ -221,7 +222,7 @@ describe("#80 Zao Gao — base", () => {
 });
 
 describe("#80 Zao Gao — radiant", () => {
-  it("R276 the radiant face is its own Script: it no longer shares the base object", () => {
+  it("R276 the radiant face is its own Script, not the base object", () => {
     expect(radiant).not.toBe(base);
   });
 
@@ -274,13 +275,21 @@ describe("#80 Zao Gao — radiant", () => {
     }
   });
 
-  it("§5.2, R74 the radiant flag still sets, so counting effects see a Radiant card", () => {
+  it("R276 a Radiant Zao Gao summons Radiant Rush Tokens, 6/6 with Rush and Cleave, each rolling two keywords it lacks, and goes to the graveyard Radiant", () => {
     const s = board(true, DISCARDABLE);
     const self = s.card(ZAO_GAO);
     expect(self.radiant).toBe(true);
 
     s.play(ZAO_GAO).answer([DISCARDABLE[0], DISCARDABLE[1]]);
 
+    for (const lane of [1, 2]) {
+      const token = s.unit("p1", lane)!;
+      expect(token.radiant).toBe(true);
+      s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
+      // §7's Rush and Cleave, plus two pool keywords that are neither (R21).
+      expectTwoPoolKeywords(s, lane, RADIANT_PRINTED);
+    }
+    // §5.2, R215: the flag goes with the spent Spell into the graveyard.
     s.expectInZone(self, "graveyard");
     expect(s.card(self).radiant).toBe(true);
   });

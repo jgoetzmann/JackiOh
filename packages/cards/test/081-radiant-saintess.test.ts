@@ -1,9 +1,10 @@
-// #81 Radiant Saintess (SPEC §8.4 row 81; R8, R22, R64, R78, R83, R177, R275).
+// #81 Radiant Saintess (SPEC §8.4 row 81; R8, R13, R22, R23, R64, R78, R83, R177, R275).
 //
-// BUILD M4-T4's must-pass row: "Cry makes every unit you control radiant including itself (R22);
-// Death does it again; radiant Reborn body fires Death on its second death". The Cry has since been
-// cut (§8's row), and the radiant face's Death now reaches the hand too: "all your other units and
-// every card in your hand become Radiant" (R275's broader scope).
+// BUILD M4-T4's must-pass row: "Death makes every other unit you control Radiant; Reborn body fires
+// Death on its second death; radiant also every card in your hand, hidden from the opponent (R177)".
+//   Base:    "Reborn; Death: all your other units become Radiant"
+//   Radiant: "Reborn; Death: all your other units and every card in your hand become Radiant"
+// (R275's broader scope). Her old Cry, which radiated the board as she landed, is cut (§8's row).
 //
 // Two fixtures do all the work:
 //   - #11 Tempo Timmy (3/3 → 6/6, Rush + First Strike, cost 1) has an EMPTY script, so a stat
@@ -33,12 +34,45 @@ const BIGOT = "core-002";
 /** #15 Me and Mr Token: a Unit whose Cry makes fresh base-face Rush Tokens (3 on its radiant face). */
 const ME_AND_MR_TOKEN = "core-015";
 const RUSH_TOKEN = "core-t-rush";
+/** #92 Felinor Fiender, the Stack unit: on top of a pile, the card under it lies dormant (§3.2). */
+const FIENDER = "core-092";
 
 /** True Strike on the Saintess in lane 1: her Death runs in the state check that follows. */
 function strikeSaintess(s: Scenario): Scenario {
   const saintess = s.unit("p1", 1);
   if (saintess?.defId !== SAINTESS) throw new Error("the Saintess should stand in p1's lane 1");
   return s.play(TRUE_STRIKE, { targets: [{ pick: "instance", instanceId: saintess.id }] });
+}
+
+/**
+ * R13 on either face: the Saintess in lane 1 and, in lane 2, a §3.2 Stack pile — a Felinor Fiender
+ * on top of a dormant Tempo Timmy. True Strike kills her, and her Death reaches the top of the pile
+ * and not the card under it: a card dormant under a Stack is not on the field (R13), so it is not
+ * one of "your other units".
+ */
+function expectStackSpared(radiantFace: boolean): void {
+  const s = scenario({
+    seed: "saintess-stack",
+    p1: {
+      field: [{ def: SAINTESS, radiant: radiantFace }, TIMMY, { def: FIENDER, stack: true }],
+      hand: [TRUE_STRIKE, STOCKPILE],
+    },
+    p2: { hand: [STOCKPILE] },
+  });
+  const buried = s.card(TIMMY);
+  const fiender = s.card(FIENDER);
+  expect(s.unit("p1", 2)?.id, "the Fiender is on top of lane 2").toBe(fiender.id);
+
+  strikeSaintess(s);
+
+  expect(s.card(fiender).radiant, "the Fiender on top of the pile").toBe(true);
+  // Still buried, still on its base face, and nothing was said about it.
+  expect(s.unit("p1", 2)?.id).toBe(fiender.id);
+  s.expectInZone(buried, "field");
+  expect(s.card(buried).radiant, "the Timmy dormant under it").toBe(false);
+  expect(
+    s.events.filter((event) => event.type === "radiantSet" && event.instanceId === buried.id),
+  ).toHaveLength(0);
 }
 
 describe("#81 Radiant Saintess — base", () => {
@@ -57,7 +91,6 @@ describe("#81 Radiant Saintess — base", () => {
     s.expectEvents("cardPlayed", "summoned");
   });
 
-  /** Reborn is printed on the RADIANT face, which her Cry used to hand her for free. */
   /**
    * Reborn is printed on BOTH faces. It used to be radiant-only, and her own Cry was what put her
    * on that face — so cutting the Cry would have taken the Reborn with it and nerfed a second
@@ -187,10 +220,9 @@ describe("#81 Radiant Saintess — base", () => {
     expect(s.hand("p1").map((card) => card.radiant)).toEqual([false, false]);
   });
 
-  it.todo(
-    "R13 a card dormant under a Stack is not one of your units — blocked on harness support for " +
-      "seeding a Stack pile (SideSetup.field has no way to put two cards in one lane)",
-  );
+  it("R13 a card dormant under a Stack is not one of your units: Death turns up the top of the pile only", () => {
+    expectStackSpared(false);
+  });
 });
 
 describe("#81 Radiant Saintess — radiant", () => {
@@ -235,6 +267,10 @@ describe("#81 Radiant Saintess — radiant", () => {
     // R78: she is not one of "your other units"; Reborn brings the Radiant body back.
     s.expectInZone(SAINTESS, "field");
     expect(s.card(SAINTESS).radiant).toBe(true);
+  });
+
+  it("R13 on the radiant face too, a card dormant under a Stack is not one of your units", () => {
+    expectStackSpared(true);
   });
 
   it("R275 an empty hand leaves the Death to the board alone", () => {

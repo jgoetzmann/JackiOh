@@ -1,7 +1,11 @@
-// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78, R275).
-// BUILD M4-T4 row 54: "2 random units of cost 3 or 4, no tokens, not #54, cost override 1;
-// radiant 0". R275 raised the radiant face: "add 2 random Radiant Units costing 3 or 4 to your hand;
-// they cost 0" — the same pool, the cards Radiant as they are made.
+// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78, R215, R275).
+// BUILD M4-T4 row 54: "2 random units of cost 3 or 4, no tokens, not #54, cost override 1; radiant
+// Radiant units at 0".
+//   Base:    "Cry: add 2 random Units costing 3 or 4 to your hand; they cost 1"
+//   Radiant: "Cry: add 2 random Radiant Units costing 3 or 4 to your hand; they cost 0" — the same
+//            pool, the cards Radiant as they are made (R275).
+// R215: the price is the card's price in the hand, so a card the full hand burns reaches the
+// graveyard without it — Radiant still, on the radiant face, since that flag is set as it is made.
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";
@@ -28,6 +32,18 @@ const FILLER = [
 
 function added(hand: readonly CardInstance[]): CardInstance[] {
   return hand.filter((card) => card.defId !== "core-054");
+}
+
+/** The one card a full hand burned (§2.4, R4), read back where it landed. */
+function burnedCard(s: Scenario): CardInstance {
+  const burned = s.events.filter((event) => event.type === "burned");
+  expect(burned).toHaveLength(1);
+  const event = burned[0];
+  if (event?.type !== "burned") throw new Error("expected a burned event");
+  const card = s.card(event.instanceId);
+  s.expectInZone(card, "graveyard");
+  expect(s.pile("p1", "graveyard").map((entry) => entry.id)).toEqual([card.id]);
+  return card;
 }
 
 describe("#54 Straaza — the pool itself (§5.1)", () => {
@@ -96,8 +112,9 @@ describe("#54 Straaza — base", () => {
     expect(defIds.every((id) => POOL_IDS.includes(id))).toBe(true);
   });
 
-  it("R4 a full hand burns the extra: nine other cards leave room for one", () => {
+  it("R4, R215 a full hand burns the extra: nine other cards leave room for one", () => {
     const s = scenario({ seed: "straaza-cap", p1: { hand: ["core-054", ...FILLER] } });
+    const before = new Set(s.hand("p1").map((card) => card.id));
 
     s.play("core-054");
 
@@ -105,6 +122,16 @@ describe("#54 Straaza — base", () => {
     expect(s.hand("p1")).toHaveLength(10);
     expect(s.pile("p1", "graveyard")).toHaveLength(1);
     s.expectEvents("addedToHand", "burned");
+
+    // R215: "they cost 1" is the card's price in the hand, so the card that landed has it and the
+    // burned one, which never reached the hand, lies in the graveyard without it.
+    const kept = s.hand("p1").filter((card) => !before.has(card.id));
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.costOverride).toBe(1);
+    const burned = burnedCard(s);
+    expect(POOL_IDS).toContain(burned.defId);
+    expect(burned.radiant).toBe(false);
+    expect(burned.costOverride).toBeUndefined();
   });
 });
 
@@ -183,7 +210,7 @@ describe("#54 Straaza — radiant", () => {
     s.expectStats("core-054", { attack: 16, health: 16, maxHealth: 16 });
   });
 
-  it("R4 a full hand burns the extra on the radiant face too", () => {
+  it("R4, R215 a full hand burns the extra on the radiant face too: Radiant, and without the 0", () => {
     const s = radiantStraaza("straaza-radiant-cap", FILLER);
     const before = new Set(s.hand("p1").map((card) => card.id));
 
@@ -195,5 +222,13 @@ describe("#54 Straaza — radiant", () => {
     expect(kept).toHaveLength(1);
     expect(kept[0]?.radiant).toBe(true);
     expect(kept[0]?.costOverride).toBe(0);
+
+    // R215: the 0 is the card's price in the hand, and the burned card never reached one, so it
+    // lies in the graveyard at its printed price; the Radiant flag was set as it was made (§5.2,
+    // R74) and R215 keeps it there.
+    const burned = burnedCard(s);
+    expect(POOL_IDS).toContain(burned.defId);
+    expect(burned.radiant).toBe(true);
+    expect(burned.costOverride).toBeUndefined();
   });
 });

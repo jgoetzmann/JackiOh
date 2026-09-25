@@ -1,8 +1,10 @@
-// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78, R275). Unit 8/8 → 16/16, cost 4.
+// #54 Straaza (SPEC §8.3, §5.1, §6.3 Add to hand; R4, R60, R65, R78, R215, R275). Unit, cost 4,
+// 8/8 → 16/16.
 //   Base:    "Cry: add 2 random Units costing 3 or 4 to your hand; they cost 1"
-//   Radiant: "Cry: add 2 random Radiant Units costing 3 or 4 to your hand; they cost 0" — the §8
-//            cell "They are Radiant and cost 0" (R275: the free price alone fell short, so the
-//            cards come Radiant too). The count and the pool are the base clause's, unchanged.
+//   Radiant: "Cry: add 2 random Radiant Units costing 3 or 4 to your hand; they cost 0" — §8's
+//            cell "They are Radiant and cost 0" (R275's raise: the cards' face and their price).
+//            The cell restates only what the cards are and cost, so the count and the pool are
+//            the base clause's, unchanged (§8 Conventions).
 //
 // The Engine cell is "Non-token pool excluding #54; `costOverride`", which is §5.1's one query and
 // nothing else:
@@ -22,7 +24,10 @@
 // §5.2: "Radiant" on the radiant face is the created instance's flag, set as it is made, so each
 // card arrives showing its Radiant face.
 // R4: the hand caps at 10 and an extra add is burned to the graveyard; the add-to-hand pipeline
-// owns that (engine/src/draw.ts), so this file never counts hand space.
+// owns that (engine/src/draw.ts), so this file never counts hand space. R215: the price is the
+// card's price in the hand, so the verb sets it only on a card that reaches one, and a card the
+// full hand burns reaches the graveyard at its printed price — Radiant still on the radiant face,
+// since that flag is set as the card is made (engine/src/effects/addToHand.ts).
 //
 // The verb is `addRandomFromCatalog` (engine/src/effects/addToHand.ts): a hook may not roll the dice
 // itself — `ctx.rng.*` advances `rngCursor`, which is state — so it picks `count` definitions from

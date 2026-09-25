@@ -1,12 +1,14 @@
-// #50 Kpop Fanatic (SPEC §8.2): a 1/1 → 2/2 Unit. Base "Cry: choose an enemy permanent; at the
-// start of your next turn, steal it"; radiant "Divine Shield; Cry: choose an enemy permanent; at the
-// start of your next turn, steal it; it becomes Radiant" (R275: the rider is the Radiant face's
-// effect raise, the Divine Shield its keyword).
+// #50 Kpop Fanatic (SPEC §8.2; R13, R15, R62, R68, R76, R81, R90, R126, R127, R174, R275, R282).
+// Unit, cost 1, 1/1 → 2/2.
+//   Base:    "Cry: choose an enemy permanent; at the start of your next turn, steal it"
+//   Radiant: "Divine Shield; Cry: choose an enemy permanent; at the start of your next turn, steal
+//            it; it becomes Radiant" — §8's cell "Divine Shield; same; the stolen permanent also
+//            becomes Radiant" (R275: the keyword and the rider are the Radiant face's raise).
 //
-// Reading the radiant cell (§8 Conventions): "Divine Shield" is a keyword list without "Plus", so it
-// is the radiant form's complete keyword list; it is printed in `catalog.json` (`radiant.keywords`)
-// and §10.4 reads it off the face, so no script grants it. The Cry and the delay are the base face's
-// ("same"); the radiant face differs only in the step the delay re-enters, which adds the rider.
+// Reading that cell (§8 Conventions): "Divine Shield" is a keyword list without "Plus", so it is
+// the radiant form's complete keyword list; it is printed in `catalog.json` (`radiant.keywords`)
+// and §10.4 reads it off the face, so no script grants it. "same" keeps the Cry and the delay; the
+// radiant face differs only in the step the delay re-enters, which adds R282's rider.
 //
 // The choice is made at PLAY time, not during resolution, so it is a declared target travelling in
 // the play action's `targets` (R81) rather than a `PendingChoice`. "Permanent" is §6.3's word — a
@@ -48,6 +50,12 @@
 // the second, a row-full refusal the first). So a Make Radiant never reaches a card off the field —
 // one in a hand the controller may not read above all — and `setRadiant` by id is aimed at the stay
 // the run began on besides (R174).
+//
+// The rider is the face the Cry ran, not the face Kpop Fanatic shows when the steal comes due
+// (R282): `delay` records the running face in its `Resume` (effects/delay.ts) and
+// `turn.runDelayed` re-enters that face's `resume` table (work.ts, R126), so a base Kpop Fanatic
+// made Radiant after its Cry steals without the rider, and a Radiant one that has died since still
+// applies it.
 //
 // THE VERB AND WHERE ITS CONTINUATION LIVES (R126, R127). `delay` stores a `Resume` naming this
 // script, the hook key, the step and the captured data, and `turn.runDelayed` re-enters it through

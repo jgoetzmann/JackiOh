@@ -1,23 +1,30 @@
-// #96 My Pawn — SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R84, R283.
+// #96 My Pawn — SPEC §8.5, §4.2 step 4, §6.3 "Cancel an attack", §10.7's AI bullet, R44, R46, R84,
+// R276, R283.
 // BUILD M4-T4 row 96: "Lethal detection accounts for armor and the cap (R44); attack cancelled;
 // AI finishes the turn deterministically from the seed; opponent's actions rejected until end of
-// turn". R276 gave it a Radiant face, "… cancel it, destroy the attacker, and an AI plays the rest
-// of their turn …", and R283 orders it: the destroy lands after the cancel and is collected by a
-// state check before the AI takes the turn. Those cases play real attacks through the harness (the
-// base face's played-out behaviour is proved the same way in my-pawn.test.ts).
+// turn; radiant destroys the attacker with the cancel, before the AI turn, an Indestructible one
+// knocked down, and the AI turn starts from a settled board (R283)".
+//   Base:    "When the opponent declares an attack that would be lethal to your hero: cancel it,
+//            and an AI plays the rest of their turn with random legal actions"
+//   Radiant: "When the opponent declares an attack that would be lethal to your hero: cancel it,
+//            destroy the attacker, and an AI plays the rest of their turn with random legal
+//            actions" — R276 gave it this face, and R283 orders it: the destroy rides the cancel
+//            and is collected by a state check before the AI takes the turn. Those cases play real
+//            attacks through the harness (the base face's played-out behaviour is proved the same
+//            way in my-pawn.test.ts).
 //
 // WHY THE CONDITION IS TESTED THROUGH `when`. The card's OWN contribution to "would be lethal to
 // your hero" — the whole of the M4-T4 row's first clause — is the `when` predicate, a pure function
 // of the state and the event, so it is called directly here with a context built the way
-// `traps.fireTrap` builds it, which pins each lethal boundary without an AI turn in the way. (This
-// file was written while `reduce` could not yet fire a trap; the `it.todo`s below date from then,
-// and my-pawn.test.ts now plays the base face's cancel, lockout and AI turn through real attacks.)
+// `traps.fireTrap` builds it, which pins each lethal boundary without an AI turn in the way. The
+// base face's cancel, lockout and AI turn are played through real attacks in my-pawn.test.ts.
 
 import { describe, expect, it } from "vitest";
 import type { GameEvent, PlayerId } from "@jackioh/shared";
 import type { CardInstance, TrapTrigger } from "@jackioh/engine";
 import { createRng, makeContext } from "@jackioh/engine";
 import { scenario, type Scenario } from "./_harness";
+import { cardDef } from "../src/catalog-data";
 import { base, radiant } from "../src/scripts/096-my-pawn";
 
 const MY_PAWN = "core-096";
@@ -212,6 +219,8 @@ const GIGA = "core-029";
 const RIGHT_HOUSE = "core-003";
 /** #89 Corpse Eater: in hand, it gains the attack and max health of each unit that dies (R38). */
 const CORPSE_EATER = "core-089";
+/** #20 Pointmaster: its radiant face is a 14/4 with First Strike and Divine Shield, and no Reborn. */
+const POINTMASTER = "core-020";
 
 /**
  * p1 swings `attacker` from lane 1 at p2's hero, which is at `health` behind a face-down My Pawn of
@@ -303,6 +312,27 @@ describe("#96 My Pawn — radiant (R283)", () => {
     expect(lost?.type === "keywordGranted" && lost.keyword.kind === "Taunt" && lost.lost === true).toBe(true);
     expect(eventsOn(s, attacker.id, "destroyed")).toBe(0);
     s.expectInZone(attacker, "field");
+    turnWentOn(s, "p1");
+  });
+
+  it("R283 destroy is not damage: an attacker with Divine Shield is destroyed all the same, its shield unspent", () => {
+    // §6.1: Divine Shield negates the first damage instance; a destroy is a mark, not damage (§6.3),
+    // so the shield has nothing to negate. A radiant #20 has the shield and no Reborn, so the
+    // destroy is the whole story.
+    const printed = cardDef(POINTMASTER).radiant.keywords.map((keyword) => keyword.kind);
+    expect(printed).toContain("Divine Shield");
+    expect(printed).not.toContain("Reborn");
+    const { s, attacker } = pawnGame({ def: POINTMASTER, radiant: true }, 14);
+
+    // Cancelled: the 14 never landed.
+    s.expectHealth("p2", 14);
+    expect(s.events.some((event) => event.type === "damage")).toBe(false);
+
+    // Destroyed after the cancel and collected before the AI's turn, the shield never spent.
+    expect(fromCancel(s, 3)).toEqual(["attackCancelled", "destroyed", "enteredGraveyard"]);
+    expect(eventsOn(s, attacker.id, "destroyed")).toBe(1);
+    expect(eventsOn(s, attacker.id, "divineShieldLost")).toBe(0);
+    s.expectInZone(attacker, "graveyard");
     turnWentOn(s, "p1");
   });
 

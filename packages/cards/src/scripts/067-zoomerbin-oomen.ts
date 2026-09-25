@@ -1,10 +1,11 @@
-// #67 Zoomerbin Oomen (SPEC §8.3, §3.1, §3.2, §5.1, R1, R33, R47, R60, R275).
-//
-// Base: "Cry: summon a random 1-cost Trap face-down into your backrow zone in this lane" (1/2).
-// Radiant: "Cry: summon a random Radiant Trap face-down into your backrow zone in this lane" (2/4).
-// The radiant cell restates which trap comes — any Trap, and Radiant (R275: "any random Trap" drew
-// the very same six, so the face had no effect raise until the trap came Radiant) — so "your
-// backrow zone in this lane" and "face-down" are both kept (§8 Conventions).
+// #67 Zoomerbin Oomen (SPEC §8.3, §3.1, §3.2, §5.1, R1, R33, R47, R60, R97, R177, R275).
+// Unit, Human, cost 1, 1/2 → 2/4.
+//   Base:    "Cry: summon a random 1-cost Trap face-down into your backrow zone in this lane"
+//   Radiant: "Cry: summon a random Radiant Trap face-down into your backrow zone in this lane" —
+//            §8's cell "A random Radiant Trap". The cell restates only which trap comes: any Trap,
+//            summoned Radiant, which is the face's raise (R275), since every Core trap costs 1
+//            and dropping the cost alone would draw the same six. "Face-down" and "your backrow
+//            zone in this lane" are the base clause's, kept (§8 Conventions).
 //
 // §3.1: "'This lane' (Zoomerbin Oomen) means the backrow zone in the same column as the unit", so
 // the lane is the Cry's own unit's lane, read back with the engine's `slotOf`. `summon` derives the

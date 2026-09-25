@@ -1,9 +1,12 @@
-// #39 Recycling Initiative (SPEC §8.2): 0-cost Spell, "Exile this on play. End of turn: add a copy
-// of every other card you played this turn to your hand", radiant "Exile this on play. End of turn:
-// add a Radiant copy of every other card you played this turn to your hand; the copies cost 1 less"
-// (R275: the discount alone fell short, so the copies are Radiant as well). The radiant cell
-// restates only what a copy is and costs, so the exile and the end-of-turn clause are kept
-// unchanged (§8 Conventions).
+// #39 Recycling Initiative (SPEC §8.2; R4, R57, R65, R71, R78, R86, R126, R127, R133, R215, R275).
+// Spell, cost 0.
+//   Base:    "Exile this on play. End of turn: add a copy of every other card you played this
+//            turn to your hand"
+//   Radiant: "Exile this on play. End of turn: add a Radiant copy of every other card you played
+//            this turn to your hand; the copies cost 1 less" — §8's cell "Copies are Radiant and
+//            cost 1 less" (R275's raise: the copies' face and their price). The cell restates only
+//            what a copy is and costs, so the exile and the end-of-turn clause are kept unchanged
+//            (§8 Conventions).
 //
 // §8.2's Engine cell spells the mechanism out: "End-of-turn delayed effect: a fresh copy (radiant
 // flag kept) of every card in `turnLog.playedIds` except this one, including cards played after it
@@ -22,9 +25,10 @@
 //   - R57 is `addToHand`'s contract — a fresh instance carrying only the radiant flag — which is
 //     exactly "a fresh copy (radiant flag kept)" on the base face. The radiant face's copies are
 //     Radiant whatever the played card was: a flag that is only ever set (§5.2), never taken away.
-//   - "every OTHER card" excludes this card's own id. One copy per log entry, so a card played
-//     twice in a turn (bounced and replayed, #24) is copied twice: the Engine cell says "every card
-//     in `turnLog.playedIds`", and that list holds one entry per play.
+//   - "every OTHER card" excludes this card's own id, and it is the set of cards played, not the
+//     list of plays (R133). `turnLog.playedIds` holds one entry per play, so a card played, bounced
+//     and replayed in one turn (#24) is two entries and one card, and it is copied ONCE: the loop
+//     below skips an id it has already seen, ahead of R86's skip.
 //
 // WHERE THE CONTINUATION LIVES (R126, R127). `delay` stores a `Resume` — "script id + step +
 // captured data", never a closure — and `turn.runDelayed` re-enters it through the one reader,
@@ -41,7 +45,9 @@
 // `costOverride` makes one free while X is still chosen") and erase an embiggen card's price choice.
 // `setCostMod` cannot stand in for it either — the fresh copy does not exist until `addToHand`
 // creates it, and `setCostMod`'s only way to name a card is a `TargetSpec`. So the −1 is passed as
-// `addToHand`'s `costMod`, which R78 keeps in every zone.
+// `addToHand`'s `costMod`, which R78 keeps in every zone. It is a price in the hand, so it lands
+// only on a copy that reaches one: a copy a full hand burns reaches the graveyard with its radiant
+// flag and without the discount (§2.4, R4, R215).
 
 import type { Effect, EffectContext, Hook, Script } from "@jackioh/engine";
 import { findInstance, playedIdsThisTurn, RESUME_HOOK } from "@jackioh/engine";

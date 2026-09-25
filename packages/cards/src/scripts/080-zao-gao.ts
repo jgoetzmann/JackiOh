@@ -1,11 +1,12 @@
-// #80 Zao Gao (SPEC §8.3, R16, R21, R64, R11, R275, R276, §5.2, §7, §10.6, §10.5).
+// #80 Zao Gao (SPEC §8.3, §5.2, §7, §10.5, §10.6; R11, R16, R21, R64, R81, R215, R221, R275,
+// R276). Spell, cost 2.
+//   Base:    "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords"
+//   Radiant: "Discard 2 cards of your choice; summon 2 Radiant Rush Tokens, each with 2 random
+//            keywords" — §8's cell "The Rush Tokens are Radiant". R276 gave the card this face,
+//            and a Radiant Rush Token (§7: 6/6, Rush, Cleave) is R275's raise.
 //
-// Base:    "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords."
-// Radiant: "Discard 2 cards of your choice; summon 2 Radiant Rush Tokens, each with 2 random
-//          keywords" (§8's cell "The Rush Tokens are Radiant"; R276 gave the card its Radiant face).
-//
-// The two faces differ in one flag: the radiant face summons each token on its Radiant face (§7:
-// 6/6, Rush, Cleave). Everything else — the prompt, the discard, the rolls — is one shared body.
+// The two faces differ in one flag: the radiant face summons each token on its Radiant face.
+// Everything else — the prompt, the discard, the rolls — is one shared body.
 //
 // The discard is a PROMPT, not a play-time declaration. R16: "Player's choice unless 'random'" and
 // §10.6 names this card as the reason the `hand` kind is reachable at all: "`hand` is reachable:
@@ -24,8 +25,11 @@
 // Both paths are one list, which is why there is no empty-hand branch in the hook.
 //
 // The picks arrive in the resume step's `ctx.targets`, which is what `{ of: "chosen", index }` reads
-// (R81), and `effects/move.discard` defaults to exactly that spec for this card's sake. A unit-token
-// card among the discards ceases to exist instead of reaching the graveyard (R11) — `discard`'s rule.
+// (R81), and `effects/move.discard` defaults to exactly that spec for this card's sake. R221 fixes
+// their order — the order the prompt offered them, whatever order the answer listed them in — so
+// the discards reach the (public) graveyard in that order. A discarded card is the printed card
+// again, keeping only its `costMod`, `costOverride` and radiant flag (R215), and a unit-token card
+// among the discards ceases to exist instead of reaching the graveyard (R11) — `discard`'s rules.
 //
 // R21: each token rolls 2 DISTINCT keywords from the eleven-entry pool, and the two tokens roll
 // independently. `grantRandomKeywords` is that rule already — it recomputes the pool per draw off
