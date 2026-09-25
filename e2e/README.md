@@ -1,4 +1,4 @@
-# `e2e/` — the seventeen BUILD M8 specs
+# `e2e/` — the twenty-three specs: BUILD M8's seventeen and `18`–`23`
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,7 +16,7 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the seventeen specs
+  cypress/e2e/*.cy.ts      the twenty-three specs (`99-online-smoke` is skipped unless enabled)
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
   cypress/e2e/18-deck-workshop.cy.ts  TASK 1 (R250–R252, R255, R256): an incomplete deck saves and survives a reload, an edit made while `PUT /api/decks/:id` fails at the network is kept on the device and saved once it answers, a copied deck code imports as a new deck and a damaged one is refused with a sentence, a trio marks the cards two decks share and is ready once they share none, and the deck cap
@@ -28,12 +28,12 @@ e2e/
   cypress/e2e/23-tutorial-path.cy.ts  SPEC §9.10: the lesson path (locked, open, completed), progress seeded, reloaded and corrupt, Skip and Exit, a later lesson's fixed deal, the phone layout
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
+  cypress/component/deckbuilder-layout.cy.tsx  B39/B29/B38 on the deck workshop (`DeckWorkshop`, a full deck open): no overflow at 390x844 and 1280x720, two pool columns on the phone, two whole pool rows at 1280x720, the first pool row on a phone's first screen, the verdict in the sidebar
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
   support/
     commands.ts            seedGame, playCard, attack, answerPrompt, endTurn (+ the waiting
                            helpers, signIn/visitAs, installLoadout and the saved-deck helpers,
                            freeAccount/concedeAs, dragCardToDeck)
-    cypress/component/deckbuilder-layout.cy.tsx  B39/B29/B38 on the deck workshop (`DeckWorkshop`, a full deck open): no overflow at 390x844 and 1280x720, two pool columns on the phone, two whole pool rows at 1280x720, the first pool row on a phone's first screen, the verdict in the sidebar
     testids.ts             every selector the suite uses, in one file
     ux.ts                  polish 7: the pointer-drag gesture (spec 16) and the drag, glow and
                            settings selectors it reads

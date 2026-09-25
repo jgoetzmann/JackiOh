@@ -73,7 +73,7 @@ export default defineConfig({
   // it mounts `apps/web/src/test/fixtures.ts` `fullBoardView()` — the very fixture the acceptance
   // describes — in a browser, at both viewports. This block is separate from `e2e` in every way
   // that matters to M8: its own `specPattern`, its own support file, its own index page. The e2e
-  // suite stays at seventeen files and `cypress run` (no flag) still runs exactly those seventeen.
+  // suite stays at its own files (`cypress/e2e`) and `cypress run` (no flag) still runs exactly those.
   component: {
     devServer: {
       framework: "react",
