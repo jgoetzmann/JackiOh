@@ -28,7 +28,7 @@ import { createE2EStore, type E2EStore } from "../../src/api/e2e-store";
 import { ApiError, createRouter, type Route, type Router } from "../../src/api/http";
 import { createQueueRoutes, e2eSeedCount } from "../../src/api/queue";
 import { systemTimers, type CatalogInfo, type ServerDeps } from "../../src/api/ports";
-import { REDEMPTION_IDENTICAL_ERROR } from "../../src/config";
+import { MAX_SAVED_DECKS, REDEMPTION_IDENTICAL_ERROR } from "../../src/config";
 import {
   createFakeMatchDirectory,
   createTestDeps,
@@ -175,7 +175,9 @@ describe("the end-to-end Store", () => {
     await store.rooms.create({
       code: "ABCDEF",
       hostProfileId: "host",
+      mode: "bo1",
       hostDeck: [],
+      hostTrio: null,
       catalogVersion: "test-1",
       createdAt: 0,
       expiresAt: 1_000,
@@ -194,7 +196,9 @@ describe("the end-to-end Store", () => {
       id,
       profileId,
       rating: 1000,
+      mode: "bo1" as const,
       deck: [],
+      trio: null,
       catalogVersion: "test-1",
       enqueuedAt: 0,
       status: "open" as const,
@@ -217,7 +221,9 @@ describe("the end-to-end Store", () => {
       id,
       profileId: "p1",
       rating: 1000,
+      mode: "bo1" as const,
       deck: [],
+      trio: null,
       catalogVersion: "test-1",
       enqueuedAt: 0,
       status: "open" as const,
@@ -227,12 +233,8 @@ describe("the end-to-end Store", () => {
     await expect(store.tickets.insert(ticket("t2"))).rejects.toThrow(/already queued/u);
   });
 
-  it("refuses a card id in two decks (§9.4 L4's unique index) and a replayed match seq (§9.3)", async () => {
+  it("refuses a replayed match seq (§9.3)", async () => {
     const { store } = harness();
-    await expect(
-      store.loadouts.replace("p1", "test-1", [["core-001"], ["core-001"]], 0),
-    ).rejects.toThrow(/loadout_card_unique/u);
-
     await store.matches.appendActions([
       { matchId: "m1", seq: 1, action: { type: "endTurn" } as never, at: 0 },
     ]);
@@ -505,10 +507,22 @@ describe("R143 — the optional seed", () => {
     const h = harness({ e2e, routes: createQueueRoutes() });
     await seedE2EFixtures(h.deps, h.store);
     const tokens: string[] = [];
-    for (const fixture of E2E_ACCOUNTS.filter((candidate) => candidate.status === "active")) {
+    for (const [index, fixture] of E2E_ACCOUNTS.filter((candidate) => candidate.status === "active").entries()) {
       const profile = await h.store.profiles.getByUserId(fixture.userId);
       const id = profile?.id ?? "";
-      await h.store.loadouts.replace(id, h.deps.catalog.version, [PLAYABLE, [], []], 0);
+      // One saved deck each, so the legacy `{ deckIndex: 0 }` below is Best of 1 on it (R257).
+      await h.store.decks.upsert(
+        {
+          id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+          profileId: id,
+          name: "Fixture deck",
+          cards: PLAYABLE,
+          catalogVersion: h.deps.catalog.version,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        MAX_SAVED_DECKS,
+      );
       tokens.push(fixture.token);
     }
     return { ...h, tokens };
@@ -583,7 +597,7 @@ describe("CORS", () => {
   it("answers a preflight for an allowed origin with the headers the client sends", async () => {
     const handler = withCors(nothing, { origins });
     const response = await handler(
-      new Request("http://localhost:8787/api/loadout", {
+      new Request("http://localhost:8787/api/decks/00000000-0000-4000-8000-000000000001", {
         method: "OPTIONS",
         headers: {
           origin: "http://localhost:5173",

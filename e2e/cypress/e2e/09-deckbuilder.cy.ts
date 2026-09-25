@@ -1,196 +1,189 @@
-// BUILD M8 spec 09 — "Loadout editor".
+// BUILD M8 spec 09 — "The deck workshop and the queue's rules (§9.4, R250–R253)".
 //
 // Key assertions (BUILD M8, quoted verbatim):
 //
-//     "each of L1–L6 shows its message; a card dragged into a second deck is refused; save
-//      succeeds when legal"
+//     "each of L1–L6 shows its message, in the builder's verdict and in the queue's refusal; a
+//      card a compared deck holds is refused; a legal deck and trio queue"
 //
-// THE MESSAGES ARE THE ACCEPTANCE CRITERION, so they are asserted as text — the one place the M8
-// house rule "never select by text a designer may change" does not apply. Every sentence below is
-// reconstructed from `packages/validator/src/index.ts`, which SPEC §9.4 makes the single
-// implementation ("one validator module shared by client and server, at save and again at
-// queue"), and every number in it comes from `support/config.ts`'s constants table rather than
-// from a literal. If a message here and the validator disagree, one of them is wrong — that is
-// the point of asserting the string and not the rule code.
+// THE MESSAGES ARE THE ACCEPTANCE CRITERION, so they are asserted as text: every sentence below is
+// rebuilt from `packages/validator/src/index.ts`, which SPEC §9.4 makes the single implementation
+// ("one validator module shared by client and server"), with every number from `support/config.ts`
+// and every card name from `support/cards.ts`. If a sentence here and the validator disagree, one
+// of them is wrong — that is the point of asserting the string and not only the rule code.
 //
-// WHERE THEY ARE ASSERTED — BOTH HALVES. §9.3 and §9.4: "the client's verdict is UX while the
-// server's is law". `PUT /api/loadout` is that law — it calls the same `@jackioh/validator` the
-// deckbuilder calls, passes its issues through untouched ("no renumbering, no recomposed
-// sentence") and is what a player's loadout is actually judged by. So each of the six rules is
-// driven through the endpoint, and those assertions are the law half.
+// TWO VERDICTS, ONE MODULE. §9.3: "the client's verdict is UX while the server's is law". The UX
+// half is the workshop's verdict — `deck-verdict` for Best of 1 (`validateDeck`: L2, L3, L5, L6)
+// and `trio-verdict` for Best of 3 (`validateTrio`: L1–L6) — each sentence a `loadout-error-<rule>`
+// with `data-source="client"`. The law half is the queue (R253): `POST /api/queue` with a deck or a
+// trio answers 422 `loadout_invalid`, the first sentence as its message and every one in `details`.
+// Both name the decks by their saved names, so the two are asserted to say the same words.
 //
-// The UX half — the sentence actually RENDERED, which is what BUILD's "shows" asks for — is
-// asserted through the deckbuilder's own testids. That was once impossible and the note here said
-// so; it is possible now. `e2e/support/testids.ts` carries the builder's vocabulary
-// (`cardPoolId`, `deckTabId`, `deckDropId`, `deckListId`, `deckCountId`, `deckCardId`,
-// `deckCardRowId`, `LOADOUT_ERRORS`, `LOADOUT_SAVE`, `LOADOUT_SAVED`, `loadoutErrorId`), it
-// mirrors `apps/web/src/game/deckbuilder/testids.ts` name for name, and `cy.dragCardToDeck` is a
-// whole dragstart/dragover/drop/dragend gesture with a real `DataTransfer`. Nothing is invented in
-// this file.
+// WHICH RULES THE QUEUE CAN BE SHOWN. A save checks only D1–D4 (R250): a deck may be incomplete or
+// share cards with another deck of a trio, so L1, L2, L4 and L5 (which here only ever rides with L4:
+// R111 grants one copy of every card, so a second copy is the only way to use more than is owned)
+// are built by saving and refused at the queue. L3 and L6 cannot reach the queue at all: D3 refuses
+// a Token or an id outside the catalog, and D4 a second copy, when the deck is SAVED — so the queue's
+// L3 and L6 guard only a catalog that changed under a saved deck, which one E2E server cannot stage.
+// What this file shows for those two is everything a player can meet: the builder's verdict on a
+// draft this device kept (the workshop restores unsynced drafts from its local mirror, R256, and a
+// mirror is untrusted input), the server refusing that draft's save with its D-rule sentence, and
+// the queue never having it to judge ("That deck is no longer saved").
 //
-// HOW MUCH OF L1–L6 A BROWSER CAN REACH, and why the rest is not a gap this file can close. The
-// builder's draft has exactly two sources: the loadout `GET /api/loadout` returns, which the
-// server will only ever have stored if it was legal, and edits made through the UI. And the UI
-// refuses to construct five of the six failures by design:
-//   - `addCard` (`deckbuilder/loadout.ts`) refuses any card already held in ANY deck, so a draft
-//     can never reach L3's duplicate or L4's same-card-in-two-decks. That refusal is not a
-//     limitation — it is BUILD's own second clause, and it is asserted below.
-//   - `poolFrom` excludes Token-tagged cards and anything the collection does not hold, so L3's
-//     Token branch and L6's unknown id are not draggable in the first place.
-//   - The builder always renders three decks, so L1's wrong deck count cannot be typed into it.
-//   - L5 cannot be isolated at all (see below), in the UI or out of it.
-// What remains reachable by editing is L2: take a card out of a deck and it holds 19. So L2 is the
-// rule whose rendered sentence this file asserts, and it asserts it TWICE — once as the client's
-// own live verdict (`data-source="client"`) and once as the server's after a refused save
-// (`data-source="server"`) — which is §9.3's two-verdict claim shown agreeing word for word.
-// The other five sentences are rendered-message-tested where a draft can actually be handed in:
-// `apps/web/src/game/deckbuilder/Deckbuilder.test.tsx`, which mounts an arbitrary draft and
-// asserts all six against `validateLoadout`'s own output.
+// Every seed is set (BUILD M8), though nothing here starts a game: the queue tickets are taken out
+// again at once, and `cy.freeAccount` clears both fixture accounts first so no ticket another spec
+// left can pair with them.
 //
-// L4 IS ALSO A DATABASE INVARIANT. §9.4: "a card id appears in at most one deck, also enforced by
-// a unique index on `(profile_id, card_id)`" — `loadout_card_unique`, which
-// `docs/architecture.md` §5 step 5 and §12 check with SQL. The UI refusal, the validator's
-// refusal and the index must all agree; a browser can only see the first two, so the third stays
-// where it belongs (`apps/server/test/sql/run.sh`) and is named here so the agreement is on the
-// record.
-//
-// WHAT IS NOT PROVOKABLE, and why that is a finding rather than a gap:
-//   - L6's "that card is banned" branch: `apps/server/src/api/catalog.ts` `isBanned` returns
-//     false for everything ("Nothing in SPEC §8 is banned at launch"), so no loadout can reach it.
-//     The "no such card in catalog version …" branch is the one asserted.
-//   - L5 on its own: R111 grants "one copy of every non-token card", so the only way to use more
-//     copies than are owned is to use a card twice (L3 or L4) or to use one that is not granted
-//     at all (a Token, L3, or an unknown id, L6). Every L5 case therefore rides along with
-//     another rule, and the spec asserts both messages instead of pretending otherwise.
-//
-// Needs: M6-T3 (validator + loadout endpoints) and the deckbuilder UI. See e2e/README.md.
+// Needs: M6 (validator, deck and queue endpoints) and TASK 1's deck workshop. See e2e/README.md.
 
-import { CARD_NAMES, cardId } from "../../support/cards.ts";
-import { accounts, constants, routes, seedFor, server, timeouts } from "../../support/config.ts";
+import { CARD_NAMES, TOKEN_NAMES, cardId, tokenId } from "../../support/cards.ts";
+import { INSTALLED_TRIO_NAME, mintId, type SavedDecksBody } from "../../support/commands.ts";
+import { accounts, constants, deckMirrorKey, routes, seedFor, server, timeouts, type E2EAccount } from "../../support/config.ts";
 import {
-  DECKBUILDER,
-  ILLEGAL,
-  LEGAL,
+  DECK_COMPARE_SELECT,
+  DECK_COUNT,
+  DECK_EDITOR,
+  DECK_SAVE_ERROR,
+  DECK_STATUS,
+  DECK_VERDICT,
   LOADOUT_ERRORS,
-  LOADOUT_SAVE,
-  cardPoolId,
+  SYNC_STATUS,
+  TRIO_EDITOR,
+  TRIO_VERDICT,
+  WORKSHOP,
+  addPoolId,
   deckCardId,
-  deckCardRowId,
-  deckCountId,
+  deckCompareChipId,
+  deckRowId,
   loadoutErrorId,
+  poolCardId,
+  trioRowId,
   ts,
 } from "../../support/testids.ts";
 import type { FixtureDeck } from "../../support/types.ts";
 
 // ---------------------------------------------------------------------------------------------
-// Local scaffolding. Items marked ASK belong in `e2e/support/**` and are in the hand-off report.
+// the validator's sentences (packages/validator/src/index.ts), rebuilt
 // ---------------------------------------------------------------------------------------------
-
-/** ASK (support/commands.ts + support/config.ts): `cy.signIn(account)` and the session key. */
-const SESSION_STORAGE_KEY = "jackioh.e2e.session";
-
-/** SPEC §8 numbers 100 Core cards, and R111 grants one copy of each to an active profile. */
-const CORE_CARD_COUNT = Object.keys(CARD_NAMES).length;
 
 const DECK_SIZE = constants.DECK_SIZE;
 const MAX_COPIES = constants.MAX_COPIES;
-const DECKS_PER_LOADOUT = constants.DECKS_PER_LOADOUT;
+const TRIO_DECKS = constants.DECKS_PER_LOADOUT;
 
-/**
- * SPEC §8 #65.1's token. `support/cards.ts` lists only the 100 deckable cards ("Tokens are
- * excluded: L3 bans them from decks"), so L3's token sentence needs the name from here.
- * ASK (support/cards.ts): a `TOKEN_NAMES` map, so no spec spells a card name.
- */
-const SPIKEY_PILLOW = { id: "core-065-1", name: "Spikey Pillow" };
+/** R111: one copy of every non-token card is what an active fixture account owns. */
+const OWNED = MAX_COPIES;
 
-/** An id that is in no catalog version, for L6. Deliberately outside SPEC §8's 1..100. */
+/** An id in no catalog version, for L6. Deliberately outside SPEC §8's 1..100. */
 const NOT_A_CARD = "core-999";
 
-function spec8Name(index: number): string {
-  const name = CARD_NAMES[index];
-  if (name === undefined) throw new Error(`no SPEC §8 card #${String(index)}`);
-  return name;
+/** SPEC §8 #65.1: a Token, for L3's Token sentence. */
+const SPIKEY_PILLOW = tokenId("65.1");
+
+function nameOf(id: string): string | undefined {
+  const index = /^core-(\d{3})$/.exec(id)?.[1];
+  if (index !== undefined) return CARD_NAMES[Number(index)];
+  const token = Object.keys(TOKEN_NAMES).find((key) => tokenId(key) === id);
+  return token === undefined ? undefined : TOKEN_NAMES[token];
 }
+
+/** `cardLabel`: `"Name" (id)` for a catalogued card, else the bare id in quotes. */
+function cardLabel(id: string): string {
+  const name = nameOf(id);
+  return name === undefined ? `"${id}"` : `"${name}" (${id})`;
+}
+
+function copyWord(count: number): string {
+  return count === 1 ? "copy" : "copies";
+}
+
+function cardWord(count: number): string {
+  return count === 1 ? "card" : "cards";
+}
+
+const sentence = {
+  L1: (decks: number) => `A trio needs exactly ${String(TRIO_DECKS)} decks; this one has ${String(decks)}.`,
+  L2: (deck: string, cards: number) =>
+    `${deck} has ${String(cards)} ${cardWord(cards)}; every deck needs exactly ${String(DECK_SIZE)}.`,
+  L3token: (deck: string, id: string) => `${deck} cannot contain ${cardLabel(id)}: Token cards are never deckable.`,
+  L3copies: (deck: string, id: string, count: number) =>
+    `${deck} has ${String(count)} ${copyWord(count)} of ${cardLabel(id)}; ` +
+    `at most ${String(MAX_COPIES)} ${copyWord(MAX_COPIES)} of a card is allowed per deck.`,
+  L4: (id: string, decks: readonly [string, string]) =>
+    `${cardLabel(id)} appears in ${decks[0]} and ${decks[1]}; a card may be in only one deck of a trio.`,
+  L5trio: (id: string, used: number, owned: number) =>
+    `Your trio uses ${String(used)} ${copyWord(used)} of ${cardLabel(id)} but you own ${String(owned)}.`,
+  L5deck: (deck: string, id: string, used: number, owned: number) =>
+    `${deck} uses ${String(used)} ${copyWord(used)} of ${cardLabel(id)} but you own ${String(owned)}.`,
+  L6: (deck: string, id: string, version: string) =>
+    `${deck} cannot contain ${cardLabel(id)}: no such card in catalog version ${version}.`,
+};
+
+// ---------------------------------------------------------------------------------------------
+// the HTTP half
+// ---------------------------------------------------------------------------------------------
+
+type Issue = { rule: string; message: string; deck?: number; cardId?: string };
+type ErrorBody = { error: { code: string; message: string; details?: unknown } };
 
 function api(path: string): string {
   return `${server.http()}${path}`;
 }
 
-function bearer(token: string): Record<string, string> {
-  return { authorization: `Bearer ${token}` };
+function bearer(account: E2EAccount): Record<string, string> {
+  return { authorization: `Bearer ${account.token}` };
 }
 
-/** `cardLabel` in packages/validator: `"Name" (id)` when catalogued, else the bare id. */
-function cardLabel(id: string, name?: string): string {
-  return name === undefined ? `"${id}"` : `"${name}" (${id})`;
-}
-
-/** `deckLabel` in packages/validator: the builder's own label, else the 1-based position. */
-function deckLabel(oneBased: number): string {
-  return `Deck ${String(oneBased)}`;
-}
-
-type ApiErrorBody = {
-  error: { code: string; message: string; details?: { rule: string; message: string; deck?: number; cardId?: string }[] };
-};
-
-type SaveResponse = { catalogVersion: string; loadout: { catalogVersion: string; decks: string[][] } | null };
-
-function catalogVersion(): Cypress.Chainable<string> {
-  return cy
-    .request<SaveResponse>({
-      method: "GET",
-      url: api("/api/loadout"),
-      headers: bearer(accounts.p1().token),
-    })
-    .then((response) => response.body.catalogVersion);
-}
-
-/** One save attempt, however it turns out. `failOnStatusCode: false` so a 422 is data, not a throw. */
-function save(decks: readonly (readonly string[])[]): Cypress.Chainable<Cypress.Response<ApiErrorBody & SaveResponse>> {
-  return catalogVersion().then((version) =>
-    cy.request<ApiErrorBody & SaveResponse>({
-      method: "PUT",
-      url: api("/api/loadout"),
-      headers: bearer(accounts.p1().token),
-      body: { catalogVersion: version, decks },
-      failOnStatusCode: false,
-    }),
-  );
+/** One enqueue attempt, however it turns out: a 422 is data here, not a throw. */
+function enqueue(account: E2EAccount, body: Record<string, unknown>): Cypress.Chainable<Cypress.Response<ErrorBody & { mode?: string }>> {
+  return cy.request<ErrorBody & { mode?: string }>({
+    method: "POST",
+    url: api("/api/queue"),
+    headers: bearer(account),
+    body,
+    failOnStatusCode: false,
+  });
 }
 
 /**
- * §9.4's save is the authority, so this is where a rule's sentence is asserted: the first issue
- * becomes the error's message verbatim, and every issue rides along in `details` "exactly as the
- * validator reported it".
+ * The queue's refusal (R253): 422 `loadout_invalid`, each expected sentence present under its own
+ * rule in `details`, and the first of them the error's own message.
  */
-function expectRefusal(
-  response: Cypress.Response<ApiErrorBody & SaveResponse>,
-  expected: { rule: string; message: string; first?: boolean },
+function expectQueueRefusal(
+  response: Cypress.Response<ErrorBody>,
+  expected: readonly { rule: string; message: string }[],
 ): void {
-  expect(response.status, "an illegal loadout is 422 loadout_invalid (§9.4)").to.eq(422);
+  expect(response.status, "the queue refuses an illegal choice with 422 (R253)").to.eq(422);
   expect(response.body.error.code).to.eq("loadout_invalid");
-
-  const issues = response.body.error.details ?? [];
-  expect(issues, "every failure rides along in `details`, so the builder can show them all").to.be.an(
-    "array",
-  );
-  const found = issues.find((issue) => issue.message === expected.message);
-  expect(
-    found,
-    `${expected.rule}, verbatim from packages/validator/src/index.ts:\n  want: ${expected.message}\n  got:  ${issues.map((issue) => `[${issue.rule}] ${issue.message}`).join("\n        ")}`,
-  ).to.not.eq(undefined);
-  expect(found?.rule, "the issue is reported under its own rule").to.eq(expected.rule);
-  if (expected.first === true) {
-    expect(response.body.error.message, "the first issue is the error's own message").to.eq(
-      expected.message,
-    );
+  const issues = (Array.isArray(response.body.error.details) ? response.body.error.details : []) as Issue[];
+  for (const want of expected) {
+    const found = issues.find((issue) => issue.message === want.message);
+    expect(
+      found,
+      `${want.rule} from the queue, verbatim:\n  want: ${want.message}\n  got:  ${issues.map((issue) => `[${issue.rule}] ${issue.message}`).join("\n        ")}`,
+    ).to.not.eq(undefined);
+    expect(found?.rule, "reported under its own rule").to.eq(want.rule);
   }
+  expect(response.body.error.message, "the first sentence is the refusal's own message").to.eq(issues[0]?.message);
 }
 
-type Decks = { a: string[]; b: string[]; c: string[] };
+/** The workshop's own verdict: the sentence, under its rule, from the client. */
+function expectVerdict(verdict: string, rule: string, message: string): void {
+  cy.get(ts(verdict)).should("have.attr", "data-ready", "false");
+  cy.get(ts(verdict))
+    .find(`${ts(LOADOUT_ERRORS)} ${ts(loadoutErrorId(rule))}`)
+    .filter((_index, element) => element.textContent === message)
+    .should("have.length", 1)
+    .and("have.attr", "data-rule", rule)
+    .and("have.attr", "data-source", "client");
+}
 
-function legalDecks(): Cypress.Chainable<Decks> {
+// ---------------------------------------------------------------------------------------------
+// decks
+// ---------------------------------------------------------------------------------------------
+
+type Legal = { a: string[]; b: string[]; c: string[] };
+
+/** The three disjoint legal decks of `09-deckbuilder-{a,b,c}` (SPEC §8 #1–#20, #21–#40, #41–#60). */
+function legalDecks(): Cypress.Chainable<Legal> {
   return cy.fixture<FixtureDeck>("decks/09-deckbuilder-a.json").then((a) =>
     cy.fixture<FixtureDeck>("decks/09-deckbuilder-b.json").then((b) =>
       cy.fixture<FixtureDeck>("decks/09-deckbuilder-c.json").then((c) => ({
@@ -202,158 +195,45 @@ function legalDecks(): Cypress.Chainable<Decks> {
   );
 }
 
-function illegalDeck(name: string): Cypress.Chainable<string[]> {
-  return cy.fixture<FixtureDeck>(`decks/${name}.json`).then((deck) => [...deck.cards]);
-}
+/** A Core card none of the three legal decks holds (SPEC §8 #61 onwards). */
+const FREE_CARD = cardId(61);
 
-/**
- * Open `/decks` as the active fixture account and wait for the builder itself, not for the route.
- *
- * `DECKBUILDER` is only rendered once the three reads the screen needs have landed — until then it
- * is `deckbuilder-loading`, or `deckbuilder-error` if one failed — so waiting for it is what makes
- * the assertions below about a loaded draft rather than about a spinner.
- */
-function openBuilder(): void {
-  cy.visit(routes.deckbuilder(), {
-    onBeforeLoad(win) {
-      win.localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({ accessToken: accounts.p1().token }),
-      );
-    },
-  });
-  cy.get(ts(DECKBUILDER), { timeout: timeouts.view }).should("exist");
+/** Open `/decks` and wait for the workshop itself, not for the route. */
+function openWorkshop(account: E2EAccount, options: Partial<Cypress.VisitOptions> = {}): void {
+  cy.visitAs(account, routes.deckbuilder(), options);
+  cy.get(ts(WORKSHOP), { timeout: timeouts.view }).should("exist");
 }
 
 // ---------------------------------------------------------------------------------------------
 
-describe("09 deckbuilder — L1 to L6, and a legal save", () => {
-  // BUILD M8: every spec sets a seed. Nothing here starts a game, so the seed only pins the
-  // scenario's identity (and lets CI re-run the file with `--expose seed=`); it is asserted to
-  // exist so the house rule is visible rather than implied.
+describe("09 deck workshop — L1 to L6 in the builder and at the queue, a compared deck's card, a legal queue", () => {
   const seed = seedFor("09-deckbuilder");
 
   before(() => {
     expect(seed, "BUILD M8: every spec sets a seed").to.be.a("string").and.not.eq("");
   });
 
-  it("L1 — a loadout needs exactly three decks", () => {
-    legalDecks().then((decks) => {
-      const sent = [decks.a, decks.b];
-      save(sent).then((response) => {
-        expectRefusal(response, {
-          rule: "L1",
-          first: true,
-          message: `A loadout needs exactly ${String(DECKS_PER_LOADOUT)} decks; this one has ${String(sent.length)}.`,
-        });
-      });
-    });
+  beforeEach(() => {
+    cy.freeAccount(accounts.p1());
+    cy.freeAccount(accounts.p2());
+    cy.clearDecks(accounts.p1());
   });
 
-  it("L2 — every deck needs exactly DECK_SIZE cards", () => {
-    legalDecks().then((decks) => {
-      illegalDeck("09-illegal-l2-short").then((short) => {
-        save([short, decks.b, decks.c]).then((response) => {
-          expectRefusal(response, {
-            rule: "L2",
-            first: true,
-            message: `${deckLabel(1)} has ${String(short.length)} cards; every deck needs exactly ${String(DECK_SIZE)}.`,
-          });
-        });
-      });
-    });
-  });
+  it("L1 — a trio with an empty slot: the trio's verdict and the Best-of-3 queue say the same", () => {
+    const me = accounts.p1();
+    legalDecks().then((legal) => {
+      cy.saveDeck(me, { name: "Aggro", cards: legal.a }).then((aggro) => {
+        cy.saveDeck(me, { name: "Control", cards: legal.c }).then((control) => {
+          cy.saveTrio(me, { name: "Two decks", deckIds: [aggro, control, null] }).then((trio) => {
+            const message = sentence.L1(2);
 
-  it("L3 — at most MAX_COPIES of a card per deck", () => {
-    legalDecks().then((decks) => {
-      illegalDeck("09-illegal-l3-duplicate").then((duplicated) => {
-        const repeated = cardId(1);
-        const name = spec8Name(1);
-        save([duplicated, decks.b, decks.c]).then((response) => {
-          expectRefusal(response, {
-            rule: "L3",
-            first: true,
-            message:
-              `${deckLabel(1)} has 2 copies of ${cardLabel(repeated, name)}; ` +
-              `at most ${String(MAX_COPIES)} copy of a card is allowed per deck.`,
-          });
-          // R111 owns one copy of everything, so two copies is also one more than is owned.
-          expectRefusal(response, {
-            rule: "L5",
-            message: `Your loadout uses 2 copies of ${cardLabel(repeated, name)} but you own ${String(MAX_COPIES)}.`,
-          });
-        });
-      });
-    });
-  });
+            openWorkshop(me);
+            cy.get(ts(trioRowId(trio))).should("have.attr", "data-ready", "false").click();
+            cy.get(ts(TRIO_EDITOR)).should("have.attr", "data-trio", trio);
+            expectVerdict(TRIO_VERDICT, "L1", message);
 
-  it("L3 — no Token-tagged cards", () => {
-    legalDecks().then((decks) => {
-      illegalDeck("09-illegal-l3-token").then((withToken) => {
-        save([withToken, decks.b, decks.c]).then((response) => {
-          expectRefusal(response, {
-            rule: "L3",
-            first: true,
-            message: `${deckLabel(1)} cannot contain ${cardLabel(SPIKEY_PILLOW.id, SPIKEY_PILLOW.name)}: Token cards are never deckable.`,
-          });
-        });
-      });
-    });
-  });
-
-  it("L4 — a card dragged into a second deck is refused, and L5 with it", () => {
-    // BUILD's "a card dragged into a second deck is refused", at the layer that decides it. The
-    // same refusal exists twice more: in the deckbuilder as UX (ASK: the drag testids), and in the
-    // database as `loadout_card_unique` on `(profile_id, card_id)` (§9.4), which SQL tests cover
-    // because "raw SQL putting one card in two decks is refused even with the application check
-    // bypassed" (docs/architecture.md §10 step 11) is not reachable from a browser.
-    legalDecks().then((decks) => {
-      const shared = decks.a[0] ?? "";
-      const name = spec8Name(1);
-      expect(shared, "the card to duplicate across two decks").to.eq(cardId(1));
-
-      const third = [...decks.c];
-      third[third.length - 1] = shared;
-
-      save([decks.a, decks.b, third]).then((response) => {
-        expectRefusal(response, {
-          rule: "L4",
-          first: true,
-          message: `${cardLabel(shared, name)} appears in ${deckLabel(1)} and ${deckLabel(3)}; a card may be in only one deck of a loadout.`,
-        });
-        expectRefusal(response, {
-          rule: "L5",
-          message: `Your loadout uses 2 copies of ${cardLabel(shared, name)} but you own ${String(MAX_COPIES)}.`,
-        });
-      });
-    });
-  });
-
-  it("L5 — copies across the loadout never exceed the quantity owned", () => {
-    // The Token case makes L5's "you own 0" branch reachable: R111 grants every *non-token* card,
-    // so a Token is owned zero times, and `copyWord(1)` is the singular.
-    legalDecks().then((decks) => {
-      illegalDeck("09-illegal-l3-token").then((withToken) => {
-        save([withToken, decks.b, decks.c]).then((response) => {
-          expectRefusal(response, {
-            rule: "L5",
-            message: `Your loadout uses ${String(MAX_COPIES)} copy of ${cardLabel(SPIKEY_PILLOW.id, SPIKEY_PILLOW.name)} but you own 0.`,
-          });
-        });
-      });
-    });
-  });
-
-  it("L6 — every card exists in the current catalog version", () => {
-    legalDecks().then((decks) => {
-      illegalDeck("09-illegal-l6-unknown").then((unknown) => {
-        catalogVersion().then((version) => {
-          save([unknown, decks.b, decks.c]).then((response) => {
-            // An uncatalogued id has no name, so the validator labels it with the bare id.
-            expectRefusal(response, {
-              rule: "L6",
-              first: true,
-              message: `${deckLabel(1)} cannot contain ${cardLabel(NOT_A_CARD)}: no such card in catalog version ${version}.`,
+            enqueue(me, { mode: "bo3", trioId: trio, seed }).then((response) => {
+              expectQueueRefusal(response, [{ rule: "L1", message }]);
             });
           });
         });
@@ -361,164 +241,239 @@ describe("09 deckbuilder — L1 to L6, and a legal save", () => {
     });
   });
 
-  it("save succeeds when legal, and the loadout reads back exactly", () => {
-    legalDecks().then((decks) => {
-      const sent = [decks.a, decks.b, decks.c];
-      save(sent).then((response) => {
-        expect(
-          response.status,
-          `a legal loadout saves: ${String(DECKS_PER_LOADOUT)} disjoint decks of ${String(DECK_SIZE)}`,
-        ).to.eq(200);
-        expect(response.body.loadout?.decks, "all three decks, in order (§9.4: one transaction)").to.deep.eq(
-          sent,
-        );
-      });
+  it("L2 — an incomplete deck saves (R250), and the deck's verdict and the Best-of-1 queue refuse it", () => {
+    const me = accounts.p1();
+    legalDecks().then((legal) => {
+      const short = legal.a.slice(0, DECK_SIZE - 1);
+      cy.saveDeck(me, { name: "Short", cards: short }).then((deck) => {
+        const message = sentence.L2("Short", short.length);
 
-      // §9.4: "Saving is saveLoadout(profileId, catalogVersion, decks[3]), which writes all three
-      // decks in one transaction or nothing". So the read-back is part of the assertion.
-      cy.request<SaveResponse>({
-        method: "GET",
-        url: api("/api/loadout"),
-        headers: bearer(accounts.p1().token),
-      }).should((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body.loadout?.decks).to.deep.eq(sent);
-        expect(response.body.loadout?.catalogVersion, "stamped with the version it was saved under").to.eq(
-          response.body.catalogVersion,
-        );
+        openWorkshop(me);
+        cy.get(ts(deckRowId(deck))).should("have.attr", "data-count", String(short.length)).click();
+        cy.get(ts(DECK_EDITOR)).should("have.attr", "data-deck", deck);
+        cy.get(ts(DECK_COUNT)).should("have.attr", "data-count", String(short.length));
+        expectVerdict(DECK_VERDICT, "L2", message);
+
+        enqueue(me, { mode: "bo1", deckId: deck, seed }).then((response) => {
+          expectQueueRefusal(response, [{ rule: "L2", message }]);
+        });
       });
     });
   });
 
-  it("the deckbuilder screen opens for an active profile and shows the saved loadout", () => {
-    // What this suite can assert about the screen without new testids: §9.4's gate lets an active
-    // account in (spec 10 shows the same route bouncing a pending one to the code screen), and the
-    // builder renders the loadout the previous `it` saved. The card names come from
-    // `support/cards.ts`, which is SPEC §8 data rather than copy a designer owns, so this is not
-    // the "select by text" the M8 house rule bans — and it fails if the route serves anything
-    // other than a loaded deckbuilder.
-    //
-    // The other two things BUILD's row asks of the DOM — a rendered rule sentence, and the drag
-    // into a second deck being refused — are the two `it`s after this one.
-    cy.visit(routes.deckbuilder(), {
-      onBeforeLoad(win) {
-        win.localStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({ accessToken: accounts.p1().token }),
-        );
-      },
+  it("L4 and L5 — a trio whose decks share a card: marked in the trio's verdict and refused by the queue", () => {
+    const me = accounts.p1();
+    legalDecks().then((legal) => {
+      const shared = legal.a[0] ?? "";
+      // "Midrange" is 09-deckbuilder-b with its last card swapped for one Aggro holds.
+      const midrange = [...legal.b.slice(0, DECK_SIZE - 1), shared];
+      cy.saveDeck(me, { name: "Aggro", cards: legal.a }).then((aggro) => {
+        cy.saveDeck(me, { name: "Midrange", cards: midrange }).then((mid) => {
+          cy.saveDeck(me, { name: "Control", cards: legal.c }).then((control) => {
+            cy.saveTrio(me, { name: "Shared card", deckIds: [aggro, mid, control] }).then((trio) => {
+              const l4 = sentence.L4(shared, ["Aggro", "Midrange"]);
+              // R111 owns one copy, so a card in two decks is one more than is owned.
+              const l5 = sentence.L5trio(shared, 2, OWNED);
+
+              openWorkshop(me);
+              cy.get(ts(trioRowId(trio))).click();
+              expectVerdict(TRIO_VERDICT, "L4", l4);
+              expectVerdict(TRIO_VERDICT, "L5", l5);
+
+              enqueue(me, { mode: "bo3", trioId: trio, seed }).then((response) => {
+                expectQueueRefusal(response, [
+                  { rule: "L4", message: l4 },
+                  { rule: "L5", message: l5 },
+                ]);
+              });
+            });
+          });
+        });
+      });
     });
-    cy.location("pathname").should("eq", routes.deckbuilder());
-    cy.location("pathname").should("not.eq", routes.login());
-    cy.location("pathname").should("not.eq", routes.invite());
-
-    // One card from each of the three saved decks: #1 (deck 1), #21 (deck 2), #41 (deck 3).
-    for (const index of [1, 21, 41]) {
-      cy.contains(spec8Name(index)).should("exist");
-    }
   });
 
-  it("L2 — the builder SHOWS the validator's sentence, and the server's copy of it says the same", () => {
-    // BUILD's "shows its message", at the layer the word means. The draft starts as the legal
-    // loadout the save above stored, so the one failure a browser can steer it into is L2: take a
-    // card out of deck 1 and it holds DECK_SIZE - 1.
-    openBuilder();
+  it("L3 and L6 — a draft this device kept shows its sentences, and the save refuses it before any queue can see it", () => {
+    const me = accounts.p1();
+    type Draft = { id: string; name: string; cards: string[]; rules: { rule: string; message: string }[]; save: string };
+    let version = "";
+    let drafts: Draft[] = [];
 
-    const removed = cardId(1);
-    const short = DECK_SIZE - 1;
-    const sentence = `${deckLabel(1)} has ${String(short)} cards; every deck needs exactly ${String(DECK_SIZE)}.`;
+    cy.savedDecks(me).then((saved: SavedDecksBody) => {
+      version = saved.catalogVersion;
+    });
+    legalDecks().then((legal) => {
+      const base = legal.a.slice(0, DECK_SIZE - 1);
+      const twice = legal.a[0] ?? "";
+      drafts = [
+        {
+          id: mintId(),
+          name: "Twice",
+          cards: [...base, twice],
+          rules: [
+            { rule: "L3", message: sentence.L3copies("Twice", twice, 2) },
+            { rule: "L5", message: sentence.L5deck("Twice", twice, 2, OWNED) },
+          ],
+          // D4, the save's own sentence (packages/validator `checkDeckDraft`).
+          save: `A deck may hold at most ${String(MAX_COPIES)} ${copyWord(MAX_COPIES)} of "${twice}"; this one has 2.`,
+        },
+        {
+          id: mintId(),
+          name: "Pillow",
+          cards: [...base, SPIKEY_PILLOW],
+          rules: [
+            { rule: "L3", message: sentence.L3token("Pillow", SPIKEY_PILLOW) },
+            { rule: "L5", message: sentence.L5deck("Pillow", SPIKEY_PILLOW, 1, 0) },
+          ],
+          // D3.
+          save: `"${SPIKEY_PILLOW}" is not a card a deck can hold.`,
+        },
+        {
+          id: mintId(),
+          name: "Stale",
+          cards: [...base, NOT_A_CARD],
+          // L6's sentence names the catalog version, which is read above; it is filled in below.
+          rules: [
+            { rule: "L6", message: "" },
+            { rule: "L5", message: sentence.L5deck("Stale", NOT_A_CARD, 1, 0) },
+          ],
+          save: `"${NOT_A_CARD}" is not a card a deck can hold.`,
+        },
+      ];
+    });
 
-    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(DECK_SIZE));
-    cy.get(ts(deckCardId(1, removed))).click();
-    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(short));
+    // R256: the workshop mirrors every edit to this device and, on the next visit, restores what the
+    // server never confirmed over the server's copy. These three are drafts it never confirmed.
+    cy.request<{ profile: { id: string } }>({ method: "GET", url: api("/api/auth/me"), headers: bearer(me) })
+      .its("body.profile.id")
+      .then((profileId) => {
+        const now = Date.now();
+        const mirror = {
+          v: 1,
+          decks: drafts.map((draft, at) => ({
+            item: { id: draft.id, name: draft.name, cards: draft.cards, createdAt: now + at, updatedAt: now + at },
+            dirty: true,
+          })),
+          trios: [],
+          deletedDecks: [],
+          deletedTrios: [],
+        };
+        openWorkshop(me, {
+          onBeforeLoad(win) {
+            win.localStorage.setItem(deckMirrorKey(profileId), JSON.stringify(mirror));
+          },
+        });
+      });
 
-    // The client's own verdict, live, with no save involved (§9.3: "the client's verdict is UX").
-    // Asserted inside the errors list, so a sentence rendered anywhere else would not count.
-    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.length", 1);
-    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.text", sentence);
-    cy.get(ts(loadoutErrorId("L2"))).should("have.attr", "data-source", "client");
-    cy.get(ts(loadoutErrorId("L2"))).should("have.attr", "data-rule", "L2");
+    cy.then(() => {
+      for (const draft of drafts) {
+        cy.get(ts(deckRowId(draft.id)), { timeout: timeouts.view }).should("have.attr", "data-unsynced", "true").click();
+        cy.get(ts(DECK_EDITOR)).should("have.attr", "data-deck", draft.id);
+        for (const want of draft.rules) {
+          const message = want.rule === "L6" ? sentence.L6(draft.name, NOT_A_CARD, version) : want.message;
+          expectVerdict(DECK_VERDICT, want.rule, message);
+        }
+        // The server is law: the save is refused with the draft rule's sentence, shown verbatim.
+        cy.get(ts(DECK_SAVE_ERROR), { timeout: timeouts.view }).should("have.text", draft.save);
+      }
+    });
+    cy.get(ts(SYNC_STATUS)).should("have.attr", "data-state", "error");
 
-    // …and the server's, which §9.4 makes law. `PUT /api/loadout` refuses the same draft and its
-    // issues replace the client's — so this is the two verdicts of §9.3 shown agreeing word for
-    // word, which is the whole reason the validator is one shared module (M6-T3).
-    cy.get(ts(LOADOUT_SAVE)).click();
-    cy.get(ts(loadoutErrorId("L2")), { timeout: timeouts.view }).should(
-      "have.attr",
-      "data-source",
-      "server",
-    );
-    cy.get(ts(LOADOUT_ERRORS)).find(ts(loadoutErrorId("L2"))).should("have.text", sentence);
-
-    // The refused save changed nothing on the server, so the next `it` still opens a legal draft.
-    cy.request<SaveResponse>({
-      method: "GET",
-      url: api("/api/loadout"),
-      headers: bearer(accounts.p1().token),
-    })
-      .its("body.loadout.decks.0.length")
-      .should("eq", DECK_SIZE);
+    // The same refusal over HTTP, and the queue never has these decks to judge.
+    cy.then(() => {
+      for (const draft of drafts) {
+        cy.request<ErrorBody>({
+          method: "PUT",
+          url: api(`/api/decks/${draft.id}`),
+          headers: bearer(me),
+          body: { name: draft.name, cards: draft.cards, catalogVersion: version },
+          failOnStatusCode: false,
+        }).should((response) => {
+          expect(response.status, "R250: D3/D4 refuse the save").to.eq(400);
+          expect(response.body.error.message).to.eq(draft.save);
+        });
+        enqueue(me, { mode: "bo1", deckId: draft.id, seed }).should((response) => {
+          expect(response.status).to.eq(422);
+          expect(response.body.error.message, "the queue has no such deck to judge").to.eq(
+            "That deck is no longer saved; pick another.",
+          );
+        });
+      }
+      cy.savedDecks(me).its("decks").should("have.length", 0);
+    });
   });
 
-  it("BUILD M8 — a card dragged into a second deck is refused, on screen", () => {
-    // The clause this file used to prove only as JSON. `cy.dragCardToDeck` is the real gesture:
-    // dragstart on the pool card with a `DataTransfer` built in the app's own window, dragover and
-    // drop on the deck region, dragend to let go.
-    openBuilder();
+  it("a card a compared deck holds is refused, and the status line names that deck (R251)", () => {
+    const me = accounts.p1();
+    legalDecks().then((legal) => {
+      const held = legal.a[0] ?? "";
+      const building = legal.c.slice(0, DECK_SIZE - 1);
+      cy.saveDeck(me, { name: "Keeper", cards: legal.a }).then((keeper) => {
+        cy.saveDeck(me, { name: "Builder", cards: building }).then((builder) => {
+          openWorkshop(me);
+          cy.get(ts(deckRowId(builder))).click();
+          cy.get(ts(DECK_EDITOR)).should("have.attr", "data-deck", builder);
+          cy.get(ts(DECK_COMPARE_SELECT)).select(`deck:${keeper}`);
+          cy.get(ts(deckCompareChipId(keeper))).should("be.visible");
 
-    // #1 is in deck 1 of the loadout the save above stored, so dropping it into deck 2 is exactly
-    // "a card dragged into a second deck". L4 and the `loadout_card_unique` index say the same
-    // thing one and two layers down (§9.4); this is the top layer saying it first.
-    const held = cardId(1);
-    cy.get(ts(deckCardRowId(1, held))).should("exist");
-    // The pool marks it before anything is dragged: M5-T2's `data-legal="false"` vocabulary,
-    // reused here rather than a second word for the same statement.
-    cy.get(`${ts(cardPoolId(held))}${ILLEGAL}`).should("exist");
-    cy.get(ts(cardPoolId(held))).should("have.attr", "data-in-deck", "1");
+          // The pool marks it before anything is tried.
+          cy.get(ts(poolCardId(held)))
+            .should("have.attr", "data-unavailable", "true")
+            .and("have.attr", "data-held-by", "Keeper")
+            .and("have.attr", "data-legal", "false");
 
-    cy.dragCardToDeck(held, 1); // 0-based, like the API's deckIndex: deck 2 on screen.
+          // The "+" is refused, and says where the card is.
+          cy.get(ts(addPoolId(held))).click();
+          cy.get(ts(DECK_STATUS)).should("have.text", `${nameOf(held) ?? held} is in Keeper.`);
+          cy.get(ts(deckCardId(held))).should("not.exist");
+          cy.get(ts(DECK_COUNT)).should("have.attr", "data-count", String(building.length));
 
-    // Refused: deck 2 never gained it, deck 1 never lost it, and both are still DECK_SIZE.
-    cy.get(ts(deckCardRowId(2, held))).should("not.exist");
-    cy.get(ts(deckCardRowId(1, held))).should("exist");
-    cy.get(ts(deckCountId(1))).should("have.attr", "data-count", String(DECK_SIZE));
-    cy.get(ts(deckCountId(2))).should("have.attr", "data-count", String(DECK_SIZE));
-    // …and the builder said so, rather than silently dropping the gesture.
-    cy.get(ts(cardPoolId(held))).should("have.attr", "data-refused", "true");
+          // So is a drag onto the deck.
+          cy.dragCardToDeck(held);
+          cy.get(ts(DECK_STATUS)).should("have.text", `${nameOf(held) ?? held} is in Keeper.`);
+          cy.get(ts(deckCardId(held))).should("not.exist");
+          cy.get(ts(DECK_COUNT)).should("have.attr", "data-count", String(building.length));
 
-    // The draft is still legal, so no rule sentence is on screen: the refusal is what kept it
-    // legal, which is the difference between refusing a drag and reporting L4 after the fact.
-    cy.get(ts(LOADOUT_ERRORS)).should("have.attr", "data-count", "0");
-    cy.get(ts(loadoutErrorId("L4"))).should("not.exist");
+          // THE CONTROL: "refused" and "the gesture did nothing" leave the same deck, so a card no
+          // compared deck holds must land by the same gesture — and completing the deck saves it.
+          cy.get(ts(poolCardId(FREE_CARD))).should("have.attr", "data-legal", "true");
+          cy.dragCardToDeck(FREE_CARD);
+          cy.get(ts(deckCardId(FREE_CARD))).should("exist");
+          cy.get(ts(DECK_COUNT)).should("have.attr", "data-count", String(DECK_SIZE));
+          // R256: the row loses its "not saved yet" mark once the server has confirmed the edit.
+          cy.get(ts(deckRowId(builder)), { timeout: timeouts.view }).should("not.have.attr", "data-unsynced");
+          cy.get(ts(SYNC_STATUS)).should("have.attr", "data-state", "saved");
+          cy.savedDecks(me).should((saved) => {
+            const found = saved.decks.find((deck) => deck.id === builder);
+            expect(found?.cards, "the server has the completed deck").to.have.length(DECK_SIZE);
+            expect(found?.cards).to.include(FREE_CARD).and.not.include(held);
+          });
+        });
+      });
+    });
+  });
 
-    // THE CONTROL, and the reason the assertions above mean anything. "Refused" and "the gesture
-    // never fired" leave an identical board, so a drag that did nothing at all would satisfy every
-    // line above. Dragging a card the loadout does NOT hold, with the same command onto the same
-    // region, has to land — and then the refusal is specific to the card being held elsewhere
-    // rather than a property of `cy.dragCardToDeck`.
-    legalDecks().then((decks) => {
-      const used = new Set([...decks.a, ...decks.b, ...decks.c]);
-      const free = Array.from({ length: CORE_CARD_COUNT }, (_unused, index) => cardId(index + 1)).find(
-        (id) => !used.has(id),
-      );
-      expect(free, "a Core card the saved loadout does not hold (R111 grants all 100)").to.not.eq(
-        undefined,
-      );
-      if (free === undefined) return;
+  it("a legal deck and a legal trio queue, and leave the queue again", () => {
+    const me = accounts.p1();
+    cy.installLoadout(me, "09-deckbuilder-a").then((installed) => {
+      openWorkshop(me);
+      cy.get(ts(trioRowId(installed.trioId))).should("have.attr", "data-ready", "true").click();
+      cy.get(ts(TRIO_VERDICT)).should("have.attr", "data-ready", "true");
+      cy.get(ts(TRIO_VERDICT)).find(ts(LOADOUT_ERRORS)).should("have.attr", "data-count", "0");
+      cy.get(ts(deckRowId(installed.deckIds[0]))).click();
+      cy.get(ts(DECK_VERDICT)).should("have.attr", "data-ready", "true");
 
-      cy.get(`${ts(cardPoolId(free))}${LEGAL}`).should("exist");
-      cy.dragCardToDeck(free, 1);
+      enqueue(me, { mode: "bo1", deckId: installed.deckIds[0], seed }).should((response) => {
+        expect(response.status, "R253: a legal deck queues Best of 1").to.eq(200);
+        expect(response.body.mode).to.eq("bo1");
+      });
+      cy.request({ method: "DELETE", url: api("/api/queue"), headers: bearer(me) }).its("status").should("eq", 200);
 
-      cy.get(ts(deckCardRowId(2, free))).should("exist");
-      cy.get(ts(deckCountId(2))).should("have.attr", "data-count", String(DECK_SIZE + 1));
-      // …and the builder shows L2 for the deck that is now one card over, which is the same
-      // sentence from the same validator about the other end of the same rule.
-      cy.get(ts(LOADOUT_ERRORS))
-        .find(ts(loadoutErrorId("L2")))
-        .should(
-          "have.text",
-          `${deckLabel(2)} has ${String(DECK_SIZE + 1)} cards; every deck needs exactly ${String(DECK_SIZE)}.`,
-        );
+      enqueue(me, { mode: "bo3", trioId: installed.trioId, seed }).should((response) => {
+        expect(response.status, `R253: "${INSTALLED_TRIO_NAME}", three disjoint legal decks, queues Best of 3`).to.eq(200);
+        expect(response.body.mode).to.eq("bo3");
+      });
+      cy.request({ method: "DELETE", url: api("/api/queue"), headers: bearer(me) }).its("status").should("eq", 200);
     });
   });
 });

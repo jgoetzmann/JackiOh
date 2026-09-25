@@ -1,23 +1,25 @@
-// Polish 6, slice D: browsing and building on the new deck builder screen (docs/polish/6-cards.md,
-// B30–B38; the pure half of the filter and sort rules is filters.test.ts, and the pixel half of
-// the layout is e2e/cypress/component/deckbuilder-layout.cy.tsx).
+// Polish 6, slice D: browsing and building in the deck editor (docs/polish/6-cards.md, B30–B41;
+// the pure half of the filter and sort rules is filters.test.ts, and the pixel half of the layout
+// is e2e/cypress/component/deckbuilder-layout.cy.tsx). Since R250 the editor is one saved deck of
+// the deck workshop, so every test mounts `DeckWorkshop` with that deck open.
 //
-// Most tests mount `Deckbuilder` on a small inline catalog built to make each rule visible. The
-// fixtures in ./fixtures.ts are used only where the existing contract is the point (every testid
-// on a legal loadout, and what `save` receives).
+// Most tests use a small inline catalog built to make each rule visible. The fixtures in
+// ./fixtures.ts are used only where the existing contract is the point (every testid on a full
+// deck, and what a save sends).
 //
-// Every validator sentence is computed with `validateLoadout`, never typed: messages.test.ts fails
-// any client source, tests included, that spells one out.
+// Every validator sentence is computed with the validator, never typed: messages.test.ts fails any
+// client source, tests included, that spells one out.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CardCost, CardDef, CardFace, CardType, Rarity, Tag } from "@jackioh/shared";
-import { validateLoadout, type CatalogSnapshot, type Collection } from "@jackioh/validator";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { validateDeck, type CatalogSnapshot, type Collection } from "@jackioh/validator";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { DECK_AUTOSAVE_DEBOUNCE_MS } from "../../../../server/src/config.ts";
 import {
   CARD_SETTINGS_DEFAULTS,
   INSPECT_CLOSE,
@@ -31,10 +33,13 @@ import {
 // The barrel re-exports the inspect testids but not the timing constants; this is the file the
 // Surface names for them.
 import { HOVER_DELAY_MS, LONG_PRESS_MS } from "../../cards/inspect/constants.ts";
-import Deckbuilder, { DECK_STATUS_MS } from "./Deckbuilder.tsx";
+import { DECK_STATUS_MS } from "./DeckEditor.tsx";
+import DeckWorkshop from "./DeckWorkshop.tsx";
 import { DECK_SIZE } from "./deckSize.ts";
 import { COST_BUCKETS, FILTER_RARITIES, FILTER_TAGS, FILTER_TYPES, deckListOrder, manaCurve, type SortKey } from "./filters.ts";
 import { fixtureCatalog, fixtureCollection, legalDecks } from "./fixtures.ts";
+import type { DeckSyncApi } from "./sync.ts";
+import { decksResponse, fakeDeckServer, manualClock, quietDeckApi, savedDeck } from "./testkit.ts";
 import {
   DB_DETAIL_ADD,
   DB_EMPTY,
@@ -46,13 +51,18 @@ import {
   DB_SIDEBAR,
   DB_SORT,
   DB_SORT_DIR,
-  deckCurveId,
+  DECK_CARDS,
+  DECK_COMPARE_SELECT,
+  DECK_COUNT,
+  DECK_CURVE,
+  DECK_DROP,
+  DECK_STATUS,
+  deckCardId,
   filterCostId,
   filterRarityId,
   filterTagId,
   filterTypeId,
   addPoolId,
-  DB_DECK_STATUS,
 } from "./testids.ts";
 
 // ---------------------------------------------------------------------------------------------
@@ -175,21 +185,46 @@ function card(id: string): CardDef {
   return found;
 }
 
+
 // ---------------------------------------------------------------------------------------------
-// Harness
+// Harness: one deck open in the workshop, and optionally other saved decks to compare with
 // ---------------------------------------------------------------------------------------------
 
-type Decks = readonly (readonly string[])[];
+const OPEN = "deck-open";
+const OPEN_NAME = "Aggro";
+const OTHER = "deck-other";
+const OTHER_NAME = "Control";
 
-const EMPTY: Decks = [[], [], []];
+type MountOptions = {
+  collection?: Collection | null;
+  /** Other saved decks, after the open one. */
+  others?: { id: string; name: string; cards: readonly string[] }[];
+  api?: DeckSyncApi;
+  catalog?: CatalogSnapshot;
+  clock?: ReturnType<typeof manualClock>;
+};
 
-function mount(decks: Decks | null = EMPTY, collection: Collection | null = COLLECTION) {
-  const save = vi.fn().mockResolvedValue({ ok: true });
-  render(<Deckbuilder catalog={SNAPSHOT} collection={collection} initialDecks={decks} save={save} />);
-  return save;
+function mount(cards: readonly string[] = [], options: MountOptions = {}): void {
+  const others = (options.others ?? []).map((deck, index) => savedDeck(deck.id, deck.name, deck.cards, index + 2));
+  render(
+    <DeckWorkshop
+      catalog={options.catalog ?? SNAPSHOT}
+      collection={options.collection === undefined ? COLLECTION : options.collection}
+      data={decksResponse([savedDeck(OPEN, OPEN_NAME, cards, 1), ...others])}
+      profileId="browse"
+      api={options.api ?? quietDeckApi()}
+      storage={null}
+      {...(options.clock === undefined ? {} : { clock: options.clock })}
+      initialOpen={{ kind: "deck", id: OPEN }}
+    />,
+  );
 }
 
-/** The pool's cards, in DOM order. */
+/** Compares the open deck with the other saved deck `id` (R251). */
+function compareWith(id: string): void {
+  fireEvent.change(screen.getByTestId(DECK_COMPARE_SELECT), { target: { value: `deck:${id}` } });
+}
+
 function poolOrder(): string[] {
   const pool = screen.getByTestId("card-pool");
   return Array.from(pool.querySelectorAll<HTMLElement>(".db-item")).map((item) => item.getAttribute("data-card") ?? "");
@@ -199,8 +234,8 @@ function poolCard(id: string): HTMLElement {
   return screen.getByTestId(`card-pool-${id}`);
 }
 
-function tileOrder(deck: number): string[] {
-  const list = screen.getByTestId(`deck-list-${String(deck)}`);
+function tileOrder(): string[] {
+  const list = screen.getByTestId(DECK_CARDS);
   return Array.from(list.querySelectorAll<HTMLElement>(".db-tile")).map((tile) => tile.getAttribute("data-card") ?? "");
 }
 
@@ -220,8 +255,8 @@ function sortBy(key: SortKey, dir: "asc" | "desc"): void {
   expect(toggle).toHaveAttribute("data-dir", dir);
 }
 
-function curve(deck: number): { bucket: string | null; count: number }[] {
-  const root = screen.getByTestId(deckCurveId(deck));
+function curve(): { bucket: string | null; count: number }[] {
+  const root = screen.getByTestId(DECK_CURVE);
   return Array.from(root.querySelectorAll<HTMLElement>(".db-bar")).map((bar) => ({
     bucket: bar.getAttribute("data-bucket"),
     count: Number(bar.getAttribute("data-count")),
@@ -334,7 +369,7 @@ describe("the pool grid (B30)", () => {
       const add = within(item).getByTestId(addPoolId(id));
       expect(add.tagName).toBe("BUTTON");
       expect(add).toHaveClass("db-add");
-      expect(add).toHaveAttribute("aria-label", `Add ${def.name} to Deck 1`);
+      expect(add).toHaveAttribute("aria-label", `Add ${def.name} to ${OPEN_NAME}`);
       expect(button.contains(add), "a sibling, never a button inside a button").toBe(false);
     }
   });
@@ -343,7 +378,7 @@ describe("the pool grid (B30)", () => {
     mount();
     const sidebar = screen.getByTestId(DB_SIDEBAR);
     const pool = screen.getByTestId("card-pool");
-    // Focus and reading order follow the DOM: the tabs and the deck list before 100 pool cards.
+    // Focus and reading order follow the DOM: the deck before 100 pool cards.
     expect(sidebar.compareDocumentPosition(pool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const css = readFileSync(join(HERE, "deckbuilder.css"), "utf8");
     // The desktop grid still puts the sidebar on the right by area name, whatever the DOM order.
@@ -357,32 +392,19 @@ describe("the pool grid (B30)", () => {
     expect(poolOrder()).not.toContain(TOKEN);
   });
 
-  it("B30 the existing testids and data attributes hold on the fixture loadout", () => {
-    const decks = legalDecks();
-    render(
-      <Deckbuilder
-        catalog={fixtureCatalog()}
-        collection={fixtureCollection()}
-        initialDecks={decks}
-        save={vi.fn().mockResolvedValue({ ok: true })}
-      />,
-    );
-    expect(screen.getByTestId("deckbuilder")).toBeInTheDocument();
-    for (const [index, deck] of decks.entries()) {
-      const n = String(index + 1);
-      expect(screen.getByTestId(`deck-tab-${n}`)).toBeInTheDocument();
-      expect(screen.getByTestId(`deck-count-${n}`)).toHaveAttribute("data-count", String(DECK_SIZE));
-      expect(screen.getByTestId(`deck-drop-${n}`)).toBeInTheDocument();
-      expect(screen.getByTestId(`deck-list-${n}`)).toBeInTheDocument();
-      for (const id of deck) {
-        expect(screen.getByTestId(`deck-card-${n}-${id}`)).toHaveAttribute("data-card", id);
-        expect(screen.getByTestId(`deck-${n}-card-${id}`)).toBeInTheDocument();
-        expect(screen.getByTestId(`card-pool-${id}`)).toHaveAttribute("data-in-deck", n);
-        expect(screen.getByTestId(`card-pool-${id}`)).toHaveAttribute("data-legal", "false");
-      }
+  it("B30 the testids and data attributes hold on a full deck", () => {
+    const deck = legalDecks()[0] ?? [];
+    mount(deck, { catalog: fixtureCatalog(), collection: fixtureCollection() });
+    expect(screen.getByTestId(DECK_COUNT)).toHaveAttribute("data-count", String(DECK_SIZE));
+    expect(screen.getByTestId(DECK_DROP)).toBeInTheDocument();
+    expect(screen.getByTestId(DECK_CARDS)).toBeInTheDocument();
+    for (const id of deck) {
+      expect(screen.getByTestId(deckCardId(id))).toHaveAttribute("data-card", id);
+      expect(screen.getByTestId(`card-pool-${id}`)).toHaveAttribute("data-in-deck", "true");
+      expect(screen.getByTestId(`card-pool-${id}`)).toHaveAttribute("data-legal", "false");
     }
-    expect(screen.getByTestId("loadout-save")).toBeInTheDocument();
     expect(screen.getByTestId("loadout-errors")).toHaveAttribute("data-count", "0");
+    expect(screen.getByTestId("deck-verdict")).toHaveAttribute("data-ready", "true");
   });
 
   it("B30 deckbuilder.css declares nothing sticky or fixed that takes the pointer, so Cypress can reach every target", () => {
@@ -404,6 +426,11 @@ describe("the pool grid (B30)", () => {
     const fixed = rules.filter((rule) => /position\s*:\s*fixed/.test(rule.body));
     expect(fixed.map((rule) => rule.selector)).toEqual([".db-deck-status"]);
     for (const rule of fixed) expect(rule.body).toMatch(/pointer-events\s*:\s*none/);
+  });
+
+  it("B30 workshop.css declares nothing sticky or fixed at all", () => {
+    const css = readFileSync(join(HERE, "workshop.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/position\s*:\s*(sticky|fixed)/);
   });
 
   it("B35 a deck tile's focus ring is drawn inside the tile, where the scrolling list cannot clip it", () => {
@@ -654,27 +681,23 @@ describe("the owned filter (B33)", () => {
     fireEvent.click(screen.getByTestId(DB_FILTER_OWNED));
     expect(poolCard(UNOWNED).getAttribute("aria-label")).toContain("not in your collection");
     fireEvent.click(screen.getByTestId(addPoolId(UNOWNED)));
-    expect(screen.getByTestId(`deck-card-1-${UNOWNED}`)).toBeInTheDocument();
+    expect(screen.getByTestId(deckCardId(UNOWNED))).toBeInTheDocument();
 
-    const verdict = validateLoadout({
-      decks: [[UNOWNED], [], []].map((cards) => ({ cards })),
-      catalog: SNAPSHOT,
-      collection: COLLECTION,
-    });
+    const verdict = validateDeck({ deck: { name: OPEN_NAME, cards: [UNOWNED] }, catalog: SNAPSHOT, collection: COLLECTION });
     const want = verdict.ok ? [] : verdict.errors.filter((e) => e.rule === "L5").map((e) => e.message);
     expect(want, "the draft really breaks L5").toHaveLength(1);
     expect(shownL5()).toEqual(want);
   });
 
   it("B33 with no collection the checkbox is disabled, every non-token card shows, and no data-owned is rendered", () => {
-    mount(EMPTY, null);
+    mount([], { collection: null });
     expect(screen.getByTestId(DB_FILTER_OWNED)).toBeDisabled();
     expect(poolOrder()).toEqual(SORTED.cost.asc);
     for (const id of NON_TOKEN_IDS) expect(poolCard(id), id).not.toHaveAttribute("data-owned");
   });
 
   it("B33 clicking the disabled checkbox changes nothing", () => {
-    mount(EMPTY, null);
+    mount([], { collection: null });
     fireEvent.click(screen.getByTestId(DB_FILTER_OWNED));
     expect(screen.getByTestId(DB_FILTER_OWNED)).toBeDisabled();
     expect(poolOrder()).toEqual(SORTED.cost.asc);
@@ -748,65 +771,29 @@ describe("sorting (B34)", () => {
   });
 });
 
+
 // ---------------------------------------------------------------------------------------------
 // B35: the sidebar
 // ---------------------------------------------------------------------------------------------
 
 describe("the deck sidebar (B35)", () => {
-  const HELD: Decks = [["x-01", "x-05"], ["x-02"], []];
-
-  it("B35 db-sidebar holds the tabs, their n/20 counts and one panel per deck", () => {
-    mount(HELD);
+  it("B35 db-sidebar holds the deck's count against DECK_SIZE and its drop region", () => {
+    mount(["x-01", "x-05"]);
     const sidebar = screen.getByTestId(DB_SIDEBAR);
-    for (const [index, deck] of HELD.entries()) {
-      const n = String(index + 1);
-      expect(within(sidebar).getByTestId(`deck-tab-${n}`)).toBeInTheDocument();
-      const count = within(sidebar).getByTestId(`deck-count-${n}`);
-      expect(count).toHaveAttribute("data-count", String(deck.length));
-      expect(count).toHaveTextContent(`${String(deck.length)}/${String(DECK_SIZE)}`);
-      const panel = within(sidebar).getByTestId(`deck-drop-${n}`);
-      expect(panel).toHaveAttribute("role", "tabpanel");
-      expect(panel).toHaveAttribute("data-deck", n);
-    }
-  });
-
-  it("B35 only the active panel is visible; the others are hidden but mounted", () => {
-    mount(HELD);
-    const one = screen.getByTestId("deck-drop-1");
-    const two = screen.getByTestId("deck-drop-2");
-    const three = screen.getByTestId("deck-drop-3");
-    expect(one).not.toHaveAttribute("hidden");
-    expect(one).toHaveAttribute("data-active", "true");
-    expect(one).toBeVisible();
-    for (const panel of [two, three]) {
-      expect(panel).toHaveAttribute("hidden");
-      expect(panel).not.toHaveAttribute("data-active", "true");
-      expect(panel).not.toBeVisible();
-    }
-    expect(within(two).getByTestId("deck-card-2-x-02"), "a hidden panel still holds its tiles").toBeInTheDocument();
-  });
-
-  it("B35 choosing a tab shows its panel and hides the one that was open", () => {
-    mount(HELD);
-    fireEvent.click(screen.getByTestId("deck-tab-2"));
-    expect(screen.getByTestId("deck-drop-2")).not.toHaveAttribute("hidden");
-    expect(screen.getByTestId("deck-drop-2")).toHaveAttribute("data-active", "true");
-    expect(screen.getByTestId("deck-drop-1")).toHaveAttribute("hidden");
-  });
-
-  it("B35 deckbuilder.css keeps a hidden panel display: none", () => {
-    const css = readFileSync(join(HERE, "deckbuilder.css"), "utf8");
-    expect(css).toMatch(/\.db-deck\[hidden\][^{]*\{[^}]*display\s*:\s*none/);
+    const count = within(sidebar).getByTestId(DECK_COUNT);
+    expect(count).toHaveAttribute("data-count", "2");
+    expect(count).toHaveTextContent(`2/${String(DECK_SIZE)}`);
+    expect(within(sidebar).getByTestId(DECK_DROP)).toBeInTheDocument();
   });
 
   it("B35 tiles are ordered by cost then name, each with a cost gem, the name, an art strip and a rarity pip", () => {
     const draft = ["x-05", "x-08", "x-01", "x-07", "x-02"];
-    mount([draft, [], []]);
-    expect(tileOrder(1)).toEqual(["x-01", "x-02", "x-07", "x-08", "x-05"]);
+    mount(draft);
+    expect(tileOrder()).toEqual(["x-01", "x-02", "x-07", "x-08", "x-05"]);
 
     for (const id of draft) {
       const def = card(id);
-      const tile = screen.getByTestId(`deck-card-1-${id}`);
+      const tile = screen.getByTestId(deckCardId(id));
       expect(tile.tagName).toBe("BUTTON");
       expect(tile).toHaveClass("db-tile");
       expect(tile).toHaveAttribute("data-card", id);
@@ -820,9 +807,8 @@ describe("the deck sidebar (B35)", () => {
 
   it("B35 a tile's cost gem shows the printed price: the number, X, or an embiggen card's base price", () => {
     // x-01 costs 0, x-04 costs 100, x-05 costs X, x-06 is "2 embiggen 4" and x-07 "3 embiggen 5".
-    mount([["x-01", "x-04", "x-05", "x-06", "x-07"], [], []]);
-    const gem = (id: string): string =>
-      screen.getByTestId(`deck-card-1-${id}`).querySelector(".db-tile-cost")?.textContent ?? "";
+    mount(["x-01", "x-04", "x-05", "x-06", "x-07"]);
+    const gem = (id: string): string => screen.getByTestId(deckCardId(id)).querySelector(".db-tile-cost")?.textContent ?? "";
     expect(gem("x-01")).toBe("0");
     expect(gem("x-04")).toBe("100");
     expect(gem("x-05")).toBe("X");
@@ -831,37 +817,35 @@ describe("the deck sidebar (B35)", () => {
   });
 
   it("B35 a card another deck holds has no tile in this deck's list", () => {
-    mount(HELD);
-    const listOne = screen.getByTestId("deck-list-1");
-    expect(within(listOne).queryByTestId("deck-card-1-x-02")).toBeNull();
-    expect(tileOrder(1)).not.toContain("x-02");
-    expect(tileOrder(2)).toEqual(["x-02"]);
+    mount(["x-01"], { others: [{ id: OTHER, name: OTHER_NAME, cards: ["x-02"] }] });
+    expect(within(screen.getByTestId(DECK_CARDS)).queryByTestId(deckCardId("x-02"))).toBeNull();
+    expect(tileOrder()).toEqual(["x-01"]);
   });
 
   it("B35 an empty deck shows no tiles", () => {
-    mount(EMPTY);
-    expect(tileOrder(1)).toEqual([]);
-    expect(screen.getByTestId("deck-count-1")).toHaveTextContent(`0/${String(DECK_SIZE)}`);
+    mount();
+    expect(tileOrder()).toEqual([]);
+    expect(screen.getByTestId(DECK_COUNT)).toHaveTextContent(`0/${String(DECK_SIZE)}`);
   });
 
-  it("B35 save still sends each deck in draft order, whatever order the tiles show", async () => {
+  it("B35 a save sends the deck in its own order, whatever order the tiles show", async () => {
     const catalog = fixtureCatalog();
-    const decks = legalDecks();
-    const first = [...(decks[0] ?? [])];
+    const first = [...(legalDecks()[0] ?? [])].slice(0, DECK_SIZE - 2);
     // Whichever of the fixture order and its reverse is NOT already tile order.
     const draft = deckListOrder(first, catalog).join() === first.join() ? [...first].reverse() : first;
-    expect(draft, "the premise: the draft is not in tile order").not.toEqual(deckListOrder(draft, catalog));
-    const loadout = [draft, decks[1] ?? [], decks[2] ?? []];
+    expect(draft, "the premise: the deck is not in tile order").not.toEqual(deckListOrder(draft, catalog));
 
-    const save = vi.fn().mockResolvedValue({ ok: true });
-    render(<Deckbuilder catalog={catalog} collection={fixtureCollection()} initialDecks={loadout} save={save} />);
-    expect(tileOrder(1)).toEqual(deckListOrder(draft, catalog));
+    const server = fakeDeckServer();
+    const clock = manualClock();
+    mount(draft, { catalog, collection: fixtureCollection(), api: server.api, clock });
+    expect(tileOrder()).toEqual(deckListOrder(draft, catalog));
 
-    fireEvent.click(screen.getByTestId("loadout-save"));
-    await waitFor(() => {
-      expect(save).toHaveBeenCalledTimes(1);
+    const spare = legalDecks()[1]?.[0] ?? "";
+    fireEvent.click(screen.getByTestId(addPoolId(spare)));
+    await act(async () => {
+      await clock.advance(DECK_AUTOSAVE_DEBOUNCE_MS);
     });
-    expect(save.mock.calls[0]?.[0]).toEqual(loadout);
+    expect(server.decks.get(OPEN)?.cards).toEqual([...draft, spare]);
   });
 });
 
@@ -872,9 +856,9 @@ describe("the deck sidebar (B35)", () => {
 describe("the mana curve (B36)", () => {
   const DECK = ["x-05", "x-08", "x-01", "x-07", "x-02", "x-04", "x-06"];
 
-  it("B36 deck-curve-<n> has one bar per bucket, in order, counting the deck's cards", () => {
-    mount([DECK, [], []]);
-    const bars = curve(1);
+  it("B36 deck-curve has one bar per bucket, in order, counting the deck's cards", () => {
+    mount(DECK);
+    const bars = curve();
     expect(bars.map((bar) => bar.bucket)).toEqual([...COST_BUCKETS]);
     expect(bars.map((bar) => bar.count)).toEqual([1, 1, 1, 2, 0, 0, 1, 1]);
     const pure = manaCurve(DECK, SNAPSHOT);
@@ -882,53 +866,51 @@ describe("the mana curve (B36)", () => {
   });
 
   it("B36 an empty deck still has all eight bars, each at zero", () => {
-    mount([DECK, [], []]);
-    const bars = curve(2);
+    mount();
+    const bars = curve();
     expect(bars.map((bar) => bar.bucket)).toEqual([...COST_BUCKETS]);
     expect(bars.every((bar) => bar.count === 0)).toBe(true);
   });
 
-  it("B36 a deck's curve never counts another deck's cards", () => {
-    mount([["x-01"], ["x-03", "x-04", "x-05"], []]);
-    expect(curve(1).map((bar) => bar.count)).toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
-    expect(curve(2).map((bar) => bar.count)).toEqual([0, 0, 0, 0, 0, 0, 2, 1]);
+  it("B36 the curve never counts a compared deck's cards", () => {
+    mount(["x-01"], { others: [{ id: OTHER, name: OTHER_NAME, cards: ["x-03", "x-04", "x-05"] }] });
+    compareWith(OTHER);
+    expect(curve().map((bar) => bar.count)).toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("B36 the curve follows a card added and a card removed", () => {
-    mount([DECK, [], []]);
+    mount(DECK);
     fireEvent.click(screen.getByTestId(addPoolId("x-03")));
-    expect(curve(1).find((bar) => bar.bucket === "6+")?.count).toBe(2);
-    fireEvent.click(screen.getByTestId("deck-card-1-x-01"));
-    expect(curve(1).find((bar) => bar.bucket === "0")?.count).toBe(0);
+    expect(curve().find((bar) => bar.bucket === "6+")?.count).toBe(2);
+    fireEvent.click(screen.getByTestId(deckCardId("x-01")));
+    expect(curve().find((bar) => bar.bucket === "0")?.count).toBe(0);
   });
 });
 
 // ---------------------------------------------------------------------------------------------
-// B37: held badges
+// B37: where a card already is
 // ---------------------------------------------------------------------------------------------
 
 describe("held badges (B37)", () => {
-  it("B37 a pool card any deck holds shows .db-held naming that deck, beside data-in-deck", () => {
-    mount([["x-01"], ["x-02"], []]);
-    expect(poolCard("x-01")).toHaveAttribute("data-in-deck", "1");
-    expect(poolCard("x-01").querySelector(".db-held")).toHaveTextContent("Deck 1");
-    expect(poolCard("x-02")).toHaveAttribute("data-in-deck", "2");
-    expect(poolCard("x-02").querySelector(".db-held")).toHaveTextContent("Deck 2");
+  it("B37 a pool card the open deck holds shows .db-held and data-in-deck", () => {
+    mount(["x-01"]);
+    expect(poolCard("x-01")).toHaveAttribute("data-in-deck", "true");
+    expect(poolCard("x-01").querySelector(".db-held")).toHaveTextContent("In deck");
   });
 
   it("B37 a card no deck holds has no badge and no data-in-deck", () => {
-    mount([["x-01"], ["x-02"], []]);
+    mount(["x-01"]);
     expect(poolCard("x-06")).not.toHaveAttribute("data-in-deck");
+    expect(poolCard("x-06")).not.toHaveAttribute("data-unavailable");
     expect(poolCard("x-06").querySelector(".db-held")).toBeNull();
   });
 
-  it("B37 the badge follows a card into a deck and out again", () => {
+  it("B37 the badge follows a card into the deck and out again", () => {
     mount();
-    fireEvent.click(screen.getByTestId("deck-tab-3"));
     fireEvent.click(screen.getByTestId(addPoolId("x-06")));
-    expect(poolCard("x-06").querySelector(".db-held")).toHaveTextContent("Deck 3");
-    expect(poolCard("x-06").getAttribute("aria-label")).toContain("in Deck 3");
-    fireEvent.click(screen.getByTestId("deck-card-3-x-06"));
+    expect(poolCard("x-06").querySelector(".db-held")).toHaveTextContent("In deck");
+    expect(poolCard("x-06").getAttribute("aria-label")).toContain("in this deck");
+    fireEvent.click(screen.getByTestId(deckCardId("x-06")));
     expect(poolCard("x-06").querySelector(".db-held")).toBeNull();
   });
 });
@@ -942,7 +924,7 @@ describe("inspecting in the builder (B38)", () => {
     mount();
     expect(contextMenu(poolCard("x-02"), "mouse")).toBe(false);
     expect(detailName()).toBe(card("x-02").name);
-    expect(screen.queryByTestId("deck-card-1-x-02")).toBeNull();
+    expect(screen.queryByTestId(deckCardId("x-02"))).toBeNull();
   });
 
   it("B38 a click on a pool card opens inspect-detail for it and adds nothing (the brief: a click opens a detail view)", () => {
@@ -950,7 +932,7 @@ describe("inspecting in the builder (B38)", () => {
     fireEvent.click(poolCard("x-08"));
     expect(openInspectOverlays()).toEqual([INSPECT_DETAIL]);
     expect(detailName()).toBe(card("x-08").name);
-    expect(screen.queryByTestId("deck-card-1-x-08")).toBeNull();
+    expect(screen.queryByTestId(deckCardId("x-08"))).toBeNull();
   });
 
   it("B38 Enter or Space on a focused pool card opens its detail too (it is a button)", () => {
@@ -973,53 +955,60 @@ describe("inspecting in the builder (B38)", () => {
     expect(detailName()).toBe(card("x-02").name);
 
     fireEvent.click(target);
-    expect(screen.queryByTestId("deck-card-1-x-02")).toBeNull();
+    expect(screen.queryByTestId(deckCardId("x-02"))).toBeNull();
   });
 
-  it("B38 db-detail-add puts the card into the active deck", () => {
+  it("B38 db-detail-add puts the card into the open deck", () => {
     mount();
-    fireEvent.click(screen.getByTestId("deck-tab-3"));
     fireEvent.click(poolCard("x-01"));
     const add = screen.getByTestId(DB_DETAIL_ADD);
     expect(within(screen.getByTestId(INSPECT_DETAIL)).getByTestId(DB_DETAIL_ADD)).toBe(add);
-    expect(add).toHaveTextContent("Add to Deck 3");
+    expect(add).toHaveTextContent(`Add to ${OPEN_NAME}`);
     expect(add).toBeEnabled();
     fireEvent.click(add);
-    expect(screen.getByTestId("deck-card-3-x-01")).toBeInTheDocument();
+    expect(screen.getByTestId(deckCardId("x-01"))).toBeInTheDocument();
   });
 
-  it("B38 db-detail-add is disabled while another deck holds the card, and adds nothing", () => {
-    mount([[], ["x-02"], []]);
+  it("B38 db-detail-add is disabled while a compared deck holds the card, and adds nothing", () => {
+    mount([], { others: [{ id: OTHER, name: OTHER_NAME, cards: ["x-02"] }] });
+    compareWith(OTHER);
     fireEvent.click(poolCard("x-02"));
     const add = screen.getByTestId(DB_DETAIL_ADD);
     expect(add).toBeDisabled();
     fireEvent.click(add);
-    expect(screen.queryByTestId("deck-card-1-x-02")).toBeNull();
+    expect(screen.queryByTestId(deckCardId("x-02"))).toBeNull();
   });
 
-  it("B38 db-detail-add is disabled while the active deck itself holds the card", () => {
-    mount([["x-01"], [], []]);
+  it("B38 db-detail-add is disabled while the open deck itself holds the card", () => {
+    mount(["x-01"]);
     fireEvent.click(poolCard("x-01"));
     expect(screen.getByTestId(DB_DETAIL_ADD)).toBeDisabled();
   });
 
   it("B38 the + on a pool card adds it to the open deck and opens nothing", () => {
     mount();
-    fireEvent.click(screen.getByTestId("deck-tab-2"));
-    expect(screen.getByTestId(addPoolId("x-02"))).toHaveAttribute("aria-label", `Add ${card("x-02").name} to Deck 2`);
+    expect(screen.getByTestId(addPoolId("x-02"))).toHaveAttribute("aria-label", `Add ${card("x-02").name} to ${OPEN_NAME}`);
     fireEvent.click(screen.getByTestId(addPoolId("x-02")));
-    expect(screen.getByTestId("deck-card-2-x-02")).toBeInTheDocument();
+    expect(screen.getByTestId(deckCardId("x-02"))).toBeInTheDocument();
     expect(openInspectOverlays()).toEqual([]);
   });
 
-  it("B38 the + on a card another deck holds is marked off and refused, as a drag is", () => {
-    mount([["x-02"], [], []]);
-    fireEvent.click(screen.getByTestId("deck-tab-2"));
+  it("B38 the + on a card the deck already holds is marked off and refused, as a drag is", () => {
+    mount(["x-02"]);
     const add = screen.getByTestId(addPoolId("x-02"));
     expect(add).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(add);
-    expect(screen.queryByTestId("deck-card-2-x-02")).toBeNull();
+    expect(screen.getAllByTestId(deckCardId("x-02"))).toHaveLength(1);
     expect(poolCard("x-02")).toHaveAttribute("data-refused", "true");
+  });
+
+  it("B38 a card dragged from the pool onto the deck lands in it", () => {
+    mount();
+    fireEvent.dragStart(poolCard("x-06"));
+    const target = screen.getByTestId(DECK_DROP);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    expect(screen.getByTestId(deckCardId("x-06"))).toBeInTheDocument();
   });
 
   it("B38 resting a mouse on a pool card opens no hover preview", () => {
@@ -1032,8 +1021,8 @@ describe("inspecting in the builder (B38)", () => {
 
   it("B38 hovering a deck tile opens inspect-hover, and clicking the tile still removes the card", () => {
     vi.useFakeTimers();
-    mount([["x-02"], [], []]);
-    const tile = screen.getByTestId("deck-card-1-x-02");
+    mount(["x-02"]);
+    const tile = screen.getByTestId(deckCardId("x-02"));
     fireEvent.pointerEnter(tile, pointer("mouse"));
     advance(HOVER_DELAY_MS);
     const preview = screen.getByTestId(INSPECT_HOVER);
@@ -1041,7 +1030,7 @@ describe("inspecting in the builder (B38)", () => {
 
     fireEvent.pointerLeave(tile, pointer("mouse"));
     fireEvent.click(tile);
-    expect(screen.queryByTestId("deck-card-1-x-02")).toBeNull();
+    expect(screen.queryByTestId(deckCardId("x-02"))).toBeNull();
     expect(poolCard("x-02")).not.toHaveAttribute("data-in-deck");
   });
 
@@ -1055,21 +1044,21 @@ describe("inspecting in the builder (B38)", () => {
 
   it("B24 a touch long-press on a deck tile opens the sheet, and the click after it does not remove the card", () => {
     vi.useFakeTimers();
-    mount([["x-02"], [], []]);
-    const tile = screen.getByTestId("deck-card-1-x-02");
+    mount(["x-02"]);
+    const tile = screen.getByTestId(deckCardId("x-02"));
     fireEvent.pointerDown(tile, pointer("touch"));
     advance(LONG_PRESS_MS);
     fireEvent.pointerUp(tile, pointer("touch"));
     expect(openInspectOverlays()).toEqual([INSPECT_SHEET]);
 
     fireEvent.click(tile);
-    expect(screen.getByTestId("deck-card-1-x-02"), "the swallowed click removed nothing").toBeInTheDocument();
+    expect(screen.getByTestId(deckCardId("x-02")), "the swallowed click removed nothing").toBeInTheDocument();
   });
 
   it("B38 a deck tile says a click removes the card, and a right-click or the I key opens its detail", () => {
-    mount([["x-02"], [], []]);
-    const tile = screen.getByTestId("deck-card-1-x-02");
-    expect(tile).toHaveAttribute("aria-label", `Remove ${card("x-02").name} from Deck 1`);
+    mount(["x-02"]);
+    const tile = screen.getByTestId(deckCardId("x-02"));
+    expect(tile).toHaveAttribute("aria-label", `Remove ${card("x-02").name} from ${OPEN_NAME}`);
     expect(tile).toHaveAttribute("aria-keyshortcuts", "I");
 
     expect(contextMenu(tile, "mouse")).toBe(false);
@@ -1083,7 +1072,7 @@ describe("inspecting in the builder (B38)", () => {
       fireEvent.click(screen.getByTestId(INSPECT_CLOSE));
     }
     // None of them removed the card; only a click does.
-    expect(screen.getByTestId("deck-card-1-x-02")).toBeInTheDocument();
+    expect(screen.getByTestId(deckCardId("x-02"))).toBeInTheDocument();
   });
 
   it("B24 contextmenu during a touch press on a pool card is prevented", () => {
@@ -1103,25 +1092,25 @@ describe("inspecting in the builder (B38)", () => {
 describe("the deck status line", () => {
   it("B41 names each add and removal with the deck's count, is polite, and clears after DECK_STATUS_MS", () => {
     vi.useFakeTimers();
-    mount([["x-01"], [], []]);
-    const status = screen.getByTestId(DB_DECK_STATUS);
+    mount(["x-01"]);
+    const status = screen.getByTestId(DECK_STATUS);
     expect(status).toHaveAttribute("role", "status");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveTextContent("");
 
     fireEvent.click(screen.getByTestId(addPoolId("x-02")));
-    expect(status).toHaveTextContent(`${card("x-02").name} added to Deck 1 · 2/20`);
+    expect(status).toHaveTextContent(`${card("x-02").name} added · 2/${String(DECK_SIZE)}`);
 
-    fireEvent.click(screen.getByTestId("deck-card-1-x-01"));
-    expect(status).toHaveTextContent(`${card("x-01").name} removed from Deck 1 · 1/20`);
+    fireEvent.click(screen.getByTestId(deckCardId("x-01")));
+    expect(status).toHaveTextContent(`${card("x-01").name} removed · 1/${String(DECK_SIZE)}`);
 
     advance(DECK_STATUS_MS);
     expect(status).toHaveTextContent("");
   });
 
-  it("says which deck already holds a card a + could not add", () => {
-    mount([[], ["x-02"], []]);
+  it("says a card the deck holds cannot be added twice", () => {
+    mount(["x-02"]);
     fireEvent.click(screen.getByTestId(addPoolId("x-02")));
-    expect(screen.getByTestId(DB_DECK_STATUS)).toHaveTextContent(`${card("x-02").name} is already in Deck 2`);
+    expect(screen.getByTestId(DECK_STATUS)).toHaveTextContent(`${card("x-02").name} is already in this deck.`);
   });
 });

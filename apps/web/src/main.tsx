@@ -53,7 +53,7 @@ import { useSecondsUntil } from "./auth/cooldown.ts";
 import { adoptAuthRedirect, sessionIdFromToken } from "./auth/redirect.ts";
 import { shellTestid } from "./auth/testids.ts";
 import { useAccount, type Account } from "./net/gate.ts";
-import { currentPath, loginPath, matchIdOf, navigate, paths, usePathname } from "./net/navigate.ts";
+import { currentPath, loginPath, matchIdOf, navigate, paths, seriesIdOf, usePathname } from "./net/navigate.ts";
 import { rememberReturnTo } from "./net/return-to.ts";
 import { readSession } from "./net/session.ts";
 import type { MeResponse } from "./net/api.ts";
@@ -74,6 +74,7 @@ const InviteRoute = lazy(() => import("./routes/invite.tsx"));
 const DecksRoute = lazy(() => import("./routes/decks.tsx"));
 const PlayRoute = lazy(() => import("./routes/play.tsx"));
 const MatchRoute = lazy(() => import("./routes/match.tsx"));
+const SeriesRoute = lazy(() => import("./routes/series.tsx"));
 const PracticeRoute = lazy(() => import("./routes/practice.tsx"));
 
 const DEV_ONLY = import.meta.env.MODE !== "production";
@@ -393,6 +394,12 @@ export function App(): ReactElement {
           )}
         </Gated>
       );
+    }
+
+    // R259: the Best-of-3 series screen, behind the same gate as the board it leads to.
+    const seriesId = seriesIdOf(path);
+    if (seriesId !== null) {
+      return <Gated key={path}>{(account) => <SeriesRoute seriesId={seriesId} token={account.token} />}</Gated>;
     }
 
     if (path === paths.hotseat) {

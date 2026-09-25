@@ -1,5 +1,6 @@
-/* The loadout editor (BUILD M6-T3), rebuilt as a browse grid beside a deck sidebar
-   (docs/polish/6-cards.md, Surface D). Tokens come from src/index.css, and the rarity colours reuse
+/* The deck editor's look: a browse grid beside the open deck's sidebar (docs/polish/6-cards.md,
+   Surface D), inside the deck workshop (workshop.css draws the rail, the trio editor, the import
+   panel and the page's grid). Tokens come from src/index.css, and the rarity colours reuse
    the `--rarity-*` tokens that cards/cards.css defines (with fallbacks, so this file never depends
    on load order). Nothing here is a rule.
 
@@ -12,8 +13,6 @@
      column and so never covers a pool card. Cypress scrolls a click or drag target to the top of
      the viewport and fails on anything covering it; `elementFromPoint`, which it asks, skips the
      toast.
-   - A hidden deck panel stays `display: none`: an author `display` rule beats the UA's `[hidden]`,
-     so `.db-deck[hidden]` says it again.
 
    Every rule for a <button> here is scoped `.deckbuilder.app-shell …`. index.css styles
    `.app-shell button` (0,1,1) and its :hover / :active (0,3,1); a bare class loses to both, which
@@ -235,7 +234,7 @@
 }
 
 .db-search {
-  flex: 1 1 220px;
+  flex: 1 1 140px;
   min-width: 0;
   max-width: 100%;
   font: inherit;
@@ -492,6 +491,15 @@
   pointer-events: none;
 }
 
+/* A compared deck holds it (R251): the badge names that deck, in the colour of a clash. */
+.db-held[data-place="other"] {
+  border-color: rgb(255 214 170 / 0.5);
+  background: color-mix(in srgb, var(--opponent) 80%, #000);
+  max-width: 88%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* The "+" that adds the card to the open deck in one tap. It is drawn 28 px round in the card's
    top-right corner, and its ::before widens the hit area to 44 px (task 7's touch-target floor)
    without covering more of the face. */
@@ -600,45 +608,12 @@
 
 /* --- the deck sidebar --------------------------------------------------------------------------- */
 
-/* One row of equal tabs, however many decks the loadout has: a third tab wrapping onto its own
-   line read as a different kind of control. */
-.db-tabs {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-  gap: 4px;
-}
-
-.deckbuilder.app-shell .db-tabs button {
-  min-width: 0;
-  padding: 7px 4px;
-  overflow: hidden;
-  font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.deckbuilder.app-shell .db-tabs button[data-active="true"] {
-  border-color: var(--you);
-  background: color-mix(in srgb, var(--you) 22%, var(--bg-raised));
-}
-
-.db-count {
-  margin-left: 5px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
 .db-deck {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 120px;
   min-width: 0;
-}
-
-.db-deck[hidden] {
-  display: none;
 }
 
 .db-deck-head {
@@ -945,6 +920,25 @@
     0 0 6px var(--db-rarity, transparent);
 }
 
+/* A card a compared deck also holds (R251): the tile keeps its place and wears a small flag, and
+   its edge takes the colour of a clash. Nothing is taken out for the player. */
+.deckbuilder.app-shell .db-tile[data-conflict="true"] {
+  border-color: color-mix(in srgb, var(--opponent) 75%, var(--line-bright));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 3px 0 0 var(--opponent);
+}
+
+.db-tile-flag {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 12px;
+  height: 11px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: #ffb45c;
+}
+
 .db-actions {
   display: flex;
   align-items: center;
@@ -1061,21 +1055,6 @@
     grid-template-columns: minmax(0, 1fr) 280px;
   }
 
-  /* "Deck 1 18/20" no longer fits a third of 280 px on one line, so the count sits under the
-     name rather than being cut to "Deck 1 18…". */
-  .deckbuilder.app-shell .db-tabs button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    padding: 5px 4px;
-    line-height: 1.15;
-  }
-
-  .db-tabs .db-count {
-    margin-left: 0;
-    font-size: 11px;
-  }
 }
 
 /* A phone on its side is only about 390 px tall, where a 200 px card is 280 px of it: the pool
@@ -1131,14 +1110,24 @@
     min-height: 0;
   }
 
-  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them: the card
-     width follows the screen's height (the page above the pool, with the chip rows folded, is
-     about 220 px), within a range where rules text still reads. The columns keep that width and
-     centre, rather than stretching every card back to one tall row. */
-  .db-pool {
-    --db-card-w: clamp(150px, calc((100dvh - 220px) * 5 / 14), 220px);
+  /* Two whole rows of cards on the first screen, as Hearthstone's collection pages them. The frame
+     around the pool takes whatever height the filters above leave (however many rows they wrap
+     to), and is a size container, so a card's width is read off that height: two cards of 5:7, a
+     10 px gap, the pool's 10 px padding and its border fill it, within a range where rules text
+     still reads. The columns keep that width and centre, rather than stretching every card back
+     to one tall row. */
+  .db-pool-frame {
     flex: 1 1 auto;
     min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    container-type: size;
+  }
+
+  .db-pool {
+    --db-card-w: clamp(150px, calc((100cqh - 34px) * 5 / 14), 220px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     grid-template-columns: repeat(auto-fill, min(var(--db-card-w), calc(50% - 5px)));
@@ -1150,7 +1139,7 @@
     overflow-y: auto;
   }
 
-  .db-deck:not([hidden]) {
+  .db-deck {
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -1296,10 +1285,6 @@
   .deckbuilder.app-shell .db-chip,
   .deckbuilder.app-shell .db-sort-dir {
     min-width: 44px;
-  }
-
-  .deckbuilder.app-shell .db-tabs button {
-    min-height: 44px;
   }
 
   .deckbuilder.app-shell .db-tile {

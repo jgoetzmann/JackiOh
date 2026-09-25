@@ -11,11 +11,13 @@
 import { describe, expect, it } from "vitest";
 import type { Action, ActionInput, PlayerId } from "@jackioh/shared";
 import { createRecordResult, reapStuckMatches } from "../../src/api/results";
+import { ensureSeriesGame, startSeries } from "../../src/api/series";
+import { pickDeck } from "../../src/api/series-rules";
 import { initialClocks, matchCeilingAt } from "../../src/match/clock";
 import { eloUpdate } from "../../src/config";
-import type { MatchSeat, ResultRow } from "../../src/api/ports";
+import type { FrozenTrio, MatchSeat, ResultRow, SeriesRow } from "../../src/api/ports";
 import type { TerminalOutcome } from "../../src/match/contracts";
-import { createTestDeps, type TestDeps } from "../fakes/deps";
+import { createFakeMatchDirectory, createTestDeps, type TestDeps } from "../fakes/deps";
 import { createFakeEngine, fakeDeck } from "../fakes/engine";
 
 const MINUTE = 60 * 1000;
@@ -238,7 +240,9 @@ describe("results (M7-T2)", () => {
       id: "ticket-a",
       profileId: A,
       rating: 1000,
+      mode: "bo1",
       deck: [...seats[0].deck],
+      trio: null,
       catalogVersion: deps.catalog.version,
       enqueuedAt: deps.timers.now(),
       status: "open",
@@ -293,6 +297,135 @@ describe("results (M7-T2)", () => {
         reason: "match-ceiling",
         ratingAfter: [1200, 1000],
       });
+    });
+  });
+
+  describe("a game of a Best-of-3 series (R262, R263)", () => {
+    const SERIES_ID = "series-1";
+
+    function trio(owner: string): FrozenTrio {
+      const deck = (slot: number) => ({ name: `${owner} ${String(slot)}`, cards: [`${owner}-${String(slot)}`] });
+      return { name: owner, decks: [deck(0), deck(1), deck(2)] };
+    }
+
+    async function seriesRow(deps: TestDeps): Promise<SeriesRow> {
+      const series = await deps.store.series.get(SERIES_ID);
+      if (series === null) throw new Error("the series is gone");
+      return series;
+    }
+
+    /** Both picks, one compare-and-set each, then the game started as the pick route starts it. */
+    async function playNext(deps: TestDeps, slots: [number, number]): Promise<SeriesRow> {
+      const now = deps.timers.now();
+      const one = pickDeck(await seriesRow(deps), "p1", slots[0], now);
+      await deps.store.series.update(one);
+      const both = pickDeck(one, "p2", slots[1], now);
+      await deps.store.series.update(both);
+      await ensureSeriesGame(deps, both);
+      return both;
+    }
+
+    /** A in series seat p1 at 1200, B in p2 at 1000, game 1 (match `MATCH_ID`) being played. */
+    async function seriesScenario(): Promise<TestDeps> {
+      const deps = createTestDeps();
+      deps.matches = createFakeMatchDirectory(deps.store);
+      deps.store.seedProfile({ id: A, rating: 1200 });
+      deps.store.seedProfile({ id: B, rating: 1000 });
+      await startSeries(deps, {
+        seriesId: SERIES_ID,
+        firstMatchId: MATCH_ID,
+        sides: [
+          { profileId: A, trio: trio("a") },
+          { profileId: B, trio: trio("b") },
+        ],
+        seedBase: "seed",
+        catalogVersion: deps.catalog.version,
+      });
+      await playNext(deps, [0, 0]);
+      return deps;
+    }
+
+    it("R262 a series game's row leaves both ratings unchanged, and the series records the game in the same write", async () => {
+      const deps = await seriesScenario();
+      // Game 1: series p1 (A) goes first, so the match's p1 is A, as in `seats`.
+      const row = await record(deps, [{ type: "concede", playerId: "p2" }]);
+
+      expect(row).toMatchObject({
+        winnerProfileId: A,
+        reason: "concede",
+        ratingBefore: [1200, 1000],
+        ratingAfter: [1200, 1000],
+      });
+      expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
+        1200, 1000,
+      ]);
+      const series = await seriesRow(deps);
+      expect(series.status).toBe("picking");
+      expect(series.games[0]).toMatchObject({ matchId: MATCH_ID, winner: "p1", reason: "concede" });
+      expect(series.sides.map((side) => side.wins)).toEqual([1, 0]);
+      // Everything else a result does, it still does.
+      expect((await deps.store.profiles.getById(A))?.inMatchId).toBeNull();
+      expect((await deps.store.matches.get(MATCH_ID))?.status).toBe("finished");
+      expect(deps.log.entries.find((entry) => entry.event === "match.ended")?.data).toMatchObject({
+        ratingPolicy: "unchanged",
+        seriesId: SERIES_ID,
+      });
+    });
+
+    it("R263 the reaper's ceiling draw counts for neither side, and the game 3 it leaves is started", async () => {
+      const deps = await seriesScenario();
+      await record(deps, [{ type: "concede", playerId: "p2" }]);
+      const game2 = await playNext(deps, [1, 1]);
+      const game2Id = game2.nextMatchId;
+
+      // The fake directory's rows carry a ceiling of 0, so game 2 is long past it.
+      expect(await reapStuckMatches(deps)).toEqual([game2Id]);
+      const reaped = deps.store.tables.results.find((result) => result.matchId === game2Id);
+      expect(reaped).toMatchObject({ reason: "match-ceiling", turns: 0, ratingBefore: [1000, 1200], ratingAfter: [1000, 1200] });
+
+      const series = await seriesRow(deps);
+      expect(series.sides.map((side) => side.wins)).toEqual([1, 0]);
+      expect(series.games[1]).toMatchObject({ winner: "draw", reason: "match-ceiling" });
+      expect(series.status).toBe("playing");
+      expect(series.games[2]).toMatchObject({ gameNo: 3, slots: [2, 2], first: "p1" });
+      const game3 = deps.matches.started.find((input) => input.matchId === series.nextMatchId);
+      expect(game3).toMatchObject({ seed: "seed:3" });
+      expect(game3?.seats.map((seat) => seat.profileId)).toEqual([A, B]);
+      expect((await deps.store.profiles.getById(B))?.inMatchId).toBe(series.nextMatchId);
+      expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
+        1200, 1000,
+      ]);
+    });
+
+    it("R262 the game that ends the series moves both ratings once, from where the series began", async () => {
+      const deps = await seriesScenario();
+      await record(deps, [{ type: "concede", playerId: "p2" }]);
+      const game2 = await playNext(deps, [1, 1]);
+      // Game 2: B is the match's p1. A wins it, and the series, 2–0.
+      await createRecordResult(deps)({
+        matchId: game2.nextMatchId,
+        seats: [
+          { profileId: B, player: "p1", deck: [] },
+          { profileId: A, player: "p2", deck: [] },
+        ],
+        outcome: { winner: "p2", reason: "hero-death" },
+        turns: 3,
+        at: deps.timers.now(),
+      });
+      const expected = eloUpdate(1200, 1000, 1);
+      expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
+        expected.a,
+        expected.b,
+      ]);
+      expect(await seriesRow(deps)).toMatchObject({
+        status: "over",
+        winner: "p1",
+        endReason: "decided",
+        ratingBefore: [1200, 1000],
+        ratingAfter: [expected.a, expected.b],
+      });
+      // Both game rows are unrated.
+      for (const result of deps.store.tables.results) expect(result.ratingAfter).toEqual(result.ratingBefore);
     });
   });
 });

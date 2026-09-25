@@ -3,7 +3,7 @@
  * Postgres store of `src/db/store.ts`. `contract.ts` runs the same assertions against both.
  *
  * The Postgres harness expects `DATABASE_URL` to point at a database that already has
- * `test/db/bootstrap.sql`, the four migrations and `test/db/grants.sql` applied — which is what
+ * `test/db/bootstrap.sql`, the migrations and `test/db/grants.sql` applied — which is what
  * `test/db/run.sh` does with a throwaway Docker container in a couple of seconds.
  */
 
@@ -126,9 +126,14 @@ export function memoryHarness(): StoreHarness {
 // Postgres
 // ---------------------------------------------------------------------------
 
-/** Every table the migrations create, children first. `cards` is seeded once and kept. */
+/**
+ * Every table the migrations create, children first. `cards` is seeded once and kept. The loadout
+ * tables are no longer written by anything (R254) but are emptied all the same, so a test that
+ * wrote one by hand leaves nothing behind.
+ */
 const TRUNCATE = `truncate
-  public.results, public.match_actions, public.tickets, public.matches,
+  public.series, public.results, public.match_actions, public.tickets, public.matches,
+  public.trios, public.decks,
   public.loadout_deck_cards, public.loadout_decks, public.loadouts,
   public.collection_grants, public.collection,
   public.code_attempts, public.invite_codes, public.profiles, auth.users
@@ -146,7 +151,7 @@ export function databaseUrl(): string {
   if (url === undefined || url === "") {
     throw new Error(
       "DATABASE_URL is not set. These specs need a real Postgres: run `pnpm test:db`, which " +
-        "stands one up in Docker, applies test/db/bootstrap.sql, the four migrations and " +
+        "stands one up in Docker, applies test/db/bootstrap.sql, the migrations and " +
         "test/db/grants.sql, and then runs this suite.",
     );
   }

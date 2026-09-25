@@ -17,11 +17,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Client } from "pg";
 
 import { createPostgresStore, type PostgresStore } from "../../src/db/store";
+import type { FrozenDeck, SavedDeck } from "../../src/api/ports";
 import type { Action } from "@jackioh/shared";
 import { adminClient, CATALOG_VERSION, databaseUrl, PLAYABLE_IDS, seedCards } from "./harness";
 
 const TRUNCATE = `truncate
-  public.results, public.match_actions, public.tickets, public.matches,
+  public.series, public.results, public.match_actions, public.tickets, public.matches,
+  public.trios, public.decks,
   public.loadout_deck_cards, public.loadout_decks, public.loadouts,
   public.collection_grants, public.collection,
   public.code_attempts, public.invite_codes, public.profiles, auth.users
@@ -296,52 +298,217 @@ describe("postgres store, against a real database", () => {
   });
 
   // -------------------------------------------------------------------------
-  // app.save_loadout: the SQL is stricter than the port, on purpose
+  // app.upsert_deck / app.upsert_trio: the SQL is stricter than the port, on purpose
   // -------------------------------------------------------------------------
 
-  describe("app.save_loadout (SPEC §9.4 L1-L6)", () => {
-    it("refuses a stale catalog version with 'update required'", async () => {
-      const userId = await activeProfile();
-      await expect(
-        store.loadouts.replace(userId, "core-0", [deckOf(0), deckOf(1), deckOf(2)], Date.now()),
-      ).rejects.toThrow(/update required/);
+  describe("app.upsert_deck and app.upsert_trio (SPEC §9.4, R250, R252)", () => {
+    const deck = (profileId: string, over: Partial<SavedDeck> = {}): SavedDeck => {
+      const at = Date.now();
+      return {
+        id: uuid(),
+        profileId,
+        name: "Aggro",
+        cards: deckOf(0).slice(0, 5),
+        catalogVersion: CATALOG_VERSION,
+        createdAt: at,
+        updatedAt: at,
+        ...over,
+      };
+    };
+
+    /**
+     * ports.ts: "The cap is checked under a lock on the profile, so two concurrent creates cannot
+     * both pass it." The in-memory stores are single-threaded and cannot show this; here the
+     * creates really do run at once, on separate connections, each in its own transaction.
+     */
+    it("R250 lets exactly as many concurrent creates through as the cap has room for", async () => {
+      const profileId = await activeProfile();
+      const racing = createPostgresStore({ connectionString: databaseUrl(), max: 6 });
+      try {
+        await racing.decks.upsert(deck(profileId), 3);
+        await racing.decks.upsert(deck(profileId), 3);
+        const outcomes = await Promise.all(
+          Array.from({ length: 6 }, () => racing.decks.upsert(deck(profileId), 3)),
+        );
+        expect(outcomes.filter((outcome) => outcome === "created")).toHaveLength(1);
+        expect(outcomes.filter((outcome) => outcome === "limit")).toHaveLength(5);
+        expect(await store.decks.list(profileId)).toHaveLength(3);
+      } finally {
+        await racing.close();
+      }
     });
 
-    it("refuses a deck that is not exactly DECK_SIZE cards (L2)", async () => {
-      const userId = await activeProfile();
-      await expect(
-        store.loadouts.replace(userId, CATALOG_VERSION, [deckOf(0).slice(0, 19), deckOf(1), deckOf(2)], Date.now()),
-      ).rejects.toThrow(/L2/);
+    /** R256: a retried save of one new deck, sent twice at once, makes one deck. */
+    it("R256 turns two simultaneous saves of one new id into one create and one update", async () => {
+      const profileId = await activeProfile();
+      const racing = createPostgresStore({ connectionString: databaseUrl(), max: 2 });
+      try {
+        const draft = deck(profileId);
+        const outcomes = await Promise.all([racing.decks.upsert(draft, 10), racing.decks.upsert(draft, 10)]);
+        expect([...outcomes].sort()).toEqual(["created", "updated"]);
+        expect(await store.decks.list(profileId)).toHaveLength(1);
+      } finally {
+        await racing.close();
+      }
     });
 
-    it("refuses a card the profile does not own (L5)", async () => {
-      const userId = await activeProfile();
-      // R111's trigger has just granted the whole catalog; take it away again, which is the only
-      // way to reach L5 in launch mode ("everyone owns every card at launch", §9.1).
-      await admin.query(`delete from public.collection where profile_id = $1`, [userId]);
-      await expect(
-        store.loadouts.replace(userId, CATALOG_VERSION, [deckOf(0), deckOf(1), deckOf(2)], Date.now()),
-      ).rejects.toThrow(/L5/);
+    /** The database's own cap (0007's `max_saved_decks`) holds even for a caller that asks for more. */
+    it("R250 applies app.settings' cap when the caller's is larger", async () => {
+      const profileId = await activeProfile();
+      await admin.query(`update app.settings set value = to_jsonb(2) where key = 'max_saved_decks'`);
+      try {
+        expect(await store.decks.upsert(deck(profileId), 10)).toBe("created");
+        expect(await store.decks.upsert(deck(profileId), 10)).toBe("created");
+        expect(await store.decks.upsert(deck(profileId), 10)).toBe("limit");
+      } finally {
+        await admin.query(`update app.settings set value = to_jsonb(10) where key = 'max_saved_decks'`);
+      }
     });
 
-    it("refuses a loadout for a profile that is not active (§9.4's gate)", async () => {
-      const userId = await signUp();
+    /** KNOWN DIVERGENCES (deck and trio strictness): refused here, accepted by the fake. */
+    it("R250 refuses a deck the server's D1, D2 and D4 would have refused", async () => {
+      const profileId = await activeProfile();
+      await expect(store.decks.upsert(deck(profileId, { cards: deckOf(0).concat("core-061") }), 10)).rejects.toThrow(
+        /deck: D2/,
+      );
       await expect(
-        store.loadouts.replace(userId, CATALOG_VERSION, [deckOf(0), deckOf(1), deckOf(2)], Date.now()),
+        store.decks.upsert(deck(profileId, { cards: ["core-001", "core-001"] }), 10),
+      ).rejects.toThrow(/deck: D4/);
+      await expect(store.decks.upsert(deck(profileId, { name: "   " }), 10)).rejects.toThrow(/needs a name/);
+      await expect(store.decks.upsert(deck(profileId, { name: "x".repeat(41) }), 10)).rejects.toThrow(
+        /at most 40/,
+      );
+      expect(await store.decks.list(profileId)).toEqual([]);
+    });
+
+    /** §9.4's gate: a pending account has no collection, deck, queue or match. */
+    it("R250 refuses a deck or a trio for a profile that is not active", async () => {
+      const pending = await signUp();
+      await expect(store.decks.upsert(deck(pending), 10)).rejects.toThrow(/not active/);
+      const at = Date.now();
+      await expect(
+        store.trios.upsert(
+          { id: uuid(), profileId: pending, name: "Ladder", deckIds: [null, null, null], createdAt: at, updatedAt: at },
+          5,
+        ),
       ).rejects.toThrow(/not active/);
     });
 
-    it("leaves the previous loadout untouched when a save is refused", async () => {
-      const userId = await activeProfile();
-      const good = [deckOf(0), deckOf(1), deckOf(2)];
-      await store.loadouts.replace(userId, CATALOG_VERSION, good, Date.now());
-
+    /** The composite foreign key, not only the function's check, keeps a slot inside its profile. */
+    it("R252 refuses a raw trio row naming another profile's deck", async () => {
+      const [owner, other] = [await activeProfile(), await activeProfile()];
+      const theirs = deck(other);
+      await store.decks.upsert(theirs, 10);
       await expect(
-        store.loadouts.replace(userId, CATALOG_VERSION, [deckOf(0).slice(0, 19), deckOf(1), deckOf(2)], Date.now()),
-      ).rejects.toThrow();
+        admin.query(
+          `insert into public.trios (id, profile_id, name, deck1_id) values ($1, $2, 'Stolen', $3)`,
+          [uuid(), owner, theirs.id],
+        ),
+      ).rejects.toThrow(/trios_deck1_fk/);
+    });
 
-      const stored = must(await store.loadouts.get(userId), "the surviving loadout");
-      expect(stored.decks.map((deck) => [...deck].sort())).toEqual(good.map((deck) => [...deck].sort()));
+    it("R252 answers unknown_deck for a slot that is not a deck id at all", async () => {
+      const profileId = await activeProfile();
+      const at = Date.now();
+      expect(
+        await store.trios.upsert(
+          { id: uuid(), profileId, name: "Ladder", deckIds: ["not-a-uuid", null, null], createdAt: at, updatedAt: at },
+          5,
+        ),
+      ).toBe("unknown_deck");
+      expect(await store.decks.get("not-a-uuid")).toBeNull();
+      expect(await store.decks.remove(profileId, "not-a-uuid")).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // R263: a reserved match id is a row here, and discarding it releases what it held
+  // -------------------------------------------------------------------------
+
+  describe("matches.discardOpen (R263)", () => {
+    const ticket = (profileId: string) => ({
+      id: uuid(),
+      profileId,
+      rating: 1000,
+      mode: "bo3" as const,
+      deck: [],
+      trio: {
+        name: "Ladder",
+        decks: [
+          { name: "A", cards: deckOf(0) },
+          { name: "B", cards: deckOf(1) },
+          { name: "C", cards: deckOf(2) },
+        ] as [FrozenDeck, FrozenDeck, FrozenDeck],
+      },
+      catalogVersion: CATALOG_VERSION,
+      enqueuedAt: Date.now(),
+      status: "open" as const,
+      matchId: null,
+    });
+
+    it("R263 deletes a claimed pair's reservation and unlinks both tickets", async () => {
+      const [a, b] = [await activeProfile(), await activeProfile()];
+      const [ta, tb] = [ticket(a), ticket(b)];
+      await store.tickets.insert(ta);
+      await store.tickets.insert(tb);
+      const reserved = uuid();
+      expect(await store.tickets.claimPair(ta.id, tb.id, reserved, Date.now())).toBe(true);
+      expect(must(await store.tickets.get(ta.id), "ticket a").matchId).toBe(reserved);
+
+      await store.matches.discardOpen(reserved);
+
+      const { rows } = await admin.query(`select 1 from public.matches where id = $1`, [reserved]);
+      expect(rows).toHaveLength(0);
+      // `tickets.match_id` is `on delete set null` (0004): the tickets stay matched and forget the id.
+      const after = must(await store.tickets.get(ta.id), "ticket a");
+      expect(after.status).toBe("matched");
+      expect(after.matchId).toBeNull();
+    });
+
+    it("R263 frees a claimed room's code for the next room (R110)", async () => {
+      const [host, guest, next] = [await activeProfile(), await activeProfile(), await activeProfile()];
+      const now = Date.now();
+      const room = {
+        code: "BCD345",
+        hostProfileId: host,
+        mode: "bo3" as const,
+        hostDeck: [],
+        hostTrio: ticket(host).trio,
+        catalogVersion: CATALOG_VERSION,
+        createdAt: now,
+        expiresAt: now + 600_000,
+        guestProfileId: null,
+        matchId: null,
+      };
+      expect(await store.rooms.create(room)).toBe(true);
+      const reserved = uuid();
+      must(await store.rooms.claim("BCD345", guest, reserved, now), "the claim");
+      expect(await store.rooms.create({ ...room, hostProfileId: next })).toBe(false);
+
+      await store.matches.discardOpen(reserved);
+
+      expect(await store.rooms.get("BCD345")).toBeNull();
+      expect(await store.rooms.create({ ...room, hostProfileId: next })).toBe(true);
+    });
+
+    it("R263 never touches a finished match", async () => {
+      const [a, b] = [await activeProfile(), await activeProfile()];
+      const matchId = uuid();
+      const now = Date.now();
+      await store.matches.create({
+        id: matchId,
+        seed: "seed-1",
+        players: [a, b],
+        decks: [deckOf(0), deckOf(1)],
+        catalogVersion: CATALOG_VERSION,
+        status: "live",
+        createdAt: now,
+        finishedAt: null,
+        clocks: { turnDeadline: null, promptDeadline: null, graceDeadline: { p1: null, p2: null }, ceilingAt: now + 1000 },
+      });
+      await store.matches.finish(matchId, now + 1);
+      await store.matches.discardOpen(matchId);
+      expect(must(await store.matches.get(matchId), "the match").status).toBe("finished");
     });
   });
 
@@ -433,7 +600,9 @@ describe("postgres store, against a real database", () => {
       await store.rooms.create({
         code: "ABC234",
         hostProfileId: host,
+        mode: "bo1",
         hostDeck: deckOf(0),
+        hostTrio: null,
         catalogVersion: CATALOG_VERSION,
         createdAt: now,
         expiresAt: now + 600_000,
@@ -454,7 +623,9 @@ describe("postgres store, against a real database", () => {
         id: uuid(),
         profileId,
         rating: 1000,
+        mode: "bo1" as const,
         deck: deckOf(0),
+        trio: null,
         catalogVersion: CATALOG_VERSION,
         enqueuedAt: Date.now(),
         status: "open" as const,
@@ -511,7 +682,9 @@ describe("postgres store, against a real database", () => {
     await store.rooms.create({
       code: "ABC234",
       hostProfileId: host,
+      mode: "bo1",
       hostDeck: deckOf(0),
+      hostTrio: null,
       catalogVersion: CATALOG_VERSION,
       createdAt: now,
       expiresAt: now + 600_000,

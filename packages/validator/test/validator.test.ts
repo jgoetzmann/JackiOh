@@ -78,7 +78,7 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
   it("L1 rejects a loadout that does not hold exactly three decks", () => {
     const error = soleError(validateLoadout(dropDeck(legalLoadout())));
     expect(error.rule).toBe("L1");
-    expect(error.message).toBe(`A loadout needs exactly ${LOADOUT_DECKS} decks; this one has ${LOADOUT_DECKS - 1}.`);
+    expect(error.message).toBe(`A trio needs exactly ${LOADOUT_DECKS} decks; this one has ${LOADOUT_DECKS - 1}.`);
     expect(error.deck).toBeUndefined();
     expect(error.cardId).toBeUndefined();
   });
@@ -86,7 +86,7 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
   it("L1 rejects a loadout with a fourth deck, however legal that deck is", () => {
     const error = soleError(validateLoadout(addDeck(legalLoadout())));
     expect(error.rule).toBe("L1");
-    expect(error.message).toBe(`A loadout needs exactly ${LOADOUT_DECKS} decks; this one has ${LOADOUT_DECKS + 1}.`);
+    expect(error.message).toBe(`A trio needs exactly ${LOADOUT_DECKS} decks; this one has ${LOADOUT_DECKS + 1}.`);
     expect(error.deck).toBeUndefined();
   });
 
@@ -151,7 +151,7 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
     const error = soleError(validateLoadout(crossDeck(legalLoadout())));
     expect(error.rule).toBe("L4");
     expect(error.message).toBe(
-      `"Hit Job" (core-012) appears in Deck 1 and Deck 2; a card may be in only one deck of a loadout.`,
+      `"Hit Job" (core-012) appears in Deck 1 and Deck 2; a card may be in only one deck of a trio.`,
     );
     expect(error.deck).toBeUndefined(); // the message names both decks; the field names one
     expect(error.cardId).toBe(HIT_JOB);
@@ -160,7 +160,7 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
   it("L5 rejects a card the profile does not own", () => {
     const error = soleError(validateLoadout(unownCard(legalLoadout())));
     expect(error.rule).toBe("L5");
-    expect(error.message).toBe(`Your loadout uses 1 copy of "Archivist" (core-030) but you own 0.`);
+    expect(error.message).toBe(`Your trio uses 1 copy of "Archivist" (core-030) but you own 0.`);
     expect(error.deck).toBeUndefined(); // L5 counts across the loadout, not per deck
     expect(error.cardId).toBe(ARCHIVIST);
   });
@@ -201,7 +201,7 @@ describe("loadout rules L1–L6 (§9.4, M6-T3)", () => {
 
     expect(rulesOf(result)).toEqual(["L3", "L5"]);
     expect(errorsOf(result).filter((error) => error.rule === "L5").map((error) => error.message)).toEqual([
-      `Your loadout uses ${MAX_COPIES + 1} copies of "Archivist" (core-030) but you own 1.`,
+      `Your trio uses ${MAX_COPIES + 1} copies of "Archivist" (core-030) but you own 1.`,
     ]);
   });
 });

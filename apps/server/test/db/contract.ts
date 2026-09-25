@@ -20,7 +20,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { Action } from "@jackioh/shared";
-import type { MatchClocks, MatchRow, Profile, Store } from "../../src/api/ports";
+import type {
+  FrozenTrio,
+  MatchClocks,
+  MatchRow,
+  Profile,
+  SavedDeck,
+  SavedTrio,
+  SeriesRow,
+  Store,
+} from "../../src/api/ports";
 import type { StoreHarness } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +68,18 @@ function matchRow(id: string, p1: string, p2: string, harness: StoreHarness, now
     createdAt: now,
     finishedAt: null,
     clocks: clocks(now),
+  };
+}
+
+/** A frozen trio over three disjoint fixture decks (R259). */
+function frozenTrio(harness: StoreHarness, name = "Ladder"): FrozenTrio {
+  return {
+    name,
+    decks: [
+      { name: "Aggro", cards: deckOf(harness, 0) },
+      { name: "Control", cards: deckOf(harness, 1) },
+      { name: "Tempo", cards: deckOf(harness, 2) },
+    ],
   };
 }
 
@@ -539,57 +560,256 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
     });
 
     // -----------------------------------------------------------------------
-    // Loadouts (SPEC §9.4 L1-L6)
+    // Saved decks and trios (SPEC §9.4, R250, R252, R256)
     // -----------------------------------------------------------------------
 
-    describe("loadouts", () => {
-      it("returns null before anything is saved", async () => {
+    function savedDeck(profileId: string, over: Partial<SavedDeck> = {}): SavedDeck {
+      const at = harness.now();
+      return {
+        id: id(),
+        profileId,
+        name: "Aggro",
+        cards: deckOf(harness, 0).slice(0, 7),
+        catalogVersion: harness.catalogVersion,
+        createdAt: at,
+        updatedAt: at,
+        ...over,
+      };
+    }
+
+    function savedTrio(profileId: string, deckIds: SavedTrio["deckIds"], over: Partial<SavedTrio> = {}): SavedTrio {
+      const at = harness.now();
+      return { id: id(), profileId, name: "Ladder", deckIds, createdAt: at, updatedAt: at, ...over };
+    }
+
+    describe("decks", () => {
+      it("R250 lists nothing before anything is saved", async () => {
         const profile = await activeProfile();
-        expect(await store.loadouts.get(profile.id)).toBeNull();
+        expect(await store.decks.list(profile.id)).toEqual([]);
+        expect(await store.decks.get(id())).toBeNull();
       });
 
-      it("writes all three decks and reads them back", async () => {
+      it("R250 creates a draft deck and reads it back exactly, card order included", async () => {
         const profile = await activeProfile();
-        const decks = [deckOf(harness, 0), deckOf(harness, 1), deckOf(harness, 2)];
-        const at = harness.now();
-        await store.loadouts.replace(profile.id, harness.catalogVersion, decks, at);
-
-        const stored = must(await store.loadouts.get(profile.id), "the saved loadout");
-        expect(stored.catalogVersion).toBe(harness.catalogVersion);
-        expect(stored.decks).toHaveLength(3);
-        // Deck ORDER is not preserved by the schema (`app.resolve_deck` sorts by card id, and
-        // §9.3's seeded shuffle is what randomises draw order), so the comparison is by set.
-        expect(stored.decks.map(sorted)).toEqual(decks.map(sorted));
+        const deck = savedDeck(profile.id, { cards: [...deckOf(harness, 0).slice(0, 5)].reverse() });
+        expect(await store.decks.upsert(deck, 10)).toBe("created");
+        expect(await store.decks.get(deck.id)).toEqual(deck);
+        expect(await store.decks.list(profile.id)).toEqual([deck]);
       });
 
-      it("replaces a loadout wholesale rather than merging", async () => {
+      it("R256 updates the name, cards and version in place and keeps createdAt", async () => {
         const profile = await activeProfile();
-        await store.loadouts.replace(
-          profile.id,
-          harness.catalogVersion,
-          [deckOf(harness, 0), deckOf(harness, 1), deckOf(harness, 2)],
-          harness.now(),
-        );
-        const moved = [deckOf(harness, 2), deckOf(harness, 0), deckOf(harness, 1)];
-        await store.loadouts.replace(profile.id, harness.catalogVersion, moved, harness.now());
-
-        const stored = must(await store.loadouts.get(profile.id), "the saved loadout");
-        expect(stored.decks.map(sorted)).toEqual(moved.map(sorted));
+        const deck = savedDeck(profile.id);
+        await store.decks.upsert(deck, 10);
+        const edited: SavedDeck = {
+          ...deck,
+          name: "Aggro v2",
+          cards: deckOf(harness, 1),
+          createdAt: deck.createdAt + 99_000,
+          updatedAt: deck.updatedAt + 5_000,
+        };
+        expect(await store.decks.upsert(edited, 10)).toBe("updated");
+        expect(await store.decks.get(deck.id)).toEqual({ ...edited, createdAt: deck.createdAt });
       });
 
-      /** §9.4 L4: "a card id appears in at most one deck, also enforced by a unique index." */
-      it("refuses a card id that appears in two decks", async () => {
+      it("R250 lists a profile's decks oldest first, and only its own", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const now = harness.now();
+        const second = savedDeck(a.id, { name: "Second", createdAt: now + 2, updatedAt: now + 2 });
+        const first = savedDeck(a.id, { name: "First", createdAt: now + 1, updatedAt: now + 1 });
+        await store.decks.upsert(second, 10);
+        await store.decks.upsert(first, 10);
+        await store.decks.upsert(savedDeck(b.id), 10);
+        expect((await store.decks.list(a.id)).map((deck) => deck.name)).toEqual(["First", "Second"]);
+      });
+
+      it("R250 refuses a create past the cap and still updates at the cap", async () => {
         const profile = await activeProfile();
-        const clash = deckOf(harness, 0);
-        await expect(
-          store.loadouts.replace(
-            profile.id,
-            harness.catalogVersion,
-            [clash, clash, deckOf(harness, 2)],
-            harness.now(),
-          ),
-        ).rejects.toThrow();
-        expect(await store.loadouts.get(profile.id)).toBeNull();
+        const decks = [savedDeck(profile.id), savedDeck(profile.id)];
+        for (const deck of decks) expect(await store.decks.upsert(deck, 2)).toBe("created");
+        expect(await store.decks.upsert(savedDeck(profile.id), 2)).toBe("limit");
+        expect(await store.decks.list(profile.id)).toHaveLength(2);
+        const first = decks[0] as SavedDeck;
+        expect(await store.decks.upsert({ ...first, name: "Renamed" }, 2)).toBe("updated");
+      });
+
+      it("R256 refuses to overwrite another profile's deck, whatever the id", async () => {
+        const [owner, other] = [await activeProfile(), await activeProfile()];
+        const deck = savedDeck(owner.id);
+        await store.decks.upsert(deck, 10);
+        expect(await store.decks.upsert({ ...deck, profileId: other.id, name: "Mine now" }, 10)).toBe("not_owner");
+        expect(must(await store.decks.get(deck.id), "the deck").name).toBe("Aggro");
+        expect(await store.decks.remove(other.id, deck.id)).toBe(false);
+      });
+
+      it("R252 removes a deck and empties every trio slot that named it", async () => {
+        const profile = await activeProfile();
+        const [x, y] = [savedDeck(profile.id), savedDeck(profile.id)];
+        await store.decks.upsert(x, 10);
+        await store.decks.upsert(y, 10);
+        const trio = savedTrio(profile.id, [x.id, null, y.id]);
+        expect(await store.trios.upsert(trio, 5)).toBe("created");
+
+        expect(await store.decks.remove(profile.id, x.id)).toBe(true);
+        expect(await store.decks.get(x.id)).toBeNull();
+        expect(must(await store.trios.get(trio.id), "the trio").deckIds).toEqual([null, null, y.id]);
+        expect(await store.decks.remove(profile.id, x.id)).toBe(false);
+      });
+    });
+
+    describe("trios", () => {
+      async function threeDecks(profileId: string): Promise<[string, string, string]> {
+        const decks = [savedDeck(profileId), savedDeck(profileId), savedDeck(profileId)];
+        for (const deck of decks) await store.decks.upsert(deck, 10);
+        return [decks[0]?.id ?? "", decks[1]?.id ?? "", decks[2]?.id ?? ""];
+      }
+
+      it("R252 creates a trio with empty slots and reads it back", async () => {
+        const profile = await activeProfile();
+        const trio = savedTrio(profile.id, [null, null, null]);
+        expect(await store.trios.upsert(trio, 5)).toBe("created");
+        expect(await store.trios.get(trio.id)).toEqual(trio);
+        expect(await store.trios.list(profile.id)).toEqual([trio]);
+      });
+
+      it("R252 updates slots and name in place", async () => {
+        const profile = await activeProfile();
+        const ids = await threeDecks(profile.id);
+        const trio = savedTrio(profile.id, [ids[0], null, null]);
+        await store.trios.upsert(trio, 5);
+        const edited: SavedTrio = { ...trio, name: "Full", deckIds: ids, updatedAt: trio.updatedAt + 1 };
+        expect(await store.trios.upsert(edited, 5)).toBe("updated");
+        expect(await store.trios.get(trio.id)).toEqual(edited);
+      });
+
+      it("R252 refuses a slot naming a deck that is not this profile's", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const [theirs] = await threeDecks(b.id);
+        expect(await store.trios.upsert(savedTrio(a.id, [theirs, null, null]), 5)).toBe("unknown_deck");
+        expect(await store.trios.upsert(savedTrio(a.id, [id(), null, null]), 5)).toBe("unknown_deck");
+        expect(await store.trios.list(a.id)).toEqual([]);
+      });
+
+      it("R252 refuses one deck in two slots", async () => {
+        const profile = await activeProfile();
+        const [x] = await threeDecks(profile.id);
+        await expect(store.trios.upsert(savedTrio(profile.id, [x, x, null]), 5)).rejects.toThrow();
+        expect(await store.trios.list(profile.id)).toEqual([]);
+      });
+
+      it("R252 refuses a create past the cap and another profile's trio", async () => {
+        const [owner, other] = [await activeProfile(), await activeProfile()];
+        const trio = savedTrio(owner.id, [null, null, null]);
+        expect(await store.trios.upsert(trio, 1)).toBe("created");
+        expect(await store.trios.upsert(savedTrio(owner.id, [null, null, null]), 1)).toBe("limit");
+        expect(await store.trios.upsert({ ...trio, profileId: other.id }, 5)).toBe("not_owner");
+        expect(await store.trios.remove(other.id, trio.id)).toBe(false);
+        expect(await store.trios.remove(owner.id, trio.id)).toBe(true);
+        expect(await store.trios.get(trio.id)).toBeNull();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // The Best-of-3 series (SPEC §9.5, R259–R263)
+    // -----------------------------------------------------------------------
+
+    describe("series", () => {
+      function seriesRow(p1: string, p2: string, over: Partial<SeriesRow> = {}): SeriesRow {
+        const now = harness.now();
+        return {
+          id: id(),
+          sides: [
+            { profileId: p1, trio: frozenTrio(harness, "Mine"), wins: 0, pick: null },
+            { profileId: p2, trio: frozenTrio(harness, "Theirs"), wins: 0, pick: null },
+          ],
+          catalogVersion: harness.catalogVersion,
+          seedBase: "series-seed",
+          status: "picking",
+          games: [],
+          nextMatchId: id(),
+          pickDeadline: now + 60_000,
+          winner: null,
+          endReason: null,
+          ratingBefore: null,
+          ratingAfter: null,
+          createdAt: now,
+          updatedAt: now,
+          endedAt: null,
+          version: 1,
+          ...over,
+        };
+      }
+
+      it("R263 round-trips a series row exactly", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const row = seriesRow(a.id, b.id);
+        await store.series.create(row);
+        expect(await store.series.get(row.id)).toEqual(row);
+        expect(await store.series.get(id())).toBeNull();
+        await expect(store.series.create(row)).rejects.toThrow();
+      });
+
+      it("R263 writes a transition only over the version it was made from", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const row = seriesRow(a.id, b.id);
+        await store.series.create(row);
+        const picked: SeriesRow = {
+          ...row,
+          sides: [{ ...row.sides[0], pick: 2 }, row.sides[1]],
+          version: row.version + 1,
+        };
+        expect(await store.series.update(picked)).toBe(true);
+        // A second writer that read the same version loses.
+        expect(await store.series.update({ ...row, status: "over", version: row.version + 1 })).toBe(false);
+        expect(await store.series.get(row.id)).toEqual(picked);
+      });
+
+      it("R263 finds a series by the match it is playing, and only while it is playing it", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const row = seriesRow(a.id, b.id);
+        await store.series.create(row);
+        expect(await store.series.byMatch(row.nextMatchId)).toBeNull();
+
+        const playing: SeriesRow = {
+          ...row,
+          status: "playing",
+          pickDeadline: null,
+          games: [
+            { gameNo: 1, matchId: row.nextMatchId, slots: [0, 1], first: "p1", winner: null, reason: null },
+          ],
+          version: row.version + 1,
+        };
+        expect(await store.series.update(playing)).toBe(true);
+        expect(await store.series.byMatch(row.nextMatchId)).toEqual(playing);
+        expect(await store.series.byMatch(id())).toBeNull();
+        expect(await store.series.withGame(row.nextMatchId)).toEqual(playing);
+
+        // Once the game is over and the series has moved on, only `withGame` still finds it.
+        const nextId = id();
+        const picking: SeriesRow = {
+          ...playing,
+          status: "picking",
+          nextMatchId: nextId,
+          pickDeadline: harness.now() + 60_000,
+          games: [{ ...playing.games[0]!, winner: "p2", reason: "concede" }],
+          sides: [playing.sides[0], { ...playing.sides[1], wins: 1 }],
+          version: playing.version + 1,
+        };
+        expect(await store.series.update(picking)).toBe(true);
+        expect(await store.series.byMatch(row.nextMatchId)).toBeNull();
+        expect(await store.series.withGame(row.nextMatchId)).toEqual(picking);
+        expect(await store.series.withGame(nextId)).toBeNull();
+      });
+
+      it("R263 lists the series that are not over, and each player's", async () => {
+        const [a, b, c] = [await activeProfile(), await activeProfile(), await activeProfile()];
+        const live = seriesRow(a.id, b.id);
+        const done = seriesRow(c.id, b.id, { status: "over", winner: "p1", endReason: "forfeit", endedAt: harness.now() });
+        await store.series.create(live);
+        await store.series.create(done);
+        expect((await store.series.active()).map((row) => row.id)).toEqual([live.id]);
+        expect((await store.series.activeFor(b.id))?.id).toBe(live.id);
+        expect(await store.series.activeFor(c.id)).toBeNull();
       });
     });
 
@@ -665,6 +885,15 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(must(await store.matches.get(row.id), "the match").clocks).toEqual(next);
       });
 
+      it("R263 discards a reserved match id without touching a live match", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const row = matchRow(id(), a.id, b.id, harness, harness.now());
+        await store.matches.create(row);
+        await store.matches.discardOpen(row.id);
+        await store.matches.discardOpen(id());
+        expect(await store.matches.get(row.id)).toEqual(row);
+      });
+
       it("finishes a match and drops it out of the live set", async () => {
         const row = await liveMatch();
         expect((await store.matches.live()).map((m) => m.id)).toContain(row.id);
@@ -688,7 +917,9 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         return {
           code,
           hostProfileId: host,
+          mode: "bo1" as const,
           hostDeck: deckOf(harness, 0),
+          hostTrio: null,
           catalogVersion: harness.catalogVersion,
           createdAt: now,
           expiresAt: now + 600_000,
@@ -711,6 +942,23 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(found.guestProfileId).toBeNull();
         expect(found.matchId).toBeNull();
         expect(await store.rooms.get("ZZZ999")).toBeNull();
+      });
+
+      it("R264 keeps a room's mode and a Best-of-3 host's frozen trio", async () => {
+        const host = await activeProfile();
+        const guest = await activeProfile();
+        const bo3 = await room("BCD345", host.id, { mode: "bo3", hostDeck: [], hostTrio: frozenTrio(harness) });
+        expect(await store.rooms.create(bo3)).toBe(true);
+        const found = must(await store.rooms.get("BCD345"), "the room");
+        expect(found.mode).toBe("bo3");
+        expect(found.hostDeck).toEqual([]);
+        expect(found.hostTrio).toEqual(frozenTrio(harness));
+
+        const random = await room("CDE456", host.id, { mode: "random", hostDeck: [] });
+        await store.rooms.create(random);
+        const claimed = must(await store.rooms.claim("CDE456", guest.id, id(), harness.now()), "the claim");
+        expect(claimed.mode).toBe("random");
+        expect(claimed.hostTrio).toBeNull();
       });
 
       it("refuses a code that is already taken", async () => {
@@ -771,7 +1019,9 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
           id: id(),
           profileId,
           rating: 1000,
+          mode: "bo1" as const,
           deck: deckOf(harness, 0),
+          trio: null,
           catalogVersion: harness.catalogVersion,
           enqueuedAt: harness.now(),
           status: "open" as const,
@@ -789,6 +1039,21 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(await store.tickets.openForProfile(profile.id)).toEqual(row);
         expect(await store.tickets.countOpen()).toBe(1);
         expect((await store.tickets.listOpen()).map((t) => t.id)).toEqual([row.id]);
+      });
+
+      it("R257 keeps a ticket's mode and a Best-of-3 ticket's trio, and counts open tickets per mode", async () => {
+        const [a, b, c] = [await activeProfile(), await activeProfile(), await activeProfile()];
+        const bo3 = await ticket(a.id, { mode: "bo3", deck: [], trio: frozenTrio(harness) });
+        const random = await ticket(b.id, { mode: "random", deck: [] });
+        await store.tickets.insert(bo3);
+        await store.tickets.insert(random);
+        await store.tickets.insert(await ticket(c.id));
+
+        expect(await store.tickets.get(bo3.id)).toEqual(bo3);
+        expect(await store.tickets.get(random.id)).toEqual(random);
+        expect(await store.tickets.countOpenByMode()).toEqual({ bo1: 1, bo3: 1, random: 1 });
+        await store.tickets.cancel(random.id, harness.now());
+        expect(await store.tickets.countOpenByMode()).toEqual({ bo1: 1, bo3: 1, random: 0 });
       });
 
       /** `tickets_profile_queued_key`: the race-proof half of §9.5's "not already queued". */

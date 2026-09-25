@@ -6,11 +6,9 @@ import type { ReactElement } from "react";
 import type { CatalogSnapshot } from "@jackioh/validator";
 
 import { COST_BUCKETS, manaCurve } from "./filters.ts";
-import { deckCurveId } from "./testids.ts";
+import { DECK_CURVE } from "./testids.ts";
 
 type ManaCurveProps = {
-  /** 1-based, like every deck number on this screen. */
-  deck: number;
   cardIds: readonly string[];
   catalog: CatalogSnapshot;
 };
@@ -18,7 +16,7 @@ type ManaCurveProps = {
 /** The tallest bar fills the chart; an empty deck draws every bar empty rather than dividing by 0. */
 const FULL_PERCENT = 100;
 
-export default function ManaCurve({ deck, cardIds, catalog }: ManaCurveProps): ReactElement {
+export default function ManaCurve({ cardIds, catalog }: ManaCurveProps): ReactElement {
   const counts = manaCurve(cardIds, catalog);
   const tallest = Math.max(1, ...COST_BUCKETS.map((bucket) => counts[bucket]));
   const summary = COST_BUCKETS.map((bucket) => `${bucket}: ${String(counts[bucket])}`).join(", ");
@@ -26,7 +24,7 @@ export default function ManaCurve({ deck, cardIds, catalog }: ManaCurveProps): R
   return (
     <div
       className="db-curve"
-      data-testid={deckCurveId(deck)}
+      data-testid={DECK_CURVE}
       role="img"
       aria-label={`Mana curve, cost: count. ${summary}`}
     >

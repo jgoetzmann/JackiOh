@@ -56,6 +56,7 @@ export type WsPlayerCommand =
   | { action: "view"; name: string }
   | { action: "messages"; name: string }
   | { action: "disconnect"; name: string }
+  | { action: "concede"; name: string; url?: string; token: string; matchId: string; seat?: "p1" | "p2" }
   | { action: "reset" };
 
 export type ViewPredicate = {
@@ -302,6 +303,44 @@ async function concedeIfLive(record: Client): Promise<void> {
   }
 }
 
+/**
+ * Open a socket onto a match as `token`, concede it and close again, in ONE task.
+ *
+ * This is how a spec (or `cy.freeAccount`) takes a seat out of a match that seat's own BROWSER is
+ * also attached to. The actor keeps one socket per seat and closes the older one when a second
+ * attaches (`attach` in apps/server/src/match/actor.ts), and the browser reconnects after
+ * `RECONNECT_DELAYS_MS[0]` (apps/web/src/game/net.ts), which would take the seat straight back.
+ * Doing connect and concede as two Cypress commands leaves a Cypress round trip inside that window;
+ * doing both here leaves only the socket's own. The ack of a concede is sent after the actor has
+ * recorded the result (`applyAction` awaits `afterChange`), so once this answers the profile is out
+ * of the match and a series has moved on. A match already over answers `match_over`, which is
+ * reported rather than thrown.
+ */
+async function concede(command: Extract<WsPlayerCommand, { action: "concede" }>): Promise<WsPlayerResult> {
+  try {
+    const opened = await connect({
+      action: "connect",
+      name: command.name,
+      token: command.token,
+      matchId: command.matchId,
+      ...(command.url === undefined ? {} : { url: command.url }),
+      ...(command.seat === undefined ? {} : { seat: command.seat }),
+    });
+    if (!opened.ok) return opened;
+    const view = opened.view ?? null;
+    if (view !== null && view.result !== null && view.result !== undefined) {
+      return { ok: true, name: command.name, view };
+    }
+    return await send({ action: "send", name: command.name, body: { type: "concede" } });
+  } finally {
+    const record = clients.get(command.name);
+    if (record !== undefined) {
+      record.socket.close();
+      clients.delete(command.name);
+    }
+  }
+}
+
 export async function wsPlayer(command: WsPlayerCommand): Promise<WsPlayerResult> {
   try {
     switch (command.action) {
@@ -323,6 +362,8 @@ export async function wsPlayer(command: WsPlayerCommand): Promise<WsPlayerResult
         clients.delete(command.name);
         return { ok: true, name: command.name };
       }
+      case "concede":
+        return await concede(command);
       case "reset": {
         for (const record of clients.values()) await concedeIfLive(record);
         for (const record of clients.values()) record.socket.close();

@@ -1,5 +1,5 @@
 /**
- * Matchmaking (BUILD M7-T3, SPEC §9.5).
+ * Matchmaking (BUILD M7-T3, SPEC §9.5), in three modes (R257).
  *
  * §9.5, in full, is what this file implements: "Enqueue asserts the account is active and not in
  * a match, validates the loadout, freezes the chosen deck into the ticket and returns the ticket
@@ -7,16 +7,23 @@
  * every 10 s from ±100 and is uncapped after 60 s; both tickets are claimed in one atomic
  * statement. The client shows the queue population instead of an endless spinner."
  *
+ * R257 adds the mode: Best of 1 (one saved deck), Best of 3 (a trio, played as a series, R259) and
+ * All Random (R258). A ticket pairs only with a ticket of its own mode; inside a mode the window
+ * and R166's order are exactly as before. What a pair becomes depends on the mode: a Best-of-1
+ * match on the two frozen decks, an All Random match on two dealt ones, or a Best-of-3 series whose
+ * first game waits for both players to pick (`series.ts`).
+ *
  * Three pieces, in that order: the three endpoints, one pairing sweep (`tryPair`), and the
  * sweeper that reschedules it (`startMatchmaker`).
  *
  * Two invariants carry the weight:
  *
- *  - **The deck is frozen at enqueue.** §9.4: "Decks are frozen into the queue ticket." Nothing
- *    below re-reads `loadouts` after the ticket exists, so a loadout edited while queued cannot
- *    change the match that ticket becomes (M7-T3's second acceptance item).
- *  - **Both tickets are claimed in one atomic statement**, `tickets.claimPair`. A match is
- *    created *only* after that statement returns true, so two matchers racing over the same
+ *  - **The deck is frozen at enqueue.** §9.4: "Decks are frozen into the queue ticket." The deck
+ *    (or the trio) is copied into the ticket by `freezeChoice` and nothing below re-reads a saved
+ *    deck after the ticket exists, so a deck edited while queued cannot change the game that
+ *    ticket becomes (M7-T3's second acceptance item, §9.8).
+ *  - **Both tickets are claimed in one atomic statement**, `tickets.claimPair`. A match or a series
+ *    is created *only* after that statement returns true, so two matchers racing over the same
  *    ticket cannot pair it twice (M7-T3's race test). Losing the race is not an error: it means
  *    someone else already found that player a game.
  *
@@ -26,9 +33,10 @@
 
 import { ratingWindow } from "../config";
 import { callerProfile } from "./collection";
+import { assertNotInSeries, freezeChoice, readModeChoice, type ModeChoiceInput } from "./decks";
 import { ApiError, badRequest, ok, route, type Route } from "./http";
-import { deckFor, validateStoredLoadout } from "./loadouts";
-import type { MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
+import type { FrozenTrio, MatchSeat, Profile, ServerDeps, Ticket, Timer } from "./ports";
+import { startSeries } from "./series";
 
 /** Unit conversion, not configuration: `ratingWindow` speaks seconds, tickets are stamped in ms. */
 const MS_PER_SECOND = 1000;
@@ -91,14 +99,19 @@ function forgetSeed(ticketId: string): void {
   e2eSeedByTicket.delete(ticketId);
 }
 
+/** The older of two tickets first: R166's "oldest first", ties on ticket id. */
+function olderFirst(a: Ticket, b: Ticket): [Ticket, Ticket] {
+  const aFirst = a.enqueuedAt < b.enqueuedAt || (a.enqueuedAt === b.enqueuedAt && a.id <= b.id);
+  return aFirst ? [a, b] : [b, a];
+}
+
 /**
  * The seed for a pair, consumed. Two seeded tickets can disagree — each spec seeds its own
  * enqueue — so the older ticket's seed wins, which is the same "oldest first" tie-break `tryPair`
  * already uses, and both entries are dropped either way.
  */
 function takeSeedForPair(a: Ticket, b: Ticket): string | null {
-  const older = a.enqueuedAt <= b.enqueuedAt ? a : b;
-  const younger = older === a ? b : a;
+  const [older, younger] = olderFirst(a, b);
   const seed = e2eSeedByTicket.get(older.id) ?? e2eSeedByTicket.get(younger.id) ?? null;
   forgetSeed(a.id);
   forgetSeed(b.id);
@@ -109,25 +122,15 @@ function takeSeedForPair(a: Ticket, b: Ticket): string | null {
 // Enqueue
 // ---------------------------------------------------------------------------
 
-function deckIndexOf(body: Readonly<Record<string, unknown>>): number {
-  const value = body["deckIndex"];
-  if (typeof value !== "number" || !Number.isInteger(value)) {
-    throw badRequest('"deckIndex" must be a whole number');
-  }
-  // The range belongs to the loadout, not to this endpoint: `deckFor` rejects an index the
-  // player's own loadout does not have (§9.4 L1 fixes how many decks that is).
-  return value;
-}
-
 /**
  * §9.5's enqueue. The order of the checks is the order §9.5 writes them, and it matters: a player
- * already in a match or already queued is told so before their loadout is validated, so a stale
- * client gets the useful error rather than a loadout complaint.
+ * already in a match (or a series, R264) or already queued is told so before their deck is
+ * validated, so a stale client gets the useful error rather than a deck complaint.
  */
 async function enqueue(
   deps: ServerDeps,
   profile: Profile,
-  deckIndex: number,
+  choice: ModeChoiceInput,
   /** R143: the seed this enqueue asked for, or null. Only ever non-null in end-to-end mode. */
   seed: string | null = null,
 ): Promise<Ticket> {
@@ -136,25 +139,29 @@ async function enqueue(
   if (profile.inMatchId !== null) {
     throw new ApiError("already_in_match", "finish your current match first");
   }
+  // R264: between the games of a series a profile is in no match, and still not free to queue.
+  await assertNotInSeries(deps, profile.id);
   const open = await deps.store.tickets.openForProfile(profile.id);
   if (open !== null) {
     throw new ApiError("already_queued", "you are already in the queue", { ticketId: open.id });
   }
 
   // §9.4: "checked by one validator module shared by client and server, at save and again at
-  // queue". The queue-time re-check is `validateStoredLoadout`, which also rejects a stale
-  // catalog version, and `deckFor` picks the deck being frozen.
-  const loadout = await validateStoredLoadout(deps, profile.id, deps.catalog.version);
-  const deck = deckFor(loadout, deckIndex);
+  // queue". R253: a Best-of-1 deck on L2, L3, L5, L6 and a trio on L1–L6, both against the
+  // current catalog; All Random needs no deck at all (R258).
+  const frozen = await freezeChoice(deps, profile.id, choice);
 
   const ticket: Ticket = {
     id: deps.ids.uuid(),
     profileId: profile.id,
     rating: profile.rating,
-    // §9.4, §9.5: frozen. `deckFor` already copied it; this is the copy that lands in the ticket
-    // and, later, in the match — the stored loadout is never read again.
-    deck,
-    catalogVersion: loadout.catalogVersion,
+    mode: frozen.mode,
+    // §9.4, §9.5: frozen. `freezeChoice` already copied the deck or the trio; this is the copy
+    // that lands in the ticket and, later, in the match or the series — the saved deck is never
+    // read again.
+    deck: frozen.mode === "bo1" ? frozen.deck.cards : [],
+    trio: frozen.mode === "bo3" ? frozen.trio : null,
+    catalogVersion: deps.catalog.version,
     enqueuedAt: deps.timers.now(),
     status: "open",
     matchId: null,
@@ -178,7 +185,7 @@ async function enqueue(
   // consumed and never dropped.
   if (seed !== null) e2eSeedByTicket.set(ticket.id, seed);
 
-  deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, deckIndex });
+  deps.log.info("queue.enqueued", { profileId: profile.id, ticketId: ticket.id, mode: ticket.mode });
   return ticket;
 }
 
@@ -194,21 +201,65 @@ function windowFor(ticket: Ticket, now: number): number {
 
 /**
  * §9.5: the gap has to sit inside *both* windows, so the player who has waited longer cannot drag
- * a freshly queued opponent into a match their own window would refuse.
+ * a freshly queued opponent into a match their own window would refuse. R257: and the two tickets
+ * are of one mode — a Best-of-1 player is never handed a series, nor a trio player a single game.
  */
 function qualifies(a: Ticket, b: Ticket, now: number): boolean {
   if (a.profileId === b.profileId) return false;
+  if (a.mode !== b.mode) return false;
   const gap = Math.abs(a.rating - b.rating);
   return gap <= windowFor(a, now) && gap <= windowFor(b, now);
 }
 
+/** A Best-of-3 ticket's frozen trio; one without is a store that lost a column, not a player. */
+function trioOf(ticket: Ticket): FrozenTrio {
+  if (ticket.trio === null) throw new Error(`Best-of-3 ticket ${ticket.id} holds no trio`);
+  return ticket.trio;
+}
+
 /**
- * Creates the paired match. Called only with two tickets this process has already claimed, which
- * is what makes it safe to write: the claim is the mutual exclusion.
+ * R259: a Best-of-3 pair becomes a series, not a match. Its first game's match id is the one
+ * `claimPair` just reserved (R263), and nobody is put in a match yet: the series opens on a pick
+ * phase, and `series.ts` starts game 1 once both players have chosen a deck. Series seat p1 is the
+ * older ticket, who goes first in odd games.
+ */
+async function startPairedSeries(
+  deps: ServerDeps,
+  a: Ticket,
+  b: Ticket,
+  matchId: string,
+): Promise<void> {
+  const [older, younger] = olderFirst(a, b);
+  // R143 and R259: the server mints the series seed (each game's is `${seedBase}:${n}`), unless an
+  // end-to-end enqueue supplied one.
+  const seedBase = takeSeedForPair(a, b) ?? deps.ids.seed();
+  const series = await startSeries(deps, {
+    seriesId: deps.ids.uuid(),
+    firstMatchId: matchId,
+    sides: [
+      { profileId: older.profileId, trio: trioOf(older) },
+      { profileId: younger.profileId, trio: trioOf(younger) },
+    ],
+    seedBase,
+    catalogVersion: deps.catalog.version,
+  });
+  deps.log.info("queue.paired", {
+    mode: "bo3",
+    seriesId: series.id,
+    firstMatchId: matchId,
+    tickets: [older.id, younger.id],
+    ratings: [older.rating, younger.rating],
+  });
+}
+
+/**
+ * Creates the paired match — or, for Best of 3, the series. Called only with two tickets this
+ * process has already claimed, which is what makes it safe to write: the claim is the mutual
+ * exclusion.
  *
- * The match row is written here rather than inside `matches.start` because a `MatchRow` needs the
- * two frozen decks, the catalog version and the initial clocks, and `StartMatchInput` carries
- * none of the last two. The actor takes it from there.
+ * Best of 1 plays the two decks the tickets froze. All Random (R258) deals both from the match
+ * seed and the seat, `${seed}:p1-deck` and `${seed}:p2-deck`, and the dealt decks go into the match
+ * row like any frozen deck, so `(seed, decks, log)` replays it as ever.
  */
 async function startPairedMatch(
   deps: ServerDeps,
@@ -216,12 +267,17 @@ async function startPairedMatch(
   b: Ticket,
   matchId: string,
 ): Promise<void> {
-  const seats: [MatchSeat, MatchSeat] = [
-    { profileId: a.profileId, player: "p1", deck: a.deck },
-    { profileId: b.profileId, player: "p2", deck: b.deck },
-  ];
+  if (a.mode === "bo3") {
+    await startPairedSeries(deps, a, b, matchId);
+    return;
+  }
   // R143: the server mints the seed, unless an end-to-end enqueue supplied one.
   const seed = takeSeedForPair(a, b) ?? deps.ids.seed();
+  const random = a.mode === "random";
+  const seats: [MatchSeat, MatchSeat] = [
+    { profileId: a.profileId, player: "p1", deck: random ? deps.dealRandomDeck(`${seed}:p1-deck`) : a.deck },
+    { profileId: b.profileId, player: "p2", deck: random ? deps.dealRandomDeck(`${seed}:p2-deck`) : b.deck },
+  ];
 
   // NO `matches.create` HERE. `MatchRegistry.start` builds the row -- seed, both frozen decks,
   // R79's clocks, status live -- and calls `store.matches.create` itself (registry.ts), so a
@@ -246,6 +302,7 @@ async function startPairedMatch(
 
   await deps.matches.start({ matchId, seed, catalogVersion: deps.catalog.version, seats });
   deps.log.info("queue.paired", {
+    mode: a.mode,
     matchId,
     tickets: [a.id, b.id],
     ratings: [a.rating, b.rating],
@@ -279,13 +336,17 @@ export async function tryPair(deps: ServerDeps): Promise<number> {
   if (open.length < 2) return 0;
 
   // §9.5's "not in a match" holds at pairing too, not only at enqueue: a ticket left open while
-  // its owner joined a room match must not become a second match for them. One read for the whole
-  // sweep, and `taken` covers the pairs this sweep makes as it goes.
+  // its owner joined a room match must not become a second match for them — nor, R264, while its
+  // owner is in a series that a room join made. One read of each for the whole sweep, and `taken`
+  // covers the pairs this sweep makes as it goes.
   const busy = new Set(
     (await deps.store.profiles.getMany(open.map((ticket) => ticket.profileId)))
       .filter((profile) => profile.inMatchId !== null)
       .map((profile) => profile.id),
   );
+  for (const series of await deps.store.series.active()) {
+    for (const side of series.sides) busy.add(side.profileId);
+  }
   const taken = new Set<string>(
     open.filter((ticket) => busy.has(ticket.profileId)).map((ticket) => ticket.id),
   );
@@ -380,17 +441,29 @@ export function createQueueRoutes(): Route[] {
      */
     route("POST", "/api/queue", "active", async (req, deps) => {
       const profile = callerProfile(req);
+      // R257: the mode and the deck or trio, or the legacy `{ deckIndex }`.
+      const choice = readModeChoice(req.body);
       // R143: an optional `seed`, accepted only by an end-to-end test server and rejected — never
       // ignored — anywhere else.
       const seed = seedOverrideOf(deps, req.body);
-      const ticket = await enqueue(deps, profile, deckIndexOf(req.body), seed);
+      const ticket = await enqueue(deps, profile, choice, seed);
       await tryPair(deps);
       const current = await deps.store.tickets.get(ticket.id);
+      const status = current?.status ?? ticket.status;
+      // A paired Best-of-3 ticket's `matchId` is game 1's reserved id, which is not a match anyone
+      // can open yet: the player goes to the series to pick a deck, so it answers with that.
+      const paired = status === "matched";
+      const seriesId =
+        paired && ticket.mode === "bo3"
+          ? ((await deps.store.series.activeFor(profile.id))?.id ?? null)
+          : null;
       return ok({
         ticketId: ticket.id,
-        status: current?.status ?? ticket.status,
-        matchId: current?.matchId ?? null,
+        status,
+        matchId: paired && ticket.mode !== "bo3" ? (current?.matchId ?? null) : null,
+        seriesId,
         population: await deps.store.tickets.countOpen(),
+        mode: ticket.mode,
       });
     }),
 
@@ -435,8 +508,12 @@ export function createQueueRoutes(): Route[] {
      * in. If a later review reads §9.4's gate as covering even the count, this becomes `"active"`
      * and nothing else changes.
      */
+    // R257: the total, and per mode, so the lobby can say how many are waiting for each.
     route("GET", "/api/queue/population", "user", async (_req, deps) =>
-      ok({ population: await deps.store.tickets.countOpen() }),
+      ok({
+        population: await deps.store.tickets.countOpen(),
+        byMode: await deps.store.tickets.countOpenByMode(),
+      }),
     ),
   ];
 }

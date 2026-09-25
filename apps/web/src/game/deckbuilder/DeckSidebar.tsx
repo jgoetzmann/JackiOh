@@ -1,28 +1,26 @@
-// The deck sidebar: the three deck tabs, one panel per deck with its mana curve and a
-// Hearthstone-style list of tiles, and (as children) the save control.
+// The open deck's sidebar: its head (the name field, passed in), the deck's count and meter, its
+// mana curve, a Hearthstone-style list of tiles, and (as children) the comparison, the verdict and
+// the actions (docs/polish/6-cards.md, Surface D; SPEC §9.4, R250–R251).
 //
-// WHAT IS UNCHANGED, and why it matters. The tabs keep `deck-tab-<n>`, `deck-count-<n>`, their
-// drop handling and their `data-active`; each panel keeps `deck-drop-<n>` and its drop handling;
-// each list keeps `deck-list-<n>`; each entry keeps its row `deck-<n>-card-<id>` and its button
-// `deck-card-<n>-<id>`, and a click on that button still takes the card out. `Deckbuilder.test.tsx`,
-// `routes/decks.test.tsx` and spec 09 read all of these.
+// One deck is open at a time in the workshop, so nothing here carries a deck number: the region is
+// `deck-drop`, the list `deck-cards`, a tile `deck-card-<id>`, and a click on a tile still takes the
+// card out. Tiles are drawn in `deckListOrder` (cost, then name), which is display only: the deck's
+// own order is what a save sends.
 //
-// WHAT IS NEW. Only the active deck's panel is visible; the others are `hidden` but stay mounted,
-// so a card in any deck is still in the document for a test (or a drop) to find. Spec 09's drag
-// clicks the deck's tab before it drops, which makes that panel the visible one. Tiles are drawn in
-// `deckListOrder` (cost, then name), which is display only: the draft's own order is what `save`
-// sends.
+// A CARD A COMPARED DECK ALSO HOLDS (R251) keeps its tile and wears a mark: `data-conflict="true"`,
+// `data-conflict-with="<deck name>"` and a small flag. It is never taken out on the player's
+// behalf; the comparison says what clashes and the player decides.
 //
-// ON A PHONE the open deck's curve and tiles fold behind a "Show list" toggle in its header
-// (closed at first), so a full deck's 560 px of sidebar no longer pushes the whole pool below the
-// fold; the tabs, the count, the meter and Save stay. deckbuilder.css shows the toggle and applies
-// the fold only in the one-column layout, so every tile stays mounted, and visible elsewhere.
+// ON A PHONE the curve and tiles fold behind a "Show list" toggle in the head (closed at first), so
+// a full deck's 560 px of sidebar no longer pushes the whole pool below the fold; the name, the
+// count, the meter and the rest stay. deckbuilder.css shows the toggle and applies the fold only in
+// the one-column layout, so every tile stays mounted, and visible elsewhere.
 //
-// A tile says what a click does ("Remove Bigot from Deck 1"). Hovering it previews the card, a
-// touch long-press opens the inspect sheet, and a right-click, the I key, the context-menu key or
+// A tile says what a click does ("Remove Bigot from Aggro"). Hovering it previews the card, a touch
+// long-press opens the inspect sheet, and a right-click, the I key, the context-menu key or
 // Shift+F10 open the card's detail view, so a keyboard can inspect a card in the list too.
 
-import { useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactElement, type ReactNode, type RefObject } from "react";
 
 import type { CardCost, CardDef } from "@jackioh/shared";
 import type { CatalogSnapshot } from "@jackioh/validator";
@@ -30,32 +28,25 @@ import type { CatalogSnapshot } from "@jackioh/validator";
 import { CardArt, faceModel, useInspectTrigger } from "../../cards/index.ts";
 import { DECK_SIZE } from "./deckSize.ts";
 import { deckListOrder } from "./filters.ts";
-import type { Draft } from "./loadout.ts";
 import ManaCurve from "./ManaCurve.tsx";
-import {
-  DB_SIDEBAR,
-  deckCardId,
-  deckCardRowId,
-  deckCountId,
-  deckDropId,
-  deckFoldId,
-  deckListId,
-  deckTabId,
-} from "./testids.ts";
+import { DB_SIDEBAR, DECK_CARDS, DECK_COUNT, DECK_DROP, DECK_FOLD, deckCardId } from "./testids.ts";
+import type { Holder } from "./workshop.ts";
 
 type DeckSidebarProps = {
-  /** One tab and one panel per deck the draft actually has, so an L1 draft is visible. */
-  deckNumbers: readonly number[];
-  activeDeck: number;
-  draft: Draft;
+  /** The open deck's name as it is saved, for the tiles' labels. */
+  deckName: string;
+  cards: readonly string[];
   catalog: CatalogSnapshot;
-  onSelectDeck: (deck: number) => void;
-  /** A drop on deck `deck`'s tab (`select` true: the tab also opens) or on its panel. */
-  onDropCard: (deck: number, event: DragEvent<HTMLElement>, select: boolean) => void;
-  onRemove: (deck: number, cardId: string) => void;
+  /** Card id → the compared deck that also holds it (R251): marked, never removed. */
+  conflicts: ReadonlyMap<string, Holder>;
+  /** The name field and anything else drawn above the deck's count. */
+  head: ReactNode;
+  /** A card dropped on the deck. */
+  onDropCard: (event: DragEvent<HTMLElement>) => void;
+  onRemove: (cardId: string) => void;
   /** Opens card `cardId`'s detail view. */
   onInspect: (cardId: string) => void;
-  /** The save control, drawn under the open deck. */
+  /** The comparison, the verdict and the actions, drawn under the deck. */
   children?: ReactNode;
 };
 
@@ -127,10 +118,11 @@ function tileCost(cost: CardCost | undefined): string {
 }
 
 type DeckTileProps = {
-  deck: number;
+  deckName: string;
   cardId: string;
   def: CardDef | undefined;
-  onRemove: (deck: number, cardId: string) => void;
+  conflict: Holder | undefined;
+  onRemove: (cardId: string) => void;
   onInspect: (cardId: string) => void;
 };
 
@@ -139,7 +131,7 @@ export function isInspectKey(event: { key: string; shiftKey: boolean }): boolean
   return event.key === "i" || event.key === "I" || event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 }
 
-function DeckTile({ deck, cardId, def, onRemove, onInspect }: DeckTileProps): ReactElement {
+function DeckTile({ deckName, cardId, def, conflict, onRemove, onInspect }: DeckTileProps): ReactElement {
   const name = def?.name ?? cardId;
   const face = useMemo(
     () => (def === undefined ? null : faceModel({ defId: cardId, def, radiant: false })),
@@ -147,24 +139,31 @@ function DeckTile({ deck, cardId, def, onRemove, onInspect }: DeckTileProps): Re
   );
   // Hover shows the whole card and a touch long-press opens the inspect sheet; a right-click opens
   // the detail view; a click still removes the card, as it always has.
-  const inspect = useInspectTrigger(face === null ? null : { key: deckCardId(deck, cardId), face }, {
+  const inspect = useInspectTrigger(face === null ? null : { key: deckCardId(cardId), face }, {
     onContextMenu: () => {
       onInspect(cardId);
     },
   });
 
   return (
-    <li data-testid={deckCardRowId(deck, cardId)}>
+    <li>
       <button
         type="button"
         className="db-tile"
-        data-testid={deckCardId(deck, cardId)}
+        data-testid={deckCardId(cardId)}
         data-card={cardId}
         data-rarity={def?.rarity}
-        aria-label={`Remove ${name} from Deck ${String(deck)}`}
+        data-conflict={conflict === undefined ? undefined : "true"}
+        data-conflict-with={conflict?.name}
+        aria-label={
+          conflict === undefined
+            ? `Remove ${name} from ${deckName}`
+            : `Remove ${name} from ${deckName} (also in ${conflict.name})`
+        }
+        title={conflict === undefined ? undefined : `Also in ${conflict.name}`}
         aria-keyshortcuts="I"
         onClick={() => {
-          onRemove(deck, cardId);
+          onRemove(cardId);
         }}
         onKeyDown={(event) => {
           if (def === undefined || !isInspectKey(event)) return;
@@ -182,6 +181,7 @@ function DeckTile({ deck, cardId, def, onRemove, onInspect }: DeckTileProps): Re
             <CardArt defId={cardId} radiant={false} tags={def.tags} type={def.type} shape="strip" />
           )}
         </span>
+        {conflict === undefined ? null : <span className="db-tile-flag" aria-hidden="true" />}
         <span className="db-tile-pip" data-rarity={def?.rarity} aria-hidden="true" />
       </button>
       {inspect.overlay}
@@ -189,147 +189,80 @@ function DeckTile({ deck, cardId, def, onRemove, onInspect }: DeckTileProps): Re
   );
 }
 
-type DeckPanelProps = {
-  deck: number;
-  active: boolean;
-  /** Whether the phone layout shows this deck's curve and tiles (DeckSidebar's fold). */
-  listOpen: boolean;
-  onToggleList: () => void;
-  cards: readonly string[];
-  catalog: CatalogSnapshot;
-  onDropCard: (deck: number, event: DragEvent<HTMLElement>, select: boolean) => void;
-  onRemove: (deck: number, cardId: string) => void;
-  onInspect: (cardId: string) => void;
-};
-
-function DeckPanel(props: DeckPanelProps): ReactElement {
-  const { deck, active, listOpen, onToggleList, cards, catalog, onDropCard, onRemove, onInspect } = props;
+export default function DeckSidebar(props: DeckSidebarProps): ReactElement {
+  const { deckName, cards, catalog, conflicts, head, onDropCard, onRemove, onInspect, children } = props;
+  // Layout, not state of the deck: the phone's fold, closed at first.
+  const [listOpen, setListOpen] = useState(false);
   const ordered = useMemo(() => deckListOrder(cards, catalog), [cards, catalog]);
-  const full = cards.length === DECK_SIZE;
+  const full = cards.length >= DECK_SIZE;
   const list = useRef<HTMLUListElement>(null);
   useScrollEdges(list, cards.length);
-  const listId = `db-deck-list-${String(deck)}`;
+  const listId = useId();
 
   return (
-    <section
-      className="db-deck"
-      role="tabpanel"
-      aria-label={`Deck ${String(deck)}`}
-      data-testid={deckDropId(deck)}
-      data-deck={deck}
-      data-active={active ? "true" : "false"}
-      data-list-open={listOpen ? "true" : "false"}
-      hidden={!active}
-      onDragOver={allowDrop}
-      onDrop={(event) => {
-        onDropCard(deck, event, false);
-      }}
-    >
-      <header className="db-deck-head">
-        <span className="db-deck-title">{`Deck ${String(deck)}`}</span>
-        <span className="db-deck-size" data-full={full ? "true" : "false"}>
-          {`${String(cards.length)}/${String(DECK_SIZE)}`}
-        </span>
-        {cards.length === 0 ? null : (
-          <button
-            type="button"
-            className="db-deck-fold"
-            data-testid={deckFoldId(deck)}
-            aria-expanded={listOpen}
-            aria-controls={listId}
-            onClick={onToggleList}
-          >
-            {listOpen ? "Hide list" : "Show list"}
-          </button>
-        )}
-        {/* How full the deck is, at a glance. Drawn only: the count beside it is the number. */}
-        <span className="db-deck-meter" data-full={full ? "true" : "false"} aria-hidden="true">
+    <aside className="db-sidebar" data-testid={DB_SIDEBAR} aria-label={deckName}>
+      {head}
+      <section
+        className="db-deck"
+        aria-label={`Cards in ${deckName}`}
+        data-testid={DECK_DROP}
+        data-list-open={listOpen ? "true" : "false"}
+        onDragOver={allowDrop}
+        onDrop={onDropCard}
+      >
+        <header className="db-deck-head">
+          <span className="db-deck-title">Cards</span>
           <span
-            className="db-deck-meter-fill"
-            style={{ width: `${String(Math.min(1, cards.length / DECK_SIZE) * FULL_PERCENT)}%` }}
-          />
-        </span>
-      </header>
-      <ManaCurve deck={deck} cardIds={cards} catalog={catalog} />
-      <ul ref={list} id={listId} className="db-deck-list" data-testid={deckListId(deck)}>
-        {tileKeys(ordered).map(([cardId, key]) => (
-          <DeckTile
-            key={key}
-            deck={deck}
-            cardId={cardId}
-            def={catalog.cards[cardId]}
-            onRemove={onRemove}
-            onInspect={onInspect}
-          />
-        ))}
-      </ul>
-      {cards.length === 0 ? (
-        <p className="db-deck-hint">Tap + on a card in the pool, or drag it here, to add it.</p>
-      ) : null}
-    </section>
-  );
-}
-
-export default function DeckSidebar(props: DeckSidebarProps): ReactElement {
-  const { deckNumbers, activeDeck, draft, catalog, onSelectDeck, onDropCard, onRemove, onInspect, children } = props;
-  // Layout, not state of the loadout: one switch for every deck, closed at first.
-  const [listOpen, setListOpen] = useState(false);
-  const toggleList = (): void => {
-    setListOpen((open) => !open);
-  };
-
-  return (
-    <aside className="db-sidebar" data-testid={DB_SIDEBAR} aria-label="Your decks">
-      <div className="db-tabs" role="tablist" aria-label="Decks">
-        {deckNumbers.map((deck) => (
-          <button
-            key={deck}
-            type="button"
-            role="tab"
-            data-testid={deckTabId(deck)}
-            data-deck={deck}
-            aria-selected={deck === activeDeck}
-            data-active={deck === activeDeck ? "true" : "false"}
-            onClick={() => {
-              onSelectDeck(deck);
-            }}
-            onDragOver={allowDrop}
-            onDrop={(event) => {
-              onDropCard(deck, event, true);
-            }}
+            className="db-deck-size"
+            data-testid={DECK_COUNT}
+            data-count={String(cards.length)}
+            data-deck-size={String(DECK_SIZE)}
+            data-full={full ? "true" : "false"}
           >
-            {`Deck ${String(deck)}`}
-            <span
-              className="db-count"
-              data-testid={deckCountId(deck)}
-              data-count={String(draft[deck - 1]?.length ?? 0)}
-              data-deck-size={String(DECK_SIZE)}
+            {`${String(cards.length)}/${String(DECK_SIZE)}`}
+          </span>
+          {cards.length === 0 ? null : (
+            <button
+              type="button"
+              className="db-deck-fold"
+              data-testid={DECK_FOLD}
+              aria-expanded={listOpen}
+              aria-controls={listId}
+              onClick={() => {
+                setListOpen((open) => !open);
+              }}
             >
-              {`${String(draft[deck - 1]?.length ?? 0)}/${String(DECK_SIZE)}`}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {deckNumbers.map((deck) => (
-        <DeckPanel
-          key={deck}
-          deck={deck}
-          active={deck === activeDeck}
-          listOpen={listOpen}
-          onToggleList={toggleList}
-          cards={draft[deck - 1] ?? EMPTY_DECK}
-          catalog={catalog}
-          onDropCard={onDropCard}
-          onRemove={onRemove}
-          onInspect={onInspect}
-        />
-      ))}
+              {listOpen ? "Hide list" : "Show list"}
+            </button>
+          )}
+          {/* How full the deck is, at a glance. Drawn only: the count beside it is the number. */}
+          <span className="db-deck-meter" data-full={full ? "true" : "false"} aria-hidden="true">
+            <span
+              className="db-deck-meter-fill"
+              style={{ width: `${String(Math.min(1, cards.length / DECK_SIZE) * FULL_PERCENT)}%` }}
+            />
+          </span>
+        </header>
+        <ManaCurve cardIds={cards} catalog={catalog} />
+        <ul ref={list} id={listId} className="db-deck-list" data-testid={DECK_CARDS}>
+          {tileKeys(ordered).map(([cardId, key]) => (
+            <DeckTile
+              key={key}
+              deckName={deckName}
+              cardId={cardId}
+              def={catalog.cards[cardId]}
+              conflict={conflicts.get(cardId)}
+              onRemove={onRemove}
+              onInspect={onInspect}
+            />
+          ))}
+        </ul>
+        {cards.length === 0 ? (
+          <p className="db-deck-hint">Tap + on a card in the pool, or drag it here, to add it.</p>
+        ) : null}
+      </section>
 
       {children}
     </aside>
   );
 }
-
-/** A stable empty list, so a missing deck does not re-sort on every render. */
-const EMPTY_DECK: readonly string[] = [];
