@@ -137,7 +137,8 @@ describe("R213: Gifted Program's first cheap card is its controller's first of t
 describe("R214: a play's choices are the choices of the face it resolves with", () => {
   it("R214 a Pocket Chaos that radiant Gifted Program will make Radiant is offered, and may carry, the choice to skip the gift (§8 #87 radiant, R81)", () => {
     const g = scenario({
-      p1: { hand: [POCKET_CHAOS, STOCKPILE], backrow: [{ def: GIFTED, radiant: true }], health: 20 },
+      // A library card for the radiant face's "draw 1" (R275), so the draw takes no fatigue.
+      p1: { hand: [POCKET_CHAOS, STOCKPILE], library: [STOCKPILE], backrow: [{ def: GIFTED, radiant: true }], health: 20 },
       p2: { hand: [STOCKPILE] },
     });
     const chaos = g.card(POCKET_CHAOS);
@@ -152,6 +153,8 @@ describe("R214: a play's choices are the choices of the face it resolves with", 
     expect(resolvedFace(g, chaos)).toBe(true);
     g.expectHealth("p1", 30);
     expect(g.hand("p2").filter((card) => card.defId === POCKET_CHAOS)).toHaveLength(0);
+    // The radiant face's draw: the library's Stockpile joined the one in hand.
+    expect(g.hand("p1").filter((card) => card.defId === STOCKPILE)).toHaveLength(2);
   });
 
   it("R214 a 5pek Controller that Gifted Program will make Radiant switches the enemy units only when the play says so (§8 #48 radiant)", () => {
@@ -189,9 +192,9 @@ describe("R214: a play's choices are the choices of the face it resolves with", 
     expect(() => g.play(card, { zone: 2, targets: [...at(panther), hero] })).toThrow();
     g.play(card, { zone: 2, targets: [hero] });
 
-    // Radiant Twisted Sorcerer deals 6 to the target the player named for it: p2's hero, 30 → 24.
+    // Radiant Twisted Sorcerer deals 8 to the target the player named for it: p2's hero, 30 → 22.
     expect(resolvedFace(g, card)).toBe(true);
-    g.expectHealth("p2", 24);
+    g.expectHealth("p2", 22);
   });
 });
 

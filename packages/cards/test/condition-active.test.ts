@@ -294,7 +294,7 @@ describe("#68 Twisted Sorcerer lights up below 10 (R195, B7)", () => {
     s.expectStats(SPONGE, { health: 5, maxHealth: 9 });
   });
 
-  it("R195 B7: the radiant face glows below 10 and deals 12", () => {
+  it("R195 B7: the radiant face glows below 10 and deals 16", () => {
     const s = board({
       seed: "r195-068-radiant-low",
       p1: { hand: [{ def: SORCERER, radiant: true }], health: 9 },
@@ -303,10 +303,10 @@ describe("#68 Twisted Sorcerer lights up below 10 (R195, B7)", () => {
 
     expect(handGlows(s, sorcerer(s))).toBe(true);
     s.play(SORCERER, { targets: atSponge(s) });
-    s.expectStats(SPONGE, { health: 6, maxHealth: 18 });
+    s.expectStats(SPONGE, { health: 2, maxHealth: 18 });
   });
 
-  it("R195 B7: the radiant face at exactly 10 does not glow, and deals 6", () => {
+  it("R195 B7: the radiant face at exactly 10 does not glow, and deals 8", () => {
     const s = board({
       seed: "r195-068-radiant-ten",
       p1: { hand: [{ def: SORCERER, radiant: true }], health: 10 },
@@ -315,7 +315,7 @@ describe("#68 Twisted Sorcerer lights up below 10 (R195, B7)", () => {
 
     expect(handGlows(s, sorcerer(s))).toBe(false);
     s.play(SORCERER, { targets: atSponge(s) });
-    s.expectStats(SPONGE, { health: 3, maxHealth: 9 });
+    s.expectStats(SPONGE, { health: 1, maxHealth: 9 });
   });
 
   it("R195 B7: a low opponent does not light it, and the Cry deals 4", () => {

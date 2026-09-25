@@ -352,7 +352,7 @@ function pickerForNeed(need: PlayNeed, interaction: Interaction, view: PlayerVie
     }
     case "mode": {
       // The card being played is the one asking; its options read as that card's words, on the face
-      // it is played with (#24's radiant "Uses X+1").
+      // it is played with (#24's radiant 2X, 4X and X).
       const played = interaction.stage === "playing" ? cardRefFor(view, interaction.instanceId) : null;
       const source = played?.defId ?? undefined;
       const radiant = played?.radiant === true;
