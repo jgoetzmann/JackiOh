@@ -38,17 +38,21 @@ export const lesson: TutorialLesson = {
   ],
   aiDeck: [
     "core-041", // Sheepish
-    "core-005", // Stockpile
-    "core-004", // Gary the Gambler
-    "core-008", // Mr. Vanilla
+    "core-056", // Jilliax
+    "core-040", // Echoes of the Forgotten
+    "core-073", // Anti-oneshot Armor
     "core-030", // Archivist
     "core-077", // Professor Curvature
-    "core-037", // Gravedigger
+    "core-001", // Big D-fender
     "core-061", // Prejudiced Postdoc
     "core-012", // Duplicating Felinors
     "core-045", // Deft Duelist
     "core-032", // Prem Panther
     "core-006", // Mana Well
   ],
+  // Sheepish is the AI's only card that costs 1, so once it has three crystals it spends the last
+  // one setting the trap beside a 2-cost card (on its third turn, on the coach's line and on the
+  // autopilot's), rather than on a cheap unit or spell. No Gravedigger, which could hand the AI its
+  // fired trap back turn after turn.
   retryTip: "A face-down card could be a trap. Test it with a cheap unit before you play your best one.",
 };
