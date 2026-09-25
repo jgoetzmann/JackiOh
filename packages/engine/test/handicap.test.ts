@@ -33,12 +33,12 @@ import { healHero, healHeroUpTo } from "../src/damage";
 import { DRAW_COUNT_WORK, owedDrawCountOf } from "../src/draw";
 import { maxManaFor, refreshMana } from "../src/mana";
 import { openPrompt, resumeSelf } from "../src/prompts";
-import { beginGame, reduce } from "../src/reduce";
+import { beginGame, reduce, seatToAct } from "../src/reduce";
 import { fold, hashState } from "../src/replay";
 import { createRng } from "../src/rng";
 import type { CardScripts, Effect, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
-import { openingHandSize } from "../src/setup";
+import { mulliganPromptFor, openingHandSize } from "../src/setup";
 import {
   createGame,
   handicapOf,
@@ -222,7 +222,7 @@ function playRandom(
   const log: Action[] = [];
   while (state.result === null) {
     if (log.length > 5000) throw new Error(`${seed} did not finish`);
-    const player = state.pending?.playerId ?? state.active;
+    const player = seatToAct(state);
     const chosen = chooseAction(state, player, policy);
     if (chosen === null) throw new Error(`${seed}: no legal action for ${player}`);
     const action = { ...chosen, playerId: player, nonce: `hr${log.length}` } as Action;
@@ -565,15 +565,13 @@ describe("R182 the opening hand under a handicap", () => {
       const h = AI_DIFFICULTY[difficulty];
       let state = beginGame(game(`r182-p2-${difficulty}`, { p2: h })).state;
 
-      expect(state.pending?.kind).toBe("mulligan");
-      expect(state.pending?.playerId).toBe("p1");
-      expect(state.pending?.options, difficulty).toHaveLength(OPENING_DRAW[0] as number);
+      expect(mulliganPromptFor(state, "p1")?.kind).toBe("mulligan");
+      expect(mulliganPromptFor(state, "p1")?.options, difficulty).toHaveLength(OPENING_DRAW[0] as number);
       expect(state.players.p1.hand).toHaveLength(OPENING_DRAW[0] as number);
 
       state = act(state, { type: "mulligan", keep: state.players.p1.hand.map((c) => c.id), playerId: "p1" });
-      expect(state.pending?.kind).toBe("mulligan");
-      expect(state.pending?.playerId).toBe("p2");
-      expect(state.pending?.options, difficulty).toHaveLength(5);
+      expect(mulliganPromptFor(state, "p2")?.kind).toBe("mulligan");
+      expect(mulliganPromptFor(state, "p2")?.options, difficulty).toHaveLength(5);
       expect(state.players.p2.hand).toHaveLength(5);
       expect(state.players.p2.library).toHaveLength(h.deckSize - 5);
     }
@@ -584,23 +582,21 @@ describe("R182 the opening hand under a handicap", () => {
       const h = AI_DIFFICULTY[difficulty];
       let state = beginGame(game(`r182-p1-${difficulty}`, { p1: h })).state;
 
-      expect(state.pending?.playerId).toBe("p1");
-      expect(state.pending?.options, difficulty).toHaveLength(4);
+      expect(mulliganPromptFor(state, "p1")?.options, difficulty).toHaveLength(4);
       expect(state.players.p1.hand).toHaveLength(4);
       expect(state.players.p1.library).toHaveLength(h.deckSize - 4);
 
       state = act(state, { type: "mulligan", keep: state.players.p1.hand.map((c) => c.id), playerId: "p1" });
-      expect(state.pending?.playerId).toBe("p2");
-      expect(state.pending?.options, difficulty).toHaveLength(OPENING_DRAW[1] as number);
+      expect(mulliganPromptFor(state, "p2")?.options, difficulty).toHaveLength(OPENING_DRAW[1] as number);
       expect(state.players.p2.hand).toHaveLength(OPENING_DRAW[1] as number);
     }
   });
 
   it("R182 B4: an Easy seat opens exactly as a human does", () => {
     let state = beginGame(game("r182-easy", { p1: AI_DIFFICULTY.easy, p2: AI_DIFFICULTY.easy })).state;
-    expect(state.pending?.options).toHaveLength(OPENING_DRAW[0] as number);
+    expect(mulliganPromptFor(state, "p1")?.options).toHaveLength(OPENING_DRAW[0] as number);
     state = act(state, { type: "mulligan", keep: state.players.p1.hand.map((c) => c.id), playerId: "p1" });
-    expect(state.pending?.options).toHaveLength(OPENING_DRAW[1] as number);
+    expect(mulliganPromptFor(state, "p2")?.options).toHaveLength(OPENING_DRAW[1] as number);
   });
 
   it("R182 B4: a Quickdraw card replaces one of the Medium seat's five opening draws", () => {
@@ -613,7 +609,7 @@ describe("R182 the opening hand under a handicap", () => {
     expect(hand).toHaveLength(5);
     expect(hand).toContain(goingLong.id);
     expect(hand.filter((defId) => defId !== goingLong.id)).toHaveLength(4);
-    expect(state.pending?.options).toHaveLength(5);
+    expect(mulliganPromptFor(state, "p2")?.options).toHaveLength(5);
     expect(state.players.p2.library).toHaveLength(h.deckSize - 5);
   });
 

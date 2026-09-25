@@ -126,7 +126,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `HUMAN_HANDICAP` | `{ deckSize: DECK_SIZE, manaBonus: 0, manaCap: MAX_MANA, extraOpeningCards: 0, extraDrawsPerTurn: 0 }` | §9.9, R180 |
 | `AI_DIFFICULTY` | easy = `HUMAN_HANDICAP`; medium `{ 25, +1, cap 5, +1 opening, +0 draws }`; hard `{ 30, +1, cap 7, +1 opening, +1 draw }` (fields in `Handicap` order) | §9.9, R180–R184 |
 
-Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
+Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `MULLIGAN_CLOCK_SECONDS` 45 (R268), `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
 
 ## 3. Milestones
 
@@ -150,7 +150,7 @@ Acceptance:
 `reduce(state, action, rng)` returns `{ state, events, error? }`. Action union per §10.2 with `playerId` and `nonce`. `legalActions(state, playerId)` enumerates every action that would not error, including every legal `answer` to an open prompt. Nonce dedupe: a repeated nonce returns the previous result without re-applying.
 Acceptance:
 - An action from the non-active player (other than `answer` to their own prompt, `concede`, `answerDraw`) returns `error` and an unchanged state (deep-equal).
-- An action other than `answer`, `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while `state.pending` is non-null errors.
+- An action other than `answer`, `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while `state.pending` is non-null errors, and so does one other than `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while the mulligans are open (R265).
 - Every action in `legalActions` succeeds; property test over 200 random states.
 - Replaying the same nonce twice yields identical state and no duplicate events.
 
@@ -164,13 +164,14 @@ Acceptance:
 - Stack: pushing onto an occupied zone makes the pushed card top; only the top card appears in `activeUnits(side)`; popping the top resumes the card beneath with its stored damage.
 
 **M1-T5 Setup and mulligan.** Files: `engine/src/setup.ts`.
-Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); mulligan prompt per player; returned cards redraw first, then shuffle back (R9); The Coin to the seat going second once both mulligans are answered (`OPENING_COINS`, R244); start-of-game hooks (Heroic Power).
+Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); both players' mulligan prompts open at once, each answer sealed until both are in, then both resolve in seat order (R265–R267); returned cards redraw first, then shuffle back (R9); The Coin to the seat going second once both mulligans are answered (`OPENING_COINS`, R244); start-of-game hooks (Heroic Power).
 Acceptance:
 - P1 hand = 3, P2 hand = 4 after setup; libraries 17 and 16.
 - Once both mulligans are answered P2 holds its 4 cards plus The Coin as its last card, and P1 none; a handicapped seat going second gets it too; it is not a draw (R244).
 - A deck with two Quickdraw cards puts both in the opening hand and draws one fewer random card... (exactly `OPENING_DRAW[seat] − quickdrawCount` random draws, minimum 0).
 - Mulligan returning 2 cards: the 2 replacements are not the returned cards (property test over 100 seeds).
 - Heroic Power's power is chosen during setup, deterministically from the seed, including a copy the mulligan returned to the library (R43).
+- Either answer order deals the same game (the same state hash, and both logs fold to it); the other player's view is the same whatever a sealed answer kept; a `timeout` while the mulligans are open keeps that player's whole hand (R265, R266, R268).
 
 **M1-T6 Turn loop and mana.** Files: `engine/src/turn.ts`, `engine/src/mana.ts`, `engine/src/modifiers.ts`.
 Phases per §2.2 and R62. Start-of-turn: refresh mana (`min(turnsStarted, MAX_MANA) + permMod + nextTurnMod`, floor 0), delayed effects due, start-of-turn triggers, then draw. End-of-turn: end-of-turn triggers (Combo-Index and "add back to hand" spells included), the Bread and Butter / Intern Stimmy trap window, delayed effects due, cleanup expiring "this turn" modifiers, turn-cap check. Cost calculation per R65: `effectiveCost(instance, player)` starts from `costOverride` or the printed cost, adds instance `costMod`, then player discounts (next-spell, this-turn), then Curvature, floors at 0; X-cost cards cost exactly X. X and embiggen selection are part of the `play` action and stored on the instance.
@@ -508,7 +509,7 @@ Acceptance: two WebSocket clients complete a scripted game; killing the actor mi
 ### M7 — Clock, disconnects, results, matchmaking
 
 **M7-T1 Turn clock and grace.** Files: `server/src/match/actor.ts` (alarm), `web/src/game/Clock.tsx`.
-Per-turn timer stored on the match and shown to both; expiry → server `timeout` action (auto-answer the open prompts of the player whose clock expired via `aiPolicy`, and end the turn only when that is the active player; a prompt held by the non-active player runs its own `PROMPT_CLOCK_SECONDS` and pauses the turn clock, R79); disconnect grace stored on the match; grace expiry → `disconnectExpired` action → concede; hard wall-clock ceiling with a reaper that resolves stuck matches and clears both players' in-match flags.
+Per-turn timer stored on the match and shown to both; expiry → server `timeout` action (auto-answer the open prompts of the player whose clock expired via `aiPolicy`, and end the turn only when that is the active player; a prompt held by the non-active player runs its own `PROMPT_CLOCK_SECONDS` and pauses the turn clock, R79; the two mulligans share one `MULLIGAN_CLOCK_SECONDS` deadline, and its expiry times out each player still owing one, R268); disconnect grace stored on the match; grace expiry → `disconnectExpired` action → concede; hard wall-clock ceiling with a reaper that resolves stuck matches and clears both players' in-match flags.
 Acceptance: fake-timer test drives a timeout; a trap prompt held by the non-active player pauses the turn clock and its own expiry answers only that prompt (R79); a disconnected player who returns inside grace resumes with the same view; past grace they have lost and both can queue again.
 
 **M7-T2 Results and rating.** Files: `server/src/api/results.ts`.
@@ -544,6 +545,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `17-card-showcase-and-hovers.cy.ts` | Spec 01's and spec 03's seeded hotseat games and an Easy `/practice` game at normal pacing (§10.8, §10.10, R97, R202, R227); no server | the opponent's played card is held up for about a second, click-through, and never the viewer's own; a trap set face down is held up as a back that names nothing; a log line naming a card opens its face on hover and in a sheet on a click; a graveyard shows its count and cards newest first on hover and every card in a dialog on a click, on both seats, and the library is not browsable; the AI takes no step while its played card is held up |
 | `18-deck-workshop.cy.ts` | Saved decks, deck codes and trios in `/decks` (R250–R252, R255, R256) | a deck saves while incomplete and survives a reload; an edit made while the server is unreachable is kept on the device and saved once it answers; a copied code imports as a new deck and a damaged one is refused with a sentence; a trio marks every card two of its decks share with the other deck's name, and is ready once they share none; an eleventh deck cannot be made |
 | `19-queue-modes-and-series.cy.ts` | The three queue modes, and a Best-of-3 series between the browser and `cy.task("wsPlayer")` (R257–R264) | Best of 1 plays the chosen deck; All Random needs no saved deck; a series pick is hidden until both have picked; each game starts on the picked decks; a conceded game loses the game, not the series; the series ends at two wins and moves the rating once; a room refuses a joiner in another mode |
+| `20-mulligan-concede-draw.cy.ts` | A room-code match, seat 1 in the browser and seat 2 driven via `cy.task("wsPlayer")`, with spec 06's decks (§2.1, §2.5, R36, R265–R269); one match per case | both seats mulligan at once, in either order: the first to answer shows as ready on the other seat while its picker stays open, the one who answered waits with its hand marked, and neither seat is sent the other's kept cards; the one mulligan clock shows on both seats; Concede opens a confirmation, where Keep playing, Escape and a click outside keep the game going and only Concede ends it as a loss; a draw offer shows as waiting on the offerer's side and as Accept and Decline on the other, with an urgent notify sound, a decline is shown to both and blocks another offer that turn, and an accept ends the game drawn by agreement |
 
 **M8 gate.** All seventeen specs green in CI on Chrome and Electron.
 

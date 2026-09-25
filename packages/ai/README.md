@@ -31,6 +31,12 @@ decision under the same rng, and no simulation can foresee a real draw or a real
 
 The AI never concedes and never offers a draw, and it declines every draw offer at once (R188).
 
+The mulligan is its own step (R265): both seats owe one at once, so `aiToAct(state, seat)` is true as
+soon as the mulligans open, whether or not the human has answered, and `decide` answers it at once
+with `mulliganKeep`. The human's answer is sealed until both are in, and `redact` leaves the AI the
+same state whatever it kept: that it has answered, and nothing else (R266). A harness that plays
+both seats asks the engine's `seatToAct(state)` which one the game waits on first.
+
 The difficulty tiers change the AI seat's resources only (`AI_DIFFICULTY` in the engine's
 `config.ts`, R180). Nothing in this package reads a difficulty or a handicap to decide what to do.
 The tutorial's opponent (SPEC §9.10) is the same AI on one more handicap, `AI_TUTORIAL` (R290): a

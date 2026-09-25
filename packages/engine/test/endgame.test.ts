@@ -2,6 +2,7 @@ import type { Action, ActionInput } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { DECK_SIZE, DRAW_OFFER_BLOCK_TURNS, TURN_CAP_PLAYER_TURNS } from "../src/config";
 import { beginGame, legalActions, reduce } from "../src/reduce";
+import { mulliganOwed } from "../src/setup";
 import { newInstance, type GameState } from "../src/state";
 import { vanillaDeck } from "./fixtures/catalog";
 import { eventsOfType, newGame } from "./fixtures/harness";
@@ -137,12 +138,12 @@ describe("ending the game (M1-T8)", () => {
 
   it("a timeout answers the open prompt and only ends the turn of the player who ran out (R79)", () => {
     const withPrompt = beginGame(newGame("timeout")).state;
-    expect(withPrompt.pending?.playerId).toBe("p1");
+    expect(mulliganOwed(withPrompt)).toEqual(["p1", "p2"]);
 
     const answered = reduce(withPrompt, { type: "timeout", playerId: "p1", nonce: "to1" });
     expect(answered.error).toBeUndefined();
-    // p1's mulligan is answered, so the prompt moves on to p2 rather than the turn ending.
-    expect(answered.state.pending?.playerId).toBe("p2");
+    // p1's mulligan is answered (R268), so p2's is all that is left rather than the turn ending.
+    expect(mulliganOwed(answered.state)).toEqual(["p2"]);
     expect(answered.state.turn).toBe(0);
 
     const mainPhase = playing("timeout-main");
@@ -154,9 +155,10 @@ describe("ending the game (M1-T8)", () => {
   it("lets a prompt-blocked game still be conceded or timed out (BUILD M1-T3)", () => {
     const withPrompt = beginGame(newGame("blocked")).state;
     expect(reduce(withPrompt, { type: "concede", playerId: "p2", nonce: "b1" }).error).toBeUndefined();
+    expect(reduce(withPrompt, { type: "timeout", playerId: "p2", nonce: "b3" }).error).toBeUndefined();
     expect(
       reduce(withPrompt, { type: "play", instanceId: "c1", playerId: "p1", nonce: "b2" }).error,
-    ).toMatch(/a prompt is open/);
+    ).toMatch(/the mulligan is open/);
   });
 
   it("disconnect expiry is a loss (R79)", () => {

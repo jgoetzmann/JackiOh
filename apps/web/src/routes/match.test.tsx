@@ -12,7 +12,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 import type { ActionBody } from "@jackioh/shared";
 
-import { SERIES_MAX_GAMES, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
+import { MULLIGAN_CLOCK_MS, SERIES_MAX_GAMES, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
 
 import type { SocketLike } from "../game/net.ts";
 import { baseView } from "../test/fixtures.ts";
@@ -311,5 +311,69 @@ describe("withoutToken", () => {
 
   it("returns an unparseable value unchanged rather than throwing", () => {
     expect(withoutToken("not a url")).toBe("not a url");
+  });
+});
+
+describe("R268 the mulligan clock on the match bar", () => {
+  it("shows the one mulligan countdown on both sides, to the seat still choosing and to the one that is ready", () => {
+    for (const mulligan of [
+      { youReady: false, opponentReady: false },
+      { youReady: true, opponentReady: false, kept: [] },
+    ]) {
+      render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+      const view = baseView({ viewer: "p1", active: "p1", turn: 0, phase: "mulligan", clockMs: 30_000, mulligan });
+      act(() => {
+        live().onopen?.({});
+        live().onmessage?.({ data: JSON.stringify({ type: "view", view }) });
+      });
+      for (const id of ["clock-you", "clock-opponent"]) {
+        const line = screen.getByTestId(id);
+        expect(line, id).toHaveAttribute("data-kind", "mulligan");
+        expect(line, id).toHaveAttribute("data-total-ms", String(MULLIGAN_CLOCK_MS));
+        expect(line, id).toHaveTextContent("30s");
+      }
+      cleanup();
+      sockets = [];
+    }
+  });
+
+  it("counts the mulligan window down between clock frames, off the frame's own deadline", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+    try {
+      render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+      const now = 1_000_000;
+      const view = baseView({ viewer: "p2", active: "p1", turn: 0, phase: "mulligan", clockMs: MULLIGAN_CLOCK_MS, mulligan: { youReady: true, opponentReady: false, kept: [] } });
+      act(() => {
+        live().onopen?.({});
+        live().onmessage?.({ data: JSON.stringify({ type: "view", view }) });
+        live().onmessage?.({
+          data: JSON.stringify({
+            type: "clock",
+            now,
+            clocks: { turnDeadline: null, promptDeadline: now + MULLIGAN_CLOCK_MS, graceDeadline: { p1: null, p2: null }, ceilingAt: now + 3_600_000 },
+          }),
+        });
+      });
+      expect(screen.getByTestId("clock-you")).toHaveTextContent(`${String(MULLIGAN_CLOCK_MS / 1000)}s`);
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      for (const id of ["clock-you", "clock-opponent"]) {
+        expect(screen.getByTestId(id), id).toHaveTextContent(`${String(MULLIGAN_CLOCK_MS / 1000 - 10)}s`);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("once the window closes, the clock is the active player's turn clock again", () => {
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    act(() => {
+      live().onopen?.({});
+      live().onmessage?.({ data: JSON.stringify({ type: "view", view: baseView({ viewer: "p1", active: "p2", clockMs: 60_000 }) }) });
+    });
+    expect(screen.getByTestId("clock-you")).toHaveTextContent("—");
+    expect(screen.getByTestId("clock-opponent")).toHaveTextContent("60s");
+    expect(screen.getByTestId("clock-opponent")).not.toHaveAttribute("data-kind", "mulligan");
   });
 });

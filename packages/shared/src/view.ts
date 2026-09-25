@@ -162,6 +162,14 @@ export type PendingOption = {
   lane?: number;
 };
 
+/** R265, R266: the concurrent mulligan as one seat may see it. */
+export type MulliganView = {
+  youReady: boolean;
+  opponentReady: boolean;
+  /** The ids the viewer kept, once it has answered (R266). */
+  kept?: string[];
+};
+
 export type PlayerView = {
   viewer: PlayerId;
   turn: number;
@@ -179,6 +187,18 @@ export type PlayerView = {
   result: { winner: PlayerId | "draw"; reason: GameOverReason } | null;
   /** Milliseconds left on the turn clock, when the server is running one (R79). */
   clockMs: number | null;
+  /**
+   * §2.1 step 3, R265, R266: while both mulligans are open, whether each seat has answered, and the
+   * ids the viewer itself kept once it has. Never the opponent's choice or cards (§9.1): that the
+   * opponent is ready is all it shows. Absent outside that window.
+   */
+  mulligan?: MulliganView;
+  /**
+   * §2.5, R36, R269: the draw offer standing right now — made by the active player this turn and
+   * not yet answered — on both seats, since the offer was public (`drawOffered`). Absent when none;
+   * it disappears when the offer is answered or lapses at the end of the offerer's turn.
+   */
+  drawOffer?: { by: PlayerId };
   /**
    * R243: the definitions of the match-made cards this view names — a Fuse's (R77), a crafted
    * card's (R102, R179) — by id. They exist only in the match, so no catalog a client holds has

@@ -53,6 +53,7 @@ import {
   type Script,
   type CardInstance,
   type EngineSink,
+  mulliganOwed,
 } from "@jackioh/engine";
 import { describe, expect, it } from "vitest";
 import { scenario, type Scenario } from "./_harness";
@@ -1139,13 +1140,12 @@ describe("R224, R97: a card the mulligan returned, while setup waits", () => {
     let state = must(begun, "a seed whose opening draw casts the asking card");
     const first = must(state.pending, "p1's cast question");
     state = actAs(state, "p1", { type: "answer", choiceId: first.id, selection: [{ pick: "mode", option: "ok" }] });
-    expect(state.pending?.kind).toBe("mulligan");
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
     expect(state.players.p2.hand.length).toBeGreaterThan(0);
 
-    // p1 keeps its hand; p2's mulligan opens.
+    // p1 keeps its hand, sealed until p2 answers (R265).
     state = actAs(state, "p1", { type: "mulligan", keep: state.players.p1.hand.map((card) => card.id) });
-    expect(state.pending?.kind).toBe("mulligan");
-    expect(state.pending?.playerId).toBe("p2");
+    expect(mulliganOwed(state)).toEqual(["p2"]);
 
     // p2 returns one card, and its replacement draw is an asking cast, so setup waits (R224) with
     // the returned card in no pile until it goes back.

@@ -368,7 +368,8 @@ describe("05 reconnect — a networked game reloaded mid-prompt", () => {
       visitAs(seatOne.token, routes.match(matchId));
     });
 
-    // --- R9: seat 1 mulligans first (setup.ts opens PLAYER_IDS[0]'s choice), then seat 2 ------
+    // --- R9, R265: both mulligans open with the deal; seat 1 answers in the browser, seat 2 over
+    // the socket. Either order would do (spec 20 drives both); this one keeps the browser's first.
     cy.keepMulligans();
     seatTwoKeepsMulligan();
     waitForMyTurn();

@@ -294,10 +294,11 @@ describe("B14 the card families and the entrance keep the recipe contract", () =
       runRecipe(`spell {timbre: ${timbre}}`, SFX.spell.recipe, SFX.spell.durationMs, { timbre }),
     ]),
     runRecipe("entrance {mythic: true}", SFX.entrance.recipe, SFX.entrance.durationMs, { mythic: true }),
+    runRecipe("notify {urgent: true}", SFX.notify.recipe, SFX.notify.durationMs, { urgent: true }),
   ];
 
-  it("covers every family on summon and spell, and the Mythic entrance", () => {
-    expect(runs).toHaveLength(SFX_TIMBRES.length * 3 + 1);
+  it("covers every family on summon and spell, the Mythic entrance and the urgent notify", () => {
+    expect(runs).toHaveLength(SFX_TIMBRES.length * 3 + 2);
   });
 
   it("no family breaks a clause of the contract", () => {
@@ -317,6 +318,12 @@ describe("B14 the card families and the entrance keep the recipe contract", () =
       const coloured = runs.find((run) => run.label === `summon {timbre: ${timbre}}`);
       expect(coloured?.made.length ?? 0, timbre).toBeGreaterThan(plain.made.length);
     }
+  });
+
+  it("an urgent notify (a draw offer to answer) is not the routine one", () => {
+    const plain = runRecipe("notify {}", SFX.notify.recipe, SFX.notify.durationMs, {});
+    const urgent = runs.find((run) => run.label === "notify {urgent: true}");
+    expect(urgent?.made.length ?? 0).toBeGreaterThan(plain.made.length);
   });
 
   it("a Mythic entrance is not a Legendary one", () => {

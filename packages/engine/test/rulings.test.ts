@@ -179,6 +179,10 @@ const CARDS_KYS_TRIAL_TEST = "../../cards/test/082-kys-trial.test.ts";
 const WEB_PROMPT_CARDS_TEST = "../../../apps/web/src/game/PromptCards.test.tsx";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
+/** The match actor's and the clock's own tests, which prove the concurrent mulligan's server half. */
+const SERVER_ACTOR_TEST = "../../../apps/server/test/match/actor.test.ts";
+const SERVER_CLOCK_TEST = "../../../apps/server/test/match/clock.test.ts";
+const SERVER_RECOVERY_TEST = "../../../apps/server/test/match/recovery.test.ts";
 const AI_SHADOW_BAN_TEST = "../../ai/test/shadowBan.test.ts";
 const AI_DECIDE_TEST = "../../ai/test/decide.test.ts";
 const WEB_PRACTICE_CORE_TEST = "../../../apps/web/src/practice/core.test.ts";
@@ -2147,6 +2151,49 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // play.test.tsx "R264 …" (a join in the wrong mode switches the lobby to the room's).
   it("R264 makes a room in its host's mode and refuses a joiner in another", () => {
     provenIn(264, SERVER_ROOMS_TEST, SERVER_STORE_CONTRACT, WEB_PLAY_TEST);
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R265 …": over 60 seeds, and again with cast-on-draw
+  // replacements and a handicapped seat, the two answer orders deal one game (the same hash), both
+  // orders' logs fold to it, and a state waiting on one answer survives JSON and goes on the same;
+  // by actor.test.ts "R265 …": the actor takes both seats' answers in either order; and by
+  // recovery.test.ts "R265 …": a fold of either order's log rebuilds the same views.
+  it("R265 opens both players' mulligans at once and resolves them in seat order once both are in", () => {
+    provenIn(265, "mulligan-concurrent.test.ts", SERVER_ACTOR_TEST, SERVER_RECOVERY_TEST);
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R266 …": the other seat's view is the same whatever was
+  // kept, and says only that the answer is in; and by observe.test.ts "R266 …": `redact` leaves the
+  // AI the same state whatever the human kept; and by actor.test.ts "R266 …": no frame to the other
+  // seat carries it.
+  it("R266 seals a mulligan answer until both are in, and shows the other player only that it is in", () => {
+    provenIn(266, "mulligan-concurrent.test.ts", AI_OBSERVE_TEST, SERVER_ACTOR_TEST);
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R267 …": a fixture cast-on-draw card in p1's replacement
+  // draw discards one of p2's offered cards and gives p2 a new one before p2's sealed answer resolves.
+  it("R267 reads a sealed mulligan answer against the hand it resolves against", () => {
+    provenIn(267, "mulligan-concurrent.test.ts");
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R268 …": the engine's `timeout` keeps the whole hand, only
+  // the timing-out seat's, with no rng draw; clock.test.ts and actor.test.ts "R268 …" prove the one
+  // shared deadline, never re-armed, whose expiry times out every seat still owing.
+  it("R268 runs one mulligan clock for both players, and keeps the hand of a player it times out", () => {
+    provenIn(268, "mulligan-concurrent.test.ts", SERVER_CLOCK_TEST, SERVER_ACTOR_TEST);
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R269 …": the offer is on both views until it is answered
+  // or its offerer's turn ends, a late answer is refused, and a lapsed offer blocks nothing; and by
+  // actor.test.ts "R269 …": through the actor, the accepted draw is rated 0.5 each.
+  it("R269 lets a draw offer stand until it is answered or its offerer's turn ends", () => {
+    provenIn(269, "mulligan-concurrent.test.ts", SERVER_ACTOR_TEST);
+  });
+
+  // Proved by actor.test.ts "R270 …": a client frame carrying the nonce the mulligan expiry is about
+  // to mint is refused as malformed, and the expiry still times out the seat left.
+  it("R270 refuses a client nonce with the server's own prefix", () => {
+    provenIn(270, SERVER_ACTOR_TEST);
   });
 
   // Proved by handicap.test.ts "R290 …" (AI_TUTORIAL's numbers, `heroHealth` stored only off 30 and

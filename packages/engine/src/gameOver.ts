@@ -9,12 +9,15 @@ import type { EngineSink } from "./resolve";
  * a Discover the other seat conceded under (R211), a Death hook's question the state check that found
  * a hero at 0 left standing (R156) — can never be answered: `legalActions` offers nothing once there
  * is a result, and a prompt left in `state.pending` would be shown to a seat that can do nothing with
- * it (§10.8). It is closed with the game, and `gameOver` is the last event of the action.
+ * it (§10.8). It is closed with the game, and `gameOver` is the last event of the action. So are
+ * the mulligans, when a player concedes or a clock ends the game while they are open (R265): a
+ * mulligan no one can answer is no longer open.
  */
 export function endGame(sink: EngineSink, winner: PlayerId | "draw", reason: GameOverReason): void {
   const state = sink.state;
   state.result = { winner, reason };
   state.phase = "over";
   state.pending = null;
+  delete state.mulligan;
   sink.events.push({ type: "gameOver", winner, reason });
 }

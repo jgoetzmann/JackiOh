@@ -3,6 +3,7 @@ import type { CardDef } from "@jackioh/shared";
 import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { COIN_DEF_ID, DECK_SIZE, OPENING_COINS, OPENING_DRAW } from "../src/config";
 import { beginGame, reduce } from "../src/reduce";
+import { mulliganOwed, mulliganPromptFor } from "../src/setup";
 import { createGame, type GameState } from "../src/state";
 import { vanillaDeck } from "./fixtures/catalog";
 import { newGame, setupCatalog } from "./fixtures/harness";
@@ -13,15 +14,22 @@ function started(seed = "setup", decks?: [string[], string[]]): GameState {
 }
 
 describe("setup (M1-T5)", () => {
-  it("deals 3 and 4 from shuffled libraries and opens the first mulligan", () => {
+  it("deals 3 and 4 from shuffled libraries and opens both mulligans at once (R265)", () => {
     const state = started();
     expect(state.players.p1.hand).toHaveLength(OPENING_DRAW[0] as number);
     expect(state.players.p2.hand).toHaveLength(OPENING_DRAW[1] as number);
     expect(state.players.p1.library).toHaveLength(DECK_SIZE - 3);
     expect(state.players.p2.library).toHaveLength(DECK_SIZE - 4);
     expect(state.phase).toBe("mulligan");
-    expect(state.pending?.kind).toBe("mulligan");
-    expect(state.pending?.playerId).toBe("p1");
+    // §10.1's one prompt stays free: the two mulligans are their own step.
+    expect(state.pending).toBeNull();
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
+    for (const player of ["p1", "p2"] as const) {
+      const prompt = mulliganPromptFor(state, player);
+      expect(prompt?.kind).toBe("mulligan");
+      expect(prompt?.playerId).toBe(player);
+      expect(prompt?.options.map((option) => option.key)).toEqual(state.players[player].hand.map((c) => c.id));
+    }
   });
 
   it("shuffles: the opening hand is not the top of the deck list on every seed", () => {
@@ -55,24 +63,40 @@ describe("setup (M1-T5)", () => {
   it("R9: replacements are drawn before the returned cards are shuffled back", () => {
     for (let i = 0; i < 100; i += 1) {
       const state = started(`mull-${i}`);
-      const hand = state.players.p1.hand;
+      // p2's mulligan, so turn 1's draw (p1's) does not touch the hand under test.
+      const hand = state.players.p2.hand;
       const keep = [hand[0]?.id as string];
       const returned = hand.slice(1).map((c) => c.id);
 
-      const after = reduce(state, { type: "mulligan", keep, playerId: "p1", nonce: `n${i}` });
+      const sealed = reduce(state, { type: "mulligan", keep, playerId: "p2", nonce: `n${i}` });
+      expect(sealed.error).toBeUndefined();
+      const after = reduce(sealed.state, {
+        type: "mulligan",
+        keep: state.players.p1.hand.map((c) => c.id),
+        playerId: "p1",
+        nonce: `k${i}`,
+      });
       expect(after.error).toBeUndefined();
 
-      const newHand = after.state.players.p1.hand.map((c) => c.id);
+      const newHand = after.state.players.p2.hand.map((c) => c.id);
       expect(newHand).toHaveLength(hand.length);
       expect(newHand).toContain(keep[0]);
       for (const id of returned) expect(newHand).not.toContain(id);
       for (const id of returned) {
-        expect(after.state.players.p1.library.some((c) => c.id === id)).toBe(true);
+        expect(after.state.players.p2.library.some((c) => c.id === id)).toBe(true);
       }
+      // R9's order, read off the events: every replacement is drawn before the first shuffle-back.
+      const own = after.events.filter(
+        (event) => (event.type === "drawn" || event.type === "shuffledIn") && event.player === "p2",
+      );
+      const firstShuffle = own.findIndex((event) => event.type === "shuffledIn");
+      expect(own.slice(0, firstShuffle).every((event) => event.type === "drawn")).toBe(true);
+      expect(own.slice(firstShuffle).every((event) => event.type === "shuffledIn")).toBe(true);
+      expect(firstShuffle).toBe(returned.length);
     }
   });
 
-  it("moves on to the opponent's mulligan, then starts turn 1 with a draw (R10)", () => {
+  it("waits for both mulligans, then starts turn 1 with a draw (R10, R265)", () => {
     const state = started("flow");
     const first = reduce(state, {
       type: "mulligan",
@@ -80,7 +104,11 @@ describe("setup (M1-T5)", () => {
       playerId: "p1",
       nonce: "m1",
     }).state;
-    expect(first.pending?.playerId).toBe("p2");
+    // p1's answer is sealed: nothing moves until p2 has answered too (R266).
+    expect(first.pending).toBeNull();
+    expect(first.phase).toBe("mulligan");
+    expect(mulliganOwed(first)).toEqual(["p2"]);
+    expect(first.players.p1.hand).toEqual(state.players.p1.hand);
 
     const second = reduce(first, {
       type: "mulligan",

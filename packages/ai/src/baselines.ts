@@ -3,7 +3,7 @@
 // greedy player that sees exactly what the AI sees (R185) and looks one action ahead.
 
 import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { subsystems, type GameState, type Rng } from "@jackioh/engine";
+import { mulliganPromptFor, subsystems, type GameState, type Rng } from "@jackioh/engine";
 import { candidateActions } from "./candidates";
 import { AI_SEARCH, GREEDY_EVAL, GREEDY_MULLIGAN } from "./config";
 import { determinize } from "./determinize";
@@ -28,7 +28,7 @@ export function greedyAction(state: GameState, seat: PlayerId, rng: Rng): Action
 
   const pub = redact(state, seat);
   if (unansweredDrawOffer(pub, seat)) return { type: "answerDraw", accept: false };
-  if (pub.pending !== null && pub.pending.playerId === seat && pub.pending.kind === "mulligan") {
+  if (pub.pending === null && mulliganPromptFor(pub, seat) !== null) {
     return { type: "mulligan", keep: mulliganKeep(pub, seat, GREEDY_MULLIGAN.keepMaxCost) };
   }
 

@@ -15,6 +15,7 @@ import {
   MATCHMAKER_SWEEP_INTERVAL_SECONDS,
   MATCH_ACTIONS_PER_SECOND,
   MATCH_CEILING_MINUTES,
+  MULLIGAN_CLOCK_SECONDS,
   PROMPT_CLOCK_SECONDS,
   RATING_WINDOW_START,
   RATING_WINDOW_UNCAPPED_AFTER_SECONDS,
@@ -32,6 +33,7 @@ export function defaultConfig(): ServerConfig {
   return {
     turnClockSeconds: TURN_CLOCK_SECONDS,
     promptClockSeconds: PROMPT_CLOCK_SECONDS,
+    mulliganClockSeconds: MULLIGAN_CLOCK_SECONDS,
     disconnectGraceSeconds: DISCONNECT_GRACE_SECONDS,
     matchCeilingMinutes: MATCH_CEILING_MINUTES,
     roomCodeLength: ROOM_CODE_LENGTH,

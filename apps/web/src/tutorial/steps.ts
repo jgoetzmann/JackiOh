@@ -35,11 +35,14 @@ export function aiTurn(view: PlayerView): boolean {
 }
 
 /**
- * A mulligan prompt is open for the human (§2.1 step 3). The one place the tutorial asks, so a
- * change to how the mulligan is offered is one change here.
+ * The human still owes their mulligan (§2.1 step 3). Both seats mulligan at once (R265): the view's
+ * `mulligan` says whether the human is ready, and the human's own prompt is their picker. The one
+ * place the tutorial asks, so a change to how the mulligan is offered is one change here.
  */
 export function mulliganOpen(view: PlayerView): boolean {
-  return view.pending !== null && view.pending.forYou && view.pending.kind === "mulligan";
+  const prompt = view.pending !== null && view.pending.forYou && view.pending.kind === "mulligan";
+  if (view.mulligan === undefined) return prompt;
+  return !view.mulligan.youReady && prompt;
 }
 
 /** A prompt of this kind (any kind when omitted) is open for the human. */

@@ -57,6 +57,7 @@ export function enginePort(): EnginePort {
     viewFor: (state: unknown, player: unknown) => unknown;
     fold: (args: unknown) => { state: unknown; errors: { nonce: string; error: string }[] };
     hashState: (state: unknown) => string;
+    mulliganOwed: (state: unknown) => MatchSnapshot["mulliganOwed"];
   };
 
   return {
@@ -74,6 +75,8 @@ export function enginePort(): EnginePort {
         turn: raw.turn,
         active: raw.active,
         pendingFor: raw.pending === null ? null : raw.pending.playerId,
+        // R265: the engine's own answer to "who still owes a mulligan", not a read of its fields.
+        mulliganOwed: api.mulliganOwed(state),
         phase: raw.phase,
         result: raw.result,
       };

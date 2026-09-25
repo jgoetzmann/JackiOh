@@ -19,6 +19,7 @@ import {
   reduce,
   subsystems,
   type GameState,
+  seatToAct,
 } from "@jackioh/engine";
 import {
   AI_GATE_BUDGET,
@@ -254,15 +255,18 @@ describe("the baselines (B27)", () => {
   it("B27: randomAction returns null for a seat that owes nothing", () => {
     const humansTurn = scenario({ seed: "match-random-null", active: HUMAN, turn: 10, p2: { hand: ["core-011"] } }).state;
     expect(randomAction(humansTurn, AI, createRng("match-random-null"))).toBeNull();
+    // R265: both seats owe a mulligan at once, so p2 owes nothing only once it has answered its own.
     const dealt = dealtGame("match-random-null-mulligan");
-    expect(randomAction(dealt, "p2", createRng("match-random-null-mulligan"))).toBeNull();
+    expect(randomAction(dealt, "p2", createRng("match-random-null-mulligan"))?.type).toBe("mulligan");
+    const answered = act(dealt, "p2", { type: "mulligan", keep: [] });
+    expect(randomAction(answered, "p2", createRng("match-random-null-mulligan"))).toBeNull();
   });
 
   it("B27: greedyAction is always legal and never concedes, offers or accepts a draw, across real states", { timeout: 120_000 }, () => {
     const states = randomPolicyStates("match-greedy-real", 7, 500).filter((state) => state.result === null);
     expect(states.length).toBeGreaterThan(5);
     states.forEach((state, at) => {
-      const seat = state.pending?.playerId ?? state.active;
+      const seat = seatToAct(state);
       const chosen = greedyAction(state, seat, createRng(`match-greedy-real:${at}`));
       expect(chosen, `state ${at}`).not.toBeNull();
       const action = chosen as ActionBody;

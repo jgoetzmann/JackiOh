@@ -40,6 +40,7 @@ import type {
   GameEvent,
   HeroPowerView,
   ModifierView,
+  MulliganView,
   PendingOption,
   PendingView,
   PlayerId,
@@ -63,12 +64,14 @@ import {
   type GameState,
   type Pile,
   type PlayerModifier,
+  type PendingChoice,
   type PlayerState,
   type PromptOption,
 } from "./state";
 import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
-import { returnedAwaitingShuffle } from "./setup";
+import { mulliganPromptFor, returnedAwaitingShuffle } from "./setup";
+import { standingDrawOffer } from "./turn";
 import { isReserved, slotsOf } from "./zones";
 
 /** §10.8, §10.10: how many of the most recent events the view carries for animation. */
@@ -485,8 +488,12 @@ function optionView(state: GameState, viewer: PlayerId, option: PromptOption): P
 /** §10.6, R81: the other player learns that a prompt is open and whose it is, never its options. */
 function pendingView(state: GameState, viewer: PlayerId): PendingView | null {
   const pending = state.pending;
-  if (pending === null) return null;
+  if (pending === null) return mulliganPendingView(state, viewer);
   if (pending.playerId !== viewer) return { forYou: false, pendingFor: pending.playerId };
+  return promptView(state, viewer, pending);
+}
+
+function promptView(state: GameState, viewer: PlayerId, pending: PendingChoice): PendingView {
   return {
     forYou: true,
     choiceId: pending.id,
@@ -496,6 +503,38 @@ function pendingView(state: GameState, viewer: PlayerId): PendingView | null {
     max: pending.max,
     prompt: pending.prompt,
   };
+}
+
+/**
+ * R265, R266: while both mulligans are open, a seat that still owes one sees its own prompt, and a
+ * seat that has answered sees only that the other seat still owes one — as it would a prompt the
+ * other seat held — never what that seat is choosing from or has chosen.
+ */
+function mulliganPendingView(state: GameState, viewer: PlayerId): PendingView | null {
+  const own = mulliganPromptFor(state, viewer);
+  if (own !== null) return promptView(state, viewer, own);
+  const other = opponentOf(viewer);
+  return mulliganPromptFor(state, other) === null ? null : { forYou: false, pendingFor: other };
+}
+
+/** R265, R266: who has answered, and what the viewer kept; absent outside the mulligan window. */
+function mulliganView(state: GameState, viewer: PlayerId): { mulligan?: MulliganView } {
+  const open = state.mulligan;
+  if (open === undefined) return {};
+  const own = open[viewer].keep;
+  return {
+    mulligan: {
+      youReady: own !== null,
+      opponentReady: open[opponentOf(viewer)].keep !== null,
+      ...(own === null ? {} : { kept: [...own] }),
+    },
+  };
+}
+
+/** R269: the standing draw offer, public to both seats; absent when none. */
+function drawOfferView(state: GameState): { drawOffer?: { by: PlayerId } } {
+  const by = standingDrawOffer(state);
+  return by === null ? {} : { drawOffer: { by } };
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +779,8 @@ export function viewFor(state: GameState, playerId: PlayerId, clockMs: number | 
     events: recentEvents(state, playerId),
     result: state.result === null ? null : { winner: state.result.winner, reason: state.result.reason },
     clockMs,
+    ...mulliganView(state, playerId),
+    ...drawOfferView(state),
   };
   const defs = matchDefsIn(state, view);
   return Object.keys(defs).length === 0 ? view : { ...view, defs };

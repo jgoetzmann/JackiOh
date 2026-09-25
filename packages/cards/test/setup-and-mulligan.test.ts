@@ -25,6 +25,8 @@ import {
   RESUME_HOOK,
   beginGame,
   createGame,
+  mulliganOwed,
+  mulliganPromptFor,
   newInstance,
   query,
   reduce,
@@ -90,10 +92,10 @@ const P1_DECK = Array.from({ length: 20 }, (_, at) => `core-${String(at + 1).pad
 const P2_DECK = Array.from({ length: 20 }, (_, at) => `core-${String(at + 30).padStart(3, "0")}`);
 
 describe("R224: setup waits for a cast's question", () => {
-  it("R224 the question a cast-on-draw replacement asks p1 is not overwritten by p2's mulligan prompt (§10.1, R9, R158)", () => {
+  it("R224 the question a cast-on-draw replacement asks p1 is not overwritten by p2's mulligan (§10.1, R9, R158, R265)", () => {
     let state = beginGame(createGame({ seed: "edge-r7-l7-mulligan", decks: [P1_DECK, P2_DECK] })).state;
-    expect(state.pending?.kind).toBe("mulligan");
-    expect(state.pending?.playerId).toBe("p1");
+    expect(mulliganPromptFor(state, "p1")?.kind).toBe("mulligan");
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
 
     // A cast-on-draw Spell whose cast asks its caster something, on top of p1's library.
     fixture(state, "edge-r7-l7-cod-asks", "Spell", {
@@ -105,27 +107,36 @@ describe("R224: setup waits for a cast's question", () => {
     state.players.p1.library.unshift(cod);
 
     // p1 returns one card: R9 draws the replacement first, and it is the cast-on-draw card (§2.4).
+    // The answer is sealed until p2 answers too (R266); p2 returns one card as well.
     const hand = state.players.p1.hand.map((card) => card.id);
     const returned = must(hand[0], "a card to return");
-    const result = act(state, { type: "mulligan", keep: hand.slice(1), playerId: "p1" });
+    state = act(state, { type: "mulligan", keep: hand.slice(1), playerId: "p1" }).state;
+    expect(state.players.p1.hand.map((card) => card.id)).toEqual(hand);
+    const p2Hand = state.players.p2.hand.map((card) => card.id);
+    const p2Returned = must(p2Hand[0], "a card p2 returns");
+    const result = act(state, { type: "mulligan", keep: p2Hand.slice(1), playerId: "p2" });
     state = result.state;
-    // The replacement was cast, and its cast asked p1 (§2.4, R70, R81).
+    // Both are in, so both resolve in seat order (R265): p1's replacement was cast, and its cast
+    // asked p1 (§2.4, R70, R81).
     expect(result.events.some((event) => event.type === "promptOpened" && event.kind === "mode")).toBe(true);
 
     // §9.3, §10.1: one prompt at a time, and the cast's question is state until p1 answers it. p2's
-    // mulligan waits behind it; it must not replace it, and the returned card waits to go back.
+    // resolution waits behind it: p2's hand is as it answered, and p1's returned card waits to go back.
     const pending = must(state.pending, "an open prompt");
     expect(pending.playerId, `open prompt: ${pending.kind} "${pending.prompt}"`).toBe("p1");
     expect(pending.kind).toBe("mode");
     expect(state.players.p1.library.some((card) => card.id === returned)).toBe(false);
+    expect(state.players.p2.hand.map((card) => card.id)).toEqual(p2Hand);
+    expect(state.mulliganed).toEqual([]);
 
     // The answer finishes the cast and the rest of p1's mulligan (R122): the returned card is
-    // shuffled back, and then p2's mulligan opens.
+    // shuffled back, then p2's sealed answer resolves, and then the game begins.
     state = act(state, { type: "answer", choiceId: pending.id, selection: [{ pick: "mode", option: "ok" }], playerId: "p1" }).state;
     expect(state.players.p1.library.some((card) => card.id === returned)).toBe(true);
-    expect(state.pending?.kind).toBe("mulligan");
-    expect(state.pending?.playerId).toBe("p2");
-    expect(state.mulliganed).toEqual(["p1"]);
+    expect(state.players.p2.hand.map((card) => card.id)).not.toContain(p2Returned);
+    expect(state.players.p2.library.some((card) => card.id === p2Returned)).toBe(true);
+    expect(state.mulliganed).toEqual(["p1", "p2"]);
+    expect(state.turn).toBe(1);
   });
 
   it("R224 a cast-on-draw card's question from the opening draw is not written over by the mulligan (§2.1, §2.4, R158, R70)", () => {
@@ -165,8 +176,8 @@ describe("R224: setup waits for a cast's question", () => {
       const open = must(state.pending, "a cast's question");
       state = act(state, { type: "answer", choiceId: open.id, selection: [{ pick: "hero", player: "p2" }], playerId: "p1" }).state;
     }
-    expect(state.pending?.kind).toBe("mulligan");
-    expect(state.pending?.playerId).toBe("p1");
+    expect(state.pending).toBeNull();
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
     expect(state.players.p1.resolving).toEqual([]);
     expect(state.players.p2.hand).toHaveLength(4);
   });
@@ -176,7 +187,7 @@ describe("R224: setup waits for a cast's question", () => {
     const opened = begun.events.find((event) => event.type === "promptOpened");
     const openedId = opened?.type === "promptOpened" ? opened.choiceId : null;
     expect(openedId).not.toBeNull();
-    expect(begun.state.pending?.id).toBe(openedId);
+    expect(mulliganPromptFor(begun.state, "p1")?.id).toBe(openedId);
 
     const answered = reduce(begun.state, { type: "mulligan", keep: [], playerId: "p1", nonce: "m1" } as Action);
     expect(answered.error).toBeUndefined();
@@ -305,7 +316,7 @@ describe("R225, R224: a Quickdraw card is dealt as the last opening draw", () =>
 
     // Setup went on to the mulligans, and p2 holds its 4 opening cards in both games.
     for (const state of [withPower, without]) {
-      expect(state.pending?.kind).toBe("mulligan");
+      expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
       expect(viewFor(state, "p1").opponent.hand).toEqual({ count: 4 });
     }
     expect(withPower.players.p2.hand.some((card) => card.defId === HEROIC_POWER)).toBe(true);
@@ -401,7 +412,7 @@ describe("R155, R241: a card setup casts belongs to no turn of its caster's (§2
     // Once for each seat: p1's first turn end is turn 1's, p2's is turn 2's.
     for (const seat of ["p1", "p2"] as const) {
       let state = beginGame(createGame({ seed: `edge-r10-setup-return-${seat}`, decks: [P1_DECK, P2_DECK] })).state;
-      expect(state.pending?.kind).toBe("mulligan");
+      expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
       const id = `edge-r10-setup-boomerang-${seat}`;
       fixture(state, id, "Spell", SETUP_BOOMERANG);
 
@@ -409,9 +420,10 @@ describe("R155, R241: a card setup casts belongs to no turn of its caster's (§2
       const boomerang = newInstance(state, id, seat, { z: "library", player: seat });
       state.players[seat].library.unshift(boomerang);
       state = mulliganOne(state, seat);
-      // R9's replacement was cast during setup (§2.4, R70) and landed in its caster's graveyard.
-      expect(state.players[seat].graveyard.some((card) => card.id === boomerang.id)).toBe(true);
       if (seat === "p1") state = keepAll(state, "p2");
+      // Both answers are in, so both resolved (R265): R9's replacement was cast during setup (§2.4,
+      // R70) and landed in its caster's graveyard.
+      expect(state.players[seat].graveyard.some((card) => card.id === boomerang.id)).toBe(true);
       expect(state.turn).toBe(1);
 
       // Through the caster's first turn end.
@@ -430,7 +442,7 @@ describe("R155, R241: a card setup casts belongs to no turn of its caster's (§2
 
   it("R241 an end-of-turn clause armed by a Spell p1's mulligan casts does not exile p1's hand at the end of turn 1", () => {
     let state = beginGame(createGame({ seed: "edge-r10-setup-exile", decks: [P1_DECK, P2_DECK] })).state;
-    expect(state.pending?.kind).toBe("mulligan");
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
 
     // /fullsend's end-of-turn clause, verbatim in shape, on a cast-on-draw Spell.
     const id = "edge-r10-setup-late-exile";
@@ -442,11 +454,12 @@ describe("R155, R241: a card setup casts belongs to no turn of its caster's (§2
     const cod = newInstance(state, id, "p1", { z: "library", player: "p1" });
     state.players.p1.library.unshift(cod);
 
+    // p1's answer is sealed until p2's is in (R265); then both resolve, p1's first.
     state = mulliganOne(state, "p1");
+    state = keepAll(state, "p2");
     expect(state.players.p1.graveyard.some((card) => card.id === cod.id)).toBe(true);
     // Setup's `active` names p1 only as a placeholder (§2.1): the cast was on no turn of p1's.
     expect(state.delayed).toEqual([]);
-    state = keepAll(state, "p2");
     expect(state.turn).toBe(1);
     const handOnTurnOne = state.players.p1.hand.map((card) => card.id);
     expect(handOnTurnOne.length).toBeGreaterThan(0);

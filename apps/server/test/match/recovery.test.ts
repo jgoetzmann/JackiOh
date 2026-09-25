@@ -250,24 +250,97 @@ describe("M6-T4 crash recovery", () => {
  * two hands — and therefore the two views — come back different.
  */
 describe("M6-T4 crash recovery with the real engine (§9.3, §9.5)", () => {
-  it("folding (seed, decks, log) through the real engine yields the same viewFor for both players", async () => {
+  async function realMatch(): Promise<
+    Harness & { actor: MatchActor; p1: FakeSocket; p2: FakeSocket; pool: string[] }
+  > {
     const catalog = await loadCatalog();
     const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
     const engine = enginePort();
     const { decks } = decksTheEngineAccepts(engine, pool, "seed-recovery");
-    const { deps, registry } = await startMatch({ engine, decks });
+    const harness = await startMatch({ engine, decks });
 
-    const actor = await registry.actorFor(MATCH_ID);
+    const actor = await harness.registry.actorFor(MATCH_ID);
     const p1 = createFakeSocket();
     const p2 = createFakeSocket();
     actor.attach("p1", p1);
     actor.attach("p2", p2);
     await actor.idle();
+    return { ...harness, actor, p1, p2, pool };
+  }
 
-    // §2.1: the real game opens on p1's mulligan. p1 keeps everything and p2 keeps nothing, so the
-    // fold has to replay R9's "draw the replacements, then shuffle the returned cards back" — the
-    // one step in setup where the rng is consulted *after* an action in the log, and so the step a
-    // fold that merely re-dealt would get wrong.
+  it("R265 folding (seed, decks, log) through the real engine yields the same viewFor, whichever seat mulliganed first", async () => {
+    for (const first of ["p1", "p2"] as const) {
+      const { deps, registry, engine, actor, p1, p2 } = await realMatch();
+      const socket = { p1, p2 };
+      const second = first === "p1" ? "p2" : "p1";
+
+      // §2.1, R265: both mulligans open at once; `first` keeps everything and `second` keeps
+      // nothing, so the fold has to replay R9's "draw the replacements, then shuffle the returned
+      // cards back" in seat order whichever order the answers were logged in — the one step in setup
+      // where the rng is consulted *after* an action in the log, and so the step a fold that merely
+      // re-dealt, or resolved in log order, would get wrong.
+      expect(actor.snapshot().phase).toBe("mulligan");
+      expect(actor.snapshot().mulliganOwed).toEqual(["p1", "p2"]);
+      const keep = handIds(socket[first]);
+      expect(keep.length).toBeGreaterThan(0);
+      expect(handIds(socket[second]).length).toBeGreaterThan(0);
+      await send(actor, socket[first], `m-${first}`, { type: "mulligan", keep });
+      await send(actor, socket[second], `m-${second}`, { type: "mulligan", keep: [] });
+      expect(actor.snapshot().phase).toBe("main");
+
+      const before = { p1: actor.viewFor("p1"), p2: actor.viewFor("p2") };
+      const beforeHash = engine.hashState(actor.engineState());
+      await registry.stop(MATCH_ID);
+      const revived = await registry.actorFor(MATCH_ID);
+      expect(deps.log.entries.some((entry) => entry.event === "match.fold.errors")).toBe(false);
+      expect(engine.hashState(revived.engineState())).toBe(beforeHash);
+      expect(revived.viewFor("p1")).toEqual(before.p1);
+      expect(revived.viewFor("p2")).toEqual(before.p2);
+      await registry.stop(MATCH_ID);
+    }
+  });
+
+  it("R266 a crash while one mulligan answer is sealed brings back the same sealed window", async () => {
+    const { deps, registry, engine, actor, p2 } = await realMatch();
+
+    // p2 answers first and p1 has not: the answer is sealed, in the log, and in no hand yet.
+    const p2Hand = handIds(p2);
+    await send(actor, p2, "sealed", { type: "mulligan", keep: p2Hand.slice(1) });
+    expect(actor.snapshot().mulliganOwed).toEqual(["p1"]);
+    const before = { p1: actor.viewFor("p1"), p2: actor.viewFor("p2") };
+    expect(before.p2.mulligan).toEqual({ youReady: true, opponentReady: false, kept: p2Hand.slice(1) });
+    expect(before.p1.mulligan).toEqual({ youReady: false, opponentReady: true });
+    const beforeHash = engine.hashState(actor.engineState());
+
+    await registry.stop(MATCH_ID);
+    const revived = await registry.actorFor(MATCH_ID);
+    expect(engine.hashState(revived.engineState())).toBe(beforeHash);
+    expect(revived.snapshot().mulliganOwed).toEqual(["p1"]);
+
+    const backP1 = createFakeSocket();
+    const backP2 = createFakeSocket();
+    revived.attach("p1", backP1);
+    revived.attach("p2", backP2);
+    await revived.idle();
+    // A rebuilt clock arms a fresh mulligan window (the NOT IN SPEC note in `clock.ts`), so `clockMs`
+    // is the one field that could differ — and no time passed across this crash, so it does not.
+    expect(lastView(backP1)).toEqual(before.p1);
+    expect(lastView(backP2)).toEqual(before.p2);
+
+    // p1 answers on the rebuilt actor, and the sealed answer resolves with it at the next seq.
+    await send(revived, backP1, "after-crash", { type: "mulligan", keep: handIds(backP1) });
+    expect(acks(backP1).at(-1)).toEqual({ type: "ack", nonce: "after-crash", seq: 2 });
+    expect(revived.snapshot()).toMatchObject({ phase: "main", mulliganOwed: [] });
+    // Only now does p2's sealed answer act: the one card it did not keep has left its hand.
+    expect(handIds(backP2)).not.toContain(p2Hand[0]);
+    expect(deps.log.entries.some((entry) => entry.event === "match.fold.errors")).toBe(false);
+  });
+
+  it("folding (seed, decks, log) through the real engine yields the same viewFor for both players", async () => {
+    const { deps, registry, engine, actor, p1, p2, pool } = await realMatch();
+
+    // §2.1, R265: both mulligans open at once. p1 keeps everything and p2 keeps nothing, so the
+    // fold replays R9's replacement draws and shuffle-back (see the test above for either order).
     expect(actor.snapshot().phase).toBe("mulligan");
     const p1Keep = handIds(p1);
     expect(p1Keep.length).toBeGreaterThan(0);

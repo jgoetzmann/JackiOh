@@ -17,6 +17,9 @@ import {
 } from "./config.ts";
 import {
   ANIMATING,
+  CONCEDE,
+  CONCEDE_CONFIRM,
+  CONCEDE_DIALOG,
   DECK_DRAG_MIME,
   DECK_DROP,
   END_TURN,
@@ -142,6 +145,13 @@ export type ViewPredicate = {
   hasResult?: boolean;
   /** `view.turn >= n`. §10.1's turn counter is 1-based and counts player-turns (R2). */
   turnAtLeast?: number;
+  /**
+   * R265, R266: `view.mulligan.opponentReady` — whether the OTHER seat has answered its mulligan.
+   * Only a view inside the mulligan window carries `mulligan`, so no view outside it matches.
+   */
+  mulliganOpponentReady?: boolean;
+  /** R269: `view.drawOffer.by` — the seat whose draw offer stands — or `null` for none. */
+  drawOfferBy?: PlayerId | null;
 };
 
 export type WsPlayerResult = {
@@ -367,7 +377,14 @@ Cypress.Commands.add("seedGame", (options: SeedGameOptions) => {
 });
 
 /**
- * R9 / §2.1: the opening mulligan, answered by keeping the whole opening hand.
+ * R9 / §2.1: the opening mulligans, answered by keeping the whole opening hand.
+ *
+ * BOTH SEATS MULLIGAN AT ONCE (R265). Both prompts open with the deal, either seat may answer first,
+ * and an answer is sealed until the other is in (R266). On `/dev/hotseat` the device follows the
+ * seat that still owes one (`hotseat.ts`), so after the first Ready the second seat's picker is the
+ * one on screen and this answers it too. Networked, this client only ever holds its own seat: after
+ * its Ready the picker gives way to `mulligan-waiting` (no `data-prompt-kind`), so the loop ends
+ * there, and the other seat answers from wherever it is driven (the `wsPlayer` task in 05, 06, 20).
  *
  * THE ANSWER NAMES THE CARDS KEPT, NOT THE CARDS RETURNED. The engine's prompt is "Choose the
  * cards to keep; the rest are returned and redrawn" with `min: 0` and one option per hand card
@@ -386,9 +403,10 @@ Cypress.Commands.add("keepMulligans", () => {
   // view at all for the first few frames after `cy.visit`: §9.5 has the actor push a fresh full
   // view on attach, and until that frame lands there is no prompt in the DOM to find. Asking then
   // answers "no", and this command returns having silently done nothing: seat 1 never mulligans,
-  // the far seat's choice never opens, and the spec fails much later somewhere else. (Measured:
-  // spec 05 died in `wsPlayer` with "timed out waiting for a view matching {promptKind: mulligan}",
-  // and spec 06 only escaped because twenty board assertions ran first.)
+  // the game never starts, and the spec fails much later somewhere else. (Measured, back when the
+  // mulligans were answered in turn: spec 05 died in `wsPlayer` with "timed out waiting for a view
+  // matching {promptKind: mulligan}", and spec 06 only escaped because twenty board assertions ran
+  // first.)
   //
   // `window.__jackioh.state` is the client's own answer to "have I got a view yet": the hotseat
   // handle's is a getter over the live session and is never null, so this is a no-op there, while
@@ -421,6 +439,19 @@ Cypress.Commands.add("keepMulligans", () => {
   };
   // At most one mulligan per seat (SPEC §2.1).
   drain(2);
+});
+
+/**
+ * §2.5: concede, through the confirmation the `concede` control opens ("Concede this game?"). The
+ * control only asks; `concede-confirm` is what sends `{ type: "concede" }` (ConfirmConcede.tsx), so
+ * a spec that clicks `concede` alone has conceded nothing.
+ */
+Cypress.Commands.add("concede", () => {
+  cy.get(ts(CONCEDE), { timeout: timeouts.view }).should("not.be.disabled").click();
+  cy.get(ts(CONCEDE_DIALOG)).should("be.visible");
+  cy.get(ts(CONCEDE_CONFIRM)).click();
+  cy.get(ts(CONCEDE_DIALOG)).should("not.exist");
+  cy.settled();
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1054,8 +1085,10 @@ declare global {
     interface Chainable<Subject = any> {
       /** Visit the hotseat route with a seed and two fixture decks (BUILD M5-T3). */
       seedGame(options: SeedGameOptions): Chainable<void>;
-      /** Keep every card in any open opening-mulligan prompt (R9). */
+      /** Keep every card in any open opening-mulligan prompt (R9, R265). */
       keepMulligans(): Chainable<void>;
+      /** Click `concede`, then `concede-confirm` in the dialog it opens (§2.5). */
+      concede(): Chainable<void>;
       /** Play a hand card, building its R81 play-time choices from the UI. */
       playCard(instanceId: string, options?: PlayCardOptions): Chainable<void>;
       /** Declare an attack against a unit or a hero (SPEC §4.2). */

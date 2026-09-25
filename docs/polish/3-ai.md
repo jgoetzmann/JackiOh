@@ -615,7 +615,7 @@ export function decide(state: GameState, seat: PlayerId, options: AiOptions): De
 1. `if (!aiToAct(state, seat)) return null`, then `pub = redact(state, seat)`.
 2. Draw offer (R188): if `unansweredDrawOffer(pub, seat)` →
    `{ action: { type: "answerDraw", accept: false }, reason: "draw-offer" }`.
-3. Mulligan: if `pub.pending?.kind === "mulligan"` → `{ type: "mulligan", keep: mulliganKeep(pub, seat) }`, reason `"mulligan"`.
+3. Mulligan: if `pub.pending === null && mulliganPromptFor(pub, seat) !== null` — the seat's own mulligan is open, whether or not the other seat has answered (R265) — → `{ type: "mulligan", keep: mulliganKeep(pub, seat) }`, reason `"mulligan"`.
 4. Forced: `probe = determinize(pub, seat, createRng(AI_SEARCH.probeSeed))` and
    `cands = candidateActions(probe, seat)`. The seat's own legal actions never depend on the hidden
    cards, so any determinization lists them. If `cands.length === 1`, return it with reason

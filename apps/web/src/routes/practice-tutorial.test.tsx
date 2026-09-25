@@ -334,7 +334,9 @@ describe("a lesson plays under the tutorial HUD with the coach", () => {
 
   it("a loss offers the lesson's tip and Retry, which plays the same lesson on the same seed", async () => {
     const host = await startLesson(1);
+    // Concede asks first now (ConfirmConcede): the dialog's own Concede concedes.
     fireEvent.click(screen.getByTestId("concede"));
+    fireEvent.click(screen.getByTestId("concede-confirm"));
     const dialog = await screen.findByTestId(tutorialTestid.result);
     expect(dialog).toHaveAttribute("data-outcome", "loss");
     expect(dialog).toHaveTextContent("You conceded this one.");

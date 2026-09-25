@@ -307,9 +307,19 @@ describe("06 room code — a networked match between a browser and a Node client
     });
 
     // --- "actions round-trip": browser -> actor -> Node ---------------------------------------
-    // R9: `setup.ts` opens PLAYER_IDS[0]'s mulligan first, so seat 1 answers in the browser and
-    // seat 2's own choice only opens because that answer reached the actor.
+    // R265: both mulligans are open from the deal, in either order (spec 20 drives both orders).
+    // Seat 1 answers in the browser first, and seat 2's view saying "opponent ready" is that answer
+    // having reached the actor and come back out to Node — R266 makes readiness the one thing about
+    // it the other seat is told. Seat 2's own prompt was open all along; its answer is the second,
+    // which resolves both and starts turn 1.
     cy.keepMulligans();
+    cy.then(() => {
+      cy.wsPlayer({
+        action: "awaitView",
+        name: SEAT_TWO,
+        where: { mulliganOpponentReady: true, promptKind: "mulligan" },
+      });
+    });
     seatTwoKeepsMulligan();
     waitForMyTurn();
 

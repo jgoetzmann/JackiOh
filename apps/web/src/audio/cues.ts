@@ -237,11 +237,19 @@ export const SOUND_CUES: { readonly [K in GameEventType]: CueRow<K> } = {
     cues: (event, ctx) => (event.player === ctx.view.viewer ? [sfx("notify")] : NONE),
   },
   promptAnswered: silent("the answering click already ticked"),
+  // §2.5, R36: the offer is a question for the other seat, so only that seat hears it, and it rings
+  // as a question (the urgent notify, a doorbell) rather than a routine notice. The offerer clicked.
   drawOffered: {
     sfx: "notify",
-    cues: (event, ctx) => (event.player !== ctx.view.viewer ? [sfx("notify")] : NONE),
+    cues: (event, ctx) => (event.player !== ctx.view.viewer ? [sfx("notify", { urgent: true })] : NONE),
   },
-  drawAnswered: { sfx: "notify", cues: () => [sfx("notify")] },
+  // The reply is the offerer's news: a decline falls away like a called-off attack, and an accepted
+  // offer sounds nothing of its own because the `gameOver` right behind it sounds the draw. The
+  // seat that answered has already heard its own click.
+  drawAnswered: {
+    sfx: "cancel",
+    cues: (event, ctx) => (event.player === ctx.view.viewer || event.accept ? NONE : [sfx("cancel")]),
+  },
   gameOver: {
     sfx: "victory",
     cues: (event, ctx) => {

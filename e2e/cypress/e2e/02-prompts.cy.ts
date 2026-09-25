@@ -12,7 +12,9 @@
 //
 //   * A `PendingChoice` (SPEC §10.6) — the engine paused mid-resolution and `state.pending` holds
 //     the question. Here: `discover` (Jewelosco Scarab's Cry) and `mulligan` (§2.1, R9). Answering
-//     it is an `answer` action (the mulligan has its own `mulligan` action, §10.2).
+//     it is an `answer` action (the mulligan has its own `mulligan` action, §10.2). The mulligan is
+//     the one kind asked of both seats at once (R265): its two `PendingChoice`s sit in
+//     `state.mulligan`, one per seat, and `state.pending` stays null for the whole window.
 //   * A play-time choice (R81, R123) — "Zone, X, embiggen, Tribute and the targets and modes a
 //     card's script declares travel in the `play` action, which `legalActions` enumerates; the
 //     client builds them with the prompt pickers." Nothing is paused and `state.pending` is null;
@@ -42,6 +44,9 @@
 
 import { seedFor } from "../../support/config.ts";
 import {
+  GAME,
+  MULLIGAN_OPPONENT_READY,
+  MULLIGAN_OPPONENT_STATUS,
   PROMPT,
   RADIANT,
   cardId,
@@ -164,17 +169,30 @@ function pickerAnswered(kind: PromptKind): void {
 }
 
 describe("BUILD M8 02 — every choice picker is rendered once and answered", () => {
-  it("R9 mulligan — the opening mulligan is a PendingChoice, and the cards not kept are redrawn", () => {
-    // `manual` leaves the prompt open: this is the one test that answers it itself.
+  it("R9 mulligan — both opening mulligans are open at once (R265), and the cards not kept are redrawn", () => {
+    // `manual` leaves the prompts open: this is the one test that answers them itself.
     openGame(SEEDS.mulligan, "manual");
     pickerOpensOnce("mulligan");
 
     cy.gameState().then((state) => {
-      expect(state.pending, "the mulligan is an open PendingChoice, not a play choice").to.not.eq(null);
+      // R265: both mulligans open with the deal. Each is a `PendingChoice`, but neither is
+      // `state.pending` — §10.1 allows one open prompt, and the two mulligans are the one sealed-bid
+      // step beside it — so the window is `state.mulligan`, one seat each, both still owing.
+      // `playerId`-style reads of `pending` do not apply: this is the raw hotseat `GameState`.
+      expect(state.pending, "R265: the mulligans are not `state.pending`").to.eq(null);
+      expect(state.mulligan, "R265: both seats' mulligans are open").to.not.eq(undefined);
+      expect(state.mulligan?.p1.keep, "player 1 owes its mulligan").to.eq(null);
+      expect(state.mulligan?.p2.keep, "and player 2 owes its own at the same time").to.eq(null);
+      expect(state.mulligan?.p1.prompt?.kind, "player 1's is a mulligan PendingChoice").to.eq("mulligan");
+      expect(state.mulligan?.p2.prompt?.kind, "and so is player 2's").to.eq("mulligan");
       const hand = handOf(state, "p1");
       expect(hand, "player 1's opening hand is three cards (§2.1)").to.have.length(3);
       const kept = hand.slice(0, 1);
       const returned = hand.slice(1);
+
+      // The device starts with player 1, whose picker says the opponent has not answered yet.
+      cy.get(ts(GAME)).should("have.attr", "data-viewer", "p1");
+      cy.get(promptOf("mulligan")).find(ts(MULLIGAN_OPPONENT_STATUS)).should("have.attr", "data-ready", "false");
 
       // §2.1 / R9: the picked cards are the ones KEPT; the rest are returned, replacements are
       // drawn first and only then are the returned cards shuffled back in. The picker opens with
@@ -184,21 +202,29 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
         .should("have.length", hand.length);
       cy.answerPrompt("mulligan", { cards: returned, submit: true });
 
-      // NOT `pickerAnswered("mulligan")`: `answerMulligan` opens the FAR seat's mulligan in the
-      // same reduction (§2.1, R9), and both pickers carry `data-prompt-kind="mulligan"` while the
-      // watching seat's panel carries none — so a mulligan picker is always in the DOM here, and
-      // "not.exist" can never hold. What actually changed is whose question it is, so that is what
-      // this asserts, which is a stronger claim than the absence ever was.
+      // R266: player 1's answer is SEALED. It is stored as the ids kept and nothing else moves until
+      // the other seat's answer is in — player 1's hand is exactly the hand it was dealt.
       cy.gameState().should((mid) => {
-        expect(mid.pending?.kind, "the far seat's mulligan is the next prompt").to.eq("mulligan");
-        // `playerId`, not `player`: this is a hotseat game, so the handle hands over the raw
-        // `GameState` and `pending` is the engine's `PendingChoice` (§10.6). `player` is the
-        // networked spelling, which `net.ts` derives from the view.
-        expect(mid.pending?.playerId, "and it belongs to the other seat now").to.eq("p2");
+        expect(mid.pending, "still no `state.pending` while player 2 owes its mulligan").to.eq(null);
+        expect(mid.mulligan?.p1.keep, "R266: player 1's sealed answer is the ids it keeps").to.deep.eq(kept);
+        expect(mid.mulligan?.p2.keep, "player 2 still owes its own").to.eq(null);
+        expect(handOf(mid, "p1"), "R266: a sealed answer changes no hand yet").to.deep.eq(hand);
+        expect(mid.phase, "the game is still in the mulligan").to.eq("mulligan");
       });
 
-      // The device follows a prompt by itself (BUILD M5-T3), so answering it is what clears the
-      // phase.
+      // NOT `pickerAnswered("mulligan")`: the device follows the seat that still owes its mulligan
+      // (BUILD M5-T3, `hotseat.ts`), so player 2's own picker — the one that has been open since the
+      // deal — is on screen now, and it says player 1 is ready. Both pickers carry
+      // `data-prompt-kind="mulligan"`, so "not.exist" could never hold here.
+      cy.get(ts(GAME)).should("have.attr", "data-viewer", "p2");
+      pickerOpensOnce("mulligan");
+      cy.get(promptOf("mulligan"))
+        .find(ts(MULLIGAN_OPPONENT_STATUS))
+        .should("have.attr", "data-ready", "true")
+        .find(ts(MULLIGAN_OPPONENT_READY))
+        .should("be.visible");
+
+      // Player 2's answer is the second, so it resolves both in seat order and starts turn 1.
       cy.keepMulligans();
       cy.noPrompt();
 
@@ -216,6 +242,7 @@ describe("BUILD M8 02 — every choice picker is rendered once and answered", ()
         expect(after.phase, "the game leaves the mulligan phase once both seats answer").to.not.eq(
           "mulligan",
         );
+        expect(after.mulligan, "R265: the window closes with the second answer").to.eq(undefined);
       });
     });
   });

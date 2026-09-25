@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ActionBody } from "@jackioh/shared";
-import { createRng, hashState, legalActions, type GameState } from "@jackioh/engine";
+import { createRng, hashState, legalActions, mulliganPromptFor, type GameState } from "@jackioh/engine";
 import {
   AI_BUDGET,
   AI_GATE_BUDGET,
@@ -166,7 +166,7 @@ describe("candidateActions (B14)", () => {
 
   it("B14: during the mulligan there is no candidate, since the mulligan is not searched", () => {
     const state = dealtGame("search-mulligan");
-    expect(state.pending?.kind).toBe("mulligan");
+    expect(mulliganPromptFor(state, AI)?.kind).toBe("mulligan");
     expect(legalActions(state, AI).length).toBeGreaterThan(0);
     expect(candidateActions(state, AI)).toEqual([]);
   });
