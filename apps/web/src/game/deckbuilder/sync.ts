@@ -324,6 +324,9 @@ export const OFFLINE_MESSAGE = "Offline — your changes are kept on this device
 
 /** R341: why an import made nothing, when the server could not be asked. */
 export const IMPORT_OFFLINE_MESSAGE = "You’re offline, so nothing was imported. Try again once you’re back online.";
+/** R341: why an import made nothing, when earlier edits (a deletion made to make room) have not landed. */
+export const IMPORT_UNSAVED_MESSAGE =
+  "Your latest changes haven’t reached the server yet, so nothing was imported. Try again once they’re saved.";
 
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_TIMEOUT = 408;
@@ -696,6 +699,11 @@ export function createDeckStore(options: DeckStoreOptions): DeckStore {
 
   async function importTrio(init: TrioImport): Promise<TrioImportResult> {
     await flush();
+    // What the caps are checked against must be what the server holds: a deletion made to make
+    // room that has not landed would pass here and be refused there, after the player had deleted.
+    if (hasWork()) {
+      return { ok: false, message: offline ? IMPORT_OFFLINE_MESSAGE : IMPORT_UNSAVED_MESSAGE };
+    }
     const filled = init.slots.filter((slot) => slot !== null).length;
     const room = checkImportRoom({
       saved: { decks: decks.length, trios: trios.length },
@@ -711,12 +719,22 @@ export function createDeckStore(options: DeckStoreOptions): DeckStore {
         : { key, trioId: newId(), deckIds: init.slots.map(() => newId()) };
     lastImport = ids;
 
+    // One millisecond apart, in slot order, as the server stamps them (R341), so the list shows
+    // them in their slots' order before and after the server's answer.
     const now = clock.now();
-    const deckItems = init.slots.map((slot, at): DeckItem | null =>
-      slot === null
-        ? null
-        : { id: ids.deckIds[at] ?? newId(), name: deckNameForSave(slot.name, limits.nameLength), cards: [...slot.cards], createdAt: now, updatedAt: now },
-    );
+    let order = 0;
+    const deckItems = init.slots.map((slot, at): DeckItem | null => {
+      if (slot === null) return null;
+      const stamped = now + order;
+      order += 1;
+      return {
+        id: ids.deckIds[at] ?? newId(),
+        name: deckNameForSave(slot.name, limits.nameLength),
+        cards: [...slot.cards],
+        createdAt: stamped,
+        updatedAt: stamped,
+      };
+    });
     const slotIds = [0, 1, 2].map((at) => deckItems[at]?.id ?? null) as TrioSlots;
     const trioItem: TrioItem = {
       id: ids.trioId,

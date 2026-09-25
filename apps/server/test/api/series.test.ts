@@ -271,6 +271,34 @@ describe("R259 — the series through the API", () => {
     expect((await pick(h, h.tokens.bob, 2)).status).toBe(409);
   });
 
+  it("R331 a late duplicate of game 1's pick answers as game 1's, and never becomes game 2's", async () => {
+    const h = await harness();
+    const pickFor = (token: string, slot: number, gameNo: number): Promise<Response> =>
+      h.router(jsonRequest("POST", `/api/series/${SERIES_ID}/pick`, { slot, gameNo }, { token }));
+    expect((await pickFor(h.tokens.alice, 0, 1)).status).toBe(200);
+    expect((await pickFor(h.tokens.bob, 1, 1)).status).toBe(200);
+    await finishGame(h, BOB);
+    expect((await row(h)).status).toBe("picking");
+
+    const duplicate = await pickFor(h.tokens.alice, 0, 1);
+    expect(duplicate.status).toBe(200);
+    expect((await row(h)).sides[0].pick, "game 2's pick is still Alice's to make").toBeNull();
+    expect((await pickFor(h.tokens.alice, 2, 1)).status).toBe(409);
+    expect((await pickFor(h.tokens.alice, 2, 2)).status).toBe(200);
+    for (const gameNo of [0, "2", 1.5]) {
+      const bad = await h.router(jsonRequest("POST", `/api/series/${SERIES_ID}/pick`, { slot: 1, gameNo }, { token: h.tokens.bob }));
+      expect(bad.status).toBe(400);
+    }
+  });
+
+  it("R331 the same pick sent again after the deadline answers as the success it was", async () => {
+    const h = await harness();
+    expect((await pick(h, h.tokens.alice, 1)).status).toBe(200);
+    h.deps.timers.advance(PICK_MS);
+    expect((await pick(h, h.tokens.alice, 1)).status).toBe(200);
+    expect((await pick(h, h.tokens.alice, 2)).status).toBe(409);
+  });
+
   it("R331 a pick is in the database before it is acknowledged, and the opponent learns only that it is in", async () => {
     const h = await harness();
     // The store fails the write: the pick is refused, and nothing says it was made.

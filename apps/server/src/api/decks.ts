@@ -425,10 +425,16 @@ export function createDeckRoutes(): Route[] {
       const now = deps.timers.now();
       await deps.store.tx(async (t) => {
         await assertImportRoom(t, profile.id, filledIds, input.trio.id);
+        // Each deck one millisecond after the one before: the list is oldest first with ties broken
+        // on the id, and the ids are random, so one instant for all three would list them in any
+        // order rather than in their slots' (R341).
+        let order = 0;
         for (const deck of decks) {
           if (deck === null) continue;
+          const at = now + order;
+          order += 1;
           const outcome = await t.decks.upsert(
-            { ...deck, profileId: profile.id, catalogVersion: input.catalogVersion, createdAt: now, updatedAt: now },
+            { ...deck, profileId: profile.id, catalogVersion: input.catalogVersion, createdAt: at, updatedAt: at },
             MAX_SAVED_DECKS,
           );
           if (outcome !== "created" && outcome !== "updated") throw importOutcomeRefused("deck", outcome);

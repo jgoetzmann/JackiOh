@@ -187,7 +187,7 @@ describe("the series screen", () => {
       expect(screen.getByTestId(seriesTestid.picker)).toHaveAttribute("data-state", "waiting");
     });
     expect(vi.mocked(pickSeriesDeck)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(pickSeriesDeck)).toHaveBeenCalledWith(TOKEN, SERIES_ID, 1);
+    expect(vi.mocked(pickSeriesDeck)).toHaveBeenCalledWith(TOKEN, SERIES_ID, 1, 1);
     expect(screen.getByTestId(seriesTestid.picker)).toHaveTextContent("Waiting for your opponent…");
     expect(screen.getByTestId(seriesTestid.picker)).toHaveTextContent("You’re playing Control in game 1.");
     expect(screen.getByTestId(seriesTestid.deck(1))).toHaveAttribute("data-picked", "true");
@@ -345,6 +345,16 @@ describe("the series screen", () => {
     const result = screen.getByTestId(seriesTestid.result);
     expect(result).toHaveAttribute("data-outcome", "abandoned");
     expect(result).toHaveTextContent("Unrated");
+  });
+
+  it("R337 a series Best of 3 decided before Conquest says so, not that every deck won", () => {
+    const result = { outcome: "win" as const, endReason: "decided" as const, ratingBefore: null, ratingAfter: null };
+    expect(endReasonWords(result, SERIES_WINS_NEEDED, SERIES_MAX_GAMES, { you: 2, opponent: 0 })).toBe(
+      "You reached 2 game wins, which took the series under the Best-of-3 rules it began with.",
+    );
+    expect(endReasonWords(result, SERIES_WINS_NEEDED, SERIES_MAX_GAMES, { you: SERIES_WINS_NEEDED, opponent: 0 })).toBe(
+      `You won a game with each of your ${String(SERIES_WINS_NEEDED)} decks.`,
+    );
   });
 
   it("every way a series ends has words", () => {

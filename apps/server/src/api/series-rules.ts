@@ -140,6 +140,8 @@ export type SeriesRefusalReason =
   | "slot_won"
   /** This player's pick for the game is already in, and a pick is final (R331). */
   | "pick_sealed"
+  /** The pick names a game other than the one being picked for: a late duplicate (R331). */
+  | "stale_pick"
   /** The pick clock has not run out yet. */
   | "pick_open"
   /** There is no game in play to end or to seat. */
@@ -362,25 +364,31 @@ export function newSeries(input: NewSeriesInput, now: number): SeriesRow {
 
 /**
  * R331: `seat` picks trio slot `slot` for the next game. The pick is sealed: once it is in it is
- * final (`pick_sealed`, which `series.ts` answers as a success when the same slot is sent again, so
- * a retried request is harmless), and the other side learns only that it is in. The pick that
+ * final (`pick_sealed`, checked first, which `series.ts` answers as a success when the same slot is
+ * sent again, so a retried request is harmless), and the other side learns only that it is in. A
+ * pick that names its game (`gameNo`) is refused as `stale_pick` when that is not the game being
+ * picked for, so a late duplicate of game n's pick can never become game n + 1's. The pick that
  * completes both begins the game at once. Refused once the pick clock has run out (R333), for a slot
  * the trio does not have, and for a deck that has already won in this series (R330).
  */
-export function pickDeck(series: SeriesRow, seat: SeriesSeat, slot: number, now: number): SeriesRow {
+export function pickDeck(series: SeriesRow, seat: SeriesSeat, slot: number, now: number, gameNo?: number): SeriesRow {
   assertPicking(series, "A game of this series is being played; pick your next deck when it ends.");
+  const pickingFor = series.games.length + FIRST_GAME;
+  if (gameNo !== undefined && gameNo !== pickingFor) {
+    refuse("stale_pick", `That pick was for game ${String(gameNo)}; this is game ${String(pickingFor)}'s pick.`);
+  }
+  const side = sideOf(series, seat);
+  if (side.pick !== null) {
+    refuse("pick_sealed", "Your pick for this game is already in, and it is final.");
+  }
   if (series.pickDeadline !== null && now >= series.pickDeadline) {
     refuse("pick_closed", "The pick clock has run out for this game.");
   }
-  const side = sideOf(series, seat);
   if (!Number.isInteger(slot) || slot < 0 || slot >= side.trio.decks.length) {
     refuse("slot_out_of_range", "Pick one of the three decks in your trio.");
   }
   if (wonSlots(seat, series.games).has(slot)) {
     refuse("slot_won", "That deck has already won a game in this series, so it is locked; pick another.");
-  }
-  if (side.pick !== null) {
-    refuse("pick_sealed", "Your pick for this game is already in, and it is final.");
   }
 
   const next = copy(series);
@@ -540,11 +548,21 @@ export function gameSeats(series: SeriesRow): { seats: [MatchSeat, MatchSeat]; s
 }
 
 /**
- * R331: whether `slot` is the pick `seat` already made for the game now under way or waiting — what
- * a retried pick request finds after its first attempt landed. `series.ts` answers such a retry as
- * the success it was, rather than as a refusal the player did nothing to earn.
+ * R331: whether `slot` is the pick `seat` already made — for game `gameNo` when the request named
+ * one, else for the game now picked for or in play — which is what a retried pick request finds
+ * after its first attempt landed. `series.ts` answers such a retry as the success it was, rather
+ * than as a refusal the player did nothing to earn.
  */
-export function alreadyPicked(series: SeriesRow, seat: SeriesSeat, slot: number): boolean {
+export function alreadyPicked(series: SeriesRow, seat: SeriesSeat, slot: number, gameNo?: number): boolean {
+  if (gameNo !== undefined) {
+    const begun = series.games.find((game) => game.gameNo === gameNo);
+    if (begun !== undefined) return begun.slots[seatIndex(seat)] === slot;
+    return (
+      series.status === "picking" &&
+      gameNo === series.games.length + FIRST_GAME &&
+      sideOf(series, seat).pick === slot
+    );
+  }
   if (series.status === "picking") return sideOf(series, seat).pick === slot;
   const game = gameInPlay(series);
   return game !== null && game.slots[seatIndex(seat)] === slot;

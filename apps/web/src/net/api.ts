@@ -530,14 +530,15 @@ export function getSeriesForMatch(token: string, matchId: string): Promise<{ ser
 }
 
 /**
- * `POST /api/series/:id/pick` with a trio slot (0-based). Answers with the new projection. A pick
- * is sealed (R331): another slot afterwards is a 409, and the same slot again answers as success.
+ * `POST /api/series/:id/pick` with a trio slot (0-based) and the game it is for. Answers with the
+ * new projection. A pick is sealed (R331): another slot afterwards is a 409, the same slot again
+ * answers as success, and a pick for a game that has already begun is never applied to the next.
  */
-export function pickSeriesDeck(token: string, seriesId: string, slot: number): Promise<SeriesView> {
+export function pickSeriesDeck(token: string, seriesId: string, slot: number, gameNo: number): Promise<SeriesView> {
   return apiRequest<SeriesView>(`/api/series/${encodeURIComponent(seriesId)}/pick`, {
     method: "POST",
     token,
-    body: { slot },
+    body: { slot, gameNo },
   });
 }
 

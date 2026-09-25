@@ -512,6 +512,23 @@ describe("a trio import (§9.4, R340, R341)", () => {
     expect(listed.trios.map((trio) => trio.id)).toEqual([uuid(500)]);
   });
 
+  it("R341 lists the imported decks in their slots' order whatever their ids, and after the decks already saved", async () => {
+    expect((await putDeck(deckBody(deps, { name: "Older" }), uuid(999))).status).toBe(200);
+    deps.timers.advance(1);
+    // Descending ids: a tie on the instant would list them backwards.
+    const body = importBody(deps, 500, {
+      slots: [
+        { id: uuid(803), name: "First", cards: cards(deps, 1, 0) },
+        { id: uuid(802), name: "Second", cards: cards(deps, 1, 1) },
+        { id: uuid(801), name: "Third", cards: cards(deps, 1, 2) },
+      ],
+    });
+    expect((await postImport(body)).status).toBe(200);
+    const listed = await getDecks();
+    expect(listed.decks.map((deck) => deck.name)).toEqual(["Older", "First", "Second", "Third"]);
+    expect(listed.trios[0]?.deckIds).toEqual([uuid(803), uuid(802), uuid(801)]);
+  });
+
   it("R341 keeps an empty slot empty, unowned cards and cards the decks share: drafts, judged at queue", async () => {
     const shared = cards(deps, 2, 0);
     const body = importBody(deps, 600, {

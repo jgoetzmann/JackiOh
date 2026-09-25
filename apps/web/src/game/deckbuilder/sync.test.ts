@@ -26,6 +26,7 @@ import {
 import { fixtureCardId } from "./fixtures.ts";
 import {
   IMPORT_OFFLINE_MESSAGE,
+  IMPORT_UNSAVED_MESSAGE,
   UNTITLED_DECK,
   UNTITLED_TRIO,
   browserStorage,
@@ -777,6 +778,29 @@ describe("a trio import", () => {
     expect(result.ok).toBe(true);
     expect(server.calls.map((call) => call.op)).toEqual(["deleteDeck", "deleteDeck", "importTrio"]);
     expect(store.getSnapshot().decks).toHaveLength(MAX_SAVED_DECKS);
+  });
+
+  it("R341 refuses while a deletion made to make room has not reached the server, and sends nothing", async () => {
+    const server = fakeServer();
+    const full = Array.from({ length: MAX_SAVED_DECKS }, (_unused, at) => savedDeck(mint(), `D${String(at)}`, [], at));
+    for (const deck of full) server.decks.set(deck.id, { name: deck.name, cards: deck.cards, catalogVersion: CATALOG_VERSION });
+    const store = open({ api: server.api, server: response(full) });
+    server.state.refusals.set(
+      full[0]?.id ?? "",
+      new ApiRequestError(503, { code: "unavailable", message: "The server is waking up." }),
+    );
+    store.deleteDeck(full[0]?.id ?? "");
+    store.deleteDeck(full[1]?.id ?? "");
+    expect(await store.importTrio(code)).toEqual({ ok: false, message: IMPORT_UNSAVED_MESSAGE });
+    expect(server.calls.some((call) => call.op === "importTrio")).toBe(false);
+  });
+
+  it("R341 lists the imported decks in their slots' order, whatever their ids", async () => {
+    const server = fakeServer();
+    const descending = ["00000000-0000-4000-8000-00000000fff9", "00000000-0000-4000-8000-00000000fff8", "00000000-0000-4000-8000-00000000fff7", "00000000-0000-4000-8000-00000000fff6"];
+    const store = open({ api: { ...server.api, importTrio: async () => ({}) }, newId: () => descending.shift() ?? mint() });
+    expect((await store.importTrio(code)).ok).toBe(true);
+    expect(store.getSnapshot().decks.map((deck) => deck.name)).toEqual(["One", "Three"]);
   });
 
   it("R341 offline makes nothing, and a retry of the same import reuses its ids", async () => {

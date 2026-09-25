@@ -75,13 +75,27 @@ const GAME_RESULT_WORD: Readonly<Record<"win" | "loss" | "draw", string>> = {
   draw: "Draw",
 };
 
-/** Why the series ended, from this player's side (R330, R333, R334). */
-export function endReasonWords(result: SeriesResult, winsNeeded: number, maxGames: number): string {
+/**
+ * Why the series ended, from this player's side (R330, R333, R334). `wins` are the two sides' game
+ * wins: a series R259 decided before Conquest shipped ended at fewer than `winsNeeded` (R337), and
+ * says so rather than claiming a win with every deck.
+ */
+export function endReasonWords(
+  result: SeriesResult,
+  winsNeeded: number,
+  maxGames: number,
+  wins?: { you: number; opponent: number },
+): string {
   switch (result.endReason) {
-    case "decided":
+    case "decided": {
+      const winner = wins === undefined ? winsNeeded : result.outcome === "win" ? wins.you : wins.opponent;
+      if (winner < winsNeeded) {
+        return `${result.outcome === "win" ? "You" : "Your opponent"} reached ${String(winner)} game wins, which took the series under the Best-of-3 rules it began with.`;
+      }
       return result.outcome === "win"
         ? `You won a game with each of your ${String(winsNeeded)} decks.`
         : `Your opponent won a game with each of their ${String(winsNeeded)} decks.`;
+    }
     case "exhausted":
       if (result.outcome === "draw") return `The series reached its ${String(maxGames)}-game limit with the wins level.`;
       return `The series reached its ${String(maxGames)}-game limit, and ${result.outcome === "win" ? "you" : "your opponent"} had won more games.`;
@@ -149,6 +163,8 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
   // just before a pick must not put the old pick back on screen when it lands after it.
   const sent = useRef(0);
   const shown = useRef(0);
+  /** A pick or a forfeit is on its way: polls wait for its answer. */
+  const inFlight = useRef(false);
   const accept = useCallback((view: SeriesView, request: number) => {
     if (request < shown.current) return;
     shown.current = request;
@@ -160,6 +176,9 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
     if (over) return;
     let cancelled = false;
     const read = (): void => {
+      // A poll sent while a pick or a forfeit is on its way could be served before that write lands
+      // and then drop the write's own answer as older; the action's answer is the fresher one.
+      if (inFlight.current) return;
       sent.current += 1;
       const request = sent.current;
       attempt(() => getSeries(token, seriesId)).then(
@@ -202,6 +221,7 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
 
   function act(work: () => Promise<SeriesView>): void {
     if (busy) return;
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
     sent.current += 1;
@@ -216,13 +236,14 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
         },
       )
       .finally(() => {
+        inFlight.current = false;
         setBusy(false);
       });
   }
 
-  /** R331: seals `slot` as this player's pick. */
-  function onPick(slot: number): void {
-    act(() => pickSeriesDeck(token, seriesId, slot));
+  /** R331: seals `slot` as this player's pick for the game the screen is picking for. */
+  function onPick(slot: number, gameNo: number): void {
+    act(() => pickSeriesDeck(token, seriesId, slot, gameNo));
   }
 
   function onForfeit(): void {
@@ -267,7 +288,16 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
 
       <div className="play-layout">
         <div className="play-side">
-          {picking ? <SeriesPicker view={view} secondsLeft={secondsLeft} busy={busy} onLockIn={onPick} /> : null}
+          {picking ? (
+            <SeriesPicker
+              view={view}
+              secondsLeft={secondsLeft}
+              busy={busy}
+              onLockIn={(slot) => {
+                onPick(slot, view.gameNo);
+              }}
+            />
+          ) : null}
 
           {view.status === "playing" && view.currentMatchId !== null ? (
             <section className="lobby-card play-panel series-panel" aria-labelledby="series-game-heading">
@@ -294,7 +324,7 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
               data-outcome={view.result.outcome}
             >
               <span className="series-result__word">{SERIES_OUTCOME_HEADLINE[view.result.outcome]}</span>
-              <p>{endReasonWords(view.result, view.winsNeeded, view.maxGames)}</p>
+              <p>{endReasonWords(view.result, view.winsNeeded, view.maxGames, { you: you.wins, opponent: opponent.wins })}</p>
               <p>{ratingWords(view.result)}</p>
               <a
                 className="button-primary play-cta"

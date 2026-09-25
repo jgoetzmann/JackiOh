@@ -248,6 +248,25 @@ describe("R331 — the sealed pick", () => {
     expect(alreadyPicked(ended, "p1", 0)).toBe(false);
   });
 
+  it("R331 a sealed pick is found sealed first, even after the deadline or for a locked slot", () => {
+    const first = pickDeck(fresh(), "p1", 0, NOW);
+    expect(refusalOf(() => pickDeck(first, "p1", 0, NOW + PICK_MS))).toBe("pick_sealed");
+    expect(refusalOf(() => pickDeck(first, "p1", 7, NOW))).toBe("pick_sealed");
+  });
+
+  it("R331 a pick naming another game is refused as stale, and a retry is recognised by its game", () => {
+    const afterGame1 = play(fresh(), [0, 1], "p2", "match-2");
+    // A late duplicate of game 1's pick of slot 0 must not become game 2's.
+    expect(refusalOf(() => pickDeck(afterGame1, "p1", 0, NOW, 1))).toBe("stale_pick");
+    expect(alreadyPicked(afterGame1, "p1", 0, 1)).toBe(true);
+    expect(alreadyPicked(afterGame1, "p1", 1, 1)).toBe(false);
+    expect(alreadyPicked(afterGame1, "p1", 0, 2)).toBe(false);
+    const picked = pickDeck(afterGame1, "p1", 2, NOW, 2);
+    expect(picked.sides[0].pick).toBe(2);
+    expect(alreadyPicked(picked, "p1", 2, 2)).toBe(true);
+    expect(refusalOf(() => pickDeck(afterGame1, "p1", 2, NOW, 3))).toBe("stale_pick");
+  });
+
   it("R331 the pick that completes both begins the game at once, series p1 first in game 1", () => {
     const series = pickDeck(pickDeck(fresh(), "p2", 2, NOW), "p1", 1, NOW + 5);
 

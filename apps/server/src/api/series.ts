@@ -465,6 +465,16 @@ function slotOf(body: Readonly<Record<string, unknown>>): number {
   return value;
 }
 
+/** R331: the game a pick is for, when the request names it (the client always does). */
+function gameNoOf(body: Readonly<Record<string, unknown>>): number | undefined {
+  const value = body["gameNo"];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw badRequest('"gameNo" must be the number of the game the pick is for');
+  }
+  return value;
+}
+
 /** A transition requested by a player: refusals become their HTTP answers. */
 async function playerTransition(
   deps: ServerDeps,
@@ -492,26 +502,28 @@ export function createSeriesRoutes(): Route[] {
     }),
 
     /**
-     * R331: pick a trio slot for the next game. The pick is sealed: final once in, and shown to the
-     * other side only as "picked". The pick that completes both starts the game, and the answer
-     * then names it in `currentMatchId`. The same slot sent again (a retry whose first answer was
-     * lost) is answered with the current view, as the success it was. 409 for a different slot once
-     * a pick is in, while a game is being played, or after the pick clock ran out (R333); 400 for a
-     * slot out of range or one whose deck has won (R330).
+     * R331: pick a trio slot for the next game, `{ slot, gameNo? }`. The pick is sealed: final once
+     * in, and shown to the other side only as "picked". The pick that completes both starts the
+     * game, and the answer then names it in `currentMatchId`. The same slot sent again (a retry
+     * whose first answer was lost) is answered with the current view, as the success it was; a pick
+     * naming a game other than the one being picked for is never applied to another game. 409 for a
+     * different slot once a pick is in, for another game's pick, while a game is being played, or
+     * after the pick clock ran out (R333); 400 for a slot out of range or one whose deck has won (R330).
      */
     route("POST", "/api/series/:id/pick", "active", async (req, deps) => {
       const slot = slotOf(req.body);
+      const gameNo = gameNoOf(req.body);
       const { series, seat, profileId } = await callersSeries(req, deps);
       const now = deps.timers.now();
       try {
-        const { after } = await writeTransition(deps, series.id, (row) => pickDeck(row, seat, slot, now));
+        const { after } = await writeTransition(deps, series.id, (row) => pickDeck(row, seat, slot, now, gameNo));
         deps.log.info("series.picked", { seriesId: series.id, seat, status: after.status });
         return ok(view(deps, after, profileId));
       } catch (error) {
         if (!(error instanceof SeriesRefusal)) throw error;
-        if (error.reason === "pick_sealed" || error.reason === "not_picking") {
+        if (error.reason === "pick_sealed" || error.reason === "not_picking" || error.reason === "stale_pick") {
           const current = await deps.store.series.get(series.id);
-          if (current !== null && alreadyPicked(current, seat, slot)) return ok(view(deps, current, profileId));
+          if (current !== null && alreadyPicked(current, seat, slot, gameNo)) return ok(view(deps, current, profileId));
         }
         throw refusalToApi(error);
       }
