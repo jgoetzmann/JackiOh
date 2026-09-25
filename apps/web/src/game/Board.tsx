@@ -19,11 +19,11 @@
 
 import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
 
-import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
+import type { CardView, GameEvent, GameEventType, LibraryView, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
 import { animTestid } from "./animations.ts";
 import Card, { cx, isLegal, isSelected, legalAttr, type Pops } from "./Card.tsx";
-import { CatalogContext, MatchCardsProvider } from "./catalog.ts";
+import { CatalogContext, MatchCardsProvider, type CardLookup } from "./catalog.ts";
 import {
   LANES,
   NO_HIGHLIGHT,
@@ -42,7 +42,7 @@ import Hand from "./Hand.tsx";
 import Hero from "./Hero.tsx";
 import Log from "./Log.tsx";
 import Zone from "./Zone.tsx";
-import { listedFace } from "./faces.ts";
+import { listedFace, namedFace } from "./faces.ts";
 import { glowAttr, hasMovesLeft } from "./glow.ts";
 import { CardListPreview, CardListSheet, useInspectTrigger, type CardListEntry, type InspectOverlayState } from "../cards/index.ts";
 import { SettingsButton, useSetting } from "../settings/index.ts";
@@ -184,9 +184,38 @@ function ManaTray({ side, mana, animating }: { side: Side; mana: { current: numb
  * A graveyard or an exile pile is public on both seats (§10.8: `SideView.graveyard` and `.exile` are
  * full `CardView` lists), so either one can be looked through (`browse`): a resting mouse opens a
  * preview of its newest cards, and a click, a tap, a long-press or Enter opens every card in a
- * sheet, newest first. The library is a count and nothing else, so it has no `browse`.
+ * sheet, newest first. The viewer's own library can be looked through the same way (R313), from the
+ * list without order the view carries for it (`SideView.library`, R310): one face per entry with
+ * its count, in the view's order, each printed on the face it went in with (R311), and a card back
+ * for the cards the viewer was never shown (R312). The opponent's library is a count and nothing
+ * else, so it has no `browse`. Nothing here reads a rule or a hidden card (CLAUDE.md rule 7).
  */
-type PileBrowse = { title: string; cards: readonly CardView[]; view: PlayerView };
+type PileBrowse =
+  | { kind: "pile"; title: string; cards: readonly CardView[]; view: PlayerView }
+  | { kind: "library"; title: string; library: LibraryView; view: PlayerView };
+
+/** R313: what the library's list says of its order. */
+const LIBRARY_ORDER = "Order hidden";
+
+/** The list a pile opens: its entries in the order to show them, and what that order is. */
+function browseEntries(lookup: CardLookup | null, browse: PileBrowse): { entries: CardListEntry[]; order?: string } {
+  const entries: CardListEntry[] = [];
+  if (browse.kind === "library") {
+    for (const entry of browse.library.cards) {
+      const face = namedFace(lookup, browse.view, { defId: entry.defId, radiant: entry.radiant });
+      if (face !== null) entries.push({ key: `${entry.defId}:${entry.radiant ? "radiant" : "base"}`, face, count: entry.count });
+    }
+    if (browse.library.unknown > 0) entries.push({ key: "unknown", face: null, count: browse.library.unknown });
+    return { entries, order: LIBRARY_ORDER };
+  }
+  // Newest first: a pile grows at its end (the engine appends each card that lands in it).
+  for (let at = browse.cards.length - 1; at >= 0; at -= 1) {
+    const card = browse.cards[at];
+    const face = card === undefined ? null : listedFace(lookup, browse.view, card);
+    if (card !== undefined && face !== null) entries.push({ key: card.instanceId, face });
+  }
+  return { entries };
+}
 
 function Pile({
   label,
@@ -207,26 +236,19 @@ function Pile({
 }): ReactElement {
   const lookup = useContext(CatalogContext);
   const hoverPreviews = useSetting("hoverPreviews");
-  // Newest first: a pile grows at its end (the engine appends each card that lands in it).
-  const entries: CardListEntry[] = [];
-  if (browse !== undefined) {
-    for (let at = browse.cards.length - 1; at >= 0; at -= 1) {
-      const card = browse.cards[at];
-      const face = card === undefined ? null : listedFace(lookup, browse.view, card);
-      if (card !== undefined && face !== null) entries.push({ key: card.instanceId, face });
-    }
-  }
+  const { entries, order } = browse === undefined ? { entries: [] } : browseEntries(lookup, browse);
   const title = browse?.title ?? label;
   const browsable = entries.length > 0;
+  const orderNote = order === undefined ? {} : { order };
   const inspect = useInspectTrigger(
     browsable
       ? {
           key: `pile-${regionId}`,
           render: ({ mode, anchor, close }: InspectOverlayState) =>
             mode === "hover" ? (
-              <CardListPreview title={title} entries={entries} anchor={anchor} />
+              <CardListPreview title={title} entries={entries} anchor={anchor} {...orderNote} />
             ) : (
-              <CardListSheet title={title} entries={entries} onClose={close} />
+              <CardListSheet title={title} entries={entries} onClose={close} {...orderNote} />
             ),
         }
       : null,
@@ -250,7 +272,11 @@ function Pile({
         role={browsable ? "button" : undefined}
         tabIndex={browsable ? 0 : undefined}
         aria-haspopup={browsable ? "dialog" : undefined}
-        aria-label={browsable ? `${title}: ${String(count)} ${count === 1 ? "card" : "cards"}. Show them` : undefined}
+        aria-label={
+          browsable
+            ? `${title}: ${String(count)} ${count === 1 ? "card" : "cards"}${order === undefined ? "" : `, ${order.toLowerCase()}`}. Show them`
+            : undefined
+        }
         onClick={browsable ? open : undefined}
         onKeyDown={
           browsable
@@ -310,6 +336,10 @@ function Seat({
           count={seat.libraryCount}
           fatigue={seat.fatigueCount}
           animating={animating}
+          // R310, R313: only the viewer's own side carries the list; the opponent's is a count.
+          {...(side === "you" && seat.library !== undefined
+            ? { browse: { kind: "library" as const, title: "Your library", library: seat.library, view } }
+            : {})}
         />
         <Pile
           label="Graveyard"
@@ -317,7 +347,7 @@ function Seat({
           testId={countId("graveyard", side)}
           count={seat.graveyard.length}
           animating={animating}
-          browse={{ title: side === "you" ? "Your graveyard" : "Opponent's graveyard", cards: seat.graveyard, view }}
+          browse={{ kind: "pile", title: side === "you" ? "Your graveyard" : "Opponent's graveyard", cards: seat.graveyard, view }}
         />
         <Pile
           label="Exile"
@@ -325,7 +355,7 @@ function Seat({
           testId={countId("exile", side)}
           count={seat.exile.length}
           animating={animating}
-          browse={{ title: side === "you" ? "Your exile" : "Opponent's exile", cards: seat.exile, view }}
+          browse={{ kind: "pile", title: side === "you" ? "Your exile" : "Opponent's exile", cards: seat.exile, view }}
         />
       </span>
       {/* R98: a card mid-resolution is public and still itself, so it is shown rather than

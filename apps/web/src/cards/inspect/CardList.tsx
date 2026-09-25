@@ -1,7 +1,12 @@
-// A list of cards to look through: what a graveyard or an exile pile holds (both public, §10.8).
-// The caller hands the faces over in the order to show them (the board: newest first) and renders
-// these through `useInspectTrigger`'s `render`, so they take the one inspect slot like a card's
-// preview and sheet do (B23).
+// A list of cards to look through: what a graveyard or an exile pile holds (both public, §10.8),
+// or what is left in the viewer's own library (R310, R313). The caller hands the entries over in
+// the order to show them (the board: a pile newest first, the library in the view's order) and says
+// what that order is (`order`), and renders these through `useInspectTrigger`'s `render`, so they
+// take the one inspect slot like a card's preview and sheet do (B23).
+//
+// An entry is one face and how many cards it stands for (`count`, "×2" on the face when above 1: a
+// library's list is grouped, R310), or a card back (`face: null`) for cards the viewer was never
+// shown (R312). A back names nothing and opens nothing. The count in the header is the cards'.
 //
 // - `CardListPreview`: what a resting mouse opens. The title, the count and up to LIST_PREVIEW_MAX
 //   faces, fixed beside the pile, click-through and hidden from assistive tech, like HoverPreview;
@@ -14,6 +19,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { CardBack } from "../CardBack.tsx";
 import { CardFace } from "../CardFace.tsx";
 import { FACE_ASPECT } from "../constants.ts";
 import type { FaceModel } from "../model.ts";
@@ -44,17 +50,63 @@ import {
 } from "./testids.ts";
 import "./inspect.css";
 
-/** One card in the list. `key` is stable for the card (its instance id). */
-export type CardListEntry = { key: string; face: FaceModel };
+/**
+ * One face in the list, or a card back (`face: null`, R312). `key` is stable for what it shows (a
+ * pile card's instance id, a library entry's definition and face). `count` is how many cards it
+ * stands for, 1 when absent.
+ */
+export type CardListEntry = { key: string; face: FaceModel | null; count?: number };
 
 export type CardListProps = {
   /** What the list is, in words: "Your graveyard". */
   title: string;
   entries: readonly CardListEntry[];
+  /** What the order of the entries is, in words; a pile's is "Newest first". */
+  order?: string;
 };
+
+/** A pile's entries come newest first (the board's `Pile`). */
+const DEFAULT_ORDER = "Newest first";
+
+/** What a card back in the list is called (R312). */
+const UNKNOWN_NAME = "Unknown card";
 
 function cardsWord(count: number): string {
   return count === 1 ? "1 card" : `${String(count)} cards`;
+}
+
+function countOf(entry: CardListEntry): number {
+  return entry.count ?? 1;
+}
+
+function totalOf(entries: readonly CardListEntry[]): number {
+  return entries.reduce((sum, entry) => sum + countOf(entry), 0);
+}
+
+/** The entry's name, for a label: a back names nothing but what it is. */
+function nameOf(entry: CardListEntry): string {
+  return entry.face?.name ?? UNKNOWN_NAME;
+}
+
+/** "2 × Bigot", "Bigot", "3 × Unknown card". */
+function entryLabel(entry: CardListEntry): string {
+  const count = countOf(entry);
+  return count > 1 ? `${String(count)} × ${nameOf(entry)}` : nameOf(entry);
+}
+
+/** The face, or a back, with its count on it when it stands for more than one card. */
+function EntryFace({ entry }: { entry: CardListEntry }): ReactElement {
+  const count = countOf(entry);
+  return (
+    <>
+      {entry.face === null ? <CardBack /> : <CardFace face={entry.face} layout="full" />}
+      {count > 1 ? (
+        <span className="inspect-list-badge" aria-hidden="true">
+          ×{count}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 /** The preview's size before layout, from the numbers inspect.css uses. */
@@ -78,12 +130,15 @@ function viewportSize(): { width: number; height: number } {
 export function CardListPreview({
   title,
   entries,
+  order = DEFAULT_ORDER,
   anchor,
   prefer = "beside",
 }: CardListProps & { anchor: Rect; prefer?: PreviewPrefer }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
   const shown = entries.slice(0, LIST_PREVIEW_MAX);
-  const more = entries.length - shown.length;
+  const total = totalOf(entries);
+  // The cards the faces left out, not the faces: a grouped entry stands for several.
+  const more = total - totalOf(shown);
   const placed = placePreview(anchor, viewportSize(), estimatedSize(shown.length, more > 0), prefer);
 
   // Once laid out, place it again by its real size. jsdom has no layout and keeps the estimate.
@@ -111,14 +166,22 @@ export function CardListPreview({
     >
       <span className="inspect-list-head">
         <span className="inspect-list-title">{title}</span>
-        <span className="inspect-list-count" data-testid={INSPECT_LIST_COUNT} data-count={entries.length}>
-          {cardsWord(entries.length)}
+        <span className="inspect-list-count" data-testid={INSPECT_LIST_COUNT} data-count={total}>
+          {cardsWord(total)}
         </span>
+        <span className="inspect-list-order">{order}</span>
       </span>
       <span className="inspect-list-grid">
         {shown.map((entry) => (
-          <span key={entry.key} className="inspect-list-face" data-testid={INSPECT_LIST_CARD} data-def-name={entry.face.name}>
-            <CardFace face={entry.face} layout="full" />
+          <span
+            key={entry.key}
+            className={entry.face === null ? "inspect-list-face inspect-list-face--unknown" : "inspect-list-face"}
+            data-testid={INSPECT_LIST_CARD}
+            data-def-name={entry.face?.name ?? ""}
+            data-count={countOf(entry)}
+            data-unknown={entry.face === null ? "true" : undefined}
+          >
+            <EntryFace entry={entry} />
           </span>
         ))}
       </span>
@@ -132,14 +195,22 @@ export function CardListPreview({
   );
 }
 
-export function CardListSheet({ title, entries, onClose }: CardListProps & { onClose: () => void }): ReactElement {
+export function CardListSheet({
+  title,
+  entries,
+  order = DEFAULT_ORDER,
+  onClose,
+}: CardListProps & { onClose: () => void }): ReactElement {
   const closeButton = useRef<HTMLButtonElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const grid = useRef<HTMLUListElement>(null);
   const modal = useModalOverlay(onClose, closeButton);
   /** The face opened large, by its key; null shows the grid. */
   const [open, setOpen] = useState<string | null>(null);
-  const opened = open === null ? undefined : entries.find((entry) => entry.key === open);
+  // A back opens nothing: it has no face to show large.
+  const opened: FaceModel | undefined =
+    (open === null ? undefined : entries.find((entry) => entry.key === open))?.face ?? undefined;
+  const total = totalOf(entries);
   /** The face last opened, so Back puts focus on it again rather than dropping it on <body>. */
   const returnTo = useRef<string | null>(null);
 
@@ -165,37 +236,52 @@ export function CardListSheet({ title, entries, onClose }: CardListProps & { onC
       <div className="inspect-list-sheet" data-testid={INSPECT_LIST_SHEET} role="dialog" aria-modal="true" aria-label={title}>
         <header className="inspect-list-head">
           <h2 className="inspect-list-title">{title}</h2>
-          <span className="inspect-list-count" data-testid={INSPECT_LIST_COUNT} data-count={entries.length}>
-            {cardsWord(entries.length)}
+          <span className="inspect-list-count" data-testid={INSPECT_LIST_COUNT} data-count={total}>
+            {cardsWord(total)}
           </span>
-          <span className="inspect-list-order">Newest first</span>
+          <span className="inspect-list-order">{order}</span>
         </header>
 
         {opened === undefined ? (
           <ul ref={grid} className="inspect-list-grid inspect-list-grid--sheet">
             {entries.map((entry) => (
               <li key={entry.key} className="inspect-list-item">
-                <button
-                  type="button"
-                  className="inspect-list-face inspect-list-face--button"
-                  data-testid={INSPECT_LIST_CARD}
-                  data-def-name={entry.face.name}
-                  data-entry-key={entry.key}
-                  aria-label={`${entry.face.name}: show it large`}
-                  onClick={() => setOpen(entry.key)}
-                >
-                  <CardFace face={entry.face} layout="full" />
-                </button>
+                {entry.face === null ? (
+                  <span
+                    className="inspect-list-face inspect-list-face--unknown"
+                    data-testid={INSPECT_LIST_CARD}
+                    data-def-name=""
+                    data-count={countOf(entry)}
+                    data-unknown="true"
+                    role="img"
+                    aria-label={entryLabel(entry)}
+                  >
+                    <EntryFace entry={entry} />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="inspect-list-face inspect-list-face--button"
+                    data-testid={INSPECT_LIST_CARD}
+                    data-def-name={entry.face.name}
+                    data-count={countOf(entry)}
+                    data-entry-key={entry.key}
+                    aria-label={`${entryLabel(entry)}: show it large`}
+                    onClick={() => setOpen(entry.key)}
+                  >
+                    <EntryFace entry={entry} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         ) : (
           <div className="inspect-list-detail" data-testid={INSPECT_LIST_DETAIL}>
             <div className="inspect-face inspect-face--list" data-testid={INSPECT_FACE}>
-              <CardFace face={opened.face} layout="full" />
+              <CardFace face={opened} layout="full" />
             </div>
-            <Printed face={opened.face} />
-            <Glossary entries={glossaryFor(opened.face)} />
+            <Printed face={opened} />
+            <Glossary entries={glossaryFor(opened)} />
           </div>
         )}
 

@@ -75,7 +75,7 @@ CI (`.github/workflows/ci.yml`) runs five parallel jobs:
 - `ai-gate`: `pnpm ai:gate`.
 - `sql`: `test:sql`.
 - `db`: `test:db`.
-- `e2e`: the twenty-three specs (`01`–`23`) on Chrome and on Electron, plus the component specs on Chrome.
+- `e2e`: the twenty-four specs (`01`–`24`) on Chrome and on Electron, plus the component specs on Chrome.
 
 ## Architecture
 
