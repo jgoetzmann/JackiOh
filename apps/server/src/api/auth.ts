@@ -719,7 +719,7 @@ export function createAuthRoutes(): Route[] {
     route("GET", "/api/auth/me", "user", async (req, deps) => {
       const { profile, user } = req;
       if (profile === null || user === null) throw new ApiError("unauthorized", "sign in first");
-      // R259, R264: the Best-of-3 series this profile is in, while it is not over. Between games
+      // R259, R264: the Conquest series this profile is in, while it is not over. Between games
       // `currentMatchId` is null and this is the only way a player who waited — the older ticket,
       // or the room's host — learns there is a deck to pick. Its own series only, like the match.
       const series = await deps.store.series.activeFor(profile.id);

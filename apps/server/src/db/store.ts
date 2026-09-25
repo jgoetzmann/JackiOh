@@ -1523,7 +1523,7 @@ function buildStore(session: Session): Store {
      * the `on conflict` clause, so a taken code returns `false` instead of raising, which is the
      * port's contract.
      *
-     * R264: the room's mode goes in `room_mode` and a Best-of-3 host's frozen trio in `room_trio`
+     * R264: the room's mode goes in `room_mode` and a Conquest host's frozen trio in `room_trio`
      * (migration 0008); `p1_deck` holds the Best-of-1 deck, `[]` in the other two modes.
      */
     create: async (room: Room) => {
@@ -1598,7 +1598,7 @@ function buildStore(session: Session): Store {
      * queued", and `src/api/queue.ts` relies on the insert RAISING for the second one — it catches
      * the error and re-reads the open ticket. So this is a plain insert with no `on conflict`.
      *
-     * R257, R259: the mode, and a Best-of-3 ticket's frozen trio (migration 0008, whose
+     * R257, R259: the mode, and a Conquest ticket's frozen trio (migration 0008, whose
      * `tickets_frozen_trio_check` holds "a trio exactly when the mode is bo3"). `slot` — 0004's
      * loadout slot — is left NULL: a ticket now freezes a saved deck or a trio, not a slot, and 0008
      * dropped the column's `not null` for exactly that.
@@ -1794,7 +1794,7 @@ function buildStore(session: Session): Store {
   };
 
   // -------------------------------------------------------------------------
-  // The Best-of-3 series (SPEC §9.5, R259-R263)
+  // The Conquest series (SPEC §9.5, R259-R263)
   //
   // Migration 0009. None of these reaches an `app.*` function, because none has a rule to hold
   // that one statement does not already hold: `update` is compare-and-set in its `where`, the

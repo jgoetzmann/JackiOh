@@ -1,8 +1,8 @@
 /* The lobby (routes/play.tsx), the series screen (routes/series.tsx) and the board's series banner
    (routes/SeriesBanner.tsx).
 
-   SCOPED ON PURPOSE, like index.css's shell chrome: every rule sits under `.lobby`, `.series` or
-   `.series-banner`, and nothing is added to :root. The board's layout is a pixel measurement
+   SCOPED ON PURPOSE, like index.css's shell chrome: every rule sits under `.lobby`, `.series`,
+   `.tavern.play-screen` or `.series-banner`, and nothing is added to :root. The board's layout is a pixel measurement
    (index.css's header), and the banner is the one piece that shares a screen with it, so it only
    sets its own box. */
 
@@ -666,113 +666,145 @@
   max-width: var(--tavern-content);
 }
 
-/* --- the series screen -------------------------------------------------------------------- */
+/* --- the series screen and its deck picker ----------------------------------------------------
+   /series/:id (routes/series.tsx) and its picker (routes/SeriesPicker.tsx) wear the same tavern as
+   /play: the hero, numbered panels, a deck as a mode tile, the trio's decks as chips, the gold
+   call to action and the searching beacon while a pick waits (R338). */
 
-.series .series-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 64ch;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg-raised);
+.tavern.play-screen.series .series-panel {
+  max-width: none;
 }
 
-.series .series-panel h2 {
-  margin: 0;
-  font-size: 17px;
+.tavern.play-screen .series-panel__label {
+  margin: 4px 0 0;
+  color: var(--tavern-gold-pale);
+  font-family: var(--tavern-serif);
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.series .series-score {
+.tavern.play-screen .series-score {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--tavern-parchment);
   font-size: 22px;
   font-weight: 800;
 }
 
-.series .series-score__first {
-  color: var(--text-dim);
+.tavern.play-screen .series-score__first {
+  color: var(--tavern-text-dim);
   font-size: 13px;
   font-weight: 500;
 }
 
-.series .series-open {
-  align-self: flex-start;
-  font-size: 17px;
-}
-
-.series .series-clock {
+.tavern.play-screen .series-clock {
+  color: var(--tavern-gold-pale);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
-.series .series-decks {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.series .series-deck {
-  display: flex;
-  flex-direction: column;
+/* A deck in the standings is a trio chip; one that has won is locked, in the ready teal (R330). */
+.tavern.play-screen .play-trio-deck.series-deck {
+  display: inline-flex;
+  align-items: baseline;
   gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg-sunken);
 }
 
-.series .series-deck[data-picked="true"] {
-  border-color: var(--selected);
-  box-shadow: 0 0 0 1px var(--selected);
-}
-
-.series .series-deck[data-played="true"] {
-  opacity: 0.5;
-}
-
-.series .series-deck__name {
+.tavern.play-screen .series-deck__name {
   font-weight: 700;
-  overflow-wrap: anywhere;
 }
 
-.series .series-deck__meta {
-  color: var(--text-dim);
+.tavern.play-screen .series-deck__standing {
+  color: var(--tavern-text-dim);
   font-size: 12px;
 }
 
-.series .series-history {
+.tavern.play-screen .play-trio-deck.series-deck[data-won="true"] {
+  border-color: rgba(63, 182, 168, 0.75);
+  color: #9fe3da;
+}
+
+.tavern.play-screen .play-trio-deck.series-deck[data-won="true"] .series-deck__standing {
+  color: #9fe3da;
+}
+
+.tavern.play-screen .play-trio-deck.series-deck[data-picked="true"] {
+  border-color: var(--tavern-gold);
+  box-shadow: 0 0 0 1px var(--tavern-gold);
+}
+
+/* The picker's tiles: three across when there is room, as the mode tiles are. A deck that has won
+   is locked: dimmed, and its radio off. */
+.tavern.play-screen .play-mode-tile.series-picker__deck[data-won="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tavern.play-screen .play-mode-tile.series-picker__deck[data-won="true"]:hover {
+  border-color: rgba(201, 149, 63, 0.35);
+  transform: none;
+}
+
+.tavern.play-screen .play-mode-tile.series-picker__deck[data-won="true"] input[type="radio"] {
+  cursor: not-allowed;
+}
+
+.tavern.play-screen .series-picker__standing[data-won="false"] {
+  border-color: rgba(201, 149, 63, 0.45);
+  color: var(--tavern-text-dim);
+}
+
+.tavern.play-screen .series-picker__sealed {
   margin: 0;
-  padding-left: 18px;
+  color: var(--tavern-parchment);
+}
+
+/* The opponent's readiness: a dim "choosing…", then the ready teal once they have picked. */
+.tavern.play-screen .series-picker__opponent {
+  margin: 0;
+  color: var(--tavern-text-dim);
+  font-weight: 700;
+}
+
+.tavern.play-screen .series-picker__opponent[data-picked="true"] {
+  color: #9fe3da;
+}
+
+.tavern.play-screen .series-picker__clock {
+  margin: 0;
+  font-size: 14px;
+}
+
+.tavern.play-screen .series-history {
   display: grid;
   gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--tavern-parchment);
 }
 
-.series .series-history [data-result="win"] .series-history__result {
-  color: var(--legal);
+.tavern.play-screen .series-history [data-result="win"] .series-history__result {
+  color: #9fe3da;
+  font-weight: 700;
 }
 
-.series .series-history [data-result="loss"] .series-history__result {
-  color: var(--opponent);
+.tavern.play-screen .series-history [data-result="loss"] .series-history__result {
+  color: var(--tavern-danger-text);
+  font-weight: 700;
 }
 
-.series .series-result[data-outcome="win"] .series-result__word {
-  color: #fcd34d;
-}
-
-.series .series-result[data-outcome="loss"] .series-result__word {
-  color: #f87171;
-}
-
-.series .series-result__word {
+.tavern.play-screen .series-result__word {
+  font-family: var(--tavern-serif);
   font-size: 26px;
   font-weight: 800;
+  color: var(--tavern-gold-pale);
+}
+
+.tavern.play-screen .series-result[data-outcome="loss"] .series-result__word {
+  color: var(--tavern-danger-text);
 }
 
 /* --- the board's series banner -------------------------------------------------------------- */
@@ -795,4 +827,25 @@
 
 .series-banner a.series-banner__continue {
   font-weight: 700;
+}
+
+/* One pip per deck, filled once it has won (R336). */
+.series-banner__decks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.series-banner__pip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 50%;
+}
+
+.series-banner__pip[data-won="true"] {
+  border-color: var(--legal);
+  background: var(--legal);
 }

@@ -47,9 +47,9 @@ deployment decision that can be made later without touching the code.
 | --- | --- | --- | --- |
 | `apps/web` | Static bundle on any CDN | No | Rendering `viewFor`, composing intent, the bundled catalog |
 | Supabase Auth | Supabase | Managed | Signup, password hashing, email verification, sessions, JWTs |
-| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 plus `decks`, `trios` and `series` (R250–R263) and `tutorial_progress` (R320), RLS, the private `app` schema |
+| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 plus `decks`, `trios` and `series` (R250–R263, R330–R341) and `tutorial_progress` (R320), RLS, the private `app` schema |
 | Supabase Data API | Supabase | No | Read-only projections to the browser, RLS-enforced |
-| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, deck and trio saves, enqueue in three modes, room create/join, the Best-of-3 series and its sweeper, the tutorial's account copy (R320) |
+| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, deck and trio saves and trio imports, enqueue in three modes, room create/join, the Conquest series and its sweeper, the tutorial's account copy (R320) |
 | `apps/server` match actor | The same Node process | **Yes (in memory)** | `GameState`, two WebSockets, the turn clock, the action log |
 | `packages/engine` + `packages/cards` | Imported by both of the above | No (pure) | Every rule, `reduce`, `viewFor`, `fold` |
 
@@ -63,7 +63,7 @@ SPEC §9.1, restated as channels rather than domains:
 | --- | --- | --- |
 | Browser → Supabase Auth | publishable key (`sb_publishable_…`) | signup, login, email verification, token refresh |
 | Browser → Data API | publishable key + the user's JWT | **reads only**: own profile row, own collection, own decks and trios, own tickets, own results, own tutorial progress, the `cards` projection |
-| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this deck", "enqueue Best of 3 with this trio", "pick my second deck", "create a room", "join ABC234", "merge this device's tutorial progress" |
+| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this deck", "enqueue Conquest with this trio", "pick this deck for game 2", "import this trio", "create a room", "join ABC234", "merge this device's tutorial progress" |
 | Browser → server WebSocket | the user's JWT in the `hello` frame | intent: one `Action` at a time; receives `viewFor` and nothing else |
 
 One rule, from SPEC §9.1: **the client sends intent, never state.** "Play instance 7 in zone 3 with
@@ -317,11 +317,14 @@ and still be the only writers.
 SPEC §9.3: "Seeded RNG only… `(seed, log)` reconstructs any match." The in-memory `GameState` is a
 cache of a fold, not the record.
 
-A Best-of-3 series (R259–R263) sits above its games and is not folded: `series` is a row of its own,
-written by compare-and-set on `version`. Each of its games is an ordinary match with its own `(seed,
-log)`; the series records which match each game was, and a game's result and the series' record of it
-commit in one transaction (`src/api/results.ts`). A sweeper runs the pick clock and starts a game
-whose picks are in but whose match a restart left unstarted.
+A Conquest series (R330–R338, R262–R263) sits above its games and is not folded: `series` is a row of
+its own, written by compare-and-set on `version`, and each player's sealed pick for the next game is
+in it before the pick is acknowledged (R331). Each of its games is an ordinary match with its own
+`(seed, log)`, started only once both decks are picked (R338); the series records which match each
+game was and which decks have won, and a game's result and the series' record of it commit in one
+transaction (`src/api/results.ts`). A sweeper runs the pick clock and starts a game whose picks are
+in but whose match a restart left unstarted. Conquest reads which decks have won off the games the
+row already recorded, so it needed no migration (R330, R337).
 
 What this buys, in the order it will be needed:
 
@@ -554,8 +557,8 @@ step that is not yet implemented says which BUILD task delivers it.
 12. **Create a room** (BUILD M6-T4). `POST /api/rooms { mode: "bo1", deckId }` → a 6-character code
     from `CODE_ALPHABET` (R79). A `matches` row appears at `status = 'open'` with p1's frozen deck.
 13. **Join it from the second browser.** `POST /api/rooms/:code/join { mode: "bo1", deckId }` claims
-    the open row atomically, sets p2 and makes it `live`. A Best-of-3 room makes a series instead,
-    and both players pick their first deck on `/series/:id` (R259, R264).
+    the open row atomically, sets p2 and makes it `live`. A Conquest room makes a series instead,
+    and both players pick their first deck on `/series/:id` (R331, R264).
 14. **Play.** Both sockets connect with their JWTs, the actor calls `createGame` and `beginGame`, and
     each player gets their own `viewFor`. Every action appends one `match_actions` row and pushes two
     views. **This is the milestone: a working room-code match.**

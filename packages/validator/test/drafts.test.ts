@@ -10,6 +10,7 @@ import { DECK_SIZE, MAX_COPIES } from "../src/config";
 import {
   TRIO_DECKS,
   checkDeckDraft,
+  checkImportRoom,
   checkTrioDraft,
   normalizeName,
   trioConflicts,
@@ -190,5 +191,43 @@ describe("R253 — what may be queued: a Best-of-1 deck passes L2, L3, L5 and L6
     expect(validateTrio).toBe(validateLoadout);
     const two = legalDecks().slice(0, 2).map((cards) => ({ cards }));
     expect(rules(validateTrio({ decks: two, catalog: snapshot, collection: collection() }))).toEqual(["L1"]);
+  });
+});
+
+describe("R340 — room for an imported trio", () => {
+  const limits = { decks: 10, trios: 5 };
+
+  it("R340 an import that fits under both caps is ok", () => {
+    expect(checkImportRoom({ saved: { decks: 7, trios: 4 }, limits, adding: { decks: 3, trios: 1 } })).toEqual({ ok: true });
+    expect(checkImportRoom({ saved: { decks: 0, trios: 0 }, limits, adding: { decks: 3, trios: 1 } })).toEqual({ ok: true });
+  });
+
+  it("R340 says exactly how many deck slots are missing", () => {
+    const room = checkImportRoom({ saved: { decks: 9, trios: 1 }, limits, adding: { decks: 3, trios: 1 } });
+    expect(room).toEqual({
+      ok: false,
+      decksShort: 2,
+      triosShort: 0,
+      message:
+        "Importing this trio needs 3 free deck slots, and you have 1 free deck slot. Delete 2 decks, then import it again.",
+    });
+  });
+
+  it("R340 says exactly how many trio slots are missing, and both at once", () => {
+    const trios = checkImportRoom({ saved: { decks: 0, trios: 5 }, limits, adding: { decks: 3, trios: 1 } });
+    expect(trios).toMatchObject({ ok: false, decksShort: 0, triosShort: 1 });
+    expect(trios.ok ? "" : trios.message).toBe(
+      "Importing this trio needs 1 free trio slot, and you have no free trio slot. Delete 1 trio, then import it again.",
+    );
+    const both = checkImportRoom({ saved: { decks: 10, trios: 5 }, limits, adding: { decks: 3, trios: 1 } });
+    expect(both).toMatchObject({ ok: false, decksShort: 3, triosShort: 1 });
+    expect(both.ok ? "" : both.message).toBe(
+      "Importing this trio needs 3 free deck slots and 1 free trio slot, and you have no free deck slot and no free trio slot. Delete 3 decks and 1 trio, then import it again.",
+    );
+  });
+
+  it("R340 counts a profile already past a cap as having no room at all", () => {
+    const room = checkImportRoom({ saved: { decks: 12, trios: 0 }, limits, adding: { decks: 1, trios: 1 } });
+    expect(room).toMatchObject({ ok: false, decksShort: 1, triosShort: 0 });
   });
 });

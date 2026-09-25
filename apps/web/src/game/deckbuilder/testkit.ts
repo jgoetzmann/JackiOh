@@ -14,6 +14,7 @@ import {
   type DecksResponse,
   type SavedDeck,
   type SavedTrio,
+  type TrioImportInput,
   type TrioInput,
   type TrioSlots,
 } from "../../net/api.ts";
@@ -100,7 +101,11 @@ export function memoryStorage(): StorageLike & { data: Map<string, string> } {
   };
 }
 
-export type ServerCall = { op: "putDeck" | "deleteDeck" | "putTrio" | "deleteTrio"; id: string; body?: DeckInput | TrioInput };
+export type ServerCall = {
+  op: "putDeck" | "deleteDeck" | "putTrio" | "deleteTrio" | "importTrio";
+  id: string;
+  body?: DeckInput | TrioInput | TrioImportInput;
+};
 
 /** An in-memory `/api/decks` and `/api/trios`, with the refusals the store has to handle. */
 export function fakeDeckServer() {
@@ -146,6 +151,16 @@ export function fakeDeckServer() {
       gate({ op: "deleteTrio", id });
       return { deleted: trios.delete(id) };
     },
+    async importTrio(input) {
+      gate({ op: "importTrio", id: input.trio.id, body: input });
+      const catalogVersion = input.catalogVersion;
+      for (const deck of input.slots) {
+        if (deck !== null) decks.set(deck.id, { name: deck.name, cards: deck.cards, catalogVersion });
+      }
+      const deckIds = input.slots.map((deck) => deck?.id ?? null) as TrioSlots;
+      trios.set(input.trio.id, { name: input.trio.name, deckIds });
+      return {};
+    },
   };
 
   /** Seeds the server with what a `GET /api/decks` answer says it holds. */
@@ -166,5 +181,6 @@ export function quietDeckApi(): DeckSyncApi {
     deleteDeck: async () => ({}),
     putTrio: async () => ({}),
     deleteTrio: async () => ({}),
+    importTrio: async () => ({}),
   };
 }

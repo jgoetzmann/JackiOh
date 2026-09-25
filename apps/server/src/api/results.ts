@@ -17,12 +17,12 @@
  * and nowhere else). This file only decides the *score*: 1 for the winner, 0 for the loser and
  * 0.5 each for §2.5's draws.
  *
- * A game of a Best-of-3 series is written the same way with one difference and one addition
+ * A game of a Conquest series is written the same way with one difference and one addition
  * (R262, R263): its row leaves both ratings unchanged, because a series moves Elo once, when it
  * ends; and the series' record of the game — and, when the game ends the series, that one rating
  * move — commit in the same transaction as the row (`advanceSeriesInTx` in `series.ts`). When the
- * game leaves the series in its next game already (game 3's picks are automatic, R259), that game
- * is started after the commit.
+ * game leaves the series in its next game already (both sides had one deck left, so both picks were
+ * made for them, R332), that game is started after the commit.
  */
 
 import { eloUpdate } from "../config";
@@ -77,7 +77,7 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
     const already = await t.results.getByMatch(input.matchId);
     if (already !== null) return { row: already, series: null };
 
-    // R262: a game of a Best-of-3 series is recorded but not rated — the series moves Elo once,
+    // R262: a game of a Conquest series is recorded but not rated — the series moves Elo once,
     // when it ends — whoever resolved it.
     const series = await t.series.byMatch(input.matchId);
     const ratingPolicy: RatingPolicy = series === null ? input.ratingPolicy : "unchanged";
@@ -174,7 +174,7 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
 export function createRecordResult(deps: ServerDeps): RecordResult {
   return async (input: RecordResultInput) => {
     const written = await writeResult(deps, { ...input, ratingPolicy: "elo" });
-    // After the commit: a series whose next game began already (game 3, R259) gets its match. A
+    // After the commit: a series whose next game began already (R332) gets its match. A
     // failure to start it is the sweeper's to heal (R263), never this result's.
     await resumeSeries(deps, written.series);
     return written.row;
@@ -225,7 +225,8 @@ export async function reapStuckMatches(deps: ServerDeps): Promise<string[]> {
     }
     resolved.push(match.id);
     if (deps.matches.has(match.id)) await deps.matches.stop(match.id);
-    // A reaped series game is a drawn game like any other (R261), and may leave game 3 to start.
+    // A reaped series game is a drawn game like any other (R334), and may leave the next game to
+    // start (R332).
     await resumeSeries(deps, advanced);
   }
 

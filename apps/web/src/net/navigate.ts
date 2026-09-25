@@ -73,7 +73,7 @@ export const paths = {
   practice: "/practice",
   hotseat: "/dev/hotseat",
   match: (matchId: string): string => `/match/${matchId}`,
-  /** R259: a Best-of-3 series between its games: the score, the picks and the pick clock. */
+  /** R338: a Conquest series between its games: the score, the sealed picks and the pick clock. */
   series: (seriesId: string): string => `/series/${seriesId}`,
 } as const;
 

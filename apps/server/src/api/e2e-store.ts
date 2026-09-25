@@ -525,7 +525,7 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
   };
 
   // -------------------------------------------------------------------------
-  // Saved decks, trios and the Best-of-3 series (R250–R263): shared with the unit-test fake.
+  // Saved decks, trios and the Conquest series (R250–R263): shared with the unit-test fake.
   // -------------------------------------------------------------------------
 
   const deckStores = createMemoryDeckStores(() => tables);

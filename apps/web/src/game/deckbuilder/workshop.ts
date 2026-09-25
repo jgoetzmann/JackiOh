@@ -4,7 +4,7 @@
 // with. The components draw what this module returns and decide nothing themselves.
 //
 // NO RULE LIVES HERE (CLAUDE.md rule 7). Whether a deck may queue Best-of-1 is `validateDeck`'s;
-// whether a trio may queue Best-of-3 is `validateTrio`'s; which cards two decks of a trio share is
+// whether a trio may queue Conquest is `validateTrio`'s; which cards two decks of a trio share is
 // `trioConflicts`'s (R251: a card is its catalog id, so that is the whole comparison). This module
 // only hands them the decks under the names they will be saved with, so the validator's sentences
 // name the decks the player sees, and it never writes one of those sentences itself.
@@ -108,7 +108,7 @@ export function trioSlots(trio: TrioItem, decks: readonly DeckItem[]): readonly 
 }
 
 /**
- * R253's Best-of-3 verdict: `validateTrio` over the filled slots only, so an empty slot is L1's
+ * R253's Conquest verdict: `validateTrio` over the filled slots only, so an empty slot is L1's
  * "this one has 2" in the validator's own words, and every sentence names the decks as saved.
  */
 export function trioVerdict(

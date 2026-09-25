@@ -1,12 +1,13 @@
-// BUILD M8 spec 19 — "The three queue modes, and a Best-of-3 series between the browser and
-// `cy.task(\"wsPlayer\")` (R257–R264)".
+// BUILD M8 spec 19 — "The three queue modes, and a Conquest series between the browser and
+// `cy.task(\"wsPlayer\")` (R257–R264, R330–R338)".
 //
 // Key assertions (BUILD M8, quoted verbatim):
 //
-//     "Best of 1 plays the chosen deck; All Random needs no saved deck; a series pick is hidden
-//      until both have picked; each game starts on the picked decks; a conceded game loses the
-//      game, not the series; the series ends at two wins and moves the rating once; a room refuses
-//      a joiner in another mode"
+//     "Best of 1 plays the chosen deck; All Random needs no saved deck; a series pick is chosen,
+//      locked in and hidden until both have picked; each game starts on the picked decks; a deck
+//      that wins is locked and a deck that lost may be picked again; a player's last deck is picked
+//      for them; a conceded game loses the game, not the series; the series ends when one side has
+//      won with all three decks and moves the rating once; a room refuses a joiner in another mode"
 //
 // WHO IS WHO. Seat one is the browser, signed in as the `e2e-p1` fixture account; it only ever acts
 // through the lobby (`/play`), the series screen (`/series/<id>`) and the board, the way a player
@@ -42,7 +43,6 @@
 import {
   MATCHMAKER_SWEEP_INTERVAL_SECONDS,
   RATING_WINDOW_UNCAPPED_AFTER_SECONDS,
-  SERIES_MAX_GAMES,
   SERIES_POLL_SECONDS,
   SERIES_WINS_NEEDED,
 } from "../../../apps/server/src/config.ts";
@@ -70,12 +70,16 @@ import {
   SERIES_BANNER,
   SERIES_BANNER_CONTINUE,
   SERIES_BANNER_RESULT,
+  SERIES_LOCK_IN,
   SERIES_OPPONENT_STATUS,
+  SERIES_PICKER,
   SERIES_RESULT,
   SERIES_SCORE,
   SERIES_SCREEN,
   handCardId,
   playModeId,
+  seriesBannerOpponentDeckId,
+  seriesBannerYourDeckId,
   seriesDeckId,
   seriesGameId,
   seriesOpponentDeckId,
@@ -119,8 +123,10 @@ const CHOSEN_DECK_INDEX = 1;
 
 /** Game 1 of the series: the browser picks its chosen deck's slot, seat two its last slot. */
 const GAME_ONE_PICKS = { browser: CHOSEN_DECK_INDEX, seatTwo: 2 } as const;
-/** Game 2: the browser picks slot 0, seat two its fixture deck, slot 0. */
-const GAME_TWO_PICKS = { browser: 0, seatTwo: 0 } as const;
+/** Game 2: the browser picks slot 0; seat two picks slot 2 again, the deck that lost (R330). */
+const GAME_TWO_PICKS = { browser: 0, seatTwo: 2 } as const;
+/** Game 3: the browser's last deck is picked for it (R332); seat two picks its fixture deck, slot 0. */
+const GAME_THREE_PICKS = { browser: 2, seatTwo: 0 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // the HTTP surface, as far as this spec reads it (apps/web/src/net/api.ts is the contract)
@@ -160,8 +166,9 @@ type SeriesView = {
     seat: "p1" | "p2";
     wins: number;
     trioName: string;
-    decks: { slot: number; name: string; cards: string[]; played: boolean }[];
+    decks: { slot: number; name: string; cards: string[]; won: boolean; games: number }[];
     pick: number | null;
+    autoPick: boolean;
   };
   opponent: { wins: number; decks: Record<string, unknown>[]; picked: boolean } & Record<string, unknown>;
   games: {
@@ -283,7 +290,7 @@ function openLobby(account: E2EAccount, mode: QueueMode): void {
 
 /**
  * "Find a match", and wait for the lobby to say it is queued — so the browser's ticket is the older
- * one before seat two enqueues, which makes the browser series seat p1 (R259).
+ * one before seat two enqueues, which makes the browser series seat p1 (R335).
  */
 function findMatch(): void {
   cy.get(ts(PLAY_QUEUE), { timeout: timeouts.view }).should("not.be.disabled").click();
@@ -301,7 +308,7 @@ function landedOn(pattern: RegExp, timeout: number): Cypress.Chainable<string> {
 /**
  * §2.5: seat two concedes the game its socket is on. `playerId` is only the field the action type
  * carries: `parseClientMessage` discards it and the actor stamps the seat the token holds, which in
- * an even game of a series is the match's p1 (R259).
+ * an even game of a series is the match's p1 (R335).
  */
 function seatTwoConcedes(): void {
   cy.wsPlayer({ action: "send", name: SEAT_TWO, body: { type: "concede", playerId: "p2" } });
@@ -314,7 +321,7 @@ function installed(value: InstalledLoadout | null): InstalledLoadout {
 
 // ---------------------------------------------------------------------------------------------
 
-describe("19 queue modes and series — Best of 1, All Random, Best of 3 and rooms", () => {
+describe("19 queue modes and series — Best of 1, All Random, Conquest and rooms", () => {
   beforeEach(() => {
     cy.freeAccount(accounts.p1());
     cy.freeAccount(accounts.p2());
@@ -419,15 +426,14 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     me(seatOne).its("currentMatchId").should("eq", null);
   });
 
-  it("a Best-of-3 series: hidden picks, the picked decks, a concede loses one game, two wins end it and rate it once (R259–R262)", () => {
+  it("a Conquest series: sealed picks, the picked decks, won decks locked, the last deck picked for you, three wins end it and rate it once (R330–R338, R262)", () => {
     const seed = seedFor("19-series");
     const seatOne = accounts.p1();
     const seatTwo = accounts.p2();
     let mine: InstalledLoadout | null = null;
     let theirs: InstalledLoadout | null = null;
     let seriesId = "";
-    let gameOne = "";
-    let gameTwo = "";
+    const matchIds: string[] = [];
     let before: ProfileBody = { rating: 0, record: { wins: 0, losses: 0, draws: 0 } };
 
     cy.installLoadout(seatOne, "19-modes-a", { deckIndex: CHOSEN_DECK_INDEX }).then((value) => {
@@ -440,7 +446,61 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
       before = body;
     });
 
-    // --- both queue Best of 3: the browser through the lobby, seat two over HTTP ---------------
+    /** The browser selects `slot` in the picker and locks it in (R331). */
+    const lockIn = (slot: number): void => {
+      cy.get(ts(SERIES_PICKER), { timeout: timeouts.view }).should("have.attr", "data-state", "choosing");
+      cy.get(ts(seriesPickId(slot))).should("not.be.disabled").check();
+      cy.get(ts(seriesPickId(slot))).should("be.checked");
+      cy.get(ts(SERIES_LOCK_IN)).should("not.be.disabled").click();
+    };
+
+    /**
+     * Game `gameNo` on the board: both hands come from the picked decks, and seat two concedes it
+     * (R334: that loses the game, not the series).
+     */
+    const playAndWin = (gameNo: number, picks: { browser: number; seatTwo: number }): void => {
+      landedOn(MATCH_PATH, SERIES_POLL_TIMEOUT_MS).then((id) => {
+        matchIds.push(id);
+        expect(matchIds, `game ${String(gameNo)} is a match of its own`).to.have.length(gameNo);
+      });
+      cy.get(ts(SERIES_BANNER), { timeout: timeouts.view }).should("be.visible");
+      browserHand().then((hand) => {
+        const decks = installed(mine).decks;
+        expectDealtFrom(
+          hand,
+          decks[picks.browser] ?? [],
+          decks.filter((_deck, at) => at !== picks.browser),
+          `game ${String(gameNo)}: the browser plays the deck it picked`,
+        );
+      });
+      cy.then(() => {
+        const matchId = matchIds[gameNo - 1] ?? "";
+        cy.wsPlayer({ action: "connect", name: SEAT_TWO, url: server.ws(), token: seatTwo.token, matchId }).then((result) => {
+          const decks = installed(theirs).decks;
+          expectDealtFrom(
+            socketHand(result.view),
+            decks[picks.seatTwo] ?? [],
+            decks.filter((_deck, at) => at !== picks.seatTwo),
+            `game ${String(gameNo)}: seat two plays the deck it picked`,
+          );
+        });
+        seatTwoConcedes();
+      });
+      cy.get(ts(RESULT_OVERLAY), { timeout: timeouts.view }).should("contain.text", "Win");
+    };
+
+    /** From the board after a won game, back to the series screen to pick for the next one. */
+    const continueToPick = (wins: number): void => {
+      cy.get(ts(SERIES_BANNER_RESULT)).should("not.exist");
+      cy.get(ts(SERIES_BANNER_CONTINUE), { timeout: SERIES_POLL_TIMEOUT_MS }).should("be.visible").click();
+      landedOn(SERIES_PATH, timeouts.view).then((id) => {
+        expect(id).to.eq(seriesId);
+      });
+      cy.get(ts(SERIES_SCREEN), { timeout: timeouts.view }).should("have.attr", "data-status", "picking");
+      cy.get(ts(SERIES_SCORE)).should("have.attr", "data-you", String(wins)).and("have.attr", "data-opponent", "0");
+    };
+
+    // --- both queue Conquest: the browser through the lobby, seat two over HTTP ------------------
     openLobby(seatOne, "bo3");
     cy.then(() => {
       cy.get(ts(PLAY_TRIO_SELECT), { timeout: timeouts.view }).select(installed(mine).trioId);
@@ -451,8 +511,8 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     cy.then(() => {
       enqueue(seatTwo, { mode: "bo3", trioId: installed(theirs).trioId, seed }).should((response) => {
         expect(response.status).to.eq(200);
-        expect(response.body.mode, "R257: a Best-of-3 ticket").to.eq("bo3");
-        expect(response.body.matchId, "R259: a series opens on its pick phase, not on a match").to.eq(null);
+        expect(response.body.mode, "R257: a Conquest ticket").to.eq("bo3");
+        expect(response.body.matchId, "R338: a series opens on its pick phase, not on a match").to.eq(null);
       });
     });
 
@@ -463,133 +523,88 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     cy.get(ts(SERIES_SCREEN), { timeout: timeouts.view }).should("have.attr", "data-status", "picking");
     cy.get(ts(SERIES_SCORE)).should("have.attr", "data-you", "0").and("have.attr", "data-opponent", "0");
 
-    // --- game 1's picks: hidden until both have picked (R259) -----------------------------------
-    cy.get(ts(seriesPickId(GAME_ONE_PICKS.browser))).should("not.be.disabled").click();
+    // --- game 1's picks: sealed, and hidden until both are in (R331) -----------------------------
+    lockIn(GAME_ONE_PICKS.browser);
+    cy.get(ts(SERIES_PICKER)).should("have.attr", "data-state", "waiting");
     cy.get(ts(seriesDeckId(GAME_ONE_PICKS.browser))).should("have.attr", "data-picked", "true");
     cy.get(ts(SERIES_OPPONENT_STATUS)).should("have.attr", "data-picked", "false");
     cy.then(() => {
       seriesAs(seatTwo, seriesId).should((view) => {
         expect(view.status).to.eq("picking");
-        expect(view.opponent.picked, "R259: seat two sees THAT the browser picked").to.eq(true);
-        // …and never WHAT: the opponent's side carries wins, which slots were played, and a yes/no.
-        expect(Object.keys(view.opponent).sort(), "R259: no pick and no deck in the opponent's projection").to.deep.eq([
+        expect(view.opponent.picked, "R331: seat two sees THAT the browser picked").to.eq(true);
+        // …and never WHAT: the opponent's side carries wins, which decks have won, and a yes/no.
+        expect(Object.keys(view.opponent).sort(), "R336: no pick and no deck in the opponent's projection").to.deep.eq([
           "decks",
           "picked",
           "wins",
         ]);
         for (const deck of view.opponent.decks) {
-          expect(Object.keys(deck).sort(), "R259: an opponent slot is its number and whether it was played").to.deep.eq([
-            "played",
+          expect(Object.keys(deck).sort(), "R336: an opponent slot is its number and whether it has won").to.deep.eq([
             "slot",
+            "won",
           ]);
         }
         expect(view.you.pick, "seat two has not picked yet").to.eq(null);
       });
+      // Sealed: the browser's pick cannot be changed once it is in.
+      cy.request<ErrorBody>({
+        method: "POST",
+        url: api(`/api/series/${seriesId}/pick`),
+        headers: bearer(seatOne),
+        body: { slot: 0 },
+        failOnStatusCode: false,
+      })
+        .its("status")
+        .should("eq", 409);
       pickAs(seatTwo, seriesId, GAME_ONE_PICKS.seatTwo).should((view) => {
-        expect(view.status, "R259: both picked, so game 1 starts at once").to.eq("playing");
+        expect(view.status, "R331: both picked, so game 1 starts at once").to.eq("playing");
         expect(view.currentMatchId, "and the answer names it").to.be.a("string");
-        gameOne = view.currentMatchId ?? "";
       });
     });
 
-    // The series screen takes the browser to the board by itself.
-    landedOn(MATCH_PATH, SERIES_POLL_TIMEOUT_MS).then((id) => {
-      expect(id, "the browser is on game 1").to.eq(gameOne);
-    });
-    cy.get(ts(SERIES_BANNER), { timeout: timeouts.view }).should("be.visible");
+    // --- game 1, on the picked decks; seat two concedes it ----------------------------------------
+    playAndWin(1, GAME_ONE_PICKS);
 
-    // --- game 1 is played on the picked decks ---------------------------------------------------
-    browserHand().then((hand) => {
-      const decks = installed(mine).decks;
-      expectDealtFrom(
-        hand,
-        decks[GAME_ONE_PICKS.browser] ?? [],
-        decks.filter((_deck, at) => at !== GAME_ONE_PICKS.browser),
-        "game 1: the browser plays the deck it picked",
-      );
-    });
-    cy.then(() => {
-      cy.wsPlayer({ action: "connect", name: SEAT_TWO, url: server.ws(), token: seatTwo.token, matchId: gameOne }).then(
-        (result) => {
-          const decks = installed(theirs).decks;
-          expectDealtFrom(
-            socketHand(result.view),
-            decks[GAME_ONE_PICKS.seatTwo] ?? [],
-            decks.filter((_deck, at) => at !== GAME_ONE_PICKS.seatTwo),
-            "game 1: seat two plays the deck it picked",
-          );
-        },
-      );
-      // R261: a concede loses this game only.
-      seatTwoConcedes();
-    });
-    cy.get(ts(RESULT_OVERLAY), { timeout: timeouts.view }).should("contain.text", "Win");
-
-    // --- the series goes on: 1–0, and game 2's pick ---------------------------------------------
-    cy.get(ts(SERIES_BANNER_RESULT)).should("not.exist");
-    cy.get(ts(SERIES_BANNER_CONTINUE), { timeout: SERIES_POLL_TIMEOUT_MS }).should("be.visible").click();
-    landedOn(SERIES_PATH, timeouts.view).then((id) => {
-      expect(id).to.eq(seriesId);
-    });
-    cy.get(ts(SERIES_SCREEN), { timeout: timeouts.view }).should("have.attr", "data-status", "picking");
-    cy.get(ts(SERIES_SCORE)).should("have.attr", "data-you", "1").and("have.attr", "data-opponent", "0");
+    // --- game 2: the deck that won is locked; the one that lost comes back ------------------------
+    continueToPick(1);
     cy.get(ts(seriesGameId(1))).should("have.attr", "data-result", "win");
-    // A deck played in this series is not offered again (R259), on either side.
-    cy.get(ts(seriesDeckId(GAME_ONE_PICKS.browser))).should("have.attr", "data-played", "true");
-    cy.get(ts(seriesPickId(GAME_ONE_PICKS.browser))).should("not.exist");
-    cy.get(ts(seriesOpponentDeckId(GAME_ONE_PICKS.seatTwo))).should("have.attr", "data-played", "true");
+    cy.get(ts(seriesDeckId(GAME_ONE_PICKS.browser))).should("have.attr", "data-won", "true");
+    cy.get(ts(seriesPickId(GAME_ONE_PICKS.browser))).should("be.disabled");
+    cy.get(ts(seriesOpponentDeckId(GAME_ONE_PICKS.seatTwo))).should("have.attr", "data-won", "false");
     cy.then(() => {
       seriesAs(seatOne, seriesId).should((view) => {
         expect(view.gameNo, "the series is picking for game 2").to.eq(2);
         const game = view.games[0];
         expect(game?.yourSlot).to.eq(GAME_ONE_PICKS.browser);
         expect(game?.opponentSlot, "a played slot is shown once both picks are in").to.eq(GAME_ONE_PICKS.seatTwo);
-        expect(game?.youWentFirst, "R259: series seat p1, the older ticket, goes first in game 1").to.eq(true);
+        expect(game?.youWentFirst, "R335: series seat p1, the older ticket, goes first in game 1").to.eq(true);
         expect(view.result, "a conceded game did not end the series").to.eq(null);
       });
     });
-
-    cy.get(ts(seriesPickId(GAME_TWO_PICKS.browser))).should("not.be.disabled").click();
-    cy.get(ts(seriesDeckId(GAME_TWO_PICKS.browser))).should("have.attr", "data-picked", "true");
+    lockIn(GAME_TWO_PICKS.browser);
     cy.then(() => {
       pickAs(seatTwo, seriesId, GAME_TWO_PICKS.seatTwo).should((view) => {
-        expect(view.status, "game 2 starts at once").to.eq("playing");
-        gameTwo = view.currentMatchId ?? "";
-        expect(gameTwo, "a new match for game 2").to.not.eq(gameOne).and.not.eq("");
+        expect(view.status, "R330: seat two plays the deck that lost again, and game 2 starts").to.eq("playing");
       });
     });
-    landedOn(MATCH_PATH, SERIES_POLL_TIMEOUT_MS).then((id) => {
-      expect(id, "the browser is on game 2").to.eq(gameTwo);
-    });
+    playAndWin(2, GAME_TWO_PICKS);
 
-    // --- game 2, on game 2's picks, and seat two concedes again ---------------------------------
-    browserHand().then((hand) => {
-      const decks = installed(mine).decks;
-      expectDealtFrom(
-        hand,
-        decks[GAME_TWO_PICKS.browser] ?? [],
-        decks.filter((_deck, at) => at !== GAME_TWO_PICKS.browser),
-        "game 2: the browser plays the deck it picked",
-      );
-    });
+    // --- game 3: the browser's last deck is picked for it (R332) ----------------------------------
+    continueToPick(2);
+    cy.get(ts(SERIES_PICKER)).should("have.attr", "data-state", "waiting").and("have.attr", "data-auto", "true");
+    cy.get(ts(seriesDeckId(GAME_THREE_PICKS.browser))).should("have.attr", "data-picked", "true");
     cy.then(() => {
-      cy.wsPlayer({ action: "connect", name: SEAT_TWO, url: server.ws(), token: seatTwo.token, matchId: gameTwo }).then(
-        (result) => {
-          const decks = installed(theirs).decks;
-          expectDealtFrom(
-            socketHand(result.view),
-            decks[GAME_TWO_PICKS.seatTwo] ?? [],
-            decks.filter((_deck, at) => at !== GAME_TWO_PICKS.seatTwo),
-            "game 2: seat two plays the deck it picked",
-          );
-        },
-      );
-      seatTwoConcedes();
+      seriesAs(seatTwo, seriesId).its("opponent.picked").should("eq", true);
+      pickAs(seatTwo, seriesId, GAME_THREE_PICKS.seatTwo).its("status").should("eq", "playing");
     });
-    cy.get(ts(RESULT_OVERLAY), { timeout: timeouts.view }).should("contain.text", "Win");
+    playAndWin(3, GAME_THREE_PICKS);
 
-    // --- two wins: the series is over, and won ---------------------------------------------------
+    // --- a win with every deck: the series is over, and won ---------------------------------------
     cy.get(ts(SERIES_BANNER_RESULT), { timeout: SERIES_POLL_TIMEOUT_MS }).should("have.attr", "data-outcome", "win");
+    for (const slot of [0, 1, 2]) {
+      cy.get(ts(seriesBannerYourDeckId(slot))).should("have.attr", "data-won", "true");
+      cy.get(ts(seriesBannerOpponentDeckId(slot))).should("have.attr", "data-won", "false");
+    }
     cy.then(() => {
       cy.visitAs(seatOne, routes.series(seriesId));
     });
@@ -602,10 +617,10 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     cy.then(() => {
       seriesAs(seatOne, seriesId).then((view) => {
         expect(view.status).to.eq("over");
-        expect(view.games, `the series ended at ${String(SERIES_WINS_NEEDED)} wins, before game ${String(SERIES_MAX_GAMES)}`).to.have.length(
+        expect(view.games, `the series ended at ${String(SERIES_WINS_NEEDED)} wins, one with each deck`).to.have.length(
           SERIES_WINS_NEEDED,
         );
-        expect(view.games[1]?.youWentFirst, "R259: series seat p2 goes first in even games").to.eq(false);
+        expect(view.games[1]?.youWentFirst, "R335: series seat p2 goes first in even games").to.eq(false);
         const result = view.result;
         expect(result?.outcome).to.eq("win");
         expect(result?.endReason).to.eq("decided");
@@ -615,7 +630,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
           expect(moved, "a won series moves the rating up").to.be.greaterThan(0);
           expect(after.rating - before.rating, "R262: the profile moved by exactly the series' move, once").to.eq(moved);
           expect(after.rating).to.eq(result?.ratingAfter);
-          expect(after.record.wins - before.record.wins, "R262: both games are recorded as wins").to.eq(SERIES_WINS_NEEDED);
+          expect(after.record.wins - before.record.wins, "R262: every game is recorded as a win").to.eq(SERIES_WINS_NEEDED);
         });
       });
     });
@@ -634,7 +649,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     }
   });
 
-  it("a Best-of-3 room refuses a Best-of-1 joiner and makes a series for a trio (R264)", () => {
+  it("a Conquest room refuses a Best-of-1 joiner and makes a series for a trio (R264)", () => {
     const seed = seedFor("19-room");
     const seatOne = accounts.p1();
     const seatTwo = accounts.p2();
@@ -647,7 +662,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
       theirs = value;
     });
 
-    // The browser makes a Best-of-3 room with its only trio, through the lobby.
+    // The browser makes a Conquest room with its only trio, through the lobby.
     openLobby(seatOne, "bo3");
     cy.get(ts(PLAY_TRIO_SELECT), { timeout: timeouts.view }).find("option:selected").should("have.text", INSTALLED_TRIO_NAME);
     cy.get(ts(PLAY_CREATE_ROOM)).should("not.be.disabled").click();
@@ -671,7 +686,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
         expect(response.status, "R264: a choice in another mode is a conflict").to.eq(409);
         expect(response.body.error.code).to.eq("conflict");
         expect(response.body.error.details, "and names the room's mode").to.deep.eq({ mode: "bo3" });
-        expect(response.body.error.message).to.eq("This room plays Best of 3: pick one of your trios.");
+        expect(response.body.error.message).to.eq("This room plays Conquest: pick one of your trios.");
       });
     });
     // The refusal claimed nothing: the room still takes the right choice.
@@ -685,7 +700,7 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
         expect(response.status).to.eq(200);
         expect(response.body.mode).to.eq("bo3");
         expect(response.body.seat, "the joiner is series seat p2").to.eq("p2");
-        expect(response.body.matchId, "R264: a Best-of-3 join makes the series, no match yet").to.eq(null);
+        expect(response.body.matchId, "R264: a Conquest join makes the series, no match yet").to.eq(null);
         expect(response.body.seriesId).to.be.a("string").and.not.eq("");
         seriesId = response.body.seriesId ?? "";
       });
@@ -697,11 +712,11 @@ describe("19 queue modes and series — Best of 1, All Random, Best of 3 and roo
     });
     cy.get(ts(SERIES_SCREEN), { timeout: timeouts.view }).should("have.attr", "data-status", "picking");
 
-    // Clean up, and keep this file's endings level: the host forfeits between games (R261).
+    // Clean up, and keep this file's endings level: the host forfeits between games (R334).
     cy.then(() => {
       forfeitAs(seatOne, seriesId).should((view) => {
         expect(view.status).to.eq("over");
-        expect(view.result?.outcome, "R261: a forfeit loses the series").to.eq("loss");
+        expect(view.result?.outcome, "R334: a forfeit loses the series").to.eq("loss");
         expect(view.result?.endReason).to.eq("forfeit");
       });
       seriesAs(seatTwo, seriesId).its("result.outcome").should("eq", "win");

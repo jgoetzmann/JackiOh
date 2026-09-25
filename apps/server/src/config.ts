@@ -351,19 +351,35 @@ export const DECK_CODE_MAX_INPUT_LENGTH = 512;
 export const DECK_AUTOSAVE_DEBOUNCE_MS = 800;
 /** SPEC §11 R256: how long the builder waits before it tries a failed save again. */
 export const DECK_AUTOSAVE_RETRY_SECONDS = 5;
-
-// ---------------------------------------------------------------------------------------------
-// Queue modes and the Best-of-3 series (SPEC §9.5, R257–R264).
-// ---------------------------------------------------------------------------------------------
-
-/** SPEC §11 R259: game wins that take a Best-of-3 series. */
-export const SERIES_WINS_NEEDED = 2;
+/** SPEC §11 R339: the trio-code format's version; a code naming any other version is refused. */
+export const TRIO_CODE_VERSION = 1;
 /**
- * SPEC §11 R259: the most games a series plays: one per deck of a trio, since a deck is played at
- * most once in a series. `test/api/series-rules.test.ts` asserts it equals the validator's `TRIO_DECKS`.
+ * SPEC §11 R339: raw trio-code input longer than this is refused before it is read. A trio code
+ * carries three decks' names and cards and the trio's name: about 200 characters for ASCII names,
+ * and under 1,100 at the very worst (four-byte characters filling every name to its limit), so this
+ * leaves room for whatever a chat client wraps around a pasted code.
  */
-export const SERIES_MAX_GAMES = 3;
-/** SPEC §11 R260: how long both players have to pick their deck for the next game of a series. */
+export const TRIO_CODE_MAX_INPUT_LENGTH = 2048;
+
+// ---------------------------------------------------------------------------------------------
+// Queue modes and the Conquest series (SPEC §9.5, R257–R264, R330–R338).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * SPEC §11 R330: game wins that take a Conquest series — one with each deck of a trio, since a deck
+ * that has won is locked. `test/api/series-rules.test.ts` asserts it equals the validator's
+ * `TRIO_DECKS`. (R259's Best of 3 needed 2.)
+ */
+export const SERIES_WINS_NEEDED = 3;
+/**
+ * SPEC §11 R334: the most games a series plays, drawn games included. Without a draw a series is
+ * decided by its fifth game at the latest (2 × `SERIES_WINS_NEEDED` − 1: a side is then at three
+ * wins), so the cap leaves room for two drawn games in the longest series and stops a run of draws
+ * from holding both players for ever. At the cap more wins takes the series and equal wins is a
+ * series draw. (R259's Best of 3 played at most 3.)
+ */
+export const SERIES_MAX_GAMES = 7;
+/** SPEC §11 R333: how long both players have to pick their deck for the next game of a series. */
 export const SERIES_PICK_SECONDS = 60;
 /** SPEC §11 R263: how often the series sweeper runs (pick clocks, and games a restart left unstarted). */
 export const SERIES_SWEEP_INTERVAL_SECONDS = 5;
@@ -480,6 +496,8 @@ export const SERVER_CONFIG = Object.freeze({
   DECK_CODE_MAX_INPUT_LENGTH,
   DECK_AUTOSAVE_DEBOUNCE_MS,
   DECK_AUTOSAVE_RETRY_SECONDS,
+  TRIO_CODE_VERSION,
+  TRIO_CODE_MAX_INPUT_LENGTH,
   SERIES_WINS_NEEDED,
   SERIES_MAX_GAMES,
   SERIES_PICK_SECONDS,

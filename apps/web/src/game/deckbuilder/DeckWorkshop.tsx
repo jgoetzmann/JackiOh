@@ -4,7 +4,8 @@
 // THE SHAPE. A header (the way back, the title and the save status, which is always on screen), a
 // rail listing the decks ("Decks n/10": name, count, a status chip) and the trios ("Trios n/5"),
 // and a main column holding whichever is open: the deck editor (DeckEditor.tsx), the trio editor
-// (TrioEditor.tsx) or the import panel (ImportPanel.tsx). On a phone the two halves take turns
+// (TrioEditor.tsx), the deck import panel (ImportPanel.tsx) or the trio import panel
+// (TrioImportPanel.tsx, R339–R341). On a phone the two halves take turns
 // (`data-view="list|editor"`): the list first, an item opens the editor, and "← All decks" goes
 // back. Everything stays mounted either way; the CSS decides what shows.
 //
@@ -32,6 +33,7 @@ import DeckEditor from "./DeckEditor.tsx";
 import { DECK_SIZE } from "./deckSize.ts";
 import { DEFAULT_FILTER, DEFAULT_SORT, type PoolFilter, type PoolSort } from "./filters.ts";
 import ImportPanel from "./ImportPanel.tsx";
+import TrioImportPanel from "./TrioImportPanel.tsx";
 import {
   createDeckStore,
   type DeckItem,
@@ -52,6 +54,7 @@ import {
   SYNC_STATUS,
   TRIO_CAP,
   TRIO_CAP_REASON,
+  TRIO_IMPORT_OPEN,
   TRIO_LIST,
   TRIO_NEW,
   WORKSHOP,
@@ -79,7 +82,12 @@ function halvesTakeTurns(): boolean {
 }
 
 /** What the main column shows. */
-export type WorkshopOpen = { kind: "deck"; id: string } | { kind: "trio"; id: string } | { kind: "import" } | null;
+export type WorkshopOpen =
+  | { kind: "deck"; id: string }
+  | { kind: "trio"; id: string }
+  | { kind: "import" }
+  | { kind: "trio-import" }
+  | null;
 
 export type DeckWorkshopProps = {
   catalog: CatalogSnapshot;
@@ -89,7 +97,7 @@ export type DeckWorkshopProps = {
   data: DecksResponse;
   /** Whose drafts the local mirror holds (`jackioh.decks.v1.<profileId>`). */
   profileId: string;
-  /** The four writes, bound to the session's token by the route. */
+  /** The writes, bound to the session's token by the route. */
   api: DeckSyncApi;
   /** What opens first. Default: the first deck (or nothing), with a phone showing the list. */
   initialOpen?: WorkshopOpen;
@@ -220,6 +228,18 @@ function Rail(props: RailProps): ReactElement {
             >
               New trio
             </button>
+            {/* R340: never off at a cap — the panel says exactly how many slots an import needs. */}
+            <button
+              type="button"
+              className="ws-action"
+              data-testid={TRIO_IMPORT_OPEN}
+              aria-current={open?.kind === "trio-import" ? "true" : undefined}
+              onClick={() => {
+                onOpen({ kind: "trio-import" });
+              }}
+            >
+              Import trio
+            </button>
           </div>
         </div>
         {triosAtCap ? (
@@ -245,7 +265,7 @@ function Rail(props: RailProps): ReactElement {
           ))}
         </ul>
         {trios.length === 0 ? (
-          <p className="ws-hint">A trio is three decks with no card in common, for Best of 3.</p>
+          <p className="ws-hint">A trio is three decks with no card in common, for Conquest.</p>
         ) : null}
       </section>
     </nav>
@@ -315,7 +335,7 @@ function TrioRow({ trio, decks, catalog, collection, nameLength, current, unsync
         data-ready={ready ? "true" : "false"}
         data-unsynced={unsynced ? "true" : undefined}
         aria-current={current ? "true" : undefined}
-        aria-label={`${label}, ${String(filled)} of ${String(trio.deckIds.length)} decks, ${ready ? "ready for Best of 3" : "not ready"}${unsynced ? ", not saved yet" : ""}`}
+        aria-label={`${label}, ${String(filled)} of ${String(trio.deckIds.length)} decks, ${ready ? "ready for Conquest" : "not ready"}${unsynced ? ", not saved yet" : ""}`}
         onClick={onOpen}
       >
         <span className="ws-row-name">{label}</span>
@@ -399,8 +419,8 @@ export default function DeckWorkshop(props: DeckWorkshopProps): ReactElement {
   const openItem = (next: WorkshopOpen): void => {
     setOpen(next);
     setView(next === null ? "list" : "editor");
-    // The import panel takes the focus itself, into the box a code is pasted in.
-    if (next !== null && next.kind !== "import") setMoveFocus("editor");
+    // The import panels take the focus themselves, into the box a code is pasted in.
+    if (next !== null && next.kind !== "import" && next.kind !== "trio-import") setMoveFocus("editor");
   };
 
   const newDeck = (): void => {
@@ -494,6 +514,24 @@ export default function DeckWorkshop(props: DeckWorkshopProps): ReactElement {
         onCancel={() => {
           const first = decks[0];
           setOpen(first === undefined ? null : { kind: "deck", id: first.id });
+          setView("list");
+        }}
+      />
+    );
+  } else if (open?.kind === "trio-import") {
+    main = (
+      <TrioImportPanel
+        catalog={catalog}
+        collection={collection}
+        saved={{ decks: decks.length, trios: trios.length }}
+        limits={limits}
+        onImport={(init) => store.importTrio(init)}
+        onImported={(trioId) => {
+          openItem({ kind: "trio", id: trioId });
+        }}
+        onCancel={() => {
+          const first = trios[0];
+          setOpen(first === undefined ? null : { kind: "trio", id: first.id });
           setView("list");
         }}
       />
