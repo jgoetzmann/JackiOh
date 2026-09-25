@@ -1,4 +1,4 @@
--- The Supabase-managed pieces migrations 0001-0004 assume, for a throwaway Postgres container.
+-- The Supabase-managed pieces the migrations assume, for a throwaway Postgres container.
 -- Applied by test/db/run.sh BEFORE the migrations; never applied to a real project, where
 -- Supabase provides all of it.
 --

@@ -73,13 +73,25 @@ export const paths = {
   practice: "/practice",
   hotseat: "/dev/hotseat",
   match: (matchId: string): string => `/match/${matchId}`,
+  /** R259: a Best-of-3 series between its games: the score, the picks and the pick clock. */
+  series: (seriesId: string): string => `/series/${seriesId}`,
 } as const;
+
+/** `/<first>/<id>` -> `<id>`, or null when the path is anything else. */
+function idUnder(path: string, first: string): string | null {
+  const parts = path.split("/").filter((part) => part.length > 0);
+  if (parts.length !== 2 || parts[0] !== first) return null;
+  return parts[1] ?? null;
+}
 
 /** `/match/<id>` -> `<id>`, or null when this is not a match route. */
 export function matchIdOf(path: string): string | null {
-  const parts = path.split("/").filter((part) => part.length > 0);
-  if (parts.length !== 2 || parts[0] !== "match") return null;
-  return parts[1] ?? null;
+  return idUnder(path, "match");
+}
+
+/** `/series/<id>` -> `<id>`, or null when this is not a series route. */
+export function seriesIdOf(path: string): string | null {
+  return idUnder(path, "series");
 }
 
 // --- the sign-in screen's two entry states --------------------------------------------------------

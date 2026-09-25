@@ -11,7 +11,8 @@
  * that can see both trees; split in half it stops being the claim. Of the two candidates the server
  * is the right host: §9.3 makes the server the authority, so this is the side that is harmed when
  * the other drifts, and the rest of M6-T3's acceptance already lives in this suite
- * (`test/api/catalog.test.ts` drives the adapter, `test/api/loadouts.test.ts` drives the save path).
+ * (`test/api/catalog.test.ts` drives the adapter, `test/api/queue.test.ts` drives the queue-time
+ * check and `test/api/decks.test.ts` the save path).
  * `apps/web` keeps the mirror-image half of the same idea in
  * `apps/web/src/game/deckbuilder/messages.test.ts` — "no L1–L6 sentence is written anywhere in the
  * client" — and this file re-runs that scan over BOTH apps, so a copy in the client fails in two

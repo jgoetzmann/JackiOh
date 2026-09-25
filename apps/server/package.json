@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
+    "@jackioh/ai": "workspace:*",
     "@jackioh/cards": "workspace:*",
     "@jackioh/engine": "workspace:*",
     "@jackioh/shared": "workspace:*",

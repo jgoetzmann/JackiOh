@@ -43,7 +43,7 @@ begin
   raise notice 'OK (CHECK 1): all % public tables have RLS enabled', total;
 end $$;
 
-\echo '=== CHECK 2: the 13 tables BUILD M6 names ==='
+\echo '=== CHECK 2: the 16 tables of migrations 0001-0009 ==='
 select count(*) as public_tables from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r';
@@ -54,11 +54,13 @@ do $$
 declare
   -- BUILD M6-T1..T4: profiles/invite_codes/code_attempts (0001), cards/collection/
   -- collection_grants (0002), loadouts/loadout_decks/loadout_deck_cards (0003),
-  -- matches/match_actions/tickets/results (0004).
+  -- matches/match_actions/tickets/results (0004); then decks/trios (0007, R250, R252) and
+  -- series (0009, R263). 0005, 0006 and 0008 add no table. The three loadout tables stay
+  -- after 0007, unread and unwritten (R254), so they are still expected here.
   expected constant text[] := array[
-    'cards', 'code_attempts', 'collection', 'collection_grants', 'invite_codes',
+    'cards', 'code_attempts', 'collection', 'collection_grants', 'decks', 'invite_codes',
     'loadout_deck_cards', 'loadout_decks', 'loadouts', 'match_actions', 'matches',
-    'profiles', 'results', 'tickets'];
+    'profiles', 'results', 'series', 'tickets', 'trios'];
   actual  text[];
   missing text[];
   extra   text[];
@@ -317,7 +319,12 @@ begin
   -- SPEC §9.4: a signup lands as `pending` at rating 1000 and owns nothing until a code is
   -- redeemed. The two auth.users rows above are the only input; app.handle_new_user does
   -- the rest, so two profiles is the assertion, not a number to eyeball.
-  select count(*) into n from public.profiles;
+  --
+  -- Counted over these two ids, not the whole table: 03b_legacy_loadout_seed.sql signed up and
+  -- activated profile 44444444-… before migration 0007 ran, so that 0007 had a loadout to
+  -- convert (R254), and that profile is neither new nor pending.
+  select count(*) into n from public.profiles
+   where id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
   if n <> 2 then
     raise exception
       'FAIL (CHECK 8): % profile row(s) after 2 signups — app.handle_new_user did not fire for each',
@@ -328,12 +335,14 @@ begin
                            activated_at is not null), '; ' order by id)
     into bad
     from public.profiles
-   where status <> 'pending' or rating <> 1000 or activated_at is not null;
+   where id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')
+     and (status <> 'pending' or rating <> 1000 or activated_at is not null);
   if bad is not null then
     raise exception 'FAIL (CHECK 8): a fresh profile is not pending/1000/unactivated: %', bad;
   end if;
 
-  select count(*) into n from public.collection;
+  select count(*) into n from public.collection
+   where profile_id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
   if n <> 0 then
     raise exception
       'FAIL (CHECK 8): a pending profile already owns % collection row(s) — the launch grant fired before activation',
@@ -390,8 +399,11 @@ begin
     raise exception 'FAIL (CHECK 9): a rejected redemption was logged as succeeded';
   end if;
 
-  -- Nothing may have moved: a rejection activates no account and spends no code.
-  select count(*) into n from public.profiles where status <> 'pending';
+  -- Nothing may have moved: a rejection activates no account and spends no code. (The two
+  -- profiles this check redeems for; 03b's legacy profile was active before this file ran.)
+  select count(*) into n from public.profiles
+   where id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')
+     and status <> 'pending';
   if n <> 0 then
     raise exception 'FAIL (CHECK 9): a rejected redemption activated % profile(s)', n;
   end if;
@@ -781,6 +793,11 @@ declare
     ['resolve_deck',                'definer'],
     ['save_loadout',                'definer'],
     ['start_match',                 'definer'],
+    -- 0007: the one write path for a saved deck and for a saved trio (R250, R252), DEFINER
+    -- like every other write path here: they run as the owner whoever calls them, and only
+    -- service_role may call them (02 CHECK 4 asserts a client cannot).
+    ['upsert_deck',                 'definer'],
+    ['upsert_trio',                 'definer'],
     ['catalog_version',             'invoker'],
     ['current_profile_id',          'invoker'],
     ['deny_row_mutation',           'invoker'],

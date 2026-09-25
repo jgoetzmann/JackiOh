@@ -1,6 +1,6 @@
 /**
- * The production `Store` (SPEC §9.2's `API functions -> Postgres` edge), implemented over the four
- * migrations in `./migrations` with the `pg` driver already in `apps/server/package.json`.
+ * The production `Store` (SPEC §9.2's `API functions -> Postgres` edge), implemented over the
+ * migrations in `./migrations` (0001-0009) with the `pg` driver already in `apps/server/package.json`.
  *
  * `src/index.ts` finds this module by dynamic import and calls `createPostgresStore({
  * connectionString })`; until it existed the server threw `StoreUnavailableError` and could only
@@ -10,10 +10,10 @@
  * THREE RULES THIS FILE LIVES BY
  * ---------------------------------------------------------------------------
  *
- * 1. CALL THE `app.*` FUNCTIONS, DO NOT RE-DERIVE THEM. Migrations 0001-0004 put the rules SPEC
- *    §9.4/§9.5 call "one transaction", "one atomic statement" and "append-only" inside SECURITY
- *    DEFINER functions. Wherever the port's shape admits it, a method here is one call to one of
- *    them — `app.save_loadout`, `app.append_match_action`, `app.claim_ticket_pair`,
+ * 1. CALL THE `app.*` FUNCTIONS, DO NOT RE-DERIVE THEM. The migrations put the rules SPEC §9.4/§9.5
+ *    call "one transaction", "one atomic statement" and "append-only" inside SECURITY DEFINER
+ *    functions. Wherever the port's shape admits it, a method here is one call to one of them —
+ *    `app.upsert_deck`, `app.upsert_trio`, `app.append_match_action`, `app.claim_ticket_pair`,
  *    `app.live_matches` — and the SQL stays the authority. Each method that does NOT reach an
  *    `app.*` function says why in its own comment; the report that came with this file lists them
  *    together.
@@ -49,6 +49,7 @@ import type {
   CodeAttempt,
   CollectionEntry,
   CollectionGrant,
+  FrozenTrio,
   InviteCode,
   MatchActionRow,
   MatchClocks,
@@ -56,13 +57,22 @@ import type {
   MatchStatus,
   Profile,
   ProfileStatus,
+  QueueMode,
   RedeemResult,
   ResultRow,
   Room,
+  SavedDeck,
+  SavedTrio,
+  SeriesEnd,
+  SeriesGame,
+  SeriesRow,
+  SeriesSeat,
+  SeriesStatus,
   Store,
-  StoredLoadout,
   Ticket,
   TicketStatus,
+  TrioUpsertOutcome,
+  UpsertOutcome,
 } from "../api/ports";
 import type { Action } from "@jackioh/shared";
 
@@ -71,9 +81,9 @@ import type { Action } from "@jackioh/shared";
 // ---------------------------------------------------------------------------
 
 /**
- * Migration 0001 §8, and the same closing note in 0002-0004: `service_role` is the role the API
+ * Migration 0001 §8, and the same closing note in 0002-0009: `service_role` is the role the API
  * server and the match actor hold. It is the only role granted EXECUTE on `app.redeem_invite_code`,
- * `app.save_loadout`, `app.append_match_action`, `app.claim_ticket_pair` and the rest, so running
+ * `app.upsert_deck`, `app.append_match_action`, `app.claim_ticket_pair` and the rest, so running
  * as it is not a formality — a call this file gets wrong fails with `insufficient_privilege`
  * instead of succeeding because the connection happened to own the table.
  */
@@ -85,7 +95,7 @@ const ACTING_ROLE = "service_role";
  *
  * `request.jwt.claim.sub` is the GUC Supabase's `auth.uid()` reads (see
  * `test/sql/00_supabase_stub.sql`, which stands the same function up for a plain Postgres). Every
- * RLS policy in 0002-0004 is `profile_id = app.current_profile_id()`, and `app.profile_is_active()`
+ * RLS policy in 0002-0007 is `profile_id = app.current_profile_id()`, and `app.profile_is_active()`
  * reads `auth.uid()` directly, so a transaction that leaves it unset is a transaction where those
  * expressions silently see NULL. `service_role` carries BYPASSRLS, which means this cannot change
  * the result of anything here today; it is set anyway so that the day a policy, a trigger or a
@@ -131,6 +141,48 @@ function textOf(value: unknown): string {
 function cardListOf(value: unknown): string[] {
   if (!Array.isArray(value)) throw new Error(`expected a jsonb array of card ids`);
   return value.map((entry) => textOf(entry));
+}
+
+/**
+ * A frozen trio (R259) as `tickets.frozen_trio`, `matches.room_trio` and the series state hold it.
+ * Migration 0008's shape checks guarantee three decks on the two columns; the rest is read back as
+ * this file wrote it, and checked just far enough that a row from some other writer fails here, by
+ * name, rather than as an `undefined` deep inside a series transition.
+ */
+function frozenTrioOf(value: unknown): FrozenTrio {
+  if (typeof value !== "object" || value === null) throw new Error("expected a frozen trio object");
+  const trio = value as { name?: unknown; decks?: unknown };
+  if (!Array.isArray(trio.decks)) throw new Error("expected a frozen trio's decks array");
+  const [first, second, third, ...rest] = trio.decks.map((deck: unknown) => {
+    const entry = (deck ?? {}) as { name?: unknown; cards?: unknown };
+    return { name: textOf(entry.name), cards: cardListOf(entry.cards) };
+  });
+  if (first === undefined || second === undefined || third === undefined || rest.length > 0) {
+    throw new Error("expected a frozen trio of exactly three decks");
+  }
+  return { name: textOf(trio.name), decks: [first, second, third] };
+}
+
+function trioOrNull(value: unknown): FrozenTrio | null {
+  return value === null || value === undefined ? null : frozenTrioOf(value);
+}
+
+/** `tickets.mode` and `matches.room_mode` both carry `check (... in ('bo1', 'bo3', 'random'))`. */
+function queueModeOf(value: unknown): QueueMode {
+  if (value === "bo1" || value === "bo3" || value === "random") return value;
+  throw new Error(`expected a queue mode, got ${JSON.stringify(value)}`);
+}
+
+/**
+ * The id columns are `uuid`, and Postgres answers a malformed one with an error (22P02), not with
+ * "no such row". A lookup whose id came from outside — `GET /api/matches/:matchId/series` reads
+ * `series.withGame` with whatever the path held — answers here, as the in-memory stores do, with
+ * the nothing that such an id names.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID.test(value);
 }
 
 function json(value: unknown): string {
@@ -362,14 +414,17 @@ type TicketRow = {
   id: string;
   profile_id: string;
   rating: number;
+  mode: string;
   frozen_deck: unknown;
+  frozen_trio: unknown;
   catalog_version: string;
   status: string;
   enqueued_at: Date;
   match_id: string | null;
 };
 
-const TICKET_COLUMNS = `id, profile_id, rating, frozen_deck, catalog_version, status, enqueued_at, match_id`;
+const TICKET_COLUMNS = `id, profile_id, rating, mode, frozen_deck, frozen_trio, catalog_version, status,
+  enqueued_at, match_id`;
 
 /** `tickets.status` is queued/claimed/cancelled; the port calls the same three open/matched/cancelled. */
 function toTicketStatus(value: string): TicketStatus {
@@ -384,7 +439,9 @@ function toTicket(row: TicketRow): Ticket {
     id: row.id,
     profileId: row.profile_id,
     rating: row.rating,
+    mode: queueModeOf(row.mode),
     deck: cardListOf(row.frozen_deck),
+    trio: trioOrNull(row.frozen_trio),
     catalogVersion: row.catalog_version,
     enqueuedAt: msOf(row.enqueued_at),
     status: toTicketStatus(row.status),
@@ -424,6 +481,8 @@ function toResult(row: ResultDbRow): ResultRow {
 type RoomRow = {
   id: string;
   room_code: string;
+  room_mode: string | null;
+  room_trio: unknown;
   p1_profile_id: string;
   p2_profile_id: string | null;
   p1_deck: unknown;
@@ -432,13 +491,18 @@ type RoomRow = {
   ceiling_at: Date;
 };
 
-const ROOM_COLUMNS = `id, room_code, p1_profile_id, p2_profile_id, p1_deck, catalog_version, created_at, ceiling_at`;
+const ROOM_COLUMNS = `id, room_code, room_mode, room_trio, p1_profile_id, p2_profile_id, p1_deck,
+  catalog_version, created_at, ceiling_at`;
 
 function toRoom(row: RoomRow): Room {
   return {
     code: row.room_code,
     hostProfileId: row.p1_profile_id,
+    // R264. A room written before migration 0008, or by 0004's `app.create_room`, has no mode; it
+    // could only ever have been a Best-of-1 room. See KNOWN DIVERGENCES (rooms).
+    mode: row.room_mode === null ? "bo1" : queueModeOf(row.room_mode),
     hostDeck: cardListOf(row.p1_deck),
+    hostTrio: trioOrNull(row.room_trio),
     catalogVersion: row.catalog_version,
     createdAt: msOf(row.created_at),
     // See KNOWN DIVERGENCES (rooms): an unclaimed room keeps its joinable-until instant in
@@ -447,6 +511,165 @@ function toRoom(row: RoomRow): Room {
     guestProfileId: row.p2_profile_id,
     // A room's match id IS the row id, and it is only meaningful once a guest has claimed it.
     matchId: row.p2_profile_id === null ? null : row.id,
+  };
+}
+
+type DeckRow = {
+  id: string;
+  profile_id: string;
+  name: string;
+  cards: unknown;
+  catalog_version: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
+const DECK_COLUMNS = `id, profile_id, name, cards, catalog_version, created_at, updated_at`;
+
+function toDeck(row: DeckRow): SavedDeck {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    name: row.name,
+    // A jsonb array keeps the order it was written in, so this is the player's order (R250).
+    cards: cardListOf(row.cards),
+    catalogVersion: row.catalog_version,
+    createdAt: msOf(row.created_at),
+    updatedAt: msOf(row.updated_at),
+  };
+}
+
+type TrioRow = {
+  id: string;
+  profile_id: string;
+  name: string;
+  deck1_id: string | null;
+  deck2_id: string | null;
+  deck3_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+const TRIO_COLUMNS = `id, profile_id, name, deck1_id, deck2_id, deck3_id, created_at, updated_at`;
+
+function toTrio(row: TrioRow): SavedTrio {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    name: row.name,
+    deckIds: [row.deck1_id, row.deck2_id, row.deck3_id],
+    createdAt: msOf(row.created_at),
+    updatedAt: msOf(row.updated_at),
+  };
+}
+
+/** Exactly what `app.upsert_deck` returns (migration 0007); anything else is a schema this was not built against. */
+const UPSERT_OUTCOMES: readonly UpsertOutcome[] = ["created", "updated", "limit", "not_owner"];
+const TRIO_UPSERT_OUTCOMES: readonly TrioUpsertOutcome[] = [...UPSERT_OUTCOMES, "unknown_deck"];
+
+function upsertOutcomeOf<T extends string>(fn: string, allowed: readonly T[], value: unknown): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) return value as T;
+  throw new Error(
+    `${fn} returned ${JSON.stringify(value)}, which is not one of ${allowed.join(", ")} (migration 0007)`,
+  );
+}
+
+/**
+ * `public.series` (migration 0009) keeps as columns what is queried or constrained — the two
+ * players, the status, the next match id, the pick deadline, the version, the winner and the
+ * timestamps — and everything a series only ever reads back whole in `state`. The players live in
+ * the columns alone, so `state.sides` carries each side minus its `profileId` and the two cannot
+ * drift apart.
+ */
+type SeriesState = {
+  sides: [SeriesSideState, SeriesSideState];
+  games: SeriesGame[];
+  seedBase: string;
+  endReason: SeriesEnd | null;
+  ratingBefore: [number, number] | null;
+  ratingAfter: [number, number] | null;
+};
+
+type SeriesSideState = { trio: FrozenTrio; wins: number; pick: number | null };
+
+type SeriesDbRow = {
+  id: string;
+  p1_profile_id: string;
+  p2_profile_id: string;
+  status: string;
+  next_match_id: string;
+  pick_deadline_at: Date | null;
+  version: number;
+  catalog_version: string;
+  winner: string | null;
+  state: unknown;
+  created_at: Date;
+  updated_at: Date;
+  ended_at: Date | null;
+};
+
+const SERIES_COLUMNS = `id, p1_profile_id, p2_profile_id, status, next_match_id, pick_deadline_at, version,
+  catalog_version, winner, state, created_at, updated_at, ended_at`;
+
+function seriesStateOf(row: SeriesRow): SeriesState {
+  const side = (index: 0 | 1): SeriesSideState => {
+    const { trio, wins, pick } = row.sides[index];
+    return { trio, wins, pick };
+  };
+  return {
+    sides: [side(0), side(1)],
+    games: row.games,
+    seedBase: row.seedBase,
+    endReason: row.endReason,
+    ratingBefore: row.ratingBefore,
+    ratingAfter: row.ratingAfter,
+  };
+}
+
+/** `series_status_check` (0009). */
+function seriesStatusOf(value: string): SeriesStatus {
+  if (value === "picking" || value === "playing" || value === "over") return value;
+  throw new Error(`series.status holds an unknown value: ${value}`);
+}
+
+/** `series_winner_check` (0009). */
+function seriesWinnerOf(value: string | null): SeriesSeat | "draw" | null {
+  if (value === null || value === "p1" || value === "p2" || value === "draw") return value;
+  throw new Error(`series.winner holds an unknown value: ${value}`);
+}
+
+function toSeries(row: SeriesDbRow): SeriesRow {
+  const state = row.state as Partial<SeriesState> | null;
+  const [first, second, ...rest] = Array.isArray(state?.sides) ? state.sides : [];
+  if (
+    state === null ||
+    first === undefined ||
+    second === undefined ||
+    rest.length > 0 ||
+    !Array.isArray(state.games)
+  ) {
+    throw new Error(`series ${row.id} has a state this store did not write`);
+  }
+  return {
+    id: row.id,
+    sides: [
+      { profileId: row.p1_profile_id, trio: frozenTrioOf(first.trio), wins: first.wins, pick: first.pick },
+      { profileId: row.p2_profile_id, trio: frozenTrioOf(second.trio), wins: second.wins, pick: second.pick },
+    ],
+    catalogVersion: row.catalog_version,
+    seedBase: textOf(state.seedBase),
+    status: seriesStatusOf(row.status),
+    games: state.games,
+    nextMatchId: row.next_match_id,
+    pickDeadline: msOrNull(row.pick_deadline_at),
+    winner: seriesWinnerOf(row.winner),
+    endReason: state.endReason ?? null,
+    ratingBefore: state.ratingBefore ?? null,
+    ratingAfter: state.ratingAfter ?? null,
+    createdAt: msOf(row.created_at),
+    updatedAt: msOf(row.updated_at),
+    endedAt: msOrNull(row.ended_at),
+    version: row.version,
   };
 }
 
@@ -587,10 +810,11 @@ function buildStore(session: Session): Store {
    * ports.ts: "`tx` runs `fn` against a handle scoped to one database transaction and rolls back
    * if `fn` throws. Nested `tx` joins the enclosing transaction."
    *
-   * This is what makes SPEC §9.4's "Redemption is one server-side transaction", its "writes
-   * `collection` and `collection_grants` in one transaction" and "writes all three decks in one
-   * transaction or nothing" true of the port calls `src/api/**` makes: every statement those
-   * callbacks issue lands on the one client below, between one `begin` and one `commit`.
+   * This is what makes SPEC §9.4's "Redemption is one server-side transaction" and its "writes
+   * `collection` and `collection_grants` in one transaction", and R263's "a game's result, the
+   * series' record of it and, when the game ends the series, the rating move commit in one
+   * transaction", true of the port calls `src/api/**` makes: every statement those callbacks issue
+   * lands on the one client below, between one `begin` and one `commit`.
    */
   store.tx = async <T>(fn: (t: Store) => Promise<T>): Promise<T> => {
     const pool = session.pool;
@@ -919,56 +1143,126 @@ function buildStore(session: Session): Store {
   };
 
   // -------------------------------------------------------------------------
-  // Loadouts (SPEC §9.4 L1-L6)
+  // Saved decks (SPEC §9.4, R250, R256)
+  //
+  // Migration 0007. The loadout tables of 0003 are no longer read or written (R254): the migration
+  // turned each loadout into three of these decks and one trio.
   // -------------------------------------------------------------------------
 
-  store.loadouts = {
-    /**
-     * `app.resolve_deck` (migration 0003) is the same function the queue ticket freezes, so a deck
-     * read here and a deck frozen into a ticket can never be two different lists. It raises when a
-     * slot is empty, which for a profile with no loadout at all is the `null` this returns.
-     */
-    get: async (profileId) =>
-      session.run(profileId, async (q) => {
-        const { rows } = await q<{ catalog_version: string; updated_at: Date }>(
-          `select catalog_version, updated_at from public.loadouts where profile_id = $1::uuid`,
-          [profileId],
-        );
-        const head = rows[0];
-        if (head === undefined) return null;
-
-        const decks = await q<{ slot: number; cards: unknown }>(
-          `select ld.slot, app.resolve_deck($1::uuid, ld.slot) as cards
-             from public.loadout_decks ld where ld.profile_id = $1::uuid order by ld.slot`,
-          [profileId],
-        );
-        const loadout: StoredLoadout = {
-          catalogVersion: head.catalog_version,
-          decks: decks.rows.map((row) => cardListOf(row.cards)),
-          updatedAt: msOf(head.updated_at),
-        };
-        return loadout;
-      }),
-
-    /**
-     * §9.4: "writes all three decks in one transaction or nothing; there is no per-deck save."
-     * That transaction is `app.save_loadout`, which re-checks L1, L2, L3, L5 and L6 against the
-     * database, delete-then-inserts all three decks, and leaves L4 to the `loadout_card_unique`
-     * index. Nothing is re-derived here.
-     *
-     * Deck names: `loadout_decks.name` is `not null` and the port carries no name, so the slots are
-     * named positionally. See KNOWN DIVERGENCES (deck names, deck order).
-     */
-    replace: async (profileId, catalogVersion, decks, _at) => {
-      const payload = decks.map((deck, index) => ({
-        name: `Deck ${String(index + 1)}`,
-        cards: countCards(deck),
-      }));
-      await session.query(
+  store.decks = {
+    /** Oldest first, ties on id: the order R257's legacy `deckIndex` counts in. */
+    list: async (profileId) => {
+      const { rows } = await session.query<DeckRow>(
         profileId,
-        `select app.save_loadout($1::uuid, $2::text, $3::jsonb)`,
-        [profileId, catalogVersion, json(payload)],
+        `select ${DECK_COLUMNS} from public.decks where profile_id = $1::uuid order by created_at, id`,
+        [profileId],
       );
+      return rows.map(toDeck);
+    },
+
+    get: async (deckId) => {
+      if (!isUuid(deckId)) return null;
+      const { rows } = await session.query<DeckRow>(
+        null,
+        `select ${DECK_COLUMNS} from public.decks where id = $1::uuid`,
+        [deckId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toDeck(row);
+    },
+
+    /**
+     * R250, R256: one call to `app.upsert_deck`, which takes the profile row lock, re-checks the
+     * draft's shape (D1, D2, D4), refuses another profile's id and counts the cap under the lock,
+     * then inserts or updates. Its answer is the port's `UpsertOutcome` verbatim.
+     *
+     * The function takes one instant, `p_at`: `updated_at` always, and `created_at` when the row is
+     * new. It is handed `updatedAt`, which is the save being made; see KNOWN DIVERGENCES (deck and
+     * trio timestamps). The cap passed is the caller's, and the function applies the smaller of it
+     * and `app.settings.max_saved_decks` (KNOWN DIVERGENCES, caps).
+     */
+    upsert: async (deck, maxDecks) => {
+      const { rows } = await session.query<{ outcome: unknown }>(
+        deck.profileId,
+        `select app.upsert_deck($1::uuid, $2::uuid, $3::text, $4::jsonb, $5::text, ${ts("$6")}, $7::int)
+           as outcome`,
+        [deck.profileId, deck.id, deck.name, json(deck.cards), deck.catalogVersion, deck.updatedAt, maxDecks],
+      );
+      return upsertOutcomeOf("app.upsert_deck", UPSERT_OUTCOMES, rows[0]?.outcome);
+    },
+
+    /**
+     * Not an `app.*` function: a delete of the profile's own row is one statement with nothing to
+     * decide, and R252's "deleting a deck empties every slot that named it" is the database's own
+     * behaviour — the three `on delete set null (deckN_id)` foreign keys on `public.trios` empty the
+     * slots in this same statement.
+     */
+    remove: async (profileId, deckId) => {
+      if (!isUuid(deckId)) return false;
+      const { rowCount } = await session.query(
+        profileId,
+        `delete from public.decks where id = $1::uuid and profile_id = $2::uuid`,
+        [deckId, profileId],
+      );
+      return affected(rowCount) === 1;
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Saved trios (SPEC §9.4, R252, R256)
+  // -------------------------------------------------------------------------
+
+  store.trios = {
+    list: async (profileId) => {
+      const { rows } = await session.query<TrioRow>(
+        profileId,
+        `select ${TRIO_COLUMNS} from public.trios where profile_id = $1::uuid order by created_at, id`,
+        [profileId],
+      );
+      return rows.map(toTrio);
+    },
+
+    get: async (trioId) => {
+      if (!isUuid(trioId)) return null;
+      const { rows } = await session.query<TrioRow>(
+        null,
+        `select ${TRIO_COLUMNS} from public.trios where id = $1::uuid`,
+        [trioId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toTrio(row);
+    },
+
+    /**
+     * R252, R256: one call to `app.upsert_trio`, as `decks.upsert`, plus `unknown_deck` for a slot
+     * that is not one of this profile's decks. A deck in two slots raises `trios_decks_distinct`
+     * (R252 T3), which the caller has already refused with `checkTrioDraft`, so it throws here as it
+     * does in the in-memory stores.
+     *
+     * A slot holding something that is not a uuid cannot name any deck; it is answered here, as
+     * `unknown_deck`, because Postgres would refuse the cast before the function could say so.
+     */
+    upsert: async (trio, maxTrios) => {
+      if (trio.deckIds.some((deckId) => deckId !== null && !isUuid(deckId))) return "unknown_deck";
+      const [deck1, deck2, deck3] = trio.deckIds;
+      const { rows } = await session.query<{ outcome: unknown }>(
+        trio.profileId,
+        `select app.upsert_trio($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, ${ts("$7")},
+                                $8::int) as outcome`,
+        [trio.profileId, trio.id, trio.name, deck1, deck2, deck3, trio.updatedAt, maxTrios],
+      );
+      return upsertOutcomeOf("app.upsert_trio", TRIO_UPSERT_OUTCOMES, rows[0]?.outcome);
+    },
+
+    /** As `decks.remove`: the profile's own row, one statement. */
+    remove: async (profileId, trioId) => {
+      if (!isUuid(trioId)) return false;
+      const { rowCount } = await session.query(
+        profileId,
+        `delete from public.trios where id = $1::uuid and profile_id = $2::uuid`,
+        [trioId, profileId],
+      );
+      return affected(rowCount) === 1;
     },
   };
 
@@ -1167,6 +1461,26 @@ function buildStore(session: Session): Store {
       const { rows } = await session.query<MatchDbRow>(null, `select ${MATCH_COLUMNS} from app.live_matches()`);
       return rows.filter((row) => row.p2_profile_id !== null).map(toMatch);
     },
+
+    /**
+     * R263: "A series that ends before its first game releases the id it reserved." In this schema
+     * a reserved id is a row — the `open` skeleton `tickets.claimPair` writes, or a room
+     * `rooms.claim` renamed to it — so releasing it is deleting that row, and only while it is still
+     * `open`: the `status` guard is what makes this a no-op on a live or finished match however it
+     * is called.
+     *
+     * Nothing is left pointing at the deleted id: an `open` row has no actions and no result (both
+     * would cascade anyway), `tickets.match_id` and `profiles.current_match_id` are `on delete set
+     * null` (0004), and `series.next_match_id` deliberately has no foreign key (0009). Deleting a
+     * claimed room's row also frees its code at once (R110's partial unique index covers only the
+     * rows that exist). See KNOWN DIVERGENCES (reserved match ids).
+     */
+    discardOpen: async (matchId) => {
+      if (!isUuid(matchId)) return;
+      await session.query(null, `delete from public.matches where id = $1::uuid and status = 'open'`, [
+        matchId,
+      ]);
+    },
   };
 
   // -------------------------------------------------------------------------
@@ -1186,15 +1500,29 @@ function buildStore(session: Session): Store {
      * done here, including `matches_room_code_open_key` — the partial unique index is inferred in
      * the `on conflict` clause, so a taken code returns `false` instead of raising, which is the
      * port's contract.
+     *
+     * R264: the room's mode goes in `room_mode` and a Best-of-3 host's frozen trio in `room_trio`
+     * (migration 0008); `p1_deck` holds the Best-of-1 deck, `[]` in the other two modes.
      */
     create: async (room: Room) => {
       const { rowCount } = await session.query(
         room.hostProfileId,
         `insert into public.matches (
-           room_code, status, seed, p1_profile_id, p1_deck, catalog_version, ceiling_at, created_at)
-         values ($1::text, 'open', '', $2::uuid, $3::jsonb, $4::text, ${ts("$5")}, ${ts("$6")})
+           room_code, room_mode, room_trio, status, seed, p1_profile_id, p1_deck, catalog_version,
+           ceiling_at, created_at)
+         values ($1::text, $2::text, $3::jsonb, 'open', '', $4::uuid, $5::jsonb, $6::text,
+                 ${ts("$7")}, ${ts("$8")})
          on conflict (room_code) where room_code is not null and status <> 'over' do nothing`,
-        [room.code, room.hostProfileId, json(room.hostDeck), room.catalogVersion, room.expiresAt, room.createdAt],
+        [
+          room.code,
+          room.mode,
+          room.hostTrio === null ? null : json(room.hostTrio),
+          room.hostProfileId,
+          json(room.hostDeck),
+          room.catalogVersion,
+          room.expiresAt,
+          room.createdAt,
+        ],
       );
       return affected(rowCount) === 1;
     },
@@ -1248,19 +1576,26 @@ function buildStore(session: Session): Store {
      * queued", and `src/api/queue.ts` relies on the insert RAISING for the second one — it catches
      * the error and re-reads the open ticket. So this is a plain insert with no `on conflict`.
      *
-     * `tickets.slot` is `not null`: see KNOWN DIVERGENCES (ticket slot).
+     * R257, R259: the mode, and a Best-of-3 ticket's frozen trio (migration 0008, whose
+     * `tickets_frozen_trio_check` holds "a trio exactly when the mode is bo3"). `slot` — 0004's
+     * loadout slot — is left NULL: a ticket now freezes a saved deck or a trio, not a slot, and 0008
+     * dropped the column's `not null` for exactly that.
      */
     insert: async (ticket: Ticket) => {
       await session.query(
         ticket.profileId,
         `insert into public.tickets
-           (id, profile_id, slot, rating, frozen_deck, catalog_version, status, enqueued_at, match_id)
-         values ($1::uuid, $2::uuid, 1, $3::int, $4::jsonb, $5::text, $6::text, ${ts("$7")}, $8::uuid)`,
+           (id, profile_id, rating, mode, frozen_deck, frozen_trio, catalog_version, status,
+            enqueued_at, match_id)
+         values ($1::uuid, $2::uuid, $3::int, $4::text, $5::jsonb, $6::jsonb, $7::text, $8::text,
+                 ${ts("$9")}, $10::uuid)`,
         [
           ticket.id,
           ticket.profileId,
           ticket.rating,
+          ticket.mode,
           json(ticket.deck),
+          ticket.trio === null ? null : json(ticket.trio),
           ticket.catalogVersion,
           fromTicketStatus(ticket.status),
           ticket.enqueuedAt,
@@ -1304,6 +1639,17 @@ function buildStore(session: Session): Store {
         `select count(*)::int as n from public.tickets where status = 'queued'`,
       );
       return intOf(rows[0]?.n ?? 0);
+    },
+
+    /** R257: "the queue population is reported per mode". Every mode is present, at 0 if empty. */
+    countOpenByMode: async () => {
+      const { rows } = await session.query<{ mode: string; n: number }>(
+        null,
+        `select mode, count(*)::int as n from public.tickets where status = 'queued' group by mode`,
+      );
+      const counts: Record<QueueMode, number> = { bo1: 0, bo3: 0, random: 0 };
+      for (const row of rows) counts[queueModeOf(row.mode)] = intOf(row.n);
+      return counts;
     },
 
     /**
@@ -1425,6 +1771,130 @@ function buildStore(session: Session): Store {
     },
   };
 
+  // -------------------------------------------------------------------------
+  // The Best-of-3 series (SPEC §9.5, R259-R263)
+  //
+  // Migration 0009. None of these reaches an `app.*` function, because none has a rule to hold
+  // that one statement does not already hold: `update` is compare-and-set in its `where`, the
+  // lookups are single selects, and the transitions themselves are the server's pure functions
+  // (`src/api/series-rules.ts`), written back whole.
+  // -------------------------------------------------------------------------
+
+  const seriesParams = (row: SeriesRow): unknown[] => [
+    row.id,
+    row.sides[0].profileId,
+    row.sides[1].profileId,
+    row.status,
+    row.nextMatchId,
+    row.pickDeadline,
+    row.version,
+    row.catalogVersion,
+    row.winner,
+    json(seriesStateOf(row)),
+    row.createdAt,
+    row.updatedAt,
+    row.endedAt,
+  ];
+
+  store.series = {
+    /** A second series with the same id raises (`series_pkey`), as the port requires. */
+    create: async (row) => {
+      await session.query(
+        row.sides[0].profileId,
+        `insert into public.series (
+           id, p1_profile_id, p2_profile_id, status, next_match_id, pick_deadline_at, version,
+           catalog_version, winner, state, created_at, updated_at, ended_at)
+         values ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::uuid, ${nullableTs("$6")}, $7::int,
+                 $8::text, $9::text, $10::jsonb, ${ts("$11")}, ${ts("$12")}, ${nullableTs("$13")})`,
+        seriesParams(row),
+      );
+    },
+
+    get: async (seriesId) => {
+      if (!isUuid(seriesId)) return null;
+      const { rows } = await session.query<SeriesDbRow>(
+        null,
+        `select ${SERIES_COLUMNS} from public.series where id = $1::uuid`,
+        [seriesId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toSeries(row);
+    },
+
+    /**
+     * R263: "written only by compare-and-set on its version". The guard is the `where`: the row is
+     * replaced only while it still holds the version this transition was computed from, so of two
+     * writers that read the same version exactly one updates a row and the other gets `false`, re-
+     * reads and re-applies. One statement, so there is no window between the check and the write.
+     */
+    update: async (next) => {
+      const { rowCount } = await session.query(
+        next.sides[0].profileId,
+        `update public.series set
+           p1_profile_id = $2::uuid, p2_profile_id = $3::uuid, status = $4::text,
+           next_match_id = $5::uuid, pick_deadline_at = ${nullableTs("$6")}, version = $7::int,
+           catalog_version = $8::text, winner = $9::text, state = $10::jsonb,
+           created_at = ${ts("$11")}, updated_at = ${ts("$12")}, ended_at = ${nullableTs("$13")}
+         where id = $1::uuid and version = $7::int - 1`,
+        seriesParams(next),
+      );
+      return affected(rowCount) === 1;
+    },
+
+    /** The series whose game in play is this match: `series_next_match_id_key` (0009) makes it one. */
+    byMatch: async (matchId) => {
+      if (!isUuid(matchId)) return null;
+      const { rows } = await session.query<SeriesDbRow>(
+        null,
+        `select ${SERIES_COLUMNS} from public.series
+          where next_match_id = $1::uuid and status = 'playing'`,
+        [matchId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toSeries(row);
+    },
+
+    /**
+     * Any game of any series, whatever its status: a jsonb containment test over `state -> 'games'`,
+     * which `series_games_idx` (GIN, jsonb_path_ops, 0009) answers without a scan.
+     */
+    withGame: async (matchId) => {
+      if (!isUuid(matchId)) return null;
+      const { rows } = await session.query<SeriesDbRow>(
+        null,
+        `select ${SERIES_COLUMNS} from public.series
+          where state -> 'games' @> $1::jsonb
+          order by created_at, id
+          limit 1`,
+        [json([{ matchId }])],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toSeries(row);
+    },
+
+    activeFor: async (profileId) => {
+      const { rows } = await session.query<SeriesDbRow>(
+        profileId,
+        `select ${SERIES_COLUMNS} from public.series
+          where status <> 'over' and (p1_profile_id = $1::uuid or p2_profile_id = $1::uuid)
+          order by created_at, id
+          limit 1`,
+        [profileId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toSeries(row);
+    },
+
+    /** The sweeper's input (R263), oldest first, over `series_active_idx`. */
+    active: async () => {
+      const { rows } = await session.query<SeriesDbRow>(
+        null,
+        `select ${SERIES_COLUMNS} from public.series where status <> 'over' order by created_at, id`,
+      );
+      return rows.map(toSeries);
+    },
+  };
+
   return store;
 }
 
@@ -1446,18 +1916,6 @@ function fromTicketStatus(status: TicketStatus): string {
   if (status === "open") return "queued";
   if (status === "matched") return "claimed";
   return "cancelled";
-}
-
-/**
- * `["a", "a", "b"] -> [{card_id: "a", count: 2}, {card_id: "b", count: 1}]`, the shape
- * `app.save_loadout` takes. With `MAX_COPIES = 1` every count is 1 today; the grouping is here so
- * a future `MAX_COPIES > 1` needs no change, exactly as `app.resolve_deck` expands counts on the
- * way back out.
- */
-function countCards(deck: readonly string[]): { card_id: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const cardId of deck) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
-  return [...counts].map(([cardId, count]) => ({ card_id: cardId, count }));
 }
 
 // =============================================================================
@@ -1497,29 +1955,47 @@ function countCards(deck: readonly string[]): { card_id: string; count: number }
 //    `create` also requires the `auth.users` row to exist, because `profiles.id` references it;
 //    `e2e-store.ts` has no such requirement.
 //  * foreign keys. `results.match_id`, `tickets.match_id` and `profiles.current_match_id` all
-//    reference `public.matches`, so a result or an in-match pointer for a match that was never
-//    created raises here and is accepted by `e2e-store.ts`. Every caller in `src/api/**` writes the
-//    match first, so this only shows up in a test that skipped it.
-//  * deck order. `loadout_deck_cards` stores (card_id, count) with no ordering, and
-//    `app.resolve_deck` returns the deck ordered by card id. A deck saved in one order comes back
-//    sorted. §9.3's seeded shuffle is what randomises draw order, so only the SET matters — but a
-//    contract assertion has to compare decks as multisets, not as lists.
-//  * deck names. `loadout_decks.name` is `not null` and the port has no name, so slots are saved as
-//    "Deck 1".."Deck 3".
-//  * loadout strictness. `app.save_loadout` enforces L1, L2, L3, L5 and L6 and requires an active
-//    profile and the current catalog version; `e2e-store.ts` enforces only L4. The real store is
-//    strictly stricter, which is §9.4's "defense in depth" by design.
+//    reference `public.matches`, and `decks`, `trios` and both sides of `series` reference
+//    `public.profiles`, so a result or an in-match pointer for a match that was never created, or
+//    a deck, a trio or a series for a profile that does not exist, raises here and is accepted by
+//    `e2e-store.ts`. Every caller in `src/api/**` writes the match or has the profile first, so this
+//    only shows up in a test that skipped it. `series.next_match_id` is the one match id with NO
+//    foreign key, on purpose (R263: it is reserved before its match exists).
+//  * deck and trio strictness. `app.upsert_deck` and `app.upsert_trio` (0007) refuse — by raising —
+//    a profile that is not active, a blank name, a name past `deck_name_max_length` or holding a
+//    control character (D1, T1), more than `deck_size` cards (D2), more than `max_copies` of one id
+//    (D4) and a cards value that is not an array of strings; the in-memory stores check none of
+//    these, because the server's `checkDeckDraft` / `checkTrioDraft` refuse them first with a
+//    sentence a player reads. The real store is strictly stricter, which is §9.4's "defense in
+//    depth" by design. D3 (a deckable card) is checked by neither store: see 0007.
+//  * caps. The port passes the cap (`maxDecks`, `maxTrios`); the SQL applies the smaller of it and
+//    `app.settings.max_saved_decks` / `max_saved_trios` (0007, mirroring `MAX_SAVED_DECKS` and
+//    `MAX_SAVED_TRIOS`). Equal today. Raising a cap in `src/config.ts` alone raises it only in
+//    memory; the database needs a migration updating its row, as for the redemption limits.
+//  * deck and trio timestamps. `app.upsert_deck` / `app.upsert_trio` take one instant: `updated_at`
+//    always, `created_at` too when the row is new, and this store hands them `updatedAt`. The fake
+//    stores a new deck's `createdAt` as given. The two agree for any caller that stamps a new
+//    deck's `createdAt` and `updatedAt` from one clock read, which is what a save is.
+//  * R254's decks. A deck migration 0007 made from a loadout holds its cards in
+//    `app.resolve_deck` order, which is card-id order: a loadout never had any other. Every deck
+//    saved since keeps the order it was saved in.
 //  * launch grant. Migration 0002's trigger grants every NON-TOKEN card of the current catalog
 //    version; `e2e-store.ts` also skips BANNED ids (§9.4 L6). With no banned card in the catalog
 //    the two agree exactly; with one, the database grants a card the fake does not.
 //  * action timestamps. `app.append_match_action` stamps `at` with the database clock and
 //    `match_actions` is append-only, so `MatchActionRow.at` cannot be written by the caller. The
 //    log's order (`seq`) is unaffected, and nothing reads `at` back except a replay tool.
-//  * ticket slot. `tickets.slot` is `not null check (slot between 1 and 3)` and `Ticket` carries no
-//    deck index — the frozen deck travels instead — so every ticket is written with slot 1.
 //  * rooms. There is no `rooms` table: a room is a `public.matches` row with `status = 'open'`, and
 //    `Room.expiresAt` is kept in `ceiling_at`, the column migration 0004 documents as meaningless
 //    while a room is open. `rooms.claim` rewrites the row's id to the match id the server minted.
+//    `Room.mode` and `Room.hostTrio` are `room_mode` / `room_trio` (0008); a room row with no mode
+//    — written before 0008, or by 0004's `app.create_room` — reads as `bo1`, which is all a room
+//    could be then.
+//  * reserved match ids. In Postgres the id `tickets.claimPair` or `rooms.claim` reserves is an
+//    `open` row, so `matches.discardOpen` (R263) deletes a row: the claimed tickets' `matchId` goes
+//    back to null (`tickets.match_id` is `on delete set null`) and a claimed room's code is free
+//    again. `e2e-store.ts` keeps no such row, and its `discardOpen` changes nothing; there a
+//    matched ticket keeps the discarded id.
 //  * clocks. `MatchClocks` has a grace deadline per player; `public.matches` has one
 //    `grace_deadline_at` plus two `*_disconnected_at`. The per-player deadlines are stored in the
 //    two `*_disconnected_at` columns and `grace_deadline_at` keeps the nearer of them. A migration

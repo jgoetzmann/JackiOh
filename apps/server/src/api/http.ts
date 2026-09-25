@@ -391,6 +391,22 @@ export function route(
   return { method, path, auth, handler };
 }
 
+/**
+ * A path segment decoded, or as it came when it is not valid percent-encoding (`%E0`, `%ZZ`, a lone
+ * `%`). `decodeURIComponent` throws on those, and it runs before a handler's own try, so a caller
+ * could turn a malformed id into a 500 — or, since `matchPath` runs outside the router's catch, into
+ * a rejected request. Undecodable, the segment names nothing, and each handler already refuses a
+ * value that names nothing in its own words (a deck id that is not a UUID is a 400, an unknown
+ * series a 404).
+ */
+function decodeSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function matchPath(pattern: string, path: string): Record<string, string> | null {
   const want = pattern.split("/");
   const got = path.split("/");
@@ -401,7 +417,7 @@ function matchPath(pattern: string, path: string): Record<string, string> | null
     const actual = got[i] ?? "";
     if (segment.startsWith(":")) {
       if (actual.length === 0) return null;
-      params[segment.slice(1)] = decodeURIComponent(actual);
+      params[segment.slice(1)] = decodeSegment(actual);
       continue;
     }
     if (segment !== actual) return null;

@@ -129,7 +129,6 @@ const SERVER_AUTH_TEST = "../../../apps/server/test/api/auth.test.ts";
 const SERVER_CODES_TEST = "../../../apps/server/test/api/codes.test.ts";
 const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
 const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
-const SERVER_LOADOUTS_TEST = "../../../apps/server/test/api/loadouts.test.ts";
 const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
 
 /** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
@@ -195,6 +194,22 @@ const WEB_FX_CSS_TEST = "../../../apps/web/src/fx/css.test.ts";
 const WEB_FX_CANVAS_TEST = "../../../apps/web/src/fx/canvasFx.test.ts";
 const WEB_FX_PARTICLES_TEST = "../../../apps/web/src/fx/particles.test.ts";
 const WEB_ANIMATIONS_FX_TEST = "../../../apps/web/src/game/animations.fx.test.ts";
+/** R250 to R264's proofs: saved decks and trios, deck codes, autosave, queue modes and the series. */
+const VALIDATOR_DRAFTS_TEST = "../../validator/test/drafts.test.ts";
+const SERVER_STORE_CONTRACT = "../../../apps/server/test/db/contract.ts";
+const SERVER_DECKS_TEST = "../../../apps/server/test/api/decks.test.ts";
+const SERVER_ROOMS_TEST = "../../../apps/server/test/match/rooms.test.ts";
+const SERVER_ENGINE_REAL_TEST = "../../../apps/server/test/match/engine.real.test.ts";
+const SERVER_SERIES_RULES_TEST = "../../../apps/server/test/api/series-rules.test.ts";
+const SERVER_SERIES_TEST = "../../../apps/server/test/api/series.test.ts";
+const SERVER_SERIES_RECOVERY_TEST = "../../../apps/server/test/match/series-recovery.test.ts";
+const SERVER_DECKS_SQL = "../../../apps/server/test/sql/04_decks_and_series.sql";
+const WEB_DECK_CODE_TEST = "../../../apps/web/src/game/deckbuilder/deckCode.test.ts";
+const WEB_DECK_SYNC_TEST = "../../../apps/web/src/game/deckbuilder/sync.test.ts";
+const WEB_WORKSHOP_TEST = "../../../apps/web/src/game/deckbuilder/DeckWorkshop.test.tsx";
+const WEB_PLAY_TEST = "../../../apps/web/src/routes/play.test.tsx";
+const WEB_SERIES_TEST = "../../../apps/web/src/routes/series.test.tsx";
+
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -1505,12 +1520,12 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(164, SERVER_CATALOG_TEST);
   });
 
-  // Proved at the port by apps/server loadouts.test.ts "R165 makes queueing without a saved
-  // loadout a loadout failure, not a missing resource", and at the endpoint by queue.test.ts
-  // "R165 reports a loadout failure, never a 404, for a profile that has never saved one", whose
-  // control queues the same profile successfully the moment it has a loadout.
+  // Proved at the port by apps/server decks.test.ts "R165 makes queueing with nothing saved a deck
+  // failure (422)…" and "R165 answers a deck or trio that is gone…" (R253 carried the rule from the
+  // one loadout to saved decks and trios), and at the endpoint by queue.test.ts "R165 …", whose
+  // control queues the same profile successfully the moment it has a deck.
   it("R165 reports queueing with no loadout as a loadout failure, not a 404", () => {
-    provenIn(165, SERVER_LOADOUTS_TEST, SERVER_QUEUE_TEST);
+    provenIn(165, SERVER_DECKS_TEST, SERVER_QUEUE_TEST);
   });
 
   // Proved by apps/server queue.test.ts "R166 pairs the oldest ticket against the oldest opponent
@@ -2016,6 +2031,111 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // number; and by PromptCards.test.tsx "R247 …": the picker draws the numbers, and no card face.
   it("R247 offers #82's Discover as the numbers themselves", () => {
     provenIn(247, "effects-choose.test.ts", CARDS_KYS_TRIAL_TEST, WEB_PROMPT_CARDS_TEST);
+  });
+
+  // R250 to R264 are the decks-and-modes change: server and client rulings, indexed here like R104
+  // to R112 and R159 to R167 before them. A row whose ruling is a number asserts it against
+  // `apps/server/src/config.ts`, where rule 9 puts it.
+
+  // Proved by the validator's drafts.test.ts "R250 …" (D1–D4 and nothing else at save), the store
+  // contract's "R250 …" (the cap, in both stores) and decks.test.ts "R250 …" (the endpoint).
+  it("R250 saves a deck as a draft: structure at save, legality at queue, ten decks at most", () => {
+    expect(serverConstant(SERVER_CONFIG, "MAX_SAVED_DECKS")).toBe("10");
+    expect(serverConstant(SERVER_CONFIG, "DECK_NAME_MAX_LENGTH")).toBe("40");
+    expect(serverConstant(SERVER_CONFIG, "DRAFT_ISSUES_REPORTED_MAX")).toBe("50");
+    provenIn(250, VALIDATOR_DRAFTS_TEST, SERVER_STORE_CONTRACT, SERVER_DECKS_TEST);
+  });
+
+  // Proved by drafts.test.ts "R251 …" (shared cards found by catalog id, the fact L4 words) and the
+  // workshop's "R251 …" (a card another deck holds is marked unavailable, with that deck's name).
+  it("R251 compares catalog ids across a trio: Radiant is never a second card", () => {
+    provenIn(251, VALIDATOR_DRAFTS_TEST, WEB_WORKSHOP_TEST);
+  });
+
+  // Proved by drafts.test.ts "R252 …" (T1–T3), the store contract's "R252 …" (slots emptied by a
+  // deck's deletion, a foreign deck refused) and decks.test.ts "R252 …".
+  it("R252 keeps up to five trios of three slots, any of them empty", () => {
+    expect(serverConstant(SERVER_CONFIG, "MAX_SAVED_TRIOS")).toBe("5");
+    provenIn(252, VALIDATOR_DRAFTS_TEST, SERVER_STORE_CONTRACT, SERVER_DECKS_TEST);
+  });
+
+  // Proved by drafts.test.ts "R253 …" (L2, L3, L5, L6 for a deck; L1–L6 for a trio) and
+  // queue.test.ts "R253 …" (the enqueue refusals, with the decks' names).
+  it("R253 queues a Best-of-1 deck on L2, L3, L5, L6 and a trio on L1–L6", () => {
+    provenIn(253, VALIDATOR_DRAFTS_TEST, SERVER_QUEUE_TEST);
+  });
+
+  // Proved by 04_decks_and_series.sql's R254 heading: a loadout saved before migration 0007 comes
+  // out as three decks and "My trio", and the loadout rows are still there.
+  it("R254 migrates every loadout into three decks and one trio, losing nothing", () => {
+    provenIn(254, SERVER_DECKS_SQL);
+  });
+
+  // Proved by deckCode.test.ts "R255 …": the round trip, the caps, the version and checksum, and
+  // what an import drops and marks.
+  it("R255 shares a deck as a versioned, checksummed, length-capped code", () => {
+    expect(serverConstant(SERVER_CONFIG, "DECK_CODE_VERSION")).toBe("1");
+    expect(serverConstant(SERVER_CONFIG, "DECK_CODE_MAX_INPUT_LENGTH")).toBe("512");
+    provenIn(255, WEB_DECK_CODE_TEST);
+  });
+
+  // Proved by sync.test.ts "R256 …" (debounce, the local mirror, offline and back), the store
+  // contract's "R256 …" (an upsert keyed by the client's id) and decks.test.ts "R256 …".
+  it("R256 autosaves by client-minted id and keeps unsaved edits on the device", () => {
+    expect(serverConstant(SERVER_CONFIG, "DECK_AUTOSAVE_DEBOUNCE_MS")).toBe("800");
+    expect(serverConstant(SERVER_CONFIG, "DECK_AUTOSAVE_RETRY_SECONDS")).toBe("5");
+    provenIn(256, WEB_DECK_SYNC_TEST, SERVER_STORE_CONTRACT, SERVER_DECKS_TEST);
+  });
+
+  // Proved by queue.test.ts "R257 …" (pairing only within a mode, the legacy deckIndex), the store
+  // contract's "R257 …" (a ticket's mode and trio, counted per mode) and play.test.tsx "R257 …".
+  it("R257 pairs a ticket only within its mode", () => {
+    provenIn(257, SERVER_QUEUE_TEST, SERVER_STORE_CONTRACT, WEB_PLAY_TEST);
+  });
+
+  // Proved by queue.test.ts "R258 …" (both seats dealt, no deck needed) and engine.real.test.ts
+  // "R258 …" (the real weighted draw: twenty distinct deckable cards, the same for the same seed).
+  it("R258 deals All Random decks from the weighted random deck-builder", () => {
+    provenIn(258, SERVER_QUEUE_TEST, SERVER_ENGINE_REAL_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R259 …", and series.test.tsx "R259 …" (the
+  // screen shows whether the opponent has picked, never what).
+  it("R259 plays a series to two wins, each deck once, picks hidden until both are in", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_WINS_NEEDED")).toBe("2");
+    expect(serverConstant(SERVER_CONFIG, "SERIES_MAX_GAMES")).toBe("3");
+    provenIn(259, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST, WEB_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R260 …".
+  it("R260 gives a late picker their first unplayed deck, and abandons a series nobody picks in", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_PICK_SECONDS")).toBe("60");
+    provenIn(260, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R261 …".
+  it("R261 loses a game, not the series, to a concede or a disconnect; draws count for neither", () => {
+    provenIn(261, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series.test.ts "R262 …": one rating move per series, its games' rows unchanged.
+  it("R262 rates a series once, when it ends", () => {
+    provenIn(262, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series-recovery.test.ts "R263 …" (the sweeper starts a game a restart left unstarted;
+  // a second process continues the series) and the store contract's "R263 …" (compare-and-set).
+  it("R263 keeps a series in the database, so it survives a restart", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_SWEEP_INTERVAL_SECONDS")).toBe("5");
+    expect(serverConstant(SERVER_CONFIG, "SERIES_START_GRACE_SECONDS")).toBe("15");
+    expect(serverConstant(SERVER_CONFIG, "SERIES_START_GIVE_UP_SECONDS")).toBe("120");
+    provenIn(263, SERVER_SERIES_RECOVERY_TEST, SERVER_STORE_CONTRACT);
+  });
+
+  // Proved by rooms.test.ts "R264 …", the store contract's "R264 …" (a room's mode and trio) and
+  // play.test.tsx "R264 …" (a join in the wrong mode switches the lobby to the room's).
+  it("R264 makes a room in its host's mode and refuses a joiner in another", () => {
+    provenIn(264, SERVER_ROOMS_TEST, SERVER_STORE_CONTRACT, WEB_PLAY_TEST);
   });
 });
 

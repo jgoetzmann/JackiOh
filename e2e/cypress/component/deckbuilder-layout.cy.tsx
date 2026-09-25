@@ -2,40 +2,47 @@
 // 1280x720, and shows at least two pool columns on the phone (docs/polish/6-cards.md). It also
 // holds B29's layout half: the detail view's two faces sit side by side at both sizes.
 //
-// jsdom has no layout, so browse.test.tsx can only prove structure. This spec puts the builder in
-// front of a real layout engine with the heaviest pool it ever shows: every one of the 100
-// deckable Core cards as a full CardFace, and a legal three-deck loadout filling the sidebar.
+// jsdom has no layout, so the workshop's own tests can only prove structure. This spec puts the
+// builder in front of a real layout engine with the heaviest pool it ever shows: every one of the
+// 100 deckable Core cards as a full CardFace, a full deck of 20 open in the sidebar, and three
+// saved decks and a trio in the rail.
 //
-// THE MOUNT. The Surface's screen structure makes the builder's own root the page shell:
-// `div.app-shell.app-shell--wide.deckbuilder [deckbuilder]`, and spec 09 waits on that testid as
-// "the builder itself, not the route". So the builder is mounted bare, and the first assertion is
-// that its root really carries both shell classes. Wrapping it in a second `.app-shell--wide` would
-// take another 24px off the phone, a width the builder never gets on /decks, and the two-column
-// check would then measure a page that does not exist.
+// THE MOUNT. The deck builder is now the deck workshop (SPEC §9.4, R250–R256): `DeckWorkshop`, the
+// component `/decks` renders once its reads have landed, whose own root is the page shell —
+// `div.app-shell.app-shell--wide.deckbuilder.workshop [workshop]`. So it is mounted bare, as the
+// route mounts it, and the first assertion is that its root really carries both shell classes.
+// Wrapping it in a second `.app-shell--wide` would take another 24px off the phone, a width the
+// builder never gets on /decks, and the two-column check would then measure a page that does not
+// exist. Its I/O is four stubs that resolve (nothing here is about saving), `storage: null` keeps
+// the local mirror out of the measurement, and `initialOpen` opens the full deck — on a phone the
+// rail and the editor take turns (`data-view`), and it is the editor, pool and all, that has to fit.
 //
 // WHAT IS MEASURED, as board-layout.cy.tsx does for the board: documentElement, body and the
-// builder's own scrollWidth, each at most the viewport width. Two controls keep "it fits" from
-// being satisfied by a builder that is not there: all 100 pool items are present, and the builder
+// workshop's own scrollWidth, each at most the viewport width. Two controls keep "it fits" from
+// being satisfied by a builder that is not there: all 100 pool items are present, and the workshop
 // spans the viewport. Each measure sits inside `.should()`, so it retries while the fonts, the
 // procedural art and `useFitText` settle.
 
-import Deckbuilder from "../../../apps/web/src/game/deckbuilder/Deckbuilder.tsx";
+import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../../apps/server/src/config.ts";
+import DeckWorkshop, { type WorkshopOpen } from "../../../apps/web/src/game/deckbuilder/DeckWorkshop.tsx";
+import type { DecksResponse } from "../../../apps/web/src/net/api.ts";
 import { CATALOG, CATALOG_VERSION } from "../../../packages/cards/src/catalog-data.ts";
 import { FIT_FLOOR_PX, TEXT_TIER_MAX } from "../../../apps/web/src/cards/constants.ts";
 import { faceModel } from "../../../apps/web/src/cards/model.ts";
 import {
   CARD_POOL,
+  DB_DETAIL_ADD,
   DB_FILTERS,
   DB_SIDEBAR,
-  LOADOUT_ERRORS,
-  LOADOUT_SAVE,
-  DECKBUILDER,
+  DECK_EDITOR,
+  DECK_VERDICT,
+  INSPECT_CLOSE,
   INSPECT_DETAIL,
   INSPECT_FACE_BASE,
   INSPECT_FACE_RADIANT,
-  DB_DETAIL_ADD,
-  INSPECT_CLOSE,
-  cardPoolId,
+  LOADOUT_ERRORS,
+  WORKSHOP,
+  poolCardId,
   ts,
 } from "../../support/testids.ts";
 
@@ -51,27 +58,68 @@ const DECKABLE_COUNT = 100;
 /** A collection owning every deckable card once. */
 const COLLECTION: Record<string, number> = Object.fromEntries(DECKABLE.map((def) => [def.id, 1]));
 
-/** Three disjoint decks of 20, in catalog order: a legal loadout, so the sidebar is full. */
+/** Three disjoint decks of 20, in catalog order, and a trio of them: a legal Best-of-3 choice. */
 const DECK_SIZE = 20;
-const DECKS: string[][] = [0, 1, 2].map((deck) =>
+const SAVED_AT = 0;
+const DECK_IDS = [
+  "00000000-0000-4000-8000-000000000001",
+  "00000000-0000-4000-8000-000000000002",
+  "00000000-0000-4000-8000-000000000003",
+] as const;
+const TRIO_ID = "00000000-0000-4000-8000-000000000004";
+
+function decksResponse(decks: readonly (readonly string[])[]): DecksResponse {
+  return {
+    catalogVersion: CATALOG_VERSION,
+    decks: decks.map((cards, at) => ({
+      id: DECK_IDS[at] ?? DECK_IDS[0],
+      name: `Deck ${String(at + 1)}`,
+      cards: [...cards],
+      catalogVersion: CATALOG_VERSION,
+      createdAt: SAVED_AT + at,
+      updatedAt: SAVED_AT + at,
+    })),
+    trios:
+      decks.length === DECK_IDS.length
+        ? [{ id: TRIO_ID, name: "Trio 1", deckIds: [DECK_IDS[0], DECK_IDS[1], DECK_IDS[2]], createdAt: SAVED_AT, updatedAt: SAVED_AT }]
+        : [],
+    limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS, nameLength: DECK_NAME_MAX_LENGTH },
+  };
+}
+
+const FULL_DECKS: string[][] = [0, 1, 2].map((deck) =>
   DECKABLE.slice(deck * DECK_SIZE, (deck + 1) * DECK_SIZE).map((def) => def.id),
 );
+
+/** Mount the workshop as `/decks` does, with `decks` saved and the first of them open. */
+function mountWorkshop(decks: readonly (readonly string[])[]): void {
+  const open: WorkshopOpen = { kind: "deck", id: DECK_IDS[0] };
+  // Nothing here saves; the stubs only satisfy the prop.
+  const api = {
+    putDeck: cy.stub().resolves({}),
+    deleteDeck: cy.stub().resolves({}),
+    putTrio: cy.stub().resolves({}),
+    deleteTrio: cy.stub().resolves({}),
+  };
+  cy.mount(
+    <DeckWorkshop
+      catalog={{ version: CATALOG_VERSION, cards: CATALOG }}
+      collection={COLLECTION}
+      data={decksResponse(decks)}
+      profileId="component-spec"
+      api={api}
+      storage={null}
+      initialOpen={open}
+    />,
+  );
+}
 
 const POOL_ITEMS = `${ts(CARD_POOL)} .db-item`;
 
 describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
   beforeEach(() => {
     expect(DECKABLE, "the Core set has 100 deckable cards").to.have.length(DECKABLE_COUNT);
-    // Nothing here saves; the stub only satisfies the prop.
-    const save = cy.stub().resolves({ ok: true });
-    cy.mount(
-      <Deckbuilder
-        catalog={{ version: CATALOG_VERSION, cards: CATALOG }}
-        collection={COLLECTION}
-        initialDecks={DECKS}
-        save={save}
-      />,
-    );
+    mountWorkshop(FULL_DECKS);
   });
 
   for (const viewport of VIEWPORTS) {
@@ -80,16 +128,19 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
     it(`B39 has no horizontal overflow at ${where}`, () => {
       cy.viewport(viewport.width, viewport.height);
 
-      cy.get(ts(DECKBUILDER))
+      cy.get(ts(WORKSHOP))
         .should("be.visible")
         .and("have.class", "app-shell")
-        .and("have.class", "app-shell--wide");
+        .and("have.class", "app-shell--wide")
+        .and("have.class", "deckbuilder")
+        .and("have.attr", "data-view", "editor");
+      cy.get(ts(DECK_EDITOR)).should("have.attr", "data-deck", DECK_IDS[0]);
       cy.get(ts(DB_FILTERS)).should("be.visible");
       cy.get(ts(DB_SIDEBAR)).should("be.visible");
       cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
 
       cy.document().should((doc) => {
-        const builder = doc.querySelector(ts(DECKBUILDER));
+        const builder = doc.querySelector(ts(WORKSHOP));
         expect(builder, "the builder is mounted").to.not.eq(null);
         if (builder === null) return;
 
@@ -117,7 +168,7 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
       expect(first, "a deckable card to inspect").to.not.eq(undefined);
       if (first === undefined) return;
 
-      cy.get(ts(cardPoolId(first.id))).click();
+      cy.get(ts(poolCardId(first.id))).click();
       cy.get(ts(INSPECT_DETAIL)).should("be.visible");
       cy.document().should((doc) => {
         const base = doc.querySelector(ts(INSPECT_FACE_BASE));
@@ -145,7 +196,7 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
 
     it(`B38 the detail's Add to Deck and Close are on screen as it opens, for the longest card, at ${where}`, () => {
       cy.viewport(viewport.width, viewport.height);
-      cy.get(ts(cardPoolId("core-098"))).click();
+      cy.get(ts(poolCardId("core-098"))).click();
       cy.get(ts(INSPECT_DETAIL)).should("be.visible");
       cy.document().should((doc) => {
         for (const id of [DB_DETAIL_ADD, INSPECT_CLOSE]) {
@@ -223,35 +274,35 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
     });
   }
 
-  // Integration QA: a refused save's reasons rendered under all 100 pool cards on a phone. They sit
-  // in the sidebar, directly under Save, at every size.
+  // Integration QA: a refused save's reasons rendered under all 100 pool cards on a phone. There is
+  // no Save button any more (R256); the deck's verdict sits in its sidebar, on the first screen, at
+  // every size — and on a phone, where the sidebar and the pool stack, above the pool, never under
+  // its cards. (On a desktop the two are side by side, so "above" means nothing there.)
   for (const viewport of VIEWPORTS) {
     const where = `${viewport.label} ${String(viewport.width)}x${String(viewport.height)}`;
-    it(`the verdicts sit directly under Save at ${where}`, () => {
+    const stacked = viewport.label === "phone";
+    it(`the deck's verdict sits in its sidebar on the first screen${stacked ? ", above the pool," : ""} at ${where}`, () => {
       cy.viewport(viewport.width, viewport.height);
-      // A fresh account: three empty decks, so the list has something to say (the legal loadout
-      // the other tests mount has no verdict at all).
-      cy.mount(
-        <Deckbuilder
-          catalog={{ version: CATALOG_VERSION, cards: CATALOG }}
-          collection={COLLECTION}
-          initialDecks={null}
-          save={cy.stub().resolves({ ok: true })}
-        />,
-      );
-      cy.get(`${ts(DB_SIDEBAR)} ${ts(LOADOUT_ERRORS)}`).should("have.attr", "data-count", "3");
+      // An empty deck, so the verdict has something to say (L2: 0 of 20 cards).
+      mountWorkshop([[]]);
+      cy.get(`${ts(DB_SIDEBAR)} ${ts(DECK_VERDICT)} ${ts(LOADOUT_ERRORS)}`).should("have.attr", "data-count", "1");
+      cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
       cy.document().should((doc) => {
-        const save = doc.querySelector(ts(LOADOUT_SAVE))?.getBoundingClientRect();
-        const errors = doc.querySelector(ts(LOADOUT_ERRORS))?.getBoundingClientRect();
-        expect(save, "Save").to.not.eq(undefined);
-        expect(errors, "the verdict list").to.not.eq(undefined);
-        if (save === undefined || errors === undefined) return;
-        expect(errors.top - save.bottom, "the verdicts start within 40 px under Save").to.be.within(-1, 40);
+        const verdict = doc.querySelector(ts(DECK_VERDICT))?.getBoundingClientRect();
+        const firstCard = doc.querySelector(POOL_ITEMS)?.getBoundingClientRect();
+        expect(verdict, "the verdict").to.not.eq(undefined);
+        expect(firstCard, "the first pool card").to.not.eq(undefined);
+        if (verdict === undefined || firstCard === undefined) return;
+        expect(verdict.height, "the verdict is drawn").to.be.greaterThan(0);
+        expect(Math.floor(verdict.top), `the verdict starts on the first screen at ${where}`).to.be.below(viewport.height);
+        if (stacked) {
+          expect(verdict.top, `the verdict starts above the first pool card at ${where}`).to.be.below(firstCard.top);
+        }
       });
     });
   }
 
-  it("at 390x844 with a full loadout, the first row of the pool is on the first screen", () => {
+  it("at 390x844 with a full deck open, the first row of the pool is on the first screen", () => {
     cy.viewport(390, 844);
     cy.get(POOL_ITEMS).should("have.length", DECKABLE_COUNT);
     cy.document().should((doc) => {
