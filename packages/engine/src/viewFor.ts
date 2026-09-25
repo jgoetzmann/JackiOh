@@ -617,7 +617,10 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
     case "libraryOverflow": {
       const { copyOf, ...shown } = event;
       const unread = hidden(event.instanceId) || (copyOf !== undefined && hidden(copyOf));
-      return unread ? { ...shown, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : shown;
+      if (!unread) return shown;
+      // The face it would have had is the card's too, so it goes with the identity.
+      const { radiant: _face, ...rest } = shown;
+      return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
     // R317: a burned card lands in its owner's graveyard, or ceases to exist (R11), so both seats read

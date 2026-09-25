@@ -29,14 +29,22 @@ import "./overflow.css";
 /** The events that raise a notice, and the element each one's notice sits in. */
 const NOTICE_EVENTS: readonly GameEventType[] = ["fatigue", "libraryOverflow", "burned"];
 
-/** A refused or burned card as the event names it: the sentinel stays the sentinel (R97). */
-export type NoticeCard = { instanceId: string; defId: string };
+/**
+ * A refused or burned card as the event names it: the sentinel stays the sentinel (R97). `radiant` is
+ * the face a refused copy would have had (R316), which travels only with a card the viewer reads.
+ */
+export type NoticeCard = { instanceId: string; defId: string; radiant?: boolean };
 
+/**
+ * `entry` is the notice's place in the burst, which the board keys it by: two refusals in a row (#33
+ * turns three copies away at once) are two entries, and a notice kept across them would keep its
+ * `data-playing` and play its motion once, leaving the second and third cards on their end frame.
+ */
 export type PileNoticeModel =
-  | { kind: "fatigue"; count: number; playing: boolean }
-  | { kind: "libraryFull"; card: NoticeCard; outcome: LibraryOverflowOutcome; playing: boolean };
+  | { kind: "fatigue"; count: number; playing: boolean; entry: number }
+  | { kind: "libraryFull"; card: NoticeCard; outcome: LibraryOverflowOutcome; playing: boolean; entry: number };
 
-export type BurnNoticeModel = { card: NoticeCard; playing: boolean };
+export type BurnNoticeModel = { card: NoticeCard; playing: boolean; entry: number };
 
 export type OverflowNotices = {
   /** Per side, the notice on that side's library pile. */
@@ -98,16 +106,18 @@ export function noticesFrom(
         animating !== undefined && (source.frames === animating || (index === last && animating.get(region) === type));
       const at = regionOf(view, event);
       if (at === null) continue;
-      if (event.type === "fatigue") pile.set(at.side, { kind: "fatigue", count: event.count, playing });
+      const entry = index;
+      if (event.type === "fatigue") pile.set(at.side, { kind: "fatigue", count: event.count, playing, entry });
       if (event.type === "libraryOverflow") {
         pile.set(at.side, {
           kind: "libraryFull",
-          card: { instanceId: event.instanceId, defId: event.defId },
+          card: { instanceId: event.instanceId, defId: event.defId, ...(event.radiant === true ? { radiant: true } : {}) },
           outcome: event.outcome,
           playing,
+          entry,
         });
       }
-      if (event.type === "burned") burn.set(at.side, { card: { instanceId: event.instanceId, defId: event.defId }, playing });
+      if (event.type === "burned") burn.set(at.side, { card: { instanceId: event.instanceId, defId: event.defId }, playing, entry });
     }
   });
   return pile.size === 0 && burn.size === 0 ? NO_NOTICES : { pile, burn };
@@ -139,7 +149,7 @@ function NoticeCardFace({
       ? null
       : namedFace(lookup, view, {
           defId: card.defId,
-          radiant: false,
+          radiant: card.radiant === true,
           ...(card.instanceId === HIDDEN_CARD ? {} : { instanceId: card.instanceId }),
         });
   return (

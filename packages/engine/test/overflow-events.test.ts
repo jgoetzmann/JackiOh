@@ -194,6 +194,27 @@ describe("R316 library overflow", () => {
     expect(eventsOfType(seen(state, sink.events).p2, "libraryOverflow")[0]?.defId).toBe(trap.id);
   });
 
+  it("R316 carries a refused Radiant copy's face with its identity, and hides both together", () => {
+    const state = fullLibrary("r316-radiant");
+    const sink = sinkFor(state);
+    const fresh = newInstance(state, "fx-2", "p1", { z: "library", player: "p1" });
+    fresh.radiant = true;
+    shuffleIntoLibrary(sink, fresh, false);
+    expect(eventsOfType(sink.events, "libraryOverflow")[0]?.radiant).toBe(true);
+    expect(eventsOfType(seen(state, sink.events).p2, "libraryOverflow")[0]?.radiant).toBe(true);
+
+    // Copying a face-down trap: the other seat reads neither the card nor its face.
+    const hidden = fullLibrary("r316-radiant-hidden");
+    const trap = put(hidden, "fx-2", slot("p1", "units", 1));
+    const hiddenSink = sinkFor(hidden);
+    const copy = newInstance(hidden, "fx-2", "p1", { z: "library", player: "p1" });
+    copy.radiant = true;
+    moveToZone(hidden, trap, "hand");
+    shuffleIntoLibrary(hiddenSink, copy, false, trap.id);
+    const theirs = eventsOfType(seen(hidden, hiddenSink.events).p2, "libraryOverflow")[0];
+    expect(theirs).toEqual({ type: "libraryOverflow", player: "p1", instanceId: HIDDEN_ID, defId: HIDDEN_ID, outcome: "notCreated" });
+  });
+
   it("R316 reports nothing below the cap, and a CN-Virus chain at the cap turns its second copy away", () => {
     const roomy = newGame("r316-roomy");
     setLibrary(roomy, "p1", ["fx-1"]);

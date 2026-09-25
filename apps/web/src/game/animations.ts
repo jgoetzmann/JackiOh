@@ -749,8 +749,8 @@ export const HIDDEN_ID = "hidden";
  * `radiant`, `cardPlayed` and `summoned` drop their `formerId` (R227), `buffed` zeroes its
  * `attack` and `health` and `costChanged` blanks its `cost` (R177), and `radiantSet` moves its
  * `zone` to the owner's hand. Every one of them is rewritten only when the event's own
- * `instanceId` is the one hidden. `burned` and `libraryOverflow` (R317, R316) change nothing but
- * their ids, and `fatigue` (R315) is public, so none of the three needs an entry.
+ * `instanceId` is the one hidden. `libraryOverflow` drops the `radiant` of the card it refused
+ * (R316); `burned` (R317) changes nothing but its ids, and `fatigue` (R315) is public.
  */
 const REWRITTEN_WITH_IDENTITY: Partial<Record<GameEventType, readonly string[]>> = {
   cardResolved: ["radiant"],
@@ -759,6 +759,7 @@ const REWRITTEN_WITH_IDENTITY: Partial<Record<GameEventType, readonly string[]>>
   buffed: ["attack", "health"],
   costChanged: ["cost"],
   radiantSet: ["zone"],
+  libraryOverflow: ["radiant"],
 };
 
 const NOTHING_REWRITTEN: readonly string[] = [];

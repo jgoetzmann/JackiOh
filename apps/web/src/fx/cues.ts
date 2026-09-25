@@ -793,6 +793,26 @@ export function planLethal(
       return tgt !== null && heroes.has(tgt);
     });
     if (!lethal) continue;
+    // R318: a fatigue hit comes out of an empty library, and the entry just before it says so. A
+    // lethal one is replayed with it, the two sharing the same lead, so the killing blow is not a hit
+    // from nowhere; the board's "Fatigue N" never mounts under a finished view.
+    const before = entries[k - 1];
+    const fatigue =
+      before !== undefined &&
+      before.view.viewer === view.viewer &&
+      before.events.some((event) => event.type === "fatigue" && heroes.has(testid.hero(sideOf(before.view, event.player))));
+    if (fatigue) {
+      const leadMs = Math.min(before.durationMs + entry.durationMs, FX_LETHAL_LEAD_MAX_MS);
+      const emptyMs = Math.round((leadMs * before.durationMs) / (before.durationMs + entry.durationMs));
+      const hitMs = leadMs - emptyMs;
+      return {
+        cues: [
+          ...planFx({ ...before, durationMs: emptyMs }, before.view, env),
+          ...delayCues(planFx({ ...entry, durationMs: hitMs }, entry.view, env), emptyMs),
+        ],
+        leadMs,
+      };
+    }
     const leadMs = Math.min(entry.durationMs, FX_LETHAL_LEAD_MAX_MS);
     return { cues: planFx({ ...entry, durationMs: leadMs }, entry.view, env), leadMs };
   }

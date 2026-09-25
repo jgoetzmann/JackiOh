@@ -318,7 +318,7 @@ function Seat({
           fatigue={seat.fatigueCount}
           animating={animating}
         >
-          <PileNotice notice={notices.pile.get(side)} side={side} view={view} />
+          <PileNotice key={notices.pile.get(side)?.entry} notice={notices.pile.get(side)} side={side} view={view} />
         </Pile>
         <Pile
           label="Graveyard"
@@ -412,7 +412,9 @@ export default function Board({
   const pops = popsFrom(view, animating, animated);
   // R318: fatigue and a full library on a library pile, a full hand over a hand, as the pops are.
   const notices = noticesFrom(view, animating, animated);
-  const burnNotice = (side: Side): ReactElement => <BurnNotice notice={notices.burn.get(side)} side={side} view={view} />;
+  const burnNotice = (side: Side): ReactElement => (
+    <BurnNotice key={notices.burn.get(side)?.entry} notice={notices.burn.get(side)} side={side} view={view} />
+  );
   const yourHand: CardView[] | { count: number } = view.you.hand;
   const dragToPlay = useSetting("dragToPlay");
   const confirmEndTurn = useSetting("confirmEndTurn");

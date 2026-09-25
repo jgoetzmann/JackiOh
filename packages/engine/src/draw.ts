@@ -118,6 +118,7 @@ export function shuffleIntoLibrary(
         instanceId: instance.id,
         defId: instance.defId,
         outcome,
+        ...(instance.radiant ? { radiant: true as const } : {}),
         // R316: a copy that was never made is judged by the card it copies, which may be face-down.
         ...(outcome === "notCreated" && copyOf !== undefined ? { copyOf } : {}),
       });

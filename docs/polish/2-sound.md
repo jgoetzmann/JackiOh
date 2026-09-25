@@ -329,8 +329,8 @@ The recipe sketches below are the designer's intent; builders tune them by ear w
 | drain | 600 | 0.6 | sine 300→120 Hz with a 6 Hz ±15 Hz vibrato; peak scales with amount like impact |
 | cancel | 260 | 0.5 | square 330→165 Hz → lowpass 1500 Hz |
 | entrance | 1400 | 0.6 | (integration) FM gong 98 Hz + sawtooth fifth 196/294 Hz → lowpass opening 600→3000 Hz, then 3 high glints; `mythic`: 6 faster glints under a 9 Hz tremolo |
-| fatigue | 650 | 1.0 | (R319) two hollow knocks 160 ms apart, each bandpass-noise (1040 then 800 Hz, Q 4) over a sine thump (173 then 133 Hz), then a triangle sigh 196→98 Hz |
-| refuse | 400 | 0.9 | (R319) a muffled square "no": 294 Hz then 220 Hz, 130 ms apart → lowpass 900 Hz, with a 90 Hz sine thud on the second note |
+| fatigue | 650 | 0.45 | (R319) two hollow knocks 160 ms apart, each bandpass-noise (1040 then 800 Hz, Q 4) over a sine thump (173 then 133 Hz), then a triangle sigh 196→98 Hz |
+| refuse | 400 | 0.27 | (R319) a muffled square "no": 294 Hz then 220 Hz, 130 ms apart → lowpass 900 Hz, with a 90 Hz sine thud on the second note |
 
 ### `apps/web/src/audio/engine.ts` (slice 1)
 

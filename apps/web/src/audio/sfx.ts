@@ -804,6 +804,6 @@ export const SFX: { readonly [K in SfxId]: SfxSpec } = {
   drain: { recipe: drain, durationMs: 600, gain: 0.69 },
   cancel: { recipe: cancel, durationMs: 260, gain: 1 },
   entrance: { recipe: entrance, durationMs: 1400, gain: 0.6 },
-  fatigue: { recipe: fatigue, durationMs: 650, gain: 1 },
-  refuse: { recipe: refuse, durationMs: 400, gain: 0.9 },
+  fatigue: { recipe: fatigue, durationMs: 650, gain: 0.45 },
+  refuse: { recipe: refuse, durationMs: 400, gain: 0.27 },
 };

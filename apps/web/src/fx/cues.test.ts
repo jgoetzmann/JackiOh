@@ -1825,6 +1825,25 @@ describe("R200 planLethal: the killing blow a drained game over never drew", () 
     expect(planLethal(hit, otherSeat, envOf())).toEqual({ cues: [], leadMs: 0 });
   });
 
+  it("R318 a lethal fatigue hit is replayed with the empty library it came out of, inside the same lead", () => {
+    const entries = entriesOf([{ type: "fatigue", player: "p1", count: 7, amount: 7 }, dmg(null, "hero-p1", 7, false)], 600);
+    expect(entries.map((entry) => entry.type)).toEqual(["fatigue", "damage"]);
+    const lethal = planLethal(entries, finished("p2"), envOf());
+    expect(lethal.leadMs).toBe(FX_LETHAL_LEAD_MAX_MS);
+    const empty = r(FX_LETHAL_LEAD_MAX_MS / 2);
+    // The library's dust at 0, the streak landing inside the first half, the hit's splat after it.
+    expect(lethal.cues.some((cue) => cue.kind === "burst" && cue.preset === "dust" && cue.delayMs === 0)).toBe(true);
+    const streak = lethal.cues.find((cue) => cue.kind === "projectile");
+    expect(streak).toMatchObject({ preset: "void", from: tid("library-you"), to: heroT("you") });
+    if (streak?.kind === "projectile") expect(streak.delayMs + streak.flightMs).toBeLessThanOrEqual(empty);
+    const hit = lethal.cues.find((cue) => cue.kind === "splat");
+    expect(hit).toMatchObject({ tone: "damage", amount: 7, at: heroT("you"), delayMs: empty });
+    for (const cue of lethal.cues) expect(cue.delayMs).toBeLessThanOrEqual(FX_LETHAL_LEAD_MAX_MS);
+    // A fatigue of the winner's, or one that is not just before the hit, is not replayed.
+    const other = entriesOf([{ type: "fatigue", player: "p2", count: 1, amount: 1 }, dmg(null, "hero-p1", 7, false)], 600);
+    expect(planLethal(other, finished("p2"), envOf()).cues.some((cue) => cue.kind === "projectile")).toBe(false);
+  });
+
   it("R200 delayCues moves every cue later by the lead and changes nothing else", () => {
     const cues = planResult(finished("p1"), { intensity: 1 });
     const later = delayCues(cues, 300);

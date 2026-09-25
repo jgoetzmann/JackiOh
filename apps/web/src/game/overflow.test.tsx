@@ -256,6 +256,31 @@ describe("R318 a full library on the library pile", () => {
     expect(attributeValues(notice)).not.toContain(HIDDEN_ID);
   });
 
+  it("R318 three refusals in a row (#33's three copies) are three notices, each playing its own motion", () => {
+    const refusal = (id: string): GameEvent => ({ type: "libraryOverflow", player: "p1", instanceId: id, defId: PANTHER, outcome: "notCreated" });
+    play("p1", [refusal("c90"), refusal("c91"), refusal("c92")]);
+    const seen: Element[] = [];
+    for (let k = 0; k < 3; k += 1) {
+      const notice = screen.getByTestId(noticeTestid.pile("you"));
+      expect(notice, `refusal ${String(k + 1)}`).toHaveAttribute("data-playing", "true");
+      // A fresh element for each entry, so its CSS animations start again rather than holding their
+      // end frame, where the refused card is gone.
+      expect(seen, `refusal ${String(k + 1)} is a new notice`).not.toContain(notice);
+      seen.push(notice);
+      advance(ANIMATIONS.libraryOverflow.durationMs);
+    }
+    expect(screen.queryByTestId(noticeTestid.pile("you"))).toBeNull();
+  });
+
+  it("R318 a refused Radiant copy shows the Radiant face it would have had", () => {
+    play("p1", [{ type: "libraryOverflow", player: "p1", instanceId: "c93", defId: PANTHER, outcome: "notCreated", radiant: true }]);
+    const refused = screen.getByTestId(noticeTestid.overflowCard("you"));
+    expect(refused.querySelector("[data-radiant-face='true']"), "the face is the Radiant one").not.toBeNull();
+    cleanup();
+    play("p1", [{ type: "libraryOverflow", player: "p1", instanceId: "c94", defId: PANTHER, outcome: "notCreated" }]);
+    expect(screen.getByTestId(noticeTestid.overflowCard("you")).querySelector("[data-radiant-face='true']")).toBeNull();
+  });
+
   it("R318 a ceased unit-token card fizzles like a copy that was never made", () => {
     play("p1", [{ type: "libraryOverflow", player: "p1", instanceId: "c82", defId: "core-t-sheep", outcome: "ceased" }]);
     expect(screen.getByTestId(noticeTestid.overflowCard("you"))).toHaveAttribute("data-outcome", "ceased");

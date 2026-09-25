@@ -131,6 +131,12 @@ export type GameEvent =
       defId: string;
       outcome: LibraryOverflowOutcome;
       /**
+       * R316: set when the refused card is Radiant (#33's Radiant face makes every copy Radiant, a
+       * Radiant CN-Virus copies Radiant), so the board shows the face it would have had. It is the
+       * card's, so a view that hides the card hides this too (R97).
+       */
+      radiant?: true;
+      /**
        * R316: the card a `notCreated` copy was a copy of (#33 copies whatever its controller plays,
        * a Trap set face-down included; #90.1 copies itself), so a view judges the copy that was never
        * made by that card, and a face-down trap's copy does not name it (R97). Engine bookkeeping: a
