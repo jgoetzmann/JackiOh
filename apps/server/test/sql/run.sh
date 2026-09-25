@@ -1,5 +1,5 @@
 #!/bin/sh
-# Apply every migration (0001-0009) to a throwaway Postgres and assert the
+# Apply every migration (0001-0010) to a throwaway Postgres and assert the
 # invariants of SPEC §9.1, §9.4 and §9.5 against a real database.
 #
 #   pnpm test:sql            # or: sh apps/server/test/sql/run.sh
@@ -30,7 +30,7 @@
 # DATA migration: 0007 turns every loadout that exists when it runs into three
 # decks and a trio, so there has to be a loadout for it to find. 03b seeds one
 # — through 0003's own app.save_loadout, as a player of the old server saved
-# it — after 0001-0006 and before 0007-0009, exactly the order a database that
+# it — after 0001-0006 and before 0007-0010, exactly the order a database that
 # predates 0007 sees. 04 then checks what 0007 made of it.
 #
 # The CONTAINER name is fixed so a run can be inspected afterwards; the script
@@ -99,8 +99,8 @@ if ! $PSQL -d jackioh -f /tmp/03b_legacy_loadout_seed.sql; then
   failed=1
 fi
 
-echo "--- migrations 0007-0009 ---"
-for f in 0007_decks_and_trios 0008_queue_modes 0009_series; do
+echo "--- migrations 0007-0010 ---"
+for f in 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag; do
   apply_migration "$f"
 done
 
@@ -108,7 +108,7 @@ done
 # check ever ran against. Refuse it rather than pass without it.
 for f in "$REPO"/apps/server/src/db/migrations/*.sql; do
   name=$(basename "$f" .sql)
-  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series " in
+  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag " in
     *" $name "*) ;;
     *) echo "!!! migration $name is not applied by this script; add it above"; failed=1 ;;
   esac

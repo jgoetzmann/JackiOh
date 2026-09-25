@@ -7,6 +7,7 @@
  * of cards". Nothing caught it because no test read the real file. This one does.
  */
 
+import { readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -16,6 +17,25 @@ import { describe, expect, it } from "vitest";
 import { readCatalog } from "../../src/db/seed-catalog";
 
 const REAL_CATALOG = resolve(import.meta.dirname, "../../../../packages/cards/catalog.json");
+const MIGRATIONS = resolve(import.meta.dirname, "../../src/db/migrations");
+
+/**
+ * The tags `public.cards.cards_tags_check` admits once every migration has run: the array in the
+ * last migration, in apply order, that adds the check. 0002 defines it and 0010 re-adds it.
+ */
+function admittedTags(): { file: string; tags: string[] } {
+  const files = readdirSync(MIGRATIONS).filter((name) => name.endsWith(".sql")).sort();
+  let found: { file: string; tags: string[] } | undefined;
+  for (const file of files) {
+    const sql = readFileSync(join(MIGRATIONS, file), "utf8");
+    for (const match of sql.matchAll(/constraint\s+cards_tags_check\s+check\s*\(([\s\S]*?)\]::text\[\]/gi)) {
+      const body = (match[1] ?? "").replace(/--[^\n]*/g, "");
+      found = { file, tags: [...body.matchAll(/'([^']*)'/g)].map((tag) => tag[1] ?? "") };
+    }
+  }
+  if (found === undefined) throw new Error(`no migration in ${MIGRATIONS} adds cards_tags_check`);
+  return found;
+}
 
 /** A card that satisfies the M4-T1 subset `isEntry` checks. */
 function card(id: string) {
@@ -70,5 +90,25 @@ describe("readCatalog", () => {
 
   it("names the missing file rather than throwing an ENOENT", async () => {
     await expect(readCatalog("/nowhere/catalog.json")).rejects.toThrow(/cannot read/);
+  });
+});
+
+/**
+ * The seed writes the whole catalog in one transaction, so one tag the schema refuses fails every
+ * row. 0002's check had no 'Jlockeed', and #13 and #14 broke `db:seed-catalog` against a real
+ * database, which only Docker could see. This reads the migrations instead, so `pnpm test` catches a
+ * tag that reaches the catalog before the schema. `pnpm test:sql` CHECK 18 and `pnpm test:db`
+ * (seed-catalog.spec.ts) prove the same against Postgres.
+ */
+describe("R278 the catalog's tags and the cards table's tag check", () => {
+  it("R278 every tag the real catalog carries, Jlockeed included, is one the latest cards_tags_check admits", async () => {
+    const entries = await readCatalog(REAL_CATALOG);
+    const { file, tags } = admittedTags();
+    expect(file, "0010 re-adds the check with Jlockeed").toBe("0010_jlockeed_tag.sql");
+    const carried = [...new Set(entries.flatMap((entry) => entry.tags))].sort();
+    expect(carried).toContain("Jlockeed");
+    expect(carried.filter((tag) => !tags.includes(tag)), "tags the schema would refuse").toEqual([]);
+    // No stale name either: every tag the check admits is one some catalog entry carries.
+    expect([...tags].sort()).toEqual(carried);
   });
 });

@@ -189,6 +189,9 @@ const WEB_RADIANT_DIFF_TEST = "../../../apps/web/src/cards/radiantDiff.test.ts";
 const WEB_FILTERS_TEST = "../../../apps/web/src/game/deckbuilder/filters.test.ts";
 const WEB_REFERENCES_TEST = "../../../apps/web/src/cards/references.test.tsx";
 const WEB_COMPUTED_TEST = "../../../apps/web/src/cards/computed.test.tsx";
+/** R278's schema half: migration 0010 lets the Jlockeed tag into `public.cards`. */
+const SERVER_SEED_CATALOG_TEST = "../../../apps/server/test/db/seed-catalog.test.ts";
+const SERVER_SEED_CATALOG_SPEC = "../../../apps/server/test/db/seed-catalog.spec.ts";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 /** The match actor's and the clock's own tests, which prove the concurrent mulligan's server half. */
@@ -2215,10 +2218,20 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(277, WEB_RADIANT_DIFF_TEST);
   });
 
-  // Proved by catalog.test.ts "R278 …" (the tag is on #13 and #14 alone) and filters.test.ts
-  // "R278 …" (the deck builder offers and applies it).
+  // Proved by catalog.test.ts "R278 …" (the tag is on #13 and #14 alone), filters.test.ts
+  // "R278 …" (the deck builder offers and applies it), and the schema's half, migration 0010:
+  // seed-catalog.test.ts "R278 …" (every catalog tag is one the latest cards_tags_check admits),
+  // 01_schema_invariants.sql "=== CHECK 18 (R278): … ===" and seed-catalog.spec.ts "R278 …" (the
+  // real catalog seeds into Postgres, #13 and #14 tagged Jlockeed).
   it("R278 tags #13 and #14 Jlockeed, a filter and nothing else", () => {
-    provenIn(278, CARDS_CATALOG_TEST, WEB_FILTERS_TEST);
+    provenIn(
+      278,
+      CARDS_CATALOG_TEST,
+      WEB_FILTERS_TEST,
+      SERVER_SEED_CATALOG_TEST,
+      SERVER_SCHEMA_SQL,
+      SERVER_SEED_CATALOG_SPEC,
+    );
   });
 
   // Proved by references.test.ts "R279 …" in packages/cards (the map against the texts, both ways,
