@@ -125,8 +125,8 @@ const playRock: CoachStep = {
   title: "Pay the Tribute",
   text: (ctx) =>
     myTokens(ctx.view).length > 0
-      ? "Play The Rock into an empty zone and pick a Felinor Token as its Tribute. The token is sacrificed to pay for it."
-      : "Play The Rock into an empty zone and pick your weakest unit as its Tribute. That unit is sacrificed to pay for it.",
+      ? "Play The Rock: pick a Felinor Token as its Tribute, then an empty zone. The token is sacrificed to pay for it."
+      : "Play The Rock: pick your weakest unit as its Tribute, then an empty zone. That unit is sacrificed to pay for it.",
   kind: "act",
   anchor: { kind: "handCard", defId: THE_ROCK },
   when: (ctx) => myMain(ctx) && rockPlays(ctx).length > 0,
@@ -158,7 +158,7 @@ export const script: LessonScript = {
     mulliganAway({
       id: "mulligan",
       title: "Send one back",
-      text: "Rule of thumb: send back cards you can't play in your first turns. The 4-mana 7/7 costs 4, so tap it to redraw it, then press Confirm.",
+      text: "Rule of thumb: send back cards you can't play in your first turns. The 4-mana 7/7 costs 4, so tap it to mark it Redraw, then press Ready.",
       defIds: [SEVEN_SEVEN],
     }),
 
@@ -205,7 +205,7 @@ export const script: LessonScript = {
     info({
       id: "tribes",
       title: "Tribes",
-      text: "Some cards belong to a tribe, like Felinor, and some care about one. Felinor Fiender adds the stats of all your Felinors to its own.",
+      text: "Some cards belong to a tribe, named at the bottom of the card, like Felinor. Felinor Fiender adds the stats of all your Felinors to its own.",
       anchor: { kind: "unit", side: "you", defId: FELINOR_FIENDER },
       when: (ctx) => myMain(ctx) && unitOf(ctx.view, "you", FELINOR_FIENDER) !== undefined,
       moot: (ctx, since) =>

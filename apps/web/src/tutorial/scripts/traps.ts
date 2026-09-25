@@ -188,7 +188,7 @@ function enemyTrapText(ctx: CoachCtx): string {
 export const script: LessonScript = {
   lessonId: "traps",
   steps: [
-    keepHand({ id: "keep", title: "Keep your hand", text: "Press Confirm to keep all of these cards." }),
+    keepHand({ id: "keep", title: "Keep your hand", text: "Press Ready to keep all of these cards." }),
     info({
       id: "welcome",
       title: "The backrow",

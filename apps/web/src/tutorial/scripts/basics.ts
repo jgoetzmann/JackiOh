@@ -267,7 +267,7 @@ const trade: CoachStep = {
     if (choice === undefined) return "Attack an enemy unit: both units hit each other at the same time.";
     const a = nameOf(choice.attacker.defId, "your unit");
     const b = nameOf(choice.target.defId, "the enemy unit");
-    return `Attack a unit this time: drag ${a} onto ${b}. Both hit each other at once, ${String(choice.dealt)} damage one way and ${String(choice.taken)} back.`;
+    return `Attack a unit this time: drag ${a} onto the highlighted ${b}. Both hit each other at once, ${String(choice.dealt)} damage one way and ${String(choice.taken)} back.`;
   },
   anchor: (ctx): CoachAnchor | null => {
     const choice = goodTrade(ctx);
@@ -306,7 +306,7 @@ export const script: LessonScript = {
     keepHand({
       id: "keep",
       title: "Keep your hand",
-      text: "You could swap cards here (lesson 4 shows how), but these are good ones. Press Confirm to keep all three.",
+      text: "You could swap cards here (lesson 4 shows how), but these are good ones. Press Ready to keep all three.",
     }),
     info({
       id: "your-hero",
@@ -333,7 +333,7 @@ export const script: LessonScript = {
     playBy(2, {
       id: "play-vanilla",
       title: "Play a unit",
-      text: "Mr. Vanilla costs 1 mana: the number at its top left. Drag it into any of your five unit zones (or click it, then a zone). Any lane will do.",
+      text: "Mr. Vanilla costs 1 mana: the blue number at its top left. Drag it into any of your five unit zones, or click it and then a zone. Each column is a lane.",
       defId: VANILLA,
     }),
     info({
@@ -421,7 +421,7 @@ export const script: LessonScript = {
     tip({
       id: "postdoc",
       title: "A plain copy",
-      text: "Prejudiced Postdoc brought a plain copy of a Human unit onto the enemy's side: one more body for you to deal with.",
+      text: "Prejudiced Postdoc made a plain copy of a unit on the enemy's side: the same stats, none of its text. One more body for you to deal with.",
       anchor: { kind: "units", side: "opponent" },
       when: (ctx) =>
         freshOf(ctx, "cardPlayed").some((event) => event.player !== ctx.view.viewer && event.defId === POSTDOC) &&
@@ -484,7 +484,7 @@ export const script: LessonScript = {
     tip({
       id: "armor",
       title: "Armor",
-      text: "4-mana 7/7 has Armor 7: every hit on it is 7 smaller, so small units barely scratch it.",
+      text: "4-mana 7/7 has Armor 7: every hit on it is 7 smaller, so most units can't hurt it at all.",
       anchor: { kind: "unit", side: "you", defId: SEVEN },
       when: (ctx) => freshOf(ctx, "summoned").some((event) => event.player === ctx.view.viewer && event.defId === SEVEN),
     }),

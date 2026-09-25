@@ -393,7 +393,7 @@ export const script: LessonScript = {
     keepHand({
       id: "keep",
       title: "Keep your hand",
-      text: "These cards suit this lesson. Press Confirm to keep them all.",
+      text: "These cards suit this lesson. Press Ready to keep them all.",
     }),
     onTurn(
       1,
@@ -409,7 +409,7 @@ export const script: LessonScript = {
       info({
         id: "read-cards",
         title: "Read any card",
-        text: "Point at any card (long-press on a phone) to see it large, with what each of its keywords means. Try Tempo Timmy.",
+        text: "Hover over any card (press and hold on a phone) to see it large, with what each of its keywords means. Try Tempo Timmy.",
         anchor: (ctx) => {
           if (inHand(ctx.view, TIMMY) !== undefined) return { kind: "handCard", defId: TIMMY };
           return unitOf(ctx.view, "you", TIMMY) === undefined ? { kind: "hand" } : { kind: "unit", side: "you", defId: TIMMY };
@@ -465,7 +465,7 @@ export const script: LessonScript = {
         id: "rush-attack",
         attacker: TIMMY,
         title: "Attack at once",
-        text: "No waiting, thanks to Rush: attack with Tempo Timmy right away.",
+        text: "No waiting, thanks to Rush: attack an enemy unit with Tempo Timmy right away.",
         when: (ctx) => arrivedThisTurn(ctx.view, TIMMY),
       }),
     ),
@@ -478,7 +478,7 @@ export const script: LessonScript = {
         aim: biggestOpen,
         title: "A Cry",
         text: (ctx) =>
-          `Twisted Sorcerer has a Cry: an effect as you play it. Play it into a lane, then aim its ${String(SORCERER_DAMAGE)} damage at ${aimName(ctx, biggestOpen)}.`,
+          `Twisted Sorcerer has a Cry: an effect that fires as you play it. Play it, aim its ${String(SORCERER_DAMAGE)} damage at ${aimName(ctx, biggestOpen)}, and put it in any free zone.`,
       }),
     ),
     onTurn(
@@ -488,7 +488,7 @@ export const script: LessonScript = {
         defId: TRUE_STRIKE,
         aim: damageAim(TRUE_STRIKE_DAMAGE, true),
         title: "Ignore Armor",
-        text: (ctx) => `True Strike deals ${String(TRUE_STRIKE_DAMAGE)} damage, and Armor can't reduce it. Aim it at ${aimName(ctx, damageAim(TRUE_STRIKE_DAMAGE, true))}.`,
+        text: (ctx) => `True Strike deals ${String(TRUE_STRIKE_DAMAGE)} damage, and Armor (which makes hits smaller) can't reduce it. Aim it at ${aimName(ctx, damageAim(TRUE_STRIKE_DAMAGE, true))}.`,
       }),
     ),
     onTurn(
@@ -581,7 +581,7 @@ export const script: LessonScript = {
         defId: BIG_D,
         to: "DEF",
         title: "Defense Position",
-        text: "Press the switch button on Big D-fender. In Defense it turns sideways and gains Taunt and Armor, so enemies must hit it first.",
+        text: "Press the small ⟳ button at the top right of Big D-fender. In Defense it turns sideways and gains Taunt and Armor, so enemies must hit it first.",
       }),
     ),
     {
