@@ -134,7 +134,7 @@ describe("the series screen", () => {
 
     // Your decks: the one that won is locked, in the standings and in the picker.
     expect(screen.getByTestId(seriesTestid.deck(0))).toHaveAttribute("data-won", "true");
-    expect(screen.getByTestId(seriesTestid.deck(0))).toHaveTextContent("Won · locked");
+    expect(screen.getByTestId(seriesTestid.deck(0))).toHaveTextContent("won · locked");
     expect(screen.getByTestId(seriesTestid.deck(1))).toHaveAttribute("data-won", "false");
     expect(screen.getByTestId(seriesTestid.pick(0))).toBeDisabled();
     expect(screen.getByTestId(seriesTestid.pick(1))).toBeEnabled();
@@ -177,8 +177,8 @@ describe("the series screen", () => {
     // Choosing is local: nothing is sent, and a second choice replaces the first.
     fireEvent.click(screen.getByTestId(seriesTestid.pick(2)));
     fireEvent.click(screen.getByTestId(seriesTestid.pick(1)));
-    expect(screen.getByTestId(seriesTestid.pick(1))).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByTestId(seriesTestid.pick(2))).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId(seriesTestid.pick(1))).toBeChecked();
+    expect(screen.getByTestId(seriesTestid.pick(2))).not.toBeChecked();
     expect(vi.mocked(pickSeriesDeck)).not.toHaveBeenCalled();
     expect(screen.getByTestId(seriesTestid.lockIn)).toHaveTextContent("Lock in Control");
 

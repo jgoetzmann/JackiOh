@@ -852,7 +852,7 @@ export function seriesDeckId(slot: number): string {
   return `series-deck-${String(slot)}`;
 }
 
-/** A deck in the picker, while choosing: selects it (`data-selected`); disabled once it has won. */
+/** A deck's radio in the picker, while choosing: checked when selected; disabled once it has won. */
 export function seriesPickId(slot: number): string {
   return `series-pick-${String(slot)}`;
 }

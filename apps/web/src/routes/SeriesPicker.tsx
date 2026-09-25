@@ -4,7 +4,8 @@
 // It is built the way the board's concurrent mulligan is (R265, R266): choose, then confirm; once
 // confirmed the choice is final and the panel turns to "Waiting for your opponent…"; the opponent
 // is shown only as "Opponent is choosing…" or "Opponent has picked", never what; and one clock runs
-// for both. It lives on the series screen rather than on the board because no match exists until
+// for both. It wears /play's tavern (lobby.css): a numbered panel, the decks as the mode tiles are
+// drawn, the gold call to action, and the searching beacon while it waits. It lives on the series screen rather than on the board because no match exists until
 // both decks are known (a match is started with its two decks frozen into it), so a pick survives a
 // server restart as part of the series row (R263) and the engine never learns there was a choice.
 //
@@ -16,7 +17,8 @@
 import { useEffect, useId, useState, type ReactElement } from "react";
 
 import type { SeriesView } from "../net/api.ts";
-import "./series-picker.css";
+import "../auth/tavern.css";
+import "./lobby.css";
 
 /** Chrome this panel invented; `e2e/support/testids.ts` mirrors the strings. */
 export const seriesPickerTestid = {
@@ -66,10 +68,19 @@ function Clock({ secondsLeft }: { secondsLeft: number }): ReactElement {
   return (
     <p className="series-picker__clock">
       Time left to pick:{" "}
-      <span data-testid={seriesPickerTestid.clock} data-seconds={secondsLeft}>
+      <span className="series-clock" data-testid={seriesPickerTestid.clock} data-seconds={secondsLeft}>
         {String(secondsLeft)} s
       </span>
     </p>
+  );
+}
+
+/** A deck's emblem on its tile: one of the Conquest tile's three shields. Decoration only. */
+function DeckIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden="true" className="play-mode-tile__icon">
+      <path d="M8 6l8-3 8 3v9c0 6-3.6 10-8 12-4.4-2-8-6-8-12z" />
+    </svg>
   );
 }
 
@@ -91,13 +102,22 @@ export default function SeriesPicker({ view, secondsLeft, busy, onLockIn }: Seri
     const name = decks.find((deck) => deck.slot === pick)?.name ?? `Deck ${String(pick + 1)}`;
     return (
       <section
-        className="series-picker"
+        className="lobby-card play-panel series-picker"
         data-testid={seriesPickerTestid.picker}
         data-state="waiting"
         data-auto={view.you.autoPick ? "true" : "false"}
         aria-labelledby={titleId}
       >
-        <h2 id={titleId}>Waiting for your opponent…</h2>
+        <h2 id={titleId} className="play-panel__heading">
+          {`Game ${String(view.gameNo)}: your deck is in`}
+        </h2>
+        <div className="play-search">
+          <span className="play-search__beacon" aria-hidden="true">
+            <span className="play-search__ring" />
+            <span className="play-search__ring play-search__ring--late" />
+          </span>
+          <span className="play-search__text">Waiting for your opponent…</span>
+        </div>
         <p className="series-picker__sealed" role="status">
           {view.you.autoPick
             ? `${name} is your last deck that hasn’t won, so it was picked for you for game ${String(view.gameNo)}.`
@@ -112,58 +132,74 @@ export default function SeriesPicker({ view, secondsLeft, busy, onLockIn }: Seri
   const chosen = decks.find((deck) => deck.slot === selected) ?? null;
   return (
     <section
-      className="series-picker"
+      className="lobby-card play-panel series-picker"
       data-testid={seriesPickerTestid.picker}
       data-state="choosing"
       data-auto="false"
       aria-labelledby={titleId}
     >
-      <h2 id={titleId}>{`Game ${String(view.gameNo)}: choose your deck`}</h2>
-      <p className="series-picker__hint">
+      <h2 id={titleId} className="play-panel__heading">
+        <span className="play-step" aria-hidden="true">
+          1
+        </span>
+        {`Game ${String(view.gameNo)}: choose your deck`}
+      </h2>
+      <p className="lobby-note">
         Pick a deck that hasn’t won yet. Once you lock it in it’s final, and your opponent sees only that you’ve picked —
         neither of you sees the other’s deck until the game starts. If the clock runs out, your first deck that hasn’t won is
         picked for you.
       </p>
-      <ul className="series-picker__decks" role="group" aria-label="Your decks">
+      <fieldset className="lobby-modes series-picker__decks">
+        <legend className="lobby-modes__legend">Your decks</legend>
         {decks.map((deck) => {
           const isSelected = selected === deck.slot;
           return (
-            <li key={deck.slot}>
-              <button
-                type="button"
-                className="series-picker__deck"
-                data-testid={seriesPickerTestid.choice(deck.slot)}
-                data-won={deck.won ? "true" : "false"}
-                data-selected={isSelected ? "true" : "false"}
-                aria-pressed={isSelected}
+            <label
+              key={deck.slot}
+              className="lobby-mode play-mode-tile series-picker__deck"
+              data-selected={isSelected ? "true" : "false"}
+              data-won={deck.won ? "true" : "false"}
+            >
+              <input
+                type="radio"
+                name="series-pick"
+                value={String(deck.slot)}
+                checked={isSelected}
                 disabled={deck.won || busy}
-                onClick={() => {
-                  setSelected(isSelected ? null : deck.slot);
+                data-testid={seriesPickerTestid.choice(deck.slot)}
+                onChange={() => {
+                  setSelected(deck.slot);
                 }}
-              >
-                <span className="series-picker__name">{deck.name}</span>
-                <span className="series-picker__meta">{`${String(deck.cards.length)} cards`}</span>
-                <span className="series-picker__standing" data-won={deck.won ? "true" : "false"}>
-                  {deckStanding(deck)}
-                </span>
-              </button>
-            </li>
+              />
+              <DeckIcon />
+              <span className="lobby-mode__text">
+                <span className="lobby-mode__name">{deck.name}</span>
+                <span className="lobby-mode__hint">{`${String(deck.cards.length)} cards`}</span>
+              </span>
+              <span className="play-mode-tile__waiting series-picker__standing" data-won={deck.won ? "true" : "false"}>
+                {deckStanding(deck)}
+              </span>
+            </label>
           );
         })}
-      </ul>
-      <div className="series-picker__actions">
-        <button
-          type="button"
-          className="button-primary"
-          data-testid={seriesPickerTestid.lockIn}
-          disabled={chosen === null || busy}
-          onClick={() => {
-            if (chosen !== null) onLockIn(chosen.slot);
-          }}
-        >
-          {chosen === null ? "Choose a deck" : `Lock in ${chosen.name}`}
-        </button>
-      </div>
+      </fieldset>
+      <h2 className="play-panel__heading play-panel__heading--sub">
+        <span className="play-step" aria-hidden="true">
+          2
+        </span>
+        Lock it in
+      </h2>
+      <button
+        type="button"
+        className="button-primary play-cta"
+        data-testid={seriesPickerTestid.lockIn}
+        disabled={chosen === null || busy}
+        onClick={() => {
+          if (chosen !== null) onLockIn(chosen.slot);
+        }}
+      >
+        {chosen === null ? "Choose a deck" : `Lock in ${chosen.name}`}
+      </button>
       <OpponentStatus picked={view.opponent.picked} />
       <Clock secondsLeft={secondsLeft} />
     </section>

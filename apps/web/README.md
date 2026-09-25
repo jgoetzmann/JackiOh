@@ -200,7 +200,7 @@ routes/SeriesPicker.tsx the deck-selection phase before each game, laid out as t
                         R338): choose a deck that has not won, lock it in, wait sealed; one clock
 routes/SeriesBanner.tsx the board's banner for a series game, each side's won decks as pips, and its
                         "Continue" once the game is over
-routes/lobby.css        the lobby's and the series screen's look; series-picker.css the picker's and the pips'
+routes/lobby.css        the lobby's, the series screen's and its picker's tavern look, and the banner's pips
 ```
 
 A practice game offers the account's complete saved decks by name, read from `GET /api/decks`.

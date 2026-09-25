@@ -18,7 +18,6 @@ import { getSeriesForMatch, type SeriesView } from "../net/api.ts";
 import { paths } from "../net/navigate.ts";
 import { followInApp } from "./nav.tsx";
 import "./lobby.css";
-import "./series-picker.css";
 
 /** Unit conversion, not configuration. */
 const MS_PER_SECOND = 1000;

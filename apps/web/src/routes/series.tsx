@@ -26,8 +26,8 @@ import { navigate, paths } from "../net/navigate.ts";
 import { BackLink, followInApp } from "./nav.tsx";
 import { SERIES_OUTCOME_HEADLINE } from "./SeriesBanner.tsx";
 import SeriesPicker, { deckStanding, seriesPickerTestid } from "./SeriesPicker.tsx";
+import "../auth/tavern.css";
 import "./lobby.css";
-import "./series-picker.css";
 
 /** Unit conversion, not configuration. */
 const MS_PER_SECOND = 1000;
@@ -121,6 +121,19 @@ export function localDeadline(received: Received): number | null {
   const { view, receivedAt } = received;
   if (view.status !== "picking" || view.pickDeadline === null) return null;
   return receivedAt + (view.pickDeadline - view.now);
+}
+
+/** The screen's hero, as /play wears it: the brand, the mode, and what it asks of a player. */
+function SeriesHero(): ReactElement {
+  return (
+    <header className="play-hero">
+      <div className="brand">
+        <h1>JackiOh</h1>
+      </div>
+      <p className="play-hero__title">Conquest</p>
+      <p className="play-hero__lead">Win a game with each of your three decks. A deck that wins is locked.</p>
+    </header>
+  );
 }
 
 export type SeriesRouteProps = { seriesId: string; token: string };
@@ -219,9 +232,9 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
 
   if (view === null) {
     return (
-      <div className="app-shell series" data-testid={seriesTestid.screen}>
+      <div className="app-shell tavern lobby play-screen series" data-testid={seriesTestid.screen}>
         <BackLink to={paths.play} />
-        <h1>JackiOh — series</h1>
+        <SeriesHero />
         {loadError === null ? (
           <p className="notice" data-testid={seriesTestid.loading} role="status">
             Loading the series…
@@ -242,154 +255,170 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
   const deckName = (slot: number): string => you.decks.find((deck) => deck.slot === slot)?.name ?? `Deck ${String(slot + 1)}`;
 
   return (
-    <div className="app-shell series" data-testid={seriesTestid.screen} data-status={view.status}>
+    <div className="app-shell tavern lobby play-screen series" data-testid={seriesTestid.screen} data-status={view.status}>
       <BackLink to={paths.play} />
-      <h1>JackiOh — Conquest</h1>
-
-      <section className="series-panel">
-        <p
-          className="series-score"
-          data-testid={seriesTestid.score}
-          data-you={you.wins}
-          data-opponent={opponent.wins}
-        >
-          <span>
-            You {String(you.wins)} – {String(opponent.wins)} Opponent
-          </span>
-          <span className="series-score__first">
-            Win with all {String(view.winsNeeded)} decks · game {String(view.gameNo)} of at most {String(view.maxGames)}
-          </span>
-        </p>
-        <p className="series-deck__meta">Your trio: {you.trioName}</p>
-      </section>
-
-      {view.status === "playing" && view.currentMatchId !== null ? (
-        <section className="series-panel">
-          <h2>Game {String(view.gameNo)} is on</h2>
-          <a
-            className="button-primary series-open"
-            href={paths.match(view.currentMatchId)}
-            data-testid={seriesTestid.openMatch}
-            onClick={followInApp(paths.match(view.currentMatchId))}
-          >
-            Open game {String(view.gameNo)}
-          </a>
-          {/* R334: a game is conceded on the board; the series can only be forfeited between games. */}
-          <p className="series-deck__meta">To give up this game, concede it on the board.</p>
-        </section>
-      ) : null}
-
-      {picking ? <SeriesPicker view={view} secondsLeft={secondsLeft} busy={busy} onLockIn={onPick} /> : null}
-
-      <section className="series-panel">
-        <h2>Your decks</h2>
-        <p className="series-deck__meta">A deck that wins a game is locked for the rest of the series.</p>
-        <ul className="series-decks">
-          {yourDecks.map((deck) => {
-            const isPick = you.pick === deck.slot;
-            return (
-              <li
-                key={deck.slot}
-                className="series-deck"
-                data-testid={seriesTestid.deck(deck.slot)}
-                data-won={deck.won ? "true" : "false"}
-                data-picked={isPick ? "true" : "false"}
-              >
-                <span className="series-deck__name">{deck.name}</span>
-                <span className="series-standing" data-won={deck.won ? "true" : "false"}>
-                  {deckStanding(deck)}
-                </span>
-                {isPick ? <span className="series-deck__meta">Your pick for game {String(view.gameNo)}</span> : null}
-              </li>
-            );
-          })}
-        </ul>
-        <h2>Their decks</h2>
-        <ul className="series-opponent-decks" aria-label="Your opponent's decks">
-          {theirDecks.map((deck) => (
-            <li
-              key={deck.slot}
-              className="series-standing"
-              data-testid={seriesTestid.opponentDeck(deck.slot)}
-              data-won={deck.won ? "true" : "false"}
-            >
-              Deck {String(deck.slot + 1)}: {deck.won ? "won · locked" : "not won yet"}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {view.games.length === 0 ? null : (
-        <section className="series-panel">
-          <h2>Games</h2>
-          <ol className="series-history">
-            {view.games.map((game) => (
-              <li key={game.gameNo} data-testid={seriesTestid.game(game.gameNo)} data-result={game.result ?? "pending"}>
-                Game {String(game.gameNo)}: {deckName(game.yourSlot)} vs their deck {String(game.opponentSlot + 1)} —{" "}
-                <span className="series-history__result">
-                  {game.result === null ? "in progress" : GAME_RESULT_WORD[game.result]}
-                </span>{" "}
-                · {game.youWentFirst ? "you went first" : "they went first"}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {view.result === null ? null : (
-        <section className="series-panel series-result" data-testid={seriesTestid.result} data-outcome={view.result.outcome}>
-          <span className="series-result__word">{SERIES_OUTCOME_HEADLINE[view.result.outcome]}</span>
-          <p>{endReasonWords(view.result, view.winsNeeded, view.maxGames)}</p>
-          <p>{ratingWords(view.result)}</p>
-          <a
-            className="button-primary"
-            href={paths.play}
-            data-testid={seriesTestid.backToPlay}
-            onClick={followInApp(paths.play)}
-          >
-            Back to the lobby
-          </a>
-        </section>
-      )}
-
-      {picking ? (
-        <section className="series-panel">
-          {confirming ? (
-            <div className="row" role="alertdialog" aria-label="Forfeit the series?">
-              <p>Forfeit the series? Your opponent wins it, and your rating moves as for a loss.</p>
-              <button type="button" data-testid={seriesTestid.forfeitConfirm} disabled={busy} onClick={onForfeit}>
-                Forfeit
-              </button>
-              <button
-                type="button"
-                data-testid={seriesTestid.forfeitCancel}
-                onClick={() => {
-                  setConfirming(false);
-                }}
-              >
-                Keep playing
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              data-testid={seriesTestid.forfeit}
-              disabled={busy}
-              onClick={() => {
-                setConfirming(true);
-              }}
-            >
-              Forfeit the series
-            </button>
-          )}
-        </section>
-      ) : null}
+      <SeriesHero />
 
       {actionError === null ? null : (
         <p className="notice" data-testid={seriesTestid.error} role="alert">
           {actionError}
         </p>
       )}
+
+      <div className="play-layout">
+        <div className="play-side">
+          {picking ? <SeriesPicker view={view} secondsLeft={secondsLeft} busy={busy} onLockIn={onPick} /> : null}
+
+          {view.status === "playing" && view.currentMatchId !== null ? (
+            <section className="lobby-card play-panel series-panel" aria-labelledby="series-game-heading">
+              <h2 id="series-game-heading" className="play-panel__heading">
+                Game {String(view.gameNo)} is on
+              </h2>
+              <a
+                className="button-primary play-cta series-open"
+                href={paths.match(view.currentMatchId)}
+                data-testid={seriesTestid.openMatch}
+                onClick={followInApp(paths.match(view.currentMatchId))}
+              >
+                Open game {String(view.gameNo)}
+              </a>
+              {/* R334: a game is conceded on the board; the series can only be forfeited between games. */}
+              <p className="lobby-note">To give up this game, concede it on the board.</p>
+            </section>
+          ) : null}
+
+          {view.result === null ? null : (
+            <section
+              className="lobby-card play-panel series-panel series-result"
+              data-testid={seriesTestid.result}
+              data-outcome={view.result.outcome}
+            >
+              <span className="series-result__word">{SERIES_OUTCOME_HEADLINE[view.result.outcome]}</span>
+              <p>{endReasonWords(view.result, view.winsNeeded, view.maxGames)}</p>
+              <p>{ratingWords(view.result)}</p>
+              <a
+                className="button-primary play-cta"
+                href={paths.play}
+                data-testid={seriesTestid.backToPlay}
+                onClick={followInApp(paths.play)}
+              >
+                Back to the lobby
+              </a>
+            </section>
+          )}
+        </div>
+
+        <div className="play-side">
+          <section className="lobby-card play-panel series-panel" aria-labelledby="series-standing-heading">
+            <h2 id="series-standing-heading" className="play-panel__heading">
+              The series
+            </h2>
+            <p
+              className="series-score"
+              data-testid={seriesTestid.score}
+              data-you={you.wins}
+              data-opponent={opponent.wins}
+            >
+              <span>
+                You {String(you.wins)} – {String(opponent.wins)} Opponent
+              </span>
+              <span className="series-score__first">
+                Win with all {String(view.winsNeeded)} decks · game {String(view.gameNo)} of at most {String(view.maxGames)}
+              </span>
+            </p>
+
+            <h3 className="series-panel__label">Your decks · {you.trioName}</h3>
+            <ul className="play-trio-decks" aria-label="Your decks">
+              {yourDecks.map((deck) => {
+                const isPick = you.pick === deck.slot;
+                return (
+                  <li
+                    key={deck.slot}
+                    className="play-trio-deck series-deck"
+                    data-testid={seriesTestid.deck(deck.slot)}
+                    data-won={deck.won ? "true" : "false"}
+                    data-picked={isPick ? "true" : "false"}
+                    title={deckStanding(deck)}
+                  >
+                    <span className="series-deck__name">{deck.name}</span>
+                    <span className="series-deck__standing">{deck.won ? "won · locked" : isPick ? "your pick" : deckStanding(deck).toLowerCase()}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="lobby-note">A deck that wins a game is locked for the rest of the series.</p>
+
+            <h3 className="series-panel__label">Their decks</h3>
+            <ul className="play-trio-decks" aria-label="Your opponent's decks">
+              {theirDecks.map((deck) => (
+                <li
+                  key={deck.slot}
+                  className="play-trio-deck series-deck"
+                  data-testid={seriesTestid.opponentDeck(deck.slot)}
+                  data-won={deck.won ? "true" : "false"}
+                >
+                  <span className="series-deck__name">Deck {String(deck.slot + 1)}</span>
+                  <span className="series-deck__standing">{deck.won ? "won · locked" : "not won yet"}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {view.games.length === 0 ? null : (
+            <section className="lobby-card play-panel series-panel" aria-labelledby="series-games-heading">
+              <h2 id="series-games-heading" className="play-panel__heading play-panel__heading--sub">
+                Games
+              </h2>
+              <ol className="series-history">
+                {view.games.map((game) => (
+                  <li key={game.gameNo} data-testid={seriesTestid.game(game.gameNo)} data-result={game.result ?? "pending"}>
+                    Game {String(game.gameNo)}: {deckName(game.yourSlot)} vs their deck {String(game.opponentSlot + 1)} —{" "}
+                    <span className="series-history__result">
+                      {game.result === null ? "in progress" : GAME_RESULT_WORD[game.result]}
+                    </span>{" "}
+                    · {game.youWentFirst ? "you went first" : "they went first"}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          {picking ? (
+            <section className="lobby-card play-panel series-panel" aria-label="Leave the series">
+              {confirming ? (
+                <div className="row" role="alertdialog" aria-label="Forfeit the series?">
+                  <p>Forfeit the series? Your opponent wins it, and your rating moves as for a loss.</p>
+                  <button type="button" data-testid={seriesTestid.forfeitConfirm} disabled={busy} onClick={onForfeit}>
+                    Forfeit
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-testid={seriesTestid.forfeitCancel}
+                    onClick={() => {
+                      setConfirming(false);
+                    }}
+                  >
+                    Keep playing
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="link-button"
+                  data-testid={seriesTestid.forfeit}
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirming(true);
+                  }}
+                >
+                  Forfeit the series
+                </button>
+              )}
+            </section>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

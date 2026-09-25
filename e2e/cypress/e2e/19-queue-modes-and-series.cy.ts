@@ -449,8 +449,8 @@ describe("19 queue modes and series — Best of 1, All Random, Conquest and room
     /** The browser selects `slot` in the picker and locks it in (R331). */
     const lockIn = (slot: number): void => {
       cy.get(ts(SERIES_PICKER), { timeout: timeouts.view }).should("have.attr", "data-state", "choosing");
-      cy.get(ts(seriesPickId(slot))).should("not.be.disabled").click();
-      cy.get(ts(seriesPickId(slot))).should("have.attr", "data-selected", "true");
+      cy.get(ts(seriesPickId(slot))).should("not.be.disabled").check();
+      cy.get(ts(seriesPickId(slot))).should("be.checked");
       cy.get(ts(SERIES_LOCK_IN)).should("not.be.disabled").click();
     };
 
