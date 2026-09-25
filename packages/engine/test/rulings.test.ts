@@ -248,7 +248,11 @@ const CARD_TESTS_R311 = [
   "../../cards/test/090-cn-viral-injection.test.ts",
   "../../cards/test/042-eugenics.test.ts",
 ] as const;
-const CARD_TESTS_R312 = ["../../cards/test/087-pocket-chaos.test.ts", "../../cards/test/083-transmogulate.test.ts"] as const;
+const CARD_TESTS_R312 = [
+  "../../cards/test/087-pocket-chaos.test.ts",
+  "../../cards/test/083-transmogulate.test.ts",
+  "../../ai/test/observe.test.ts",
+] as const;
 /** R320 to R322's proofs: tutorial progress and the hidden path on the account (§9.10). */
 const SERVER_TUTORIAL_API_TEST = "../../../apps/server/test/api/tutorial.test.ts";
 const SERVER_TUTORIAL_SQL = "../../../apps/server/test/sql/05_tutorial_progress.sql";
@@ -2344,7 +2348,8 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(311, "ownLibrary.test.ts", ...CARD_TESTS_R311);
   });
 
-  // Proved by ownLibrary.test.ts "R312 …" and by #87's library swap and #83's library replacements.
+  // Proved by ownLibrary.test.ts "R312 …", by #87's library swap and #83's library replacements, and
+  // by packages/ai's observe.test.ts: the AI's own redacted state hides what its list counts unknown.
   it("R312 counts a card its owner was never shown as unknown", () => {
     provenIn(312, "ownLibrary.test.ts", ...CARD_TESTS_R312);
   });

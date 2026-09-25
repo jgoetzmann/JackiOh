@@ -891,7 +891,13 @@ describe("an account whose email is not confirmed yet", () => {
     await waitFor(() => {
       expect(sent).toHaveLength(1);
     });
-    expect(JSON.parse(sent[0] ?? "{}")).toEqual({ type: "signup", email: EMAIL });
+    // R323: the resend carries a PKCE challenge beside the address.
+    expect(JSON.parse(sent[0] ?? "{}")).toEqual({
+      type: "signup",
+      email: EMAIL,
+      code_challenge: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u),
+      code_challenge_method: "s256",
+    });
     expect((await screen.findByTestId(inviteTestid.resendNotice)).textContent).toBe(AUTH_NOTICES.resendSent);
     // R192: the provider's interval for that address is waited out before it is offered again.
     expect(screen.getByTestId(inviteTestid.resend)).toBeDisabled();
