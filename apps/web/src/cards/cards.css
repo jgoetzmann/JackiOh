@@ -716,8 +716,10 @@
   background: rgb(255 210 74 / 0.35);
 }
 
+/* Above every inspect layer (inspect.css: --z-inspect-hover 60, --z-inspect-modal 70), since a
+   reference is a control inside the detail view and the sheet. */
 .cf-ref-tooltip {
-  z-index: 1000;
+  z-index: 80;
   pointer-events: none;
   filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.55));
 }
