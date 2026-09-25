@@ -78,12 +78,16 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * so spec 01, which plays whatever the client offers, plays it on p2's first turn (nonce n6), and
  * every instance created after setup takes an id one higher. A new game, not a relabeled one: 51
  * actions where there were 50, still won by p1 by hero death.
+ *
+ * The Radiant pass (R275, R276) re-recorded it the same way: its decks hold cards whose Radiant faces
+ * were raised (#8, #25, #73, #81, the Rush and Felinor Tokens), and a Radiant Saintess's Death now
+ * reaches the hand, so the same seed plays a different game. 38 actions, still won by p1 by hero death.
  */
-const EXPECTED_HASH = "0349d08f";
+const EXPECTED_HASH = "0151f410";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;
-const EXPECTED_ACTIONS = 51;
+const EXPECTED_ACTIONS = 38;
 
 function read(path: string): Recording {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
