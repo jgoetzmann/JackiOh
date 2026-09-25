@@ -27,6 +27,8 @@ export type Trade = {
   taken: number;
   kills: boolean;
   survives: boolean;
+  /** The blow breaks the target's Divine Shield (it deals nothing, but the next hit lands). */
+  pops: boolean;
 };
 
 export function legalAttacksOf(ctx: CoachCtx): Attack[] {
@@ -62,7 +64,8 @@ export function trades(ctx: CoachCtx): Trade[] {
     const kills = dealt >= target.health;
     const strikesFirst = hasKeyword(attacker, "First Strike") && !hasKeyword(target, "First Strike");
     const taken = kills && strikesFirst ? 0 : blow(target, attacker);
-    out.push({ action, attacker, target, dealt, taken, kills, survives: taken < attacker.health });
+    const pops = hasKeyword(target, "Divine Shield") && attacker.attack > 0;
+    out.push({ action, attacker, target, dealt, taken, kills, survives: taken < attacker.health, pops });
   }
   return out;
 }
@@ -93,8 +96,10 @@ export function heroAttack(ctx: CoachCtx): { action: Attack; attacker: UnitView 
  */
 export function chip(ctx: CoachCtx): Trade | undefined {
   if (heroAttack(ctx) !== undefined) return undefined;
-  const options = trades(ctx).filter((trade) => trade.survives && trade.dealt > 0);
-  options.sort((a, b) => b.dealt - a.dealt || a.taken - b.taken);
+  // A Divine Shield takes a whole hit and breaks: breaking it with the smallest unit that survives
+  // is the dent that lets the next hit land.
+  const options = trades(ctx).filter((trade) => trade.survives && (trade.dealt > 0 || trade.pops));
+  options.sort((a, b) => b.dealt - a.dealt || a.taken - b.taken || size(a.attacker) - size(b.attacker));
   return options[0];
 }
 
@@ -230,7 +235,9 @@ export function moveText(ctx: CoachCtx, move: Move | undefined): string {
         ? `A Taunt unit guards the hero: attack the enemy's ${cardName(ctx, move.trade.target.defId)} with your ${cardName(ctx, move.trade.attacker.defId)} to clear the way.`
         : `A Taunt unit guards the hero: attack the enemy's ${cardName(ctx, move.trade.target.defId)} with your ${cardName(ctx, move.trade.attacker.defId)}. Both fall, but the way is clear.`;
     case "chip":
-      return `A Taunt unit guards the hero. Wear it down: attack it with your ${cardName(ctx, move.trade.attacker.defId)}. Damage stays.`;
+      return move.trade.pops
+        ? `A Taunt unit guards the hero, behind a Divine Shield. Break the shield: attack it with your ${cardName(ctx, move.trade.attacker.defId)}.`
+        : `A Taunt unit guards the hero. Wear it down: attack it with your ${cardName(ctx, move.trade.attacker.defId)}. Damage stays.`;
     case "end":
       return "Nothing useful left this turn: press End turn.";
   }

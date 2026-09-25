@@ -85,6 +85,19 @@ describe("R292 the coach's advice", () => {
     expect(moveText(ctx(walled, []), move)).toContain("Both fall");
   });
 
+  it("R292 breaks a Divine Shield on a Taunt when nothing better is on offer", () => {
+    const small = unit("p1", { instanceId: "a1", defId: "core-008", attack: 3, health: 3, maxHealth: 3 });
+    const shielded = unit("p2", { instanceId: "e1", defId: "core-003", attack: 1, health: 1, maxHealth: 1, keywords: [{ kind: "Taunt" }, { kind: "Divine Shield" }] });
+    const view = baseView({
+      you: emptySide("p1", { units: [small, null, null, null, null] }),
+      opponent: emptySide("p2", { units: [shielded, null, null, null, null], hand: { count: 1 } }),
+    });
+    const pop: ActionBody = { type: "attack", attackerId: "a1", targetId: "e1" };
+    const move = nextMove(ctx(view, [pop, END]));
+    expect(move?.kind).toBe("chip");
+    expect(moveText(ctx(view, []), move)).toContain("Divine Shield");
+  });
+
   it("R292 makes a step that names its move, is done when the turn passes, or with the game when final", () => {
     const view = baseView({ you: emptySide("p1", { hand: [card({ instanceId: "h1", defId: "core-008", cost: 1 })] }) });
     const play: ActionBody = { type: "play", instanceId: "h1", zone: { row: "units", lane: 1 } };
