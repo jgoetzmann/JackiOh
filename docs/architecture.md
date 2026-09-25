@@ -217,12 +217,14 @@ served `index.html` as JavaScript.
 | --- | --- | --- | --- | --- |
 | Turn clock | 75 s (`TURN_CLOCK_SECONDS`) | actor `setTimeout` | `turn_deadline_at` | so both clients render it and a rebuild restores it |
 | Prompt clock | 30 s (`PROMPT_CLOCK_SECONDS`) | actor `setTimeout` | `prompt_deadline_at` | a trap prompt held by the non-active player pauses the turn clock (R79) |
+| Mulligan clock | 45 s (`MULLIGAN_CLOCK_SECONDS`) | actor `setTimeout` | `prompt_deadline_at` (the prompt clock never runs at the same time) | both mulligans are open at once (R265), so one deadline covers both seats and both clients render it; on expiry every seat still owing is timed out (R268) |
 | Disconnect grace | 60 s (`DISCONNECT_GRACE_SECONDS`) | actor `setTimeout` | `grace_deadline_at` | SPEC §9.5: "the grace countdown is stored on the match so both clients show it" |
 | Match ceiling | 60 min (`MATCH_CEILING_MINUTES`) | actor + the DB reaper | `ceiling_at` | the reaper must be able to resolve a match whose actor died (§9.5) |
 
 Expiry never mutates state directly. It submits an action — `timeout`, `disconnectExpired`,
-`ceilingReached` — through the same `reduce` as a player's click (R79, BUILD M7-T2). The engine stays
-pure; only the actor knows what time it is.
+`ceilingReached` — through the same `reduce` as a player's click (R79, BUILD M7-T2); the mulligan
+clock's expiry is one `timeout` per seat still owing (R268). The engine stays pure; only the actor
+knows what time it is.
 
 ---
 

@@ -1,7 +1,7 @@
 /**
  * The match clock (BUILD M7-T1, SPEC §9.5, R79).
  *
- * Four independent deadlines, all of them scheduled through the injected `Timers` port and none
+ * Five independent deadlines, all of them scheduled through the injected `Timers` port and none
  * of them visible to the engine — SPEC §9.3 keeps time out of `reduce`, so an expiry here only
  * reports *which* clock ran out and the actor turns that into the `timeout`, `disconnectExpired`
  * or `ceilingReached` action that the engine does see:
@@ -10,6 +10,9 @@
  *    the turn changes, and **pauses while a prompt is open for the non-active player**;
  *  - that non-active holder's prompt clock (R79: `promptClockSeconds`), whose expiry answers only
  *    that prompt;
+ *  - the mulligan clock (R268: `mulliganClockSeconds`), one deadline for both seats while both
+ *    mulligans are open (R265). Setup is nobody's turn, so the turn clock does not run under it;
+ *    it is reported as the prompt deadline, which it is for both seats at once;
  *  - a disconnect grace countdown per player (§9.5: `disconnectGraceSeconds`), which does **not**
  *    pause the turn clock — §9.5: "The clock keeps running while a player is disconnected";
  *  - the hard wall-clock ceiling (R79: `matchCeilingMinutes`), measured from `startedAt`.
@@ -58,6 +61,7 @@ const idle = (): Countdown => ({ timer: null, deadline: null });
 export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, onExpire }) => {
   const turnMs = config.turnClockSeconds * MS_PER_SECOND;
   const promptMs = config.promptClockSeconds * MS_PER_SECOND;
+  const mulliganMs = config.mulliganClockSeconds * MS_PER_SECOND;
   const graceMs = config.disconnectGraceSeconds * MS_PER_SECOND;
   const ceilingAt = matchCeilingAt(startedAt, config);
 
@@ -75,6 +79,23 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
   // that still reports the same holder must not re-arm a second 30 s window.
   let holder: PlayerId | null = null;
   const prompt: Countdown = idle();
+
+  // R268: the mulligan clock. `deadline` is set the first time the window is seen and never moved
+  // again — not when one seat answers, and not when a later `sync` reports the window still open —
+  // so the seat that answers second gets no more time than the one that answered first. Like the
+  // prompt clock's `holder`, `expired` outlives the timer: the window is still open after the clock
+  // runs out (the actor times the owing seats out), and nothing re-arms a second window over it.
+  //
+  // NOT IN SPEC: a rebuilt actor (§9.5) builds a new clock, which sees the window for the first time
+  // and arms a fresh full deadline, exactly as the turn clock restarts from full on a rebuild. A
+  // crash in the window therefore gives both seats at most one more `mulliganClockSeconds`; reading
+  // the stored `promptDeadline` back instead would be stricter, but the stored row is written after
+  // the fact and may be stale, and no clock here trusts it yet.
+  const mulligan: Countdown & { open: boolean; expired: boolean } = {
+    ...idle(),
+    open: false,
+    expired: false,
+  };
 
   const grace: Record<PlayerId, Countdown> = { p1: idle(), p2: idle() };
 
@@ -129,10 +150,30 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
     holder = null;
   }
 
+  /** R268: one deadline for the whole window, armed the first time it is seen. */
+  function openMulligan(): void {
+    mulligan.open = true;
+    mulligan.deadline ??= timers.now() + mulliganMs;
+    if (stopped || mulligan.timer !== null || mulligan.expired) return;
+    mulligan.timer = timers.after(Math.max(0, mulligan.deadline - timers.now()), () => {
+      mulligan.timer = null;
+      mulligan.expired = true;
+      report({ kind: "mulligan" });
+    });
+  }
+
+  /** The window closed (both seats answered): its clock goes, and its deadline stays spent. */
+  function closeMulligan(): void {
+    mulligan.open = false;
+    mulligan.timer?.cancel();
+    mulligan.timer = null;
+  }
+
   function stop(): void {
     stopped = true;
     cancel(turn);
     clearPrompt();
+    closeMulligan();
     for (const player of PLAYERS) cancel(grace[player]);
     ceiling?.cancel();
     ceiling = null;
@@ -164,6 +205,20 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
       }
 
       const pendingFor = view.pendingFor;
+
+      // R265, R268: both mulligans open at once. Setup is nobody's turn (§2.1), so neither the turn
+      // clock nor a prompt clock runs; the one mulligan deadline covers both seats. The turn clock is
+      // paused rather than reset, so a question a card asks during setup on either side of the
+      // window (a cast-on-draw card in the deal or in a replacement draw, §2.4) is still timed by
+      // R79 as before, and turn 1 starts a fresh turn clock when the turn key changes.
+      if (pendingFor === null && view.mulliganOwed.length > 0) {
+        clearPrompt();
+        pauseTurn();
+        openMulligan();
+        return;
+      }
+      closeMulligan();
+
       if (pendingFor === null || pendingFor === view.active) {
         // R79 gives its own clock to a prompt held by the *non-active* player. A prompt the active
         // player owes is governed by their turn clock instead (§2.5: "When the active player's
@@ -204,20 +259,28 @@ export const createMatchClock: CreateMatchClock = ({ timers, config, startedAt, 
 
     snapshot: (): MatchClocks => ({
       turnDeadline: turn.deadline,
-      promptDeadline: prompt.deadline,
+      // R268: during the window the mulligan deadline is the prompt deadline both clients render —
+      // it is a prompt deadline, held by both seats at once. The two never run together, so the
+      // stored `MatchClocks` keeps its shape.
+      promptDeadline: mulligan.open ? mulligan.deadline : prompt.deadline,
       graceDeadline: { p1: grace.p1.deadline, p2: grace.p2.deadline },
       ceilingAt,
     }),
 
     /**
-     * The acting deadline this player is under. A prompt clock they hold outranks the turn clock,
-     * and a paused turn clock still reports its banked remainder, which is the frozen number the
-     * clients render while R79's pause is in effect. The grace countdowns are read from
+     * The acting deadline this player is under. The mulligan clock, while it runs, is both seats'
+     * (R268). Otherwise a prompt clock they hold outranks the turn clock, and a paused turn clock
+     * still reports its banked remainder, which is the frozen number the clients render while
+     * R79's pause is in effect. The grace countdowns are read from
      * `snapshot().graceDeadline`: they are not a deadline to act by, they are a deadline to come
      * back by, and both clients show them for both players.
      */
     remainingFor: (player: PlayerId): number | null => {
       if (stopped) return null;
+      // R268: one clock for both seats, the one that has answered included — it is waiting on it.
+      if (mulligan.open && mulligan.deadline !== null) {
+        return Math.max(0, mulligan.deadline - timers.now());
+      }
       if (holder === player && prompt.deadline !== null) {
         return Math.max(0, prompt.deadline - timers.now());
       }

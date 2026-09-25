@@ -345,6 +345,7 @@ export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
   return {
     turnClockSeconds: 75,
     promptClockSeconds: 30,
+    mulliganClockSeconds: 45,
     disconnectGraceSeconds: 60,
     matchCeilingMinutes: 60,
     roomCodeLength: 6,

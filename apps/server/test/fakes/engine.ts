@@ -14,7 +14,12 @@
  *  - a reused nonce returns the original events and does not advance the state (SPEC §9.3);
  *  - `viewFor` shows the viewer's hand in full and the opponent's as a count (§10.8);
  *  - `fold({ seed, decks, log })` rebuilds the same state, so crash recovery is testable;
- *  - a prompt is state, answered by another action (§9.3).
+ *  - a prompt is state, answered by another action (§9.3);
+ *  - with `{ mulligan: true }`, the game opens on the concurrent mulligan (R265): both seats' prompts
+ *    open at once outside `pending`, either seat answers first, an answer is sealed until the other
+ *    is in (R266), a `timeout` answers only the timing-out seat's own mulligan by keeping the whole
+ *    hand (R268), and `snapshot().mulliganOwed` names who still owes one. Without the option the
+ *    game opens straight on turn 1, which is what every test that is not about the mulligan wants.
  *
  * WHAT IT MAY NOT BE USED TO PROVE. Its `viewFor` is written here, so a test that asserts the
  * redaction against this port is asserting this file. The hidden-information claim (§10.8,
@@ -50,15 +55,69 @@ type FakeState = {
   libraries: Record<PlayerId, string[]>;
   played: Record<PlayerId, string[]>;
   pending: { id: string; playerId: PlayerId } | null;
+  /** R265: both mulligans while they are open, each with its sealed answer (R266); null otherwise. */
+  mulligan: Record<PlayerId, { id: string; keep: string[] | null }> | null;
   applied: { nonce: string; events: GameEvent[] }[];
   nextChoice: number;
 };
+
+export type FakeEngineOptions = {
+  /** Open the game on both seats' mulligans (R265) instead of on turn 1. */
+  mulligan?: boolean;
+};
+
+/** R265: what may be sent while both mulligans are open, as the real reducer allows. */
+const MULLIGAN_OPEN_ACTIONS: readonly Action["type"][] = [
+  "mulligan",
+  "concede",
+  "timeout",
+  "disconnectExpired",
+  "ceilingReached",
+];
 
 const other = (player: PlayerId): PlayerId => (player === "p1" ? "p2" : "p1");
 const clone = <T>(value: T): T => structuredClone(value);
 
 const asFake = (state: EngineState): FakeState => state as unknown as FakeState;
 const asEngine = (state: FakeState): EngineState => state as unknown as EngineState;
+
+const handIds = (fake: FakeState, player: PlayerId): string[] =>
+  fake.hands[player].map((_, i) => `${player}-h${String(i)}`);
+
+/** R265: the seats whose mulligan is open and unanswered, in seat order. */
+function owedOf(fake: FakeState): PlayerId[] {
+  const open = fake.mulligan;
+  if (open === null) return [];
+  return (["p1", "p2"] as const).filter((player) => open[player].keep === null);
+}
+
+/**
+ * R265, R266: seals one seat's answer; the second answer resolves both in seat order (each
+ * returned card goes to the bottom of its library and is replaced off the top, R9's order) and
+ * starts turn 1.
+ */
+function answerMulligan(next: FakeState, player: PlayerId, keep: readonly string[], events: GameEvent[]): void {
+  const open = next.mulligan;
+  if (open === null) return;
+  const seat = open[player];
+  seat.keep = [...keep];
+  events.push({ type: "promptAnswered", player, choiceId: seat.id });
+  if (owedOf(next).length > 0) return;
+
+  for (const side of ["p1", "p2"] as const) {
+    const kept = new Set(open[side].keep);
+    const hand = next.hands[side];
+    const returned = hand.filter((_, i) => !kept.has(`${side}-h${String(i)}`));
+    const stays = hand.filter((_, i) => kept.has(`${side}-h${String(i)}`));
+    const drawn = next.libraries[side].splice(0, returned.length);
+    next.hands[side] = [...stays, ...drawn];
+    next.libraries[side].push(...returned);
+  }
+  next.mulligan = null;
+  next.turn = 1;
+  next.phase = "main";
+  events.push({ type: "turnStarted", player: next.active, turn: next.turn });
+}
 
 function emptySide(player: PlayerId, fake: FakeState, viewer: PlayerId): SideView {
   const hand = fake.hands[player];
@@ -94,7 +153,7 @@ function emptySide(player: PlayerId, fake: FakeState, viewer: PlayerId): SideVie
   };
 }
 
-export function createFakeEngine(): EnginePort {
+export function createFakeEngine(options: FakeEngineOptions = {}): EnginePort {
   const port: EnginePort = {
     createGame: ({ seed, decks }) => {
       const state: FakeState = {
@@ -108,6 +167,7 @@ export function createFakeEngine(): EnginePort {
         libraries: { p1: [...decks[0]], p2: [...decks[1]] },
         played: { p1: [], p2: [] },
         pending: null,
+        mulligan: null,
         applied: [],
         nextChoice: 1,
       };
@@ -122,6 +182,20 @@ export function createFakeEngine(): EnginePort {
         for (const [i, defId] of next.hands[player].entries()) {
           events.push({ type: "drawn", player, instanceId: `${player}-h${i}`, defId });
         }
+      }
+      if (options.mulligan === true) {
+        // R265: both prompts open together, in seat order, and setup is nobody's turn.
+        const open = { p1: { id: "", keep: null }, p2: { id: "", keep: null } } as NonNullable<
+          FakeState["mulligan"]
+        >;
+        for (const player of ["p1", "p2"] as const) {
+          open[player].id = `choice-${String(next.nextChoice)}`;
+          next.nextChoice += 1;
+          events.push({ type: "promptOpened", player, choiceId: open[player].id, kind: "mulligan" });
+        }
+        next.mulligan = open;
+        next.phase = "mulligan";
+        return { state: asEngine(next), events };
       }
       next.turn = 1;
       next.phase = "main";
@@ -145,6 +219,12 @@ export function createFakeEngine(): EnginePort {
         events: [],
         error,
       });
+
+      // R265: while both mulligans are open nothing but a mulligan and the actions that end a game
+      // or answer for a clock move — whoever sends it, since setup is nobody's turn.
+      if (next.pending === null && next.mulligan !== null && !MULLIGAN_OPEN_ACTIONS.includes(action.type)) {
+        return fail("the mulligan is open: answer it first");
+      }
 
       if (next.pending !== null) {
         const answering = action.type === "answer" || action.type === "mulligan";
@@ -240,6 +320,14 @@ export function createFakeEngine(): EnginePort {
           break;
         }
         case "timeout": {
+          // R268: while both mulligans are open the clock that ran out is the mulligan's. It answers
+          // only this seat's own mulligan, keeping the whole hand, and ends no turn.
+          if (next.pending === null && next.mulligan !== null) {
+            if (next.mulligan[player].keep === null) {
+              answerMulligan(next, player, handIds(next, player), events);
+            }
+            break;
+          }
           // R79: answer only the prompts of the player whose clock ran out, and end the turn
           // only when that is the active player.
           if (next.pending !== null && next.pending.playerId === player) {
@@ -264,7 +352,15 @@ export function createFakeEngine(): EnginePort {
           events.push({ type: "gameOver", winner: "draw", reason: "match-ceiling" });
           break;
         }
-        case "mulligan":
+        case "mulligan": {
+          // R265, R266: each seat answers its own, in either order; the answer is sealed.
+          if (next.mulligan === null) return fail("no mulligan is open");
+          if (next.mulligan[player].keep !== null) return fail("you have already answered your mulligan");
+          const hand = new Set(handIds(next, player));
+          for (const id of action.keep) if (!hand.has(id)) return fail(`${id} is not in your hand`);
+          answerMulligan(next, player, action.keep, events);
+          break;
+        }
         case "attack":
         case "switchPosition":
         case "activatePower": {
@@ -284,6 +380,17 @@ export function createFakeEngine(): EnginePort {
         return fake.pending.playerId === player
           ? [{ type: "answer", choiceId: fake.pending.id, selection: [{ pick: "none" }] }]
           : [];
+      }
+      if (fake.mulligan !== null) {
+        // R265: a seat that owes is offered keeping everything or nothing (the real engine offers
+        // every subset) and concede; a seat that has answered, concede alone.
+        return fake.mulligan[player].keep === null
+          ? [
+              { type: "mulligan", keep: handIds(fake, player) },
+              { type: "mulligan", keep: [] },
+              { type: "concede" },
+            ]
+          : [{ type: "concede" }];
       }
       if (player !== fake.active) return [{ type: "concede" }];
       return [
@@ -308,7 +415,7 @@ export function createFakeEngine(): EnginePort {
         opponent: emptySide(opponent, fake, viewer),
         pending:
           fake.pending === null
-            ? null
+            ? mulliganPending(fake, viewer)
             : fake.pending.playerId === viewer
               ? {
                   forYou: true,
@@ -323,6 +430,15 @@ export function createFakeEngine(): EnginePort {
         events: [],
         result: fake.result,
         clockMs: null,
+        ...(fake.mulligan === null
+          ? {}
+          : {
+              mulligan: {
+                youReady: fake.mulligan[viewer].keep !== null,
+                opponentReady: fake.mulligan[opponent].keep !== null,
+                ...(fake.mulligan[viewer].keep === null ? {} : { kept: [...(fake.mulligan[viewer].keep ?? [])] }),
+              },
+            }),
       };
     },
 
@@ -351,6 +467,7 @@ export function createFakeEngine(): EnginePort {
         turn: fake.turn,
         active: fake.active,
         pendingFor: fake.pending === null ? null : fake.pending.playerId,
+        mulliganOwed: owedOf(fake),
         phase: fake.phase,
         result: fake.result,
       };
@@ -358,6 +475,29 @@ export function createFakeEngine(): EnginePort {
   };
 
   return port;
+}
+
+/**
+ * R265, R266: a seat that still owes its mulligan sees its own prompt; a seat that has answered sees
+ * only that the other still owes one, never its options or its answer.
+ */
+function mulliganPending(fake: FakeState, viewer: PlayerId): PlayerView["pending"] {
+  const open = fake.mulligan;
+  if (open === null) return null;
+  const opponent = other(viewer);
+  if (open[viewer].keep === null) {
+    const ids = handIds(fake, viewer);
+    return {
+      forYou: true,
+      choiceId: open[viewer].id,
+      kind: "mulligan",
+      options: ids.map((id, i) => ({ key: id, label: fake.hands[viewer][i] ?? id, instanceId: id })),
+      min: 0,
+      max: ids.length,
+      prompt: "keep",
+    };
+  }
+  return open[opponent].keep === null ? { forYou: false, pendingFor: opponent } : null;
 }
 
 /** A 20-card deck of scripted ids, with `extra` cards placed in the opening hand. */

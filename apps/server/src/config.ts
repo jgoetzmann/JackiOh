@@ -24,6 +24,13 @@
 export const TURN_CLOCK_SECONDS = 75;
 /** R79: a prompt held by the non-active player (e.g. a trap firing on the opponent's turn). */
 export const PROMPT_CLOCK_SECONDS = 30;
+/**
+ * SPEC §11 R268: the mulligan clock. Both seats' mulligans are open at once (R265), so one deadline
+ * runs for both, armed when the window opens and never re-armed when one seat answers; on expiry
+ * every seat still owing is timed out and keeps its whole hand. Longer than the prompt clock because
+ * a mulligan reads a whole opening hand, shorter than the turn clock because nothing is played.
+ */
+export const MULLIGAN_CLOCK_SECONDS = 45;
 /** R79: grace window after a disconnect before `disconnectExpired` ends the match as a loss. */
 export const DISCONNECT_GRACE_SECONDS = 60;
 /** R79: hard wall-clock ceiling; reaching it ends the match as a draw via `ceilingReached`. */
@@ -319,6 +326,8 @@ export const MATCH_REAPER_INTERVAL_SECONDS = 30;
 export const TURN_CLOCK_MS = TURN_CLOCK_SECONDS * 1000;
 /** R79: `PROMPT_CLOCK_SECONDS` in milliseconds. */
 export const PROMPT_CLOCK_MS = PROMPT_CLOCK_SECONDS * 1000;
+/** R268: `MULLIGAN_CLOCK_SECONDS` in milliseconds. */
+export const MULLIGAN_CLOCK_MS = MULLIGAN_CLOCK_SECONDS * 1000;
 /** R79: `DISCONNECT_GRACE_SECONDS` in milliseconds. */
 export const DISCONNECT_GRACE_MS = DISCONNECT_GRACE_SECONDS * 1000;
 /** R79: `MATCH_CEILING_MINUTES` in milliseconds. */
@@ -332,6 +341,7 @@ export const MATCH_CEILING_MS = MATCH_CEILING_MINUTES * 60 * 1000;
 export const SERVER_CONFIG = Object.freeze({
   TURN_CLOCK_SECONDS,
   PROMPT_CLOCK_SECONDS,
+  MULLIGAN_CLOCK_SECONDS,
   DISCONNECT_GRACE_SECONDS,
   MATCH_CEILING_MINUTES,
   ROOM_CODE_LENGTH,
@@ -375,6 +385,7 @@ export const SERVER_CONFIG = Object.freeze({
   MATCH_REAPER_INTERVAL_SECONDS,
   TURN_CLOCK_MS,
   PROMPT_CLOCK_MS,
+  MULLIGAN_CLOCK_MS,
   DISCONNECT_GRACE_MS,
   MATCH_CEILING_MS,
 } as const);

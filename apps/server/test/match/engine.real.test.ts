@@ -65,6 +65,11 @@ describe("the real engine port (src/match/engine.real.ts)", () => {
     expect(decks[0][0]).toBe(pool[0]);
     expect(port.snapshot(state).phase).toBe("setup");
     expect(port.snapshot(state).result).toBeNull();
+    // Nothing is owed before the deal; `beginGame` opens both mulligans at once (R265).
+    expect(port.snapshot(state).mulliganOwed).toEqual([]);
+    const begun = port.beginGame(state).state;
+    expect(port.snapshot(begun)).toMatchObject({ phase: "mulligan", turn: 0, pendingFor: null });
+    expect(port.snapshot(begun).mulliganOwed).toEqual(["p1", "p2"]);
   });
 
   it("reduces a first real card play without throwing", async () => {
@@ -81,8 +86,9 @@ describe("the real engine port (src/match/engine.real.ts)", () => {
     let steps = 0;
     while (played === null && steps < 400 && port.snapshot(state).result === null) {
       const snapshot = port.snapshot(state);
-      // With a prompt open only its holder may act (§9.3); otherwise it is the active player's.
-      const player: PlayerId = snapshot.pendingFor ?? snapshot.active;
+      // With a prompt open only its holder may act (§9.3); while both mulligans are open (R265), the
+      // first seat still owing one; otherwise it is the active player's.
+      const player: PlayerId = snapshot.pendingFor ?? snapshot.mulliganOwed[0] ?? snapshot.active;
       const options = port.legalActions(state, player).filter((body) => !NEVER_CHOOSE.has(body.type));
       const choice =
         options.find((body) => body.type === "play") ??

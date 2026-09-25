@@ -29,6 +29,7 @@ function harness(
   clock: ReturnType<typeof createMatchClock>;
   turnMs: number;
   promptMs: number;
+  mulliganMs: number;
   graceMs: number;
   ceilingMs: number;
 } {
@@ -50,6 +51,7 @@ function harness(
     clock,
     turnMs: config.turnClockSeconds * SECOND,
     promptMs: config.promptClockSeconds * SECOND,
+    mulliganMs: config.mulliganClockSeconds * SECOND,
     graceMs: config.disconnectGraceSeconds * SECOND,
     ceilingMs: config.matchCeilingMinutes * MINUTE,
   };
@@ -59,9 +61,14 @@ const view = (overrides: Partial<ClockView> = {}): ClockView => ({
   turn: 1,
   active: "p1",
   pendingFor: null,
+  mulliganOwed: [],
   over: false,
   ...overrides,
 });
+
+/** R265: setup, turn 0 with p1 as its placeholder active seat, and these seats still owing. */
+const mulliganWindow = (owed: ClockView["mulliganOwed"], overrides: Partial<ClockView> = {}): ClockView =>
+  view({ turn: 0, active: "p1", mulliganOwed: owed, ...overrides });
 
 describe("match clock", () => {
   it("expires the turn clock after turnClockSeconds and names the active player (R79)", () => {
@@ -281,6 +288,104 @@ describe("match clock", () => {
     clock.stop();
     expect(timers.pending).toBe(0);
     timers.advance(60 * MINUTE);
+    expect(expiries).toEqual([]);
+  });
+
+  it("R268 the mulligan clock runs one deadline for both seats at once, and no turn clock runs under it", () => {
+    const { timers, clock, expiries, mulliganMs, turnMs } = harness();
+    clock.sync(mulliganWindow(["p1", "p2"]));
+
+    const deadline = timers.now() + mulliganMs;
+    // One deadline, reported as the prompt deadline both clients render; setup is nobody's turn.
+    expect(clock.snapshot().promptDeadline).toBe(deadline);
+    expect(clock.snapshot().turnDeadline).toBeNull();
+    expect(clock.remainingFor("p1")).toBe(mulliganMs);
+    expect(clock.remainingFor("p2")).toBe(mulliganMs);
+
+    // A turn clock's worth of waiting is not what ends it: only the mulligan deadline is armed.
+    timers.advance(mulliganMs - 1);
+    expect(expiries).toEqual([]);
+    expect(clock.remainingFor("p1")).toBe(1);
+    expect(clock.remainingFor("p2")).toBe(1);
+    timers.advance(1);
+    expect(expiries).toEqual([{ kind: "mulligan" }]);
+    expect(mulliganMs).toBeLessThan(turnMs);
+
+    // It fires once: the window is still open until the actor's timeouts land, and a `sync` that
+    // still reports it arms nothing new.
+    clock.sync(mulliganWindow(["p2"]));
+    timers.advance(mulliganMs * 2);
+    expect(expiries).toEqual([{ kind: "mulligan" }]);
+  });
+
+  it("R268 one seat answering neither re-arms nor extends the mulligan clock", () => {
+    const { timers, clock, expiries, mulliganMs } = harness();
+    clock.sync(mulliganWindow(["p1", "p2"]));
+    const deadline = clock.snapshot().promptDeadline;
+
+    // p2 answers first, well into the window. The seat still owing gets what was left, not a fresh
+    // window, and the seat that answered still reads the same countdown: it is waiting on it.
+    timers.advance(20 * SECOND);
+    clock.sync(mulliganWindow(["p1"]));
+    expect(clock.snapshot().promptDeadline).toBe(deadline);
+    expect(clock.remainingFor("p1")).toBe(mulliganMs - 20 * SECOND);
+    expect(clock.remainingFor("p2")).toBe(mulliganMs - 20 * SECOND);
+
+    timers.advance(mulliganMs - 20 * SECOND);
+    expect(expiries).toEqual([{ kind: "mulligan" }]);
+  });
+
+  it("R268 the window closing cancels the mulligan clock, and turn 1 starts p1's turn clock from full", () => {
+    const { timers, clock, expiries, mulliganMs, turnMs } = harness();
+    clock.sync(mulliganWindow(["p1", "p2"]));
+    timers.advance(10 * SECOND);
+    clock.sync(mulliganWindow(["p2"]));
+
+    // The second answer resolves both and starts turn 1 (R265, §2.1).
+    timers.advance(5 * SECOND);
+    clock.sync(view({ turn: 1, active: "p1" }));
+    expect(clock.snapshot().promptDeadline).toBeNull();
+    expect(clock.snapshot().turnDeadline).toBe(timers.now() + turnMs);
+    expect(clock.remainingFor("p1")).toBe(turnMs);
+    expect(clock.remainingFor("p2")).toBeNull();
+
+    // The mulligan deadline passes with nothing to report, and the turn clock is p1's.
+    timers.advance(mulliganMs);
+    expect(expiries).toEqual([]);
+    timers.advance(turnMs - mulliganMs);
+    expect(expiries).toEqual([{ kind: "turn", player: "p1" }]);
+  });
+
+  it("R268 a card's question during setup is still timed by R79 on either side of the window", () => {
+    const { timers, clock, expiries, mulliganMs, promptMs } = harness();
+
+    // A cast-on-draw card in p2's opening deal asks p2 something before the mulligans open (§2.4):
+    // the non-active holder's prompt clock, as R79 has it.
+    clock.sync(view({ turn: 0, active: "p1", pendingFor: "p2" }));
+    expect(clock.snapshot().promptDeadline).toBe(timers.now() + promptMs);
+
+    // Answered, and the window opens: the prompt clock goes and the one mulligan deadline takes over.
+    timers.advance(5 * SECOND);
+    clock.sync(mulliganWindow(["p1", "p2"]));
+    expect(clock.snapshot().promptDeadline).toBe(timers.now() + mulliganMs);
+    timers.advance(promptMs);
+    expect(expiries).toEqual([]);
+
+    // Both answered, and a replacement draw's cast asks p2 during the resolution (phase still
+    // mulligan, turn 0, nobody owing): R79's prompt clock again, and the mulligan clock is gone.
+    clock.sync(view({ turn: 0, active: "p1", pendingFor: "p2" }));
+    expect(clock.snapshot().promptDeadline).toBe(timers.now() + promptMs);
+    timers.advance(promptMs);
+    expect(expiries).toEqual([{ kind: "prompt", player: "p2" }]);
+  });
+
+  it("R268 stop() cancels a running mulligan clock", () => {
+    const { timers, clock, expiries, mulliganMs } = harness();
+    clock.sync(mulliganWindow(["p1", "p2"]));
+    clock.sync(mulliganWindow(["p1"], { over: true }));
+    expect(timers.pending).toBe(0);
+    expect(clock.remainingFor("p1")).toBeNull();
+    timers.advance(mulliganMs);
     expect(expiries).toEqual([]);
   });
 
