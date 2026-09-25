@@ -1491,6 +1491,53 @@ function fakeWs(): FakeWs {
   return ws;
 }
 
+describe("the automatic turn end is each player's to turn off (R82, R345)", () => {
+  async function realMatch(): Promise<Harness> {
+    const catalog = await loadCatalog();
+    const pool = catalog.cardIds.filter((cardId) => !catalog.isToken(cardId));
+    const engine = enginePort();
+    const { decks } = decksTheEngineAccepts(engine, pool, "seed-actor");
+    return harness({ engine, p1Deck: decks[0], p2Deck: decks[1] });
+  }
+
+  async function keepHands(h: Harness): Promise<void> {
+    for (const [player, socket] of [
+      ["p1", h.p1],
+      ["p2", h.p2],
+    ] as const) {
+      await send(h.actor, socket, `mull-${player}`, {
+        type: "mulligan",
+        keep: hand(lastView(socket)).map((card) => card.instanceId),
+      });
+    }
+  }
+
+  it("R345 a seat that turned it off during the mulligan keeps a turn it has nothing to do on, and only its own view says so", async () => {
+    // With these decks p1 has nothing to do on turn 1, so R82 would end that turn by itself (the
+    // draw-offer harness above leans on exactly that).
+    const h = await realMatch();
+    await send(h.actor, h.p1, "auto-off", { type: "setAutoEndTurn", enabled: false });
+    expect(errors(h.p1)).toEqual([]);
+    await keepHands(h);
+
+    expect(h.actor.snapshot()).toMatchObject({ phase: "main", active: "p1", pendingFor: null, result: null });
+    expect(lastView(h.p1).autoEndTurn).toBe(false);
+    expect(lastView(h.p2)).not.toHaveProperty("autoEndTurn");
+
+    await send(h.actor, h.p1, "end", { type: "endTurn" });
+    expect(h.actor.snapshot().active).toBe("p2");
+  });
+
+  it("R345 without it, the same turn 1 ends by itself, and a malformed preference is answered, not applied", async () => {
+    const h = await realMatch();
+    await send(h.actor, h.p1, "bad", { type: "setAutoEndTurn", enabled: "no" } as unknown as ActionBody);
+    expect(errors(h.p1).at(-1)?.code).toBe("malformed");
+    await keepHands(h);
+    expect(h.actor.snapshot()).toMatchObject({ phase: "main", active: "p2" });
+    expect(lastView(h.p1)).not.toHaveProperty("autoEndTurn");
+  });
+});
+
 describe("the ws adapter", () => {
   it("turns a ws connection into the actor's Socket, text frames only", () => {
     const ws = fakeWs();

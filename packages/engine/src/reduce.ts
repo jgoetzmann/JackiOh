@@ -24,6 +24,7 @@
 //                      to that pipeline's answerer (R122)
 //   mulligan         → `setup.answerMulligan`, refused by `setup.whyMulliganRefused` (§2.1, R265)
 //   draws, concede, endTurn, the turn cap → `turn.ts` (§2.2, §2.5, R36)
+//   setAutoEndTurn   → the sender's own `autoEndTurn`, read by `maybeAutoEndTurn` below (R82, R345)
 //
 // After the action the resolution loop of §10.3 runs (`triggers.settle`): it dispatches the events
 // the action emitted, drains whatever a prompt left owed in `state.work`, runs the state check and
@@ -60,6 +61,7 @@ const MAX_MULLIGAN_SUBSETS = 256;
 const MULLIGAN_OPEN_ACTION_TYPES: readonly ActionType[] = [
   "mulligan",
   "concede",
+  "setAutoEndTurn",
   "timeout",
   "disconnectExpired",
   "ceilingReached",
@@ -167,6 +169,13 @@ function applyAction(sink: EngineSink, action: Action): string | null {
     case "endTurn":
       endTurn(sink);
       return null;
+    case "setAutoEndTurn":
+      // R345: a preference, not a move. It emits nothing, and `maybeAutoEndTurn` reads it after
+      // this reduction as after every other, so turning it back on with nothing left to do ends the
+      // turn at once.
+      if (action.enabled) delete state.players[action.playerId].autoEndTurn;
+      else state.players[action.playerId].autoEndTurn = false;
+      return null;
     case "timeout":
       return timeout(sink, action);
     case "disconnectExpired": {
@@ -257,12 +266,16 @@ function answerForLockedOut(sink: EngineSink): void {
   }
 }
 
-/** §2.5: when nothing but ending the turn is left, the turn ends by itself. */
+/**
+ * §2.5, R82: when nothing but ending the turn is left, the turn ends by itself — unless the active
+ * player has turned that off for themselves (R345), when the turn waits for their End turn.
+ */
 function maybeAutoEndTurn(sink: EngineSink): void {
   for (let guard = 0; guard <= TURN_CAP_PLAYER_TURNS; guard += 1) {
     const state = sink.state;
     if (state.result !== null || state.pending !== null || state.phase !== "main") return;
     const player = state.active;
+    if (state.players[player].autoEndTurn === false) return;
     const actions = legalActions(state, player);
     const meaningful = actions.filter(
       (action) => action.type !== "endTurn" && action.type !== "concede" && action.type !== "offerDraw",
