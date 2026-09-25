@@ -19,6 +19,8 @@ e2e/
   cypress/e2e/*.cy.ts      the seventeen specs
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
+  cypress/e2e/21-radiant-marks.cy.ts  the Radiant pass (SPEC §10.10, R277, R279, R280): a hand card's computed value "{n}", a reference's face beside the preview and its tooltip in the touch sheet, and a card made Radiant in hand printing its change in gold, on /dev/hotseat
+  cypress/component/radiant-marks.cy.tsx  the Radiant pass: the gold mark's weight, underline and contrast on both backgrounds, a reference's tooltip in the detail view, and a computed value inside its rules box
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them

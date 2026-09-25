@@ -1,0 +1,27 @@
+{
+  "id": "21-marks-a",
+  "spec": "21-radiant-marks.cy.ts",
+  "description": "Player 1's deck for spec 21 (SPEC §10.10, R277, R279, R280): #31 KY's Math Equation (its formula's value, {1} at cost 1, rides on it in hand), #65 Masochism Mask (Quickdraw, so it is always in the opening hand; its text names Spikey Pillow, a reference) and #26 Glowy Jelly Bean (3 mana: it makes the Math Equation Radiant in hand, whose face then marks cost+3 in gold and reads {3}). The other seventeen are 08-do-nothing-a's cards without #55, #66 and #100, plus #88: every one costs 3 or more and asks nothing, so nothing resolves that the spec does not play. With seed 21-marks-163 player 1 holds KY's Math Equation, Glowy Jelly Bean and Masochism Mask on its first turn, and has the 3 mana Glowy Jelly Bean costs on its third (player-turn 5).",
+  "cards": [
+    "core-006",
+    "core-013",
+    "core-014",
+    "core-017",
+    "core-019",
+    "core-022",
+    "core-025",
+    "core-026",
+    "core-029",
+    "core-031",
+    "core-034",
+    "core-038",
+    "core-043",
+    "core-047",
+    "core-049",
+    "core-052",
+    "core-053",
+    "core-054",
+    "core-065",
+    "core-088"
+  ]
+}

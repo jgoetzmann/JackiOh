@@ -446,6 +446,14 @@ export const INSPECT_PRINTED = "inspect-printed";
 export const INSPECT_REFS = "inspect-refs";
 /** A14: R279, the tooltip a reference in a card's text opens (`[data-ref]` names the card). */
 export const CARD_REF_TOOLTIP = "card-ref-tooltip";
+/** A14: R279, one named card's face in the hover preview's references column (`[data-ref]`). */
+export const INSPECT_REFS_FACE = ".inspect-refs-face";
+/** A14: R277, a stretch of a Radiant face's text its base face does not have (gold, bold, underlined). */
+export const RADIANT_MARK = ".cf-mark";
+/** A14: R279, a name in a card's text that points at another card (`[data-ref]`, `[data-ref-face]`). */
+export const CARD_REF = ".cf-ref";
+/** A14: R280, what a formula comes to now, "{n}" (`[data-value]`, `[data-label]`). */
+export const CARD_VALUE = ".cf-value";
 
 /** A14: lower-case, every run of characters outside `[a-z0-9]` becomes one "-", trimmed of "-". */
 export function slugOf(value: string): string {
