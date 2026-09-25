@@ -1,9 +1,10 @@
-// #70 Spiteful Stab — SPEC §8.3, BUILD M4-T4: "2 + floor(missing/5) + exile count; radiant
-// 4 + floor(missing/3) + exile".
+// #70 Spiteful Stab — SPEC §8.3, BUILD M4-T4: "2 + floor(missing/5) + exile count"; radiant
+// 4 + floor(missing/3) + 2 × exile (R275 doubled the exile term).
 //
 // §8.3's row: "Deal 2 damage to a target, +1 per full 5 health your hero is below 30, +1 per card
-// in your exile" → "4 base, per full 3 health", Engine cell "`missing = max(0, 30 − health)`, floor
-// division; your own exile (R72)".
+// in your exile" → "Deal 4 damage to a target, +1 per full 3 health your hero is below 30, +2 per
+// card in your exile", Engine cell "`missing = max(0, 30 − health)`, floor division; your own exile
+// (R72)". The damage it would deal now, its R280 `preview`, is proved in test/preview.test.ts.
 //
 // R72 is the whole arithmetic: "'Cards in exile' means your own exile pile; missing health counts
 // from 30 even when the hero has more". §3's zone table says the same: the exile count "feeds
@@ -131,7 +132,7 @@ describe("#70 Spiteful Stab", () => {
   });
 
   // -------------------------------------------------------------------------------------------
-  // Radiant: "4 base, per full 3 health" (§8 Conventions — only those two numbers move)
+  // Radiant: "Deal 4 …, +1 per full 3 health …, +2 per card in your exile" (R275)
   // -------------------------------------------------------------------------------------------
 
   it("§8.3 the radiant base is 4 at 30 health with an empty exile", () => {
@@ -152,10 +153,16 @@ describe("#70 Spiteful Stab", () => {
     s.expectHealth("p2", 24);
   });
 
-  it("§8 Conventions the radiant cell keeps the exile clause: 23 health and 2 exiled is 8", () => {
+  it("§8.3 the radiant face adds two per card in your exile: 23 health and 2 exiled is 4 + 2 + 4 = 10", () => {
     const s = board({ p1: { hand: [{ def: STAB, radiant: true }], health: 23, exile: pileOf(2) } });
     s.play(STAB, { targets: AT_ENEMY_HERO });
-    s.expectHealth("p2", 22);
+    s.expectHealth("p2", 20);
+  });
+
+  it("R72 the radiant face's exile is YOUR OWN pile too: the opponent's exile adds nothing", () => {
+    const s = board({ p1: { hand: [{ def: STAB, radiant: true }] }, p2: { exile: pileOf(3) } });
+    s.play(STAB, { targets: AT_ENEMY_HERO });
+    s.expectHealth("p2", 26);
   });
 
   it("R72 the radiant face measures from 30 as well: 35 health is still missing 0", () => {
@@ -170,7 +177,7 @@ describe("#70 Spiteful Stab", () => {
       p2: { field: [SPONGE] },
     });
     s.play(STAB, { targets: onUnit(s, "p2", 1) });
-    // 4 + floor(6/3) + 1 = 7.
-    s.expectStats(SPONGE, { health: 2, maxHealth: 9 });
+    // 4 + floor(6/3) + 2 × 1 = 8.
+    s.expectStats(SPONGE, { health: 1, maxHealth: 9 });
   });
 });

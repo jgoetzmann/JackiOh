@@ -43,7 +43,7 @@ begin
   raise notice 'OK (CHECK 1): all % public tables have RLS enabled', total;
 end $$;
 
-\echo '=== CHECK 2: the 16 tables of migrations 0001-0009 ==='
+\echo '=== CHECK 2: the 16 tables of migrations 0001-0010 ==='
 select count(*) as public_tables from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r';
@@ -55,7 +55,7 @@ declare
   -- BUILD M6-T1..T4: profiles/invite_codes/code_attempts (0001), cards/collection/
   -- collection_grants (0002), loadouts/loadout_decks/loadout_deck_cards (0003),
   -- matches/match_actions/tickets/results (0004); then decks/trios (0007, R250, R252) and
-  -- series (0009, R263). 0005, 0006 and 0008 add no table. The three loadout tables stay
+  -- series (0009, R263). 0005, 0006, 0008 and 0010 add no table. The three loadout tables stay
   -- after 0007, unread and unwritten (R254), so they are still expected here.
   expected constant text[] := array[
     'cards', 'code_attempts', 'collection', 'collection_grants', 'decks', 'invite_codes',
@@ -853,6 +853,64 @@ begin
 
   raise notice 'OK (CHECK 17): % app functions, flags and pinned search_path as expected',
     array_length(expected, 1);
+end $$;
+
+\echo '=== CHECK 18 (R278): the cards tag check admits every catalog tag, Jlockeed included, and refuses any other ==='
+-- 0002's cards_tags_check had no 'Jlockeed', so `db:seed-catalog` failed on #13 and #14; 0010
+-- re-adds the check with it. Each probe row is removed before the next, and each probe runs in a
+-- block of its own, so later checks see only the cards CHECK 10 seeded.
+do $$
+declare
+  -- The `Tag` union in packages/shared/src/catalog-types.ts, in its order.
+  catalog_tags constant text[] := array[
+    'Human', 'Felinor', 'KY', 'CN', 'Fruit', 'Call to Chaos', 'Quickdraw', 'Jlockeed', 'Token'];
+  tag      text;
+  refused  boolean;
+begin
+  foreach tag in array catalog_tags loop
+    begin
+      insert into public.cards (id, card_index, name, set_id, type, tags, rarity, token, cost,
+                                catalog_version)
+      values ('check18-probe', '18', 'Check 18 probe', 'Core', 'Unit', array[tag], 'Common', false,
+              '1'::jsonb, 'core-1');
+    exception when check_violation then
+      raise exception 'FAIL (CHECK 18): cards_tags_check refuses the catalog tag %', tag;
+    end;
+    delete from public.cards where id = 'check18-probe';
+  end loop;
+
+  -- All nine on one card: `<@` holds for the whole list, not only one tag at a time.
+  begin
+    insert into public.cards (id, card_index, name, set_id, type, tags, rarity, token, cost,
+                              catalog_version)
+    values ('check18-probe', '18', 'Check 18 probe', 'Core', 'Unit', catalog_tags, 'Common', false,
+            '1'::jsonb, 'core-1');
+  exception when check_violation then
+    raise exception 'FAIL (CHECK 18): cards_tags_check refuses a card carrying all nine tags';
+  end;
+  delete from public.cards where id = 'check18-probe';
+
+  -- A near miss is still refused: the check was widened by one name, not dropped.
+  refused := false;
+  begin
+    insert into public.cards (id, card_index, name, set_id, type, tags, rarity, token, cost,
+                              catalog_version)
+    values ('check18-probe', '18', 'Check 18 probe', 'Core', 'Unit', array['Jlocked'], 'Common',
+            false, '1'::jsonb, 'core-1');
+  exception when check_violation then
+    refused := true;
+  end;
+  if not refused then
+    delete from public.cards where id = 'check18-probe';
+    raise exception 'FAIL (CHECK 18): cards_tags_check admitted the unknown tag Jlocked';
+  end if;
+
+  if exists (select 1 from public.cards where id = 'check18-probe') then
+    raise exception 'FAIL (CHECK 18): the probe row was left behind';
+  end if;
+
+  raise notice 'OK (CHECK 18): all % catalog tags admitted, alone and together; an unknown tag refused',
+    array_length(catalog_tags, 1);
 end $$;
 
 \echo '=== ALL CHECKS RAN ==='

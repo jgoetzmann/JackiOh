@@ -86,6 +86,15 @@ export function zoneCount(state: GameState, player: PlayerId, zone: OffFieldZone
 }
 
 /**
+ * The mana this player holds now and has not spent: `turnEnded.unspentMana` is this number as the
+ * turn ends (R62), which #18 Bread and Butter's X reads, so its preview (R280) reads the same number
+ * off the same function for the turn as it stands. Mana is public (§10.8).
+ */
+export function unspentManaOf(state: GameState, player: PlayerId): number {
+  return state.players[player].mana.current;
+}
+
+/**
  * §10.5 step 4's count of the cards this player has played this turn, cleared by `startTurn`.
  * The card being played is already counted when its own script and any `cardPlayed` trigger run —
  * §6.2's Combo X reads "played EARLIER this turn", so a card counting the plays before itself

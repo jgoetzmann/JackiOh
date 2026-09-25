@@ -1,7 +1,12 @@
 // #40 Echoes of the Forgotten (SPEC §8.2): 2-cost Field Spell, "Start of your turn: deal damage to
 // the enemy hero equal to the cards in your exile; then exile the bottom card of your library",
-// radiant "+3 damage". The radiant cell changes only that number, so everything else is kept
-// (§8 Conventions) — the same count, the same target, the same library exile.
+// radiant "… equal to twice the cards in your exile; …" (R275; it was "+3 damage"). The Radiant
+// face changes only that multiple, so everything else is kept — the same count, the same target, the
+// same library exile.
+//
+// R280: the damage it would deal if its controller's turn started now is its `preview`, labelled
+// "the cards in your exile" / "twice the cards in your exile" and computed by the same `damageNow`
+// the hook deals. It reads its controller's exile count, which is public (§3).
 //
 // R72 fixes what is counted: "cards in exile" means YOUR OWN exile pile, so the count is
 // `players[controller].exile.length` and never the game-wide `counters.exiled` (which R55 uses for
@@ -20,50 +25,48 @@
 // "Empty library → no exile, no fatigue" (§8.2 Engine) needs nothing of its own: this card never
 // draws, so §2.4's fatigue (R3) is never in play, and an empty library simply has no bottom card.
 // An amount of 0 is emitted as-is: `dealDamage` treats a hit of 0 before step 1 as no damage
-// instance at all (R63), so an empty exile pile does nothing on the base face while the radiant
-// face still deals its +3.
+// instance at all (R63), so an empty exile pile does nothing on either face (twice 0 is 0).
 //
-// !! BLOCKED — MISSING VERB (reported; the wave's agreed name, also requested by #65 Masochism
-// Mask, whose "exile the bottom card of your library" mode is the same clause) !!
-//     exileBottomOfLibrary({ player?: "self" | "enemy" }): Effect
-// `exile` takes only a `TargetSpec`, and `TargetSpec` is `{of:"self"} | {of:"selfHero"} |
-// {of:"enemyHero"} | {of:"chosen", index?}` — none of which can name a library card, and
-// `{ of: "chosen" }` reads `ctx.targets`, which is empty in a start-of-turn hook (R81: declared
-// picks travel with a `play`, and this clause is not a choice at all). No other verb in
-// `effects/index.ts` moves a library card to exile, so there is no faithful composition to fall
-// back on; the call below is written against the agreed verb rather than faked. Implementation is
-// three lines over what already exists: take `players[player].library.at(-1)` — the top is index 0,
-// so the bottom is the last element — and hand it to the same `moveToZone(state, card, "exile")`
-// plus `counters.exiled += 1` and `exiled` event that `effects/move.ts` already does.
-// (`exile({ instanceId })`, the escape hatch `steal`, `transform` and `setRadiant` all carry and
-// that #34 Collateral Damage asks for, would do just as well; either one unblocks all three cards.)
+// "Exile the bottom card of your library" is the engine's `exileBottomOfLibrary` (shared with #65
+// Masochism Mask's mode of the same words): `exile` takes a `TargetSpec`, which cannot name a
+// library card, and the clause is not a choice (R81).
 
-import type { Script } from "@jackioh/engine";
+import type { GameState, Script } from "@jackioh/engine";
 import { zoneCount } from "@jackioh/engine";
+import type { PlayerId } from "@jackioh/shared";
 import { damage, exileBottomOfLibrary } from "@jackioh/engine/effects";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-040");
 
-/** Radiant: "+3 damage" — the one number the radiant cell changes. */
-const RADIANT_BONUS = 3;
+/** How many damage each card in your exile is worth: "equal to the cards", radiant "twice the cards". */
+const PER_EXILED_CARD = { base: 1, radiant: 2 } as const;
 
-/** The two faces differ only by the bonus added to the exile count. */
-function echoesOfTheForgotten(bonus: number): Script {
+/** R280: the formula as each face prints it, which the preview labels its number with. */
+const FORMULA = { base: "the cards in your exile", radiant: "twice the cards in your exile" } as const;
+
+/**
+ * The damage the hook deals if it runs now. R72: your own exile pile, read before anything new
+ * enters it, through the engine's read-only `zoneCount` (engine/src/query.ts) rather than off
+ * `PlayerState` (BUILD M3-T1).
+ */
+function damageNow(state: GameState, controller: PlayerId, perCard: number): number {
+  return perCard * zoneCount(state, controller, "exile");
+}
+
+/** The two faces differ only by what each card in the exile is worth. */
+function echoesOfTheForgotten(face: "base" | "radiant"): Script {
+  const perCard = PER_EXILED_CARD[face];
   return {
     startOfTurn: (ctx) => [
-      // R72: your own exile pile, read before anything new enters it, through the engine's
-      // read-only `zoneCount` (engine/src/query.ts) rather than off `PlayerState` (BUILD M3-T1).
-      damage({
-        to: { of: "enemyHero" },
-        amount: zoneCount(ctx.state, ctx.controller, "exile") + bonus,
-      }),
+      damage({ to: { of: "enemyHero" }, amount: damageNow(ctx.state, ctx.controller, perCard) }),
       // "then exile the bottom card of your library" — after the count, so it pays out next turn.
       exileBottomOfLibrary({ player: "self" }),
     ],
+    preview: (ctx) => [{ label: FORMULA[face], value: damageNow(ctx.state, ctx.controller, perCard) }],
   };
 }
 
-export const base: Script = echoesOfTheForgotten(0);
+export const base: Script = echoesOfTheForgotten("base");
 
-export const radiant: Script = echoesOfTheForgotten(RADIANT_BONUS);
+export const radiant: Script = echoesOfTheForgotten("radiant");

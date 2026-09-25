@@ -1,8 +1,11 @@
 // #24 Efficiency Dividend (SPEC §8.2, R65, R81, R68, §5.1).
 //
 // Base: "Choose one: deal X damage to a target; heal a target 2X; gain floor(X/2) mana next turn.
-// End of turn: returns to hand". Radiant restates the arithmetic only — "Uses X+1" — so the modes,
-// the target and the return to hand are all kept (§8 Conventions).
+// End of turn: returns to hand". Radiant (R275: an X-cost card's X is scaled): "Choose one: deal 2X
+// damage to a target; heal a target 4X; gain X mana next turn. End of turn: returns to hand" — the
+// §8 cell's "Uses 2X". So the radiant face is the base arithmetic run on 2X instead of X: 2X damage,
+// 2·2X = 4X healing and floor(2X/2) = X mana, exactly the printed numbers, and the modes, the target
+// and the return to hand are all kept (§8 Conventions). What the player pays is still X (R65).
 //
 // R81: X, the mode and the target all travel in the `play` action and never pause resolution, so
 // the hook reads `ctx.x`, `ctx.modes` (through `chosenOptions`, which also reads a mode selection)
@@ -57,22 +60,33 @@ const targets: TargetDecl[] = [
   },
 ];
 
-function amountX(ctx: EffectContext, bonus: number): number {
-  return Math.max(0, Math.trunc(ctx.x)) + bonus;
+/** "Heal a target 2X". */
+const HEAL_PER_X = 2;
+
+/** "Gain floor(X/2) mana next turn": one mana for every two X. */
+const X_PER_MANA = 2;
+
+/** The base face uses X as it was paid; the radiant face uses 2X ("Uses 2X", R275). */
+const BASE_USES = 1;
+const RADIANT_USES = 2;
+
+/** The X the modes read: the X paid (never below 0), times the face's multiple. */
+function amountX(ctx: EffectContext, uses: number): number {
+  return Math.max(0, Math.trunc(ctx.x)) * uses;
 }
 
-/** `bonus` is the whole of the radiant text: every mode reads X+1 instead of X. */
-function dividend(bonus: number): Script {
+/** `uses` is the whole of the radiant difference: every mode reads 2X instead of X. */
+function dividend(uses: number): Script {
   return {
     modes,
     targets,
     cry: (ctx): Effect[] => {
-      const x = amountX(ctx, bonus);
+      const x = amountX(ctx, uses);
       const mode = chosenOptions(ctx)[0];
       if (mode === MODE_DAMAGE) return [damage({ to: { of: "chosen" }, amount: x })];
-      if (mode === MODE_HEAL) return [heal({ target: { of: "chosen" }, amount: 2 * x })];
+      if (mode === MODE_HEAL) return [heal({ target: { of: "chosen" }, amount: HEAL_PER_X * x })];
       if (mode === MODE_MANA) {
-        return [nextTurnMana({ amount: Math.floor(x / 2), player: "self" })];
+        return [nextTurnMana({ amount: Math.floor(x / X_PER_MANA), player: "self" })];
       }
       // No mode named: nothing to resolve, and the spell still counts as played (§8 Conventions).
       return [];
@@ -87,6 +101,6 @@ function dividend(bonus: number): Script {
   };
 }
 
-export const base: Script = dividend(0);
+export const base: Script = dividend(BASE_USES);
 
-export const radiant: Script = dividend(1);
+export const radiant: Script = dividend(RADIANT_USES);

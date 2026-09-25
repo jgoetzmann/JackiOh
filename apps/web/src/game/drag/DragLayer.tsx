@@ -515,8 +515,7 @@ function DragGhost(props: {
 }): ReactElement {
   const info = useCardInfo(props.card?.defId ?? "", props.card?.radiant ?? false);
   const face = props.card === null ? null : liveFace(info, props.card);
-  const text =
-    face === null ? info.text : face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
+  const text = face === null ? info.text : face.text.full;
   const stats = face === null ? (info.attack === undefined || info.health === undefined ? null : { attack: info.attack, health: info.health }) : face.stats;
   const style: CSSProperties = { left: props.at.x, top: props.at.y };
   return (

@@ -30,9 +30,13 @@ src/
   cards/                card faces, procedural art, inspect and card settings (docs/polish/6-cards.md). A face is
                         the card in play or the card as printed (SPEC §10.10): `faceModel` with `inPlay` reads
                         the view's own facts (a hand Unit's stats, a unit's keywords and Vanilla mark, a #98's
-                        rolled power, R243) and inPlay.ts's words (#98's power, ??? for Call to Chaos); with no
-                        `inPlay` it is the collection's printed card. The inspect overlays in play show the
-                        printed text beside a face wherever the two differ (inspect/Printed.tsx)
+                        rolled power, R243, what a formula comes to now, R280) and inPlay.ts's words (#98's
+                        power, ??? for Call to Chaos); with no `inPlay` it is the collection's printed card.
+                        The inspect overlays in play show the printed text beside a face wherever the two
+                        differ (inspect/Printed.tsx). RulesText draws every face's text with its marks: a
+                        Radiant face's changes in gold (radiantDiff.ts, R277), the cards its `refs` name as
+                        references (refs.ts, CardRef.tsx, refContext.tsx, R279; the hover preview's
+                        "Mentions" column is inspect/References.tsx), and "{n}" values (R280)
   game/
     engine.ts           the EnginePort: the only seam onto packages/engine
     engine.real.ts      the real binding (see "Blocked on the engine" below)

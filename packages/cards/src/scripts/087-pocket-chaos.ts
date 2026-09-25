@@ -2,11 +2,14 @@
 //
 // Base: "Choose one: swap hero health, swap boards (every zone, lane-preserving), or swap libraries
 // with the opponent; then add a Pocket Chaos to the opponent's hand; exile this".
-// Radiant: "You may skip adding it".
+// Radiant: "Choose one: …; then you may add a Pocket Chaos to the opponent's hand; draw 1; exile
+// this" (§8's cell "You may skip adding it; then draw 1", R275's added draw).
 //
-// §8's Conventions: the radiant cell restates the "add a Pocket Chaos" clause only, so the Choose
-// one and the exile are kept unchanged and the only radiant difference is that the gift becomes
-// optional.
+// §8's Conventions: the radiant cell restates the "add a Pocket Chaos" clause and adds a draw, so
+// the Choose one and the exile are kept unchanged. The radiant differences are two: the gift
+// becomes optional, and a draw follows it, before the exile. The draw is the caster's and runs
+// after the swap, so after a library swap it takes the top of the library the caster now holds —
+// the one that was the opponent's (R73).
 //
 // BOTH choices are declared play choices, not prompts. R81's card list names #87, and §10.6 is
 // explicit: "A card's own play choices (zone, X, embiggen, Tribute, declared targets and modes) are
@@ -44,7 +47,7 @@
 // catalog lookup.
 
 import type { Effect, Script } from "@jackioh/engine";
-import { addToHand, chosenOptions, exile, swap } from "@jackioh/engine/effects";
+import { addToHand, chosenOptions, draw, exile, swap } from "@jackioh/engine/effects";
 import type { ModeDecl } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
@@ -61,17 +64,21 @@ const GIFT = "gift";
 const SKIP = "skip";
 const GIFT_MODE: ModeDecl = { kind: "mode", options: [GIFT, SKIP] };
 
-/** `maySkip` is the whole of the radiant text. */
-function chaos(maySkip: boolean): Script {
+/** Radiant: "draw 1", after the gift and before the exile. */
+const RADIANT_DRAW = 1;
+
+/** `radiantFace` is the whole of the radiant text: an optional gift, then a draw. */
+function chaos(radiantFace: boolean): Script {
   return {
-    modes: maySkip ? [SWAP_MODE, GIFT_MODE] : [SWAP_MODE],
+    modes: radiantFace ? [SWAP_MODE, GIFT_MODE] : [SWAP_MODE],
     cry: (ctx): Effect[] => {
       // Only an explicit SKIP skips: the base clause is to add it, and the radiant cell makes that
       // optional rather than reversing it, so an unanswered gift mode still hands the copy over.
-      const skipped = maySkip && chosenOptions(ctx).includes(SKIP);
+      const skipped = radiantFace && chosenOptions(ctx).includes(SKIP);
       return [
         swap(),
         ...(skipped ? [] : [addToHand({ defId: def.id, player: "enemy" })]),
+        ...(radiantFace ? [draw({ count: RADIANT_DRAW })] : []),
         exile({ target: { of: "self" } }),
       ];
     },

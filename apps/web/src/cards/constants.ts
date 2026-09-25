@@ -31,3 +31,12 @@ export const FIT_FLOOR_PX = 9;
 
 /** Below this face height the rules box, tags and type line hide. Mirrored in cards.css's @container rule. */
 export const FACE_TEXT_MIN_HEIGHT_PX = 150;
+
+/** R279: a mouse or pen resting this long on a reference in a card's text opens the card it names. */
+export const REF_HOVER_DELAY_MS = 250;
+
+/** R279: the height of the card face a reference's tooltip shows. */
+export const REF_TOOLTIP_HEIGHT_PX = 300;
+
+/** R279: the height of each named card's face in a hover preview's references column. */
+export const REF_PANEL_FACE_HEIGHT_PX = 190;

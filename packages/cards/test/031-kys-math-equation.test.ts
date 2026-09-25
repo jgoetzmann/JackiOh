@@ -1,6 +1,7 @@
 // #31 KY's Math Equation — SPEC §8.2 row 31, BUILD M4-T4 must-pass row 31:
 // "Cost 1 → 1 damage, returns at cost 2 → 2, cost 3 → 3, cost 4 → 5; clamps at 89 (R25); player
-//  discounts don't change the damage (R67); radiant Fib(cost+2)".
+//  discounts don't change the damage (R67)"; radiant Fib(cost+3) (R275 raised it from Fib(cost+2)).
+// The damage it would deal now, its R280 `preview`, is proved in test/preview.test.ts.
 //
 // Every side gets a unit on the board so §2.5's auto-end-turn does not run the turn on by itself
 // (see the harness header): a unit with an unspent exertion is always a meaningful action.
@@ -141,20 +142,29 @@ describe("#31 KY's Math Equation — base", () => {
 });
 
 describe("#31 KY's Math Equation — radiant", () => {
-  it("R67 radiant reads printed cost + costMod + 2, so cost 1 deals Fib(3) = 2", () => {
+  it("R67 radiant reads printed cost + costMod + 3, so cost 1 deals Fib(4) = 3", () => {
     const s = board();
     s.card("31").radiant = true;
     s.play("31", { targets: AT_ENEMY_HERO });
-    s.expectHealth("p2", 28);
+    s.expectHealth("p2", 27);
   });
 
-  it("R67 radiant at cost 2 deals Fib(4) = 3", () => {
+  it("R67 radiant at cost 2 deals Fib(5) = 5", () => {
     const s = board();
     const equation = s.card("31");
     equation.radiant = true;
     equation.costMod = 1;
     s.play("31", { targets: AT_ENEMY_HERO });
-    s.expectHealth("p2", 27);
+    s.expectHealth("p2", 25);
+  });
+
+  it("R67 radiant at cost 3 deals Fib(6) = 8, where the base face deals Fib(4) = 3", () => {
+    const s = board();
+    const equation = s.card("31");
+    equation.radiant = true;
+    equation.costMod = 2;
+    s.play("31", { targets: AT_ENEMY_HERO });
+    s.expectHealth("p2", 22);
   });
 
   it("R25 radiant clamps at 89 too", () => {
@@ -202,12 +212,12 @@ describe("#31 KY's Math Equation — a cost below 0 (round 10 of the polish-4 ed
     s.expectHealth("p2", 29);
   });
 
-  it("R67 radiant: a costMod of -3 on the 1-cost Equation deals Fib(0 + 2) = 1, not Fib(-2 + 2) = 0", () => {
+  it("R67 radiant: a costMod of -3 on the 1-cost Equation deals Fib(0 + 3) = 2, not Fib(-2 + 3) = 1", () => {
     const s = scenario({
       p1: { hand: [{ def: "core-031", costMod: -3, radiant: true }, "core-005"] },
       p2: { hand: ["core-005"] },
     });
     s.play("core-031", { targets: AT_ENEMY_HERO });
-    s.expectHealth("p2", 29);
+    s.expectHealth("p2", 28);
   });
 });

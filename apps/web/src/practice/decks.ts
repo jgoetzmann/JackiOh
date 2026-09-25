@@ -26,7 +26,7 @@ export const PRACTICE_PRESETS: readonly PracticePreset[] = [
     name: "Human Vanguard",
     identity: "Humans hold the line: cheap bodies, Taunt and armor, then The Rock and friends.",
     cards: [
-      "core-003", // Right-house defender
+      "core-004", // Gary the Gambler
       "core-005", // Stockpile
       "core-008", // Mr. Vanilla
       "core-011", // Tempo Timmy
@@ -80,12 +80,12 @@ export const PRACTICE_PRESETS: readonly PracticePreset[] = [
     name: "Fortress",
     identity: "Removal, Taunts and card draw: weather the storm, then win with giants.",
     cards: [
-      "core-003", // Right-house defender
       "core-005", // Stockpile
       "core-035", // Lunar Eclipse
       "core-036", // Magic Jammed
       "core-041", // Sheepish
       "core-044", // True Strike
+      "core-067", // Zoomerbin Oomen
       "core-009", // Moths to the Flame
       "core-016", // Hit Job
       "core-030", // Archivist

@@ -12,6 +12,12 @@
 // A face in play (FaceModel.inPlay, SPEC §10.10) prints the card as it stands: the rules box ends
 // with the keywords it has gained since it was printed (`.cf-text-gained`), and a Vanilla unit's box
 // says its text is gone. A fused card's text is a line per ingredient (R102), which the box keeps.
+//
+// The rules box prints the face's whole text (`.cf-text-base`, on both faces): a Radiant face its
+// catalog Radiant text with what the base face lacks marked in gold (R277), the names its `refs`
+// link as references (R279), and in play the values its formula comes to, "{7}" (R280) — all
+// drawn by RulesText. A printed Radiant unit's attack and health that the Radiant face raised are
+// marked too (`data-grew`).
 
 import { useRef, type CSSProperties, type ReactElement } from "react";
 
@@ -49,7 +55,8 @@ export function gainedLine(face: FaceModel): string {
 
 /** Everything the rules box prints, as one string: what `textTier` and `useFitText` measure. */
 function printedText(face: FaceModel): string {
-  const text = face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
+  const values = face.values.map((entry) => ` {${String(entry.value)}}`).join("");
+  const text = `${face.text.full}${values}`;
   const gained = gainedLine(face);
   return gained === "" ? text : `${text} ${gained}`;
 }
@@ -131,13 +138,8 @@ export function CardFace({ face, layout = "full", className }: CardFaceProps): R
         {full && (
           <span className="card-text" ref={textRef}>
             <span className="cf-text-base">
-              <RulesText text={face.text.base} />
+              <RulesText text={face.text.full} marks={face.text.marks} refs={face.refs} values={face.values} />
             </span>
-            {face.text.radiant !== null && (
-              <span className="cf-text-radiant">
-                <RulesText text={face.text.radiant} />
-              </span>
-            )}
             {face.gained.length > 0 && (
               <span className="cf-text-gained" data-gained={face.gained.map(keywordKey).join("|")}>
                 <RulesText text={gainedLine(face)} />
@@ -158,11 +160,21 @@ export function CardFace({ face, layout = "full", className }: CardFaceProps): R
 
         {full && face.type === "Unit" && face.stats !== null && (
           <span className="cf-stats">
-            <span className="cf-atk" data-face-attack={face.stats.attack} data-tone={face.stats.attackTone}>
+            <span
+              className="cf-atk"
+              data-face-attack={face.stats.attack}
+              data-tone={face.stats.attackTone}
+              data-grew={face.stats.grew?.attack === true ? "true" : undefined}
+            >
               <Icon name="sword" />
               <span className="cf-num">{face.stats.attack}</span>
             </span>
-            <span className="cf-hp" data-face-health={face.stats.health} data-tone={face.stats.healthTone}>
+            <span
+              className="cf-hp"
+              data-face-health={face.stats.health}
+              data-tone={face.stats.healthTone}
+              data-grew={face.stats.grew?.health === true ? "true" : undefined}
+            >
               <Icon name="drop" />
               <span className="cf-num">{face.stats.health}</span>
             </span>

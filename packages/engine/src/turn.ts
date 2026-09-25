@@ -25,6 +25,7 @@ import { endGame } from "./gameOver";
 import { NEXT_REFRESH_MODIFIER_ID, manaEvent, refreshMana } from "./mana";
 import { dropDelayed, dueDelayed, expireModifiers } from "./modifiers";
 import { runResume } from "./prompts";
+import { unspentManaOf } from "./query";
 import type { EngineSink, HookName } from "./resolve";
 import { scriptOf } from "./scripts";
 import { stateCheck } from "./stateCheck";
@@ -501,12 +502,11 @@ export function endTurn(sink: EngineSink): void {
  */
 function endOfTurnAfterTriggers(sink: EngineSink, player: PlayerId): void {
   const state = sink.state;
-  const side = state.players[player];
   const ended: GameEvent = {
     type: "turnEnded",
     player,
     turn: state.turn,
-    unspentMana: side.mana.current,
+    unspentMana: unspentManaOf(state, player),
   };
   sink.events.push(ended);
 

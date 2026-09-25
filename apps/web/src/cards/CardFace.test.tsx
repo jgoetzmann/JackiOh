@@ -343,15 +343,13 @@ describe("B10: RulesText marks terms in bold", () => {
     expect(one(cf, ".card-text").textContent).toBe("taunt the Locked Rushing units");
   });
 
-  it("B10 every catalog text reads back unchanged through RulesText", () => {
+  it("B10 every catalog text reads back unchanged through RulesText, marks and all", () => {
     for (const card of DEFS) {
       for (const radiant of [false, true]) {
         const text = faceModel({ defId: card.id, def: card, radiant }).text;
         const cf = catalogFace(card.id, radiant);
-        expect(one(cf, ".cf-text-base").textContent, card.id).toBe(text.base);
-        const clause = cf.querySelector(".cf-text-radiant");
-        expect(clause?.textContent ?? null, card.id).toBe(text.radiant);
-        if (!radiant) expect(text.base, card.id).toBe(card.base.text);
+        expect(one(cf, ".cf-text-base").textContent, card.id).toBe(text.full);
+        expect(text.full, card.id).toBe(radiant ? card.radiant.text : card.base.text);
         cleanup();
       }
     }
@@ -438,14 +436,12 @@ describe("B14: the radiant face", () => {
     expect(one(cf, ".cf-art-frame .cf-art").getAttribute("data-art-variant")).toBe("base");
   });
 
-  it("B14 a non-null radiant clause prints .cf-text-base, then .cf-text-radiant", () => {
+  it("R277 a radiant face prints its whole text once and marks in gold what the base face lacks", () => {
     const cf = catalogFace("core-004", true);
     const text = one(cf, ".card-text");
-    const base = one(text, ".cf-text-base");
-    const radiant = one(text, ".cf-text-radiant");
-    expect(base.textContent).toBe("Cry: flip 5 coins; +1 attack per heads, +1 max health per tails");
-    expect(radiant.textContent).toBe("7 coins; +2 per heads, +2 per tails");
-    expect(base.compareDocumentPosition(radiant) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(one(text, ".cf-text-base").textContent).toBe("Cry: flip 7 coins; +2 attack per heads, +2 max health per tails");
+    expect(text.querySelector(".cf-text-radiant")).toBeNull();
+    expect([...text.querySelectorAll(".cf-mark")].map((mark) => mark.textContent)).toEqual(["7", "+2", "+2"]);
   });
 
   it("B14 a radiant face prints its own keyword line, never the base keywords it replaced (core-056, core-025)", () => {
@@ -469,21 +465,35 @@ describe("B14: the radiant face", () => {
     expect(one(catalogFace("core-046", true), ".card-text").textContent).toBe("Aura: enemy units −4/−4 (paid 4: −10/−10)");
   });
 
-  it("B14 a radiant face with no distinct radiant cell prints only the base text", () => {
-    for (const id of ["core-008", "core-038", "core-080", "core-081", "core-096", "core-t-felinor", "core-095-1"]) {
+  it("R277 R276 the five cards that had no radiant form print a radiant face that differs, marked (core-038, core-080, core-093-1, core-095-1, core-096)", () => {
+    for (const id of ["core-038", "core-080", "core-093-1", "core-095-1", "core-096"]) {
       const cf = catalogFace(id, true);
       expect(cf.getAttribute("data-radiant-face"), id).toBe("true");
-      expect(cf.querySelector(".cf-text-radiant"), id).toBeNull();
-      expect(one(cf, ".cf-text-base").textContent, id).toBe(def(id).base.text);
+      expect(one(cf, ".cf-text-base").textContent, id).toBe(def(id).radiant.text);
+      expect(cf.querySelectorAll(".cf-mark").length, id).toBeGreaterThan(0);
       cleanup();
     }
   });
 
-  it("B14 a base face never prints .cf-text-radiant", () => {
+  it("R277 a base face never marks anything", () => {
     for (const id of ["core-002", "core-011", "core-051", "core-093"]) {
-      expect(catalogFace(id, false).querySelector(".cf-text-radiant"), id).toBeNull();
+      expect(catalogFace(id, false).querySelector(".cf-mark"), id).toBeNull();
       cleanup();
     }
+  });
+
+  it("R277 a printed radiant unit marks the stats it raised; a radiant face that kept them marks none", () => {
+    const felinors = catalogFace("core-012", true);
+    expect(one(felinors, ".cf-atk").getAttribute("data-grew")).toBe("true");
+    expect(one(felinors, ".cf-hp").getAttribute("data-grew")).toBe("true");
+    cleanup();
+    const base = catalogFace("core-012", false);
+    expect(one(base, ".cf-atk").hasAttribute("data-grew")).toBe(false);
+    cleanup();
+    // Big D-fender's 0 attack stays 0 (R275), so only its health is marked.
+    const fender = catalogFace("core-001", true);
+    expect(one(fender, ".cf-atk").hasAttribute("data-grew")).toBe(false);
+    expect(one(fender, ".cf-hp").getAttribute("data-grew")).toBe("true");
   });
 });
 
@@ -552,7 +562,7 @@ describe("B15: length tiers, and useFitText without layout", () => {
     }
   });
 
-  it("B15 .cf's data-text-tier counts the base text plus the radiant clause", () => {
+  it("B15 .cf's data-text-tier counts the text the face prints", () => {
     const cases: readonly (readonly [string, boolean, LengthTier])[] = [
       ["core-008", false, "s"],
       ["core-008", true, "s"],
@@ -560,7 +570,7 @@ describe("B15: length tiers, and useFitText without layout", () => {
       ["core-052", false, "l"],
       ["core-052", true, "xl"],
       ["core-051", false, "xl"],
-      ["core-051", true, "xxl"],
+      ["core-051", true, "xl"],
       ["core-093", false, "xxl"],
       ["core-095", true, "xxl"],
     ];

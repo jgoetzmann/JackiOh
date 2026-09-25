@@ -4,7 +4,8 @@
 // BUILD M4-T4 row 93:   "Grade 1 needs 1 play, grade 2 needs 2; cascade E→new grade in order;
 //                        E adds a copy (R27); S terminal (R27); radiant adds Combo-Fodder each
 //                        start of turn".
-// BUILD M4-T4 row 93.1: "2 damage with Lifesteal; no radiant change".
+// BUILD M4-T4 row 93.1: "2 damage with Lifesteal; no radiant change". R276 has since given it a
+//                        Radiant face: "Deal 4 damage to a target, Lifesteal" (R275).
 //
 // The two are one file because #93.1 is the radiant text's companion: radiant #93 is "Start of
 // turn: add a Combo-Fodder to your hand; same", so the token only ever exists because of #93.
@@ -792,7 +793,7 @@ describe("#93.1 Combo-Fodder — base", () => {
 });
 
 describe("#93.1 Combo-Fodder — radiant", () => {
-  it("§8 lists no radiant form, so the radiant face deals the same 2 with Lifesteal", () => {
+  it("R275 the radiant face deals 4 with Lifesteal: the enemy hero loses 4 and you heal 4", () => {
     const s = scenario({
       seed: "core-093-1-radiant",
       p1: { hand: [{ def: COMBO_FODDER, radiant: true }, "core-005"], health: 20 },
@@ -802,9 +803,42 @@ describe("#93.1 Combo-Fodder — radiant", () => {
 
     s.play(COMBO_FODDER, { targets: [{ pick: "hero", player: "p2" }] });
 
-    s.expectHealth("p2", 28);
-    s.expectHealth("p1", 22);
+    expect(damageTo(s, "hero-p2")).toEqual([4]);
+    expect(healedOn(s, "hero-p1")).toEqual([4]);
+    s.expectHealth("p2", 26);
+    s.expectHealth("p1", 24);
+    // Still a 0-cost token.
     s.expectMana("p1", 4);
+  });
+
+  it("R275 the 4 reaches a unit as one hit: a 4-health unit dies where the base 2 leaves it standing", () => {
+    // #61 Postdoc is 2/4: the radiant 4 kills it outright, where the base 2 would not.
+    const s = scenario({
+      seed: "core-093-1-radiant-unit",
+      p1: { hand: [{ def: COMBO_FODDER, radiant: true }, "core-005"], health: 20 },
+      p2: { field: ["core-061"], hand: ["core-005"] },
+    });
+    const postdoc = s.unit("p2", 1);
+
+    s.play(COMBO_FODDER, { targets: [{ pick: "instance", instanceId: postdoc?.id ?? "" }] });
+
+    expect(damageTo(s, postdoc?.id ?? "")).toEqual([4]);
+    if (postdoc !== undefined && postdoc !== null) s.expectInZone(postdoc, "graveyard");
+    s.expectHealth("p1", 24);
+  });
+
+  it("R85 Armor reduces the radiant hit, and the heal follows what landed", () => {
+    const s = scenario({
+      seed: "core-093-1-radiant-armor",
+      p1: { hand: [{ def: COMBO_FODDER, radiant: true }, "core-005"], health: 20 },
+      p2: { hand: ["core-005"], armor: 1 },
+    });
+
+    s.play(COMBO_FODDER, { targets: [{ pick: "hero", player: "p2" }] });
+
+    expect(damageTo(s, "hero-p2")).toEqual([3]);
+    expect(healedOn(s, "hero-p1")).toEqual([3]);
+    s.expectHealth("p1", 23);
   });
 
   it("§5.2 the flag still sets, so a counting effect sees a Radiant card", () => {

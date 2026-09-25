@@ -1,5 +1,7 @@
 // #24 Efficiency Dividend — SPEC §8.2, BUILD M4-T4 row 24: "X chosen with the play, bounded by
-// mana (R81); three modes; next-turn mana +floor(X/2); returns to hand; radiant uses X+1".
+// mana (R81); three modes; next-turn mana +floor(X/2); returns to hand". Radiant (R275: an X-cost
+// card's X is scaled) uses 2X: "deal 2X damage to a target; heal a target 4X; gain X mana next
+// turn", still for X paid. Each radiant mode is checked at X = 0 and at an odd and an even X.
 //
 // R81: X, the mode and the target all travel in the `play` action, so no fixture answers a prompt —
 // there is none, and `state.pending` is asserted to stay null.
@@ -52,7 +54,7 @@ describe("#24 Efficiency Dividend", () => {
     expect(decl?.max).toBe(1);
     expect(decl?.filter?.side).toBe("any");
     expect(decl?.filter?.of).toEqual(["unit", "hero"]);
-    // "Uses X+1" restates the arithmetic only, so both declarations are kept (§8 Conventions).
+    // "Uses 2X" restates the arithmetic only, so both declarations are kept (§8 Conventions).
     expect(radiant.modes).toEqual(base.modes);
     expect(radiant.targets).toEqual(base.targets);
   });
@@ -124,29 +126,93 @@ describe("#24 Efficiency Dividend", () => {
   });
 
   describe("radiant", () => {
-    it("the damage mode uses X+1", () => {
+    it("R275 the damage mode deals 2X: X = 2 deals 4, and costs 2", () => {
       const s = dividendIn("dividend-radiant-damage", true);
       s.play(DIVIDEND, { x: 2, modes: ["damage"], targets: [{ pick: "hero", player: "p2" }] });
 
-      // R65: X = 2 is what it cost; 3 is what it dealt.
-      s.expectHealth("p2", 27);
+      // R65: X = 2 is what it cost; 4 is what it dealt.
+      s.expectHealth("p2", 26);
       s.expectMana("p1", 2);
     });
 
-    it("the heal mode heals 2(X+1)", () => {
+    it("R275 the damage mode at an odd X: X = 3 deals 6", () => {
+      const s = dividendIn("dividend-radiant-damage-odd", true);
+      s.play(DIVIDEND, { x: 3, modes: ["damage"], targets: [{ pick: "hero", player: "p2" }] });
+
+      s.expectHealth("p2", 24);
+      s.expectMana("p1", 1);
+    });
+
+    it("R275 the damage mode at X = 0 deals nothing, for nothing", () => {
+      const s = dividendIn("dividend-radiant-damage-zero", true);
+      s.play(DIVIDEND, { x: 0, modes: ["damage"], targets: [{ pick: "hero", player: "p2" }] });
+
+      // 2 × 0 is 0, and R63 makes a 0 hit a non-event.
+      s.expectHealth("p2", 30);
+      s.expectMana("p1", 4);
+      expect(s.lastEvents.some((event) => event.type === "damage")).toBe(false);
+    });
+
+    it("R275 the damage mode can pick a unit: X = 1 deals 2 to it", () => {
+      const s = dividendIn("dividend-radiant-damage-unit", true);
+      const timmy = s.card(TIMMY);
+      s.play(DIVIDEND, { x: 1, modes: ["damage"], targets: [{ pick: "instance", instanceId: timmy.id }] });
+
+      s.expectStats(timmy, { health: 1, maxHealth: 3 });
+    });
+
+    it("R275 the heal mode heals 4X: X = 2 heals 8", () => {
       const s = dividendIn("dividend-radiant-heal", true, 20);
       s.play(DIVIDEND, { x: 2, modes: ["heal"], targets: [{ pick: "hero", player: "p1" }] });
 
-      s.expectHealth("p1", 26);
+      s.expectHealth("p1", 28);
     });
 
-    it("the mana mode gains floor((X+1)/2)", () => {
+    it("R275 the heal mode at an odd X: X = 3 heals 12", () => {
+      const s = dividendIn("dividend-radiant-heal-odd", true, 10);
+      s.play(DIVIDEND, { x: 3, modes: ["heal"], targets: [{ pick: "hero", player: "p1" }] });
+
+      s.expectHealth("p1", 22);
+    });
+
+    it("R275 the heal mode at X = 0 heals nothing", () => {
+      const s = dividendIn("dividend-radiant-heal-zero", true, 20);
+      s.play(DIVIDEND, { x: 0, modes: ["heal"], targets: [{ pick: "hero", player: "p1" }] });
+
+      s.expectHealth("p1", 20);
+    });
+
+    it("R275 the mana mode gains X at an odd X: X = 3 gains 3, where the base face gains 1", () => {
       const s = dividendIn("dividend-radiant-mana", true);
       s.play(DIVIDEND, { x: 3, modes: ["mana"] });
 
-      // floor(4/2) = 2, where the base face gains floor(3/2) = 1.
-      expect(s.state.players.p1.mana.nextTurnMod).toBe(2);
-      expect(nextRefresh(s)).toBe(6);
+      // floor(2X/2) = X: no rounding is left on the radiant face.
+      expect(s.state.players.p1.mana.nextTurnMod).toBe(3);
+      expect(nextRefresh(s)).toBe(MAX_MANA + 3);
+    });
+
+    it("R275 the mana mode at X = 1 gains 1, where the base face rounds it away", () => {
+      const s = dividendIn("dividend-radiant-mana-one", true);
+      s.play(DIVIDEND, { x: 1, modes: ["mana"] });
+
+      expect(s.state.players.p1.mana.nextTurnMod).toBe(1);
+      expect(nextRefresh(s)).toBe(MAX_MANA + 1);
+    });
+
+    it("R275 the mana mode at an even X: X = 4 gains 4", () => {
+      const s = dividendIn("dividend-radiant-mana-even", true);
+      s.play(DIVIDEND, { x: 4, modes: ["mana"] });
+
+      expect(s.state.players.p1.mana.nextTurnMod).toBe(4);
+      expect(nextRefresh(s)).toBe(MAX_MANA + 4);
+    });
+
+    it("R275 the mana mode at X = 0 gains nothing", () => {
+      const s = dividendIn("dividend-radiant-mana-zero", true);
+      s.play(DIVIDEND, { x: 0, modes: ["mana"] });
+
+      expect(s.state.players.p1.mana.nextTurnMod).toBe(0);
+      expect(nextRefresh(s)).toBe(MAX_MANA);
     });
 
     it("the return to hand is kept (§8 Conventions)", () => {

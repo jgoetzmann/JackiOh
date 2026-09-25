@@ -410,6 +410,71 @@ describe("aiPlaysOutTurn (§10.7, R44, R84, #96)", () => {
     expect(JSON.stringify(secondEvents)).toBe(JSON.stringify(firstEvents));
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
   });
+
+  // R283, R59: Radiant #96 destroys the attacker it stopped and then hands the turn over, and the
+  // destroyed attacker is collected "before the AI takes the turn". `destroy` only marks, so the
+  // effect's `settleFirst` runs the state check between the lockout and the AI's first action.
+  // Another player's open prompt stops the playout before it acts (§9.3), which leaves exactly the
+  // check to observe.
+  function markedBoard(seed: string): { state: GameState; sink: ReturnType<typeof sinkFor>; marked: CardInstance } {
+    const state = busyBoard(seed);
+    const marked = cardAt(state, slot("p1", "units", 1)) as CardInstance;
+    marked.markedDestroyed = true;
+    const sink = sinkFor(state);
+    openPrompt(sink, {
+      player: "p2",
+      kind: "target",
+      prompt: "not yours",
+      options: modeOptions(["x", "y"]),
+      resume: inertResume,
+    });
+    return { state, sink, marked };
+  }
+
+  it("R283 settleFirst collects a marked unit before the AI's first action; the default leaves it for that action", () => {
+    const settled = markedBoard("ai-settle-first");
+    aiPlaysOutTurn({ player: "enemy", settleFirst: true }).apply(makeContext(settled.sink, null, { controller: "p2" }));
+
+    expect(settled.state.players.p1.aiTurn).toBe(true);
+    expect(cardAt(settled.state, slot("p1", "units", 1))).toBeNull();
+    expect(settled.state.players.p1.graveyard.map((card) => card.id)).toContain(settled.marked.id);
+    expect(eventsOfType(settled.sink.events, "destroyed").map((event) => event.instanceId)).toEqual([settled.marked.id]);
+    expect(eventsOfType(settled.sink.events, "cardPlayed")).toEqual([]);
+
+    const plainRun = markedBoard("ai-settle-first");
+    aiPlaysOutTurn({ player: "enemy" }).apply(makeContext(plainRun.sink, null, { controller: "p2" }));
+
+    // Off by default: the mark is still waiting for the next check, which the AI's own first
+    // action would have run.
+    expect(cardAt(plainRun.state, slot("p1", "units", 1))?.id).toBe(plainRun.marked.id);
+    expect(eventsOfType(plainRun.sink.events, "destroyed")).toEqual([]);
+  });
+
+  it("R283 settleFirst ends the effect when its check ends the game: the AI takes no action", () => {
+    const state = busyBoard("ai-settle-first-over");
+    state.players.p2.hero.health = 0;
+    const events: GameEvent[] = [];
+    const sink = sinkFor(state, events);
+
+    aiPlaysOutTurn({ player: "self", settleFirst: true }).apply(makeContext(sink, null, { controller: "p1" }));
+
+    expect(state.result).toEqual({ winner: "p1", reason: "hero-death" });
+    expect(eventsOfType(events, "cardPlayed")).toEqual([]);
+    expect(eventsOfType(events, "turnEnded")).toEqual([]);
+  });
+
+  it("R283 settleFirst: false is the default, and a board with nothing to collect plays out the same either way", () => {
+    const runs = [undefined, false, true].map((settleFirst) => {
+      const state = busyBoard("ai-settle-first-same");
+      const events: GameEvent[] = [];
+      const effect = settleFirst === undefined ? aiPlaysOutTurn({ player: "self" }) : aiPlaysOutTurn({ player: "self", settleFirst });
+      effect.apply(makeContext(sinkFor(state, events), null, { controller: "p1" }));
+      return JSON.stringify({ state, events });
+    });
+
+    expect(runs[1]).toBe(runs[0]);
+    expect(runs[2]).toBe(runs[0]);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -110,6 +110,8 @@ Draw 5 cards and heal 5 life to your hero
 
 **Immutable**
 
+**Divine Shield**
+
 &nbsp;
 
 **(2) Moths to the Flame Unit, Core, Common, \#9**
@@ -160,13 +162,13 @@ Draw 5 cards and heal 5 life to your hero
 
 \~\~\~
 
-5/9
+6/9
 
 **Cry:** Summon a copy of this unit
 
 &nbsp;
 
-**(3) Jlockeed Shredder-10 Core, Unit, Common, \#13**
+**(3) Jlockeed Shredder-10 Core, Unit, Jlockeed, Common, \#13**
 
 8/10
 
@@ -180,7 +182,7 @@ Draw 5 cards and heal 5 life to your hero
 
 &nbsp;
 
-**(4) Jlockeed’s Weapons Core, Field Spell, Common, \#14**
+**(4) Jlockeed’s Weapons Core, Field Spell, Jlockeed, Common, \#14**
 
 Your units gain **\+4 Attack**, **Rush**, and **Firstrike**
 
@@ -334,11 +336,11 @@ Gain Floor(X / 2\) mana next turn
 
 Choose one:
 
-Deal (X+1) Damage
+Deal X \* 2 Damage
 
-Heal (X+1) \* 2 Health
+Heal X \* 4 Health
 
-Gain Floor((X+1) / 2\) mana next turn
+Gain X mana next turn
 
 &nbsp;
 
@@ -350,7 +352,7 @@ Gain Floor((X+1) / 2\) mana next turn
 
 \~\~\~
 
-7/7
+14/14
 
 **Indestructible**&nbsp;
 
@@ -422,7 +424,7 @@ Fib(X) defined as (0,1,1,2,3,5,8,13,21,34,55,89) where Fib(0) \= 0
 
 **End of Turn**: Return this to your hand with 1 extra cost
 
-Deal Fib(\[cost\] \+ 2\) damage
+Deal Fib(\[cost\] \+ 3\) damage
 
 Fib(X) defined as (0,1,1,2,3,5,8,13,21,34,55,89) where Fib(0) \= 0
 
@@ -454,7 +456,7 @@ After you play a card, shuffle 3 copies of the card into your deck
 
 \~\~\~
 
-After you play a card, shuffle 3 copies of the card into your deck (one of them is **radiant**)
+After you play a card, shuffle 3 **radiant** copies of the card into your deck
 
 &nbsp;
 
@@ -510,6 +512,10 @@ Reduce the cost of the next **Spell** you cast this turn by (2).
 
 Your cards gain **“Combo X, deal X damage to your opponent”**
 
+\~\~\~
+
+Your cards gain **“Combo X, deal 2X damage to your opponent”**
+
 &nbsp;
 
 **(0) Recycling Initiative Spell, Core, Rare, \#39**
@@ -520,7 +526,7 @@ At the **End of your Turn** add a copy of all OTHER cards you played this turn b
 
 \~\~\~
 
-At the **End of your Turn** add a copy of all OTHER cards you played this turn back to your hand, they cost (1) less
+At the **End of your Turn** add a **radiant** copy of all OTHER cards you played this turn back to your hand, they cost (1) less
 
 **Exile** this on play
 
@@ -532,7 +538,7 @@ At the **End of your Turn** add a copy of all OTHER cards you played this turn b
 
 \~\~\~
 
-**Start of your turn** deal \[number of cards in exile \+ 3\] damage to your opponent then exile the bottom card of your deck
+**Start of your turn** deal \[number of cards in exile \* 2\] damage to your opponent then exile the bottom card of your deck
 
 &nbsp;
 
@@ -652,7 +658,7 @@ Choose an enemy **Permanent,** it comes under your control, it becomes radiant
 
 **Divine Shield**
 
-**Cry:** choose an enemy permanent, at the **start of your next turn**, it comes under your control
+**Cry:** choose an enemy permanent, at the **start of your next turn**, it comes under your control and becomes **Radiant**
 
 &nbsp;
 
@@ -736,7 +742,7 @@ Draw 2 Cards
 
 16/16
 
-**Cry**: Add 2 random (3) or (4) cost **Units** to your hand. They cost (0).
+**Cry**: Add 2 random **Radiant** (3) or (4) cost **Units** to your hand. They cost (0).
 
 &nbsp;
 
@@ -846,7 +852,7 @@ When your opponent plays a card, fill your board with **Rush Tokens**. If it’s
 
 4/8
 
-**Cry:** Choose a **Unit** on the Field. Summon a **Vanilla** copy of it.
+**Cry:** Choose any **Unit** on the Field. Summon a **Vanilla** copy of it.
 
 &nbsp;
 
@@ -938,7 +944,7 @@ Your non-**Spikey Pillow** units have **\-2 attack**
 
 2/4
 
-**Cry:** Summon a random **Trap** in this lane.
+**Cry:** Summon a random **Radiant** **Trap** in this lane.
 
 &nbsp;
 
@@ -952,7 +958,7 @@ Your non-**Spikey Pillow** units have **\-2 attack**
 
 10/10
 
-**Cry:** deal 6 damage, increased to 12 if you are below 10 health
+**Cry:** deal 8 damage, increased to 16 if you are below 10 health
 
 &nbsp;
 
@@ -972,7 +978,7 @@ Deal 2 damage, increased by 1 for each missing 5 life and card in your exile&nbs
 
 \~\~\~
 
-Deal 4 damage, increased by 1 for each missing 3 life and card in your exile
+Deal 4 damage, increased by 1 for each missing 3 life and by 2 for each card in your exile
 
 &nbsp;
 
@@ -1010,7 +1016,7 @@ You cannot take more than 5 damage in a single instance
 
 You cannot take more than 3 damage in a single instance
 
-**Cry:** Draw 1
+**Cry:** Draw 2
 
 &nbsp;
 
@@ -1098,6 +1104,12 @@ The next spell your play gains **Echo \+2**
 
 Summon 2 **Rush Tokens**. Give each of them 2 random **Keywords**.
 
+\~\~\~
+
+**Discard 2**
+
+Summon 2 **Radiant Rush Tokens**. Give each of them 2 random **Keywords**.
+
 &nbsp;
 
 **(1) Radiant Saintess Unit, Core, Human, Legendary, \#81**
@@ -1112,7 +1124,7 @@ Summon 2 **Rush Tokens**. Give each of them 2 random **Keywords**.
 
 **Reborn**
 
-**Death**: Make all your **Units** **Radiant**
+**Death**: Make all your **Units** and every card in your hand **Radiant**
 
 &nbsp;
 
@@ -1168,6 +1180,8 @@ Can’t attack
 
 2/2
 
+**Taunt**
+
 **Death:** Steal all opponent’s **Units**.
 
 &nbsp;
@@ -1185,6 +1199,8 @@ Then, add a **Pocket Chaos** to your opponent’s hand
 Choose one: Swap your HP with your opponent, Swap your board with your opponent, Swap your deck with your opponent.
 
 Then, you may add a **Pocket Chaos** to your opponent’s hand
+
+**Draw** 1
 
 **Exile** this
 
@@ -1236,7 +1252,7 @@ Shuffle a **Radiant** **CN-Virus** into your opponent’s deck
 
 \~\~\~
 
-**Cast on Draw:** Take 1 damage, shuffle three copies of this into your deck
+**Cast on Draw:** Take 2 damage, shuffle three copies of this into your deck
 
 &nbsp;
 
@@ -1326,6 +1342,10 @@ S: Trigger E-A again
 
 Deal 2 damage, **Lifesteal**
 
+\~\~\~
+
+Deal 4 damage, **Lifesteal**
+
 &nbsp;
 
 **(4) Genn’s Greed Spell, Core, Legendary, \#94**
@@ -1375,11 +1395,21 @@ Gain 6 mana
 
 &nbsp;**Rush, Lifesteal, Divine Shield, Firststrike**
 
+\~\~\~
+
+20/20
+
+**Charge, Lifesteal, Divine Shield, Firststrike**
+
 &nbsp;
 
 **(1) My Pawn Trap, Core, Mythic, \#96**
 
 Activate when your opponent makes a lethal attack. Cancel that attack and an AI plays the rest of their turn randomly.
+
+\~\~\~
+
+Activate when your opponent makes a lethal attack. Cancel that attack, destroy the attacker, and an AI plays the rest of their turn randomly.
 
 &nbsp;
 
@@ -1437,7 +1467,7 @@ Also activates immediately when played.
 
 \~\~\~
 
-**Discover** three units, **fuse** them together, the fused card cost (0)
+**Discover** three units, **fuse** them together, the fused card cost (0), **Draw** 1
 
 &nbsp;
 
@@ -1451,7 +1481,7 @@ Costs (1) less per every card, draw, played, destroyed, or exiled this game
 
 \~\~\~
 
-10/10
+20/20
 
 **Charge**
 

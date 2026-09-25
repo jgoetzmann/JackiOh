@@ -10,6 +10,8 @@
 
 **Rush**
 
+**Cleave**
+
 **(1) Felinor Token Unit, Token, Felinor, Core, Common**
 
 1/1
@@ -17,6 +19,8 @@
 ~~~
 
 2/2
+
+**Rush**
 
 **(1) Sheep Token Unit, Token, Core, Common**
 

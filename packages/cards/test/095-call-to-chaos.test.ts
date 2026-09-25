@@ -3,7 +3,8 @@
 //
 // BUILD M4-T4 row 95: "Each of the 10 effects has a test; recursion stops at 20 (R28); radiant
 // rolls the recursion plus one of the other 9 effects (R28)".
-// BUILD M4-T4 row 95.1: "10/10 with all four keywords".
+// BUILD M4-T4 row 95.1: "10/10 with all four keywords". R276 has since given it a Radiant face:
+//                        20/20 "Charge, Lifesteal, Divine Shield, First Strike" (R275).
 //
 // HOW AN EFFECT IS FORCED. §8.4 rolls one of ten, so a test that wants a named effect has to pin
 // the roll. `subsystems.rollChaosEffects` is the roll and it is a pure function of the rng, whose
@@ -36,7 +37,7 @@ import { base as golemBase, radiant as golemRadiant } from "../src/scripts/095-1
 import { scenario, type Scenario, type SideSetup } from "./_harness";
 
 const CHAOS = "core-095"; // Spell, 4, Legendary, tag "Call to Chaos"
-const GOLEM = "core-095-1"; // #95.1, Unit token, 10/10
+const GOLEM = "core-095-1"; // #95.1, Unit token, 10/10 → 20/20
 const RUSH_TOKEN = "core-t-rush";
 
 /** Fillers with known data: #19 is a 3-cost 9/9 Taunt Unit, #36 a 1-cost Spell, #53 a 3-cost Unit. */
@@ -47,6 +48,9 @@ const RENO = "core-053";
 const FAUCI = "core-091";
 /** A radiant #19 is 18/18, which is lethal to a 10/10 whose Divine Shield is already spent. */
 const BIG_MENACE = { def: MENACE, radiant: true } as const;
+/** #81 Radiant Saintess (2/2, Reborn; Death: your other units become Radiant) and #44 True Strike. */
+const SAINTESS = "core-081";
+const TRUE_STRIKE = "core-044";
 
 const SEED = "chaos-card";
 
@@ -277,7 +281,8 @@ describe("#95 Call to Chaos — base, the ten effects", () => {
       expect(token.radiant).toBe(true);
       expect(token.statsOverride, "no bespoke stats any more").toBeUndefined();
       s.expectStats(token, { attack: 6, health: 6, maxHealth: 6 });
-      expect(keywordsOf(s, token)).toContain("Rush");
+      // §7: the Radiant Rush Token prints Rush and Cleave (R275), and #95 grants nothing more.
+      expect(keywordsOf(s, token).sort()).toEqual(["Cleave", "Rush"]);
     }
   });
 
@@ -491,24 +496,65 @@ describe("#95 Call to Chaos — radiant", () => {
 // ---------------------------------------------------------------------------
 
 describe("#95.1 Chaos Golem", () => {
-  it("§7 is a 10/10 with all four keywords, on both faces (§8: no radiant form)", () => {
+  it("§7 the base face is a 10/10 with Rush, Lifesteal, Divine Shield and First Strike", () => {
+    const s = scenario({ p1: { field: [GOLEM], hand: [MENACE] } });
+    const golem = must(s.unit("p1", 1), "p1's Chaos Golem");
+    s.expectStats(golem, { attack: 10, health: 10, maxHealth: 10 });
+    expect(keywordsOf(s, golem).sort()).toEqual(["Divine Shield", "First Strike", "Lifesteal", "Rush"]);
+  });
+
+  it("R275 the radiant face is a 20/20 with Charge in Rush's place", () => {
     const s = scenario({
-      p1: { field: [GOLEM], hand: [MENACE] },
+      p1: { hand: [MENACE] },
       p2: { field: [{ def: GOLEM, radiant: true }] },
     });
-    for (const player of ["p1", "p2"] as const) {
-      const golem = must(s.unit(player, 1), `${player}'s Chaos Golem`);
-      s.expectStats(golem, { attack: 10, health: 10, maxHealth: 10 });
-      expect(keywordsOf(s, golem).sort()).toEqual(
-        ["Divine Shield", "First Strike", "Lifesteal", "Rush"].sort(),
-      );
-    }
-    // §8: "No radiant form" — the radiant script IS the base script and the catalog prints the same
-    // face twice, so a Radiant Chaos Golem differs by the §5.2 flag alone. There is no script at
-    // all: §10.4 layer 1 reads the stats and the four keywords straight off the def.
+    const golem = must(s.unit("p2", 1), "p2's Radiant Chaos Golem");
+    s.expectStats(golem, { attack: 20, health: 20, maxHealth: 20 });
+    expect(keywordsOf(s, golem).sort()).toEqual(["Charge", "Divine Shield", "First Strike", "Lifesteal"]);
+
+    // The difference is data on the catalog's two faces; there is no script on either (§10.4
+    // layer 1 reads the stats and keywords straight off the face the flag picks).
     expect(golemRadiant).toBe(golemBase);
     expect(golemBase).toEqual({});
-    expect(cardDef(GOLEM).radiant).toEqual(cardDef(GOLEM).base);
+    expect(cardDef(GOLEM).radiant).not.toEqual(cardDef(GOLEM).base);
+  });
+
+  it("R275 a Chaos Golem made Radiant the turn it arrives is a 20/20 that may Charge the hero", () => {
+    // #95 summons a base Golem into lane 1; a Saintess in lane 5 then dies to True Strike and her
+    // Death makes it Radiant on the field (R22: the base layer swaps, keywords apply at once).
+    const s = chaos("golem", {
+      p1: side({ hand: [CHAOS, TRUE_STRIKE, MENACE], field: [{ def: SAINTESS, lane: 5 }] }),
+      p2: { hand: [MENACE], health: 30 },
+    });
+    const golem = must(s.unit("p1", 1), "the summoned Chaos Golem");
+    expect(golem.defId).toBe(GOLEM);
+    expect(golem.radiant).toBe(false);
+    // Rush alone: the hero is out of reach on the turn it arrived.
+    expect(() => s.attack(golem, "hero")).toThrow();
+
+    const saintess = must(s.unit("p1", 5), "the Saintess");
+    s.play(TRUE_STRIKE, { targets: [{ pick: "instance", instanceId: saintess.id }] });
+
+    expect(s.card(golem).radiant).toBe(true);
+    s.expectStats(golem, { attack: 20, health: 20, maxHealth: 20 });
+    expect(keywordsOf(s, s.card(golem))).toContain("Charge");
+    expect(keywordsOf(s, s.card(golem))).not.toContain("Rush");
+
+    // Charge lifts summoning sickness for the hero too.
+    s.attack(golem, "hero");
+    s.expectHealth("p2", 10);
+  });
+
+  it("R275 the Radiant Golem's Lifesteal heals what its 20 dealt", () => {
+    const s = scenario({
+      p1: { field: [{ def: GOLEM, radiant: true }], hand: [MENACE], health: 5 },
+      p2: { health: 30 },
+    });
+    const golem = must(s.unit("p1", 1), "the Radiant Golem");
+
+    s.attack(golem, "hero");
+    s.expectHealth("p2", 10); // 30 − 20
+    s.expectHealth("p1", 25); // 5 + the 20 dealt
   });
 
   it("§6.1 Rush: the turn it arrives it may attack a unit but not the hero", () => {

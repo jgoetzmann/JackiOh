@@ -3,22 +3,17 @@
 //
 // BUILD M4-T4 row 99: "Two Discovers, fused def in `transientDefs` with both forms fused, no
 // on-field target and the ingredients' shared type (R77), cost 0 in hand, making it Radiant later
-// switches to the fused radiant form; radiant three".
+// switches to the fused radiant form; radiant three, then draw 1".
 //
-// KNOWN FAILING, AND WHY. `src/scripts/099-craft-a-card.ts`'s last step still returns `[]`. Its
-// header explains what it was waiting for — a Fuse that is an `Effect` rather than a function over
-// an `EngineSink`, since `subsystems.fuse` is the latter and a card file may not call it (CLAUDE.md
-// rule 5), and one that takes catalog ids, since `FuseArgs.ingredients` is `readonly CardInstance[]`
-// while a Discover hands over def ids. That verb has since landed: `@jackioh/engine/effects` now
-// exports `fuseCards({ defIds, instanceIds, targetInstanceId, toHand })`, exactly the shape #99's
-// header asked for. What is left is the one line the script's own comment already writes out:
+//   Base:    "Discover a Unit, then Discover another; Fuse them; the result costs 0 and goes to
+//            your hand"
+//   Radiant: "Discover a Unit, then Discover another, then a third; Fuse them; the result costs 0
+//            and goes to your hand; draw 1" — §8's cell "Three Discovers; then draw 1" (R275). The
+//            draw follows the fuse.
 //
-//     return [fuseCards({ defIds: [...picks], toHand: "self" })]
-//
-// Until that lands, every `it` in "the fused result" fails — written for the card §8.5 describes,
-// not for the card that exists. The Discover chain passes today. R102's "the whole verb does
-// nothing at all" guards are unreachable from a #99 play (it always brings two or three definitions
-// and a destination hand), so they are asserted against `subsystems.fuse`, where that rule lives.
+// R102's "the whole verb does nothing at all" guards are unreachable from a #99 play (it always
+// brings two or three definitions and a destination hand), so they are asserted against
+// `subsystems.fuse`, where that rule lives.
 
 import { describe, expect, it } from "vitest";
 import type { CardDef, GameEvent, Keyword } from "@jackioh/shared";
@@ -46,6 +41,8 @@ const SPARE = "core-053";
 const MENACE = "core-019";
 /** #11 Tempo Timmy, a 1-cost Unit, for a plain on-field ingredient. */
 const TIMMY = "core-011";
+/** #26 Glowy Jelly Bean: "Choose a card in your hand; it becomes Radiant" — a real Make Radiant. */
+const GLOWY = "core-026";
 
 function must<T>(value: T | null | undefined, what: string): T {
   if (value === null || value === undefined) throw new Error(`expected ${what}`);
@@ -101,11 +98,23 @@ function fusedDefOf(state: GameState): CardDef {
   const defs = Object.values(state.transientDefs);
   expect(
     defs.length,
-    "R77: Fuse writes one transient definition into `state.transientDefs`; #99's last step still " +
-      "returns [] — the effects barrel now exports `fuseCards`, so the script needs the one line " +
-      'its own comment writes out: return [fuseCards({ defIds: [...picks], toHand: "self" })]',
+    "R77: a #99 resolution fuses its Discovered Units once, into one transient definition in " +
+      "`state.transientDefs`",
   ).toBe(1);
   return must(defs[0], "the fused definition");
+}
+
+/** R77: a fused face sums its ingredients' attack and health on that same face. */
+function faceSums(picks: readonly string[], key: "base" | "radiant"): { attack: number; health: number } {
+  return picks
+    .map((id) => cardDef(id)[key])
+    .reduce(
+      (total, face) => ({
+        attack: total.attack + (face.attack ?? 0),
+        health: total.health + (face.health ?? 0),
+      }),
+      { attack: 0, health: 0 },
+    );
 }
 
 function keywordKinds(keywords: readonly Keyword[]): string[] {
@@ -118,7 +127,7 @@ function sinkFor(s: Scenario): EngineSink {
 }
 
 // ---------------------------------------------------------------------------
-// The card and the Discover chain (§8.5, §10.6, R113). This half passes today.
+// The card and the Discover chain (§8.5, §10.6, R113).
 // ---------------------------------------------------------------------------
 
 describe("#99 Craft a Card — the Discover chain", () => {
@@ -135,7 +144,8 @@ describe("#99 Craft a Card — the Discover chain", () => {
   it("§10.9 both faces are a Cry plus a resume table, and the radiant face has one more step", () => {
     expect(Object.keys(craftBase).sort()).toEqual(["cry", "resume"]);
     expect(Object.keys(craftRadiant).sort()).toEqual(["cry", "resume"]);
-    // §8.5's radiant cell restates only how many Discovers there are (§8 Conventions).
+    // §8.5's radiant cell, "Three Discovers; then draw 1": one more Discover step, and the draw
+    // rides the last one (after the fuse), so it adds no step of its own.
     expect(Object.keys(craftBase.resume ?? {})).toHaveLength(2);
     expect(Object.keys(craftRadiant.resume ?? {})).toHaveLength(3);
   });
@@ -231,7 +241,7 @@ describe("#99 Craft a Card — the Discover chain", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The fused result (R77, R102). FAILING: `fuseCards` is missing from the effects barrel.
+// The fused result (R77, R102).
 // ---------------------------------------------------------------------------
 
 describe("#99 Craft a Card — the fused result (R77, R102)", () => {
@@ -293,21 +303,13 @@ describe("#99 Craft a Card — the fused result (R77, R102)", () => {
       "the crafted card in hand",
     );
 
-    const sumOf = (key: "base" | "radiant"): { attack: number; health: number } =>
-      picks
-        .map((id) => cardDef(id)[key])
-        .reduce(
-          (total, face) => ({
-            attack: total.attack + (face.attack ?? 0),
-            health: total.health + (face.health ?? 0),
-          }),
-          { attack: 0, health: 0 },
-        );
-
-    s.expectStats(card, { attack: sumOf("base").attack, maxHealth: sumOf("base").health });
+    s.expectStats(card, { attack: faceSums(picks, "base").attack, maxHealth: faceSums(picks, "base").health });
     // §5.2 is a flag on the instance, so the same card read as Radiant reads the fused radiant face.
     s.card(card).radiant = true;
-    s.expectStats(card, { attack: sumOf("radiant").attack, maxHealth: sumOf("radiant").health });
+    s.expectStats(card, {
+      attack: faceSums(picks, "radiant").attack,
+      maxHealth: faceSums(picks, "radiant").health,
+    });
   });
 
   it("R77 the crafted card is playable, and it is the fused card that lands", () => {
@@ -336,17 +338,41 @@ describe("#99 Craft a Card — the fused result (R77, R102)", () => {
     expect(eventsOf(s, "enteredGraveyard").map((event) => event.defId)).toEqual([CRAFT]);
   });
 
-  it("§8.5 radiant fuses all three picks into one card", () => {
-    const { s, picks } = craft({ radiantFace: true });
+  it("§8.5, R77 radiant fuses all three picks into one card, both faces summed over the three", () => {
+    // #26 in hand, and the mana for it after #99, to make the crafted card Radiant by a real play.
+    const { s, picks } = craft({ radiantFace: true, p1: { hand: [GLOWY], library: [TIMMY], mana: 8 } });
     expect(picks).toHaveLength(3);
     const fused = fusedDefOf(s.state);
     const ingredients = picks.map((id) => cardDef(id));
 
     expect(fused.name).toBe(ingredients.map((def) => def.name).join(" + "));
-    expect(fused.base.attack).toBe(ingredients.reduce((sum, def) => sum + (def.base.attack ?? 0), 0));
+    // R77: the base form sums the base faces and the radiant form the radiant faces, all three of
+    // each, and each unions its own faces' keywords.
+    for (const key of ["base", "radiant"] as const) {
+      const sums = faceSums(picks, key);
+      expect(fused[key].attack, `the fused ${key} attack`).toBe(sums.attack);
+      expect(fused[key].health, `the fused ${key} health`).toBe(sums.health);
+      const kinds = keywordKinds(fused[key].keywords);
+      for (const def of ingredients) {
+        for (const kind of keywordKinds(def[key].keywords)) expect(kinds).toContain(kind);
+      }
+    }
+
+    // A fresh, non-Radiant hand card at 0 (R77), even from the Radiant face.
     const crafted = s.hand("p1").filter((card) => card.defId === fused.id);
     expect(crafted).toHaveLength(1);
-    expect(effectiveCost(s.state, must(crafted[0], "the crafted card"))).toBe(0);
+    const card = must(crafted[0], "the crafted card");
+    expect(card.radiant).toBe(false);
+    expect(effectiveCost(s.state, card)).toBe(0);
+    s.expectStats(card, { attack: faceSums(picks, "base").attack, maxHealth: faceSums(picks, "base").health });
+
+    // Made Radiant in hand, it reads the three-way fused radiant face.
+    s.play(GLOWY, { targets: [{ pick: "instance", instanceId: card.id }] });
+    expect(s.card(card).radiant).toBe(true);
+    s.expectStats(card, {
+      attack: faceSums(picks, "radiant").attack,
+      maxHealth: faceSums(picks, "radiant").health,
+    });
   });
 
   it("R4 the crafted card goes through §2.4's pipeline and takes the slot #99 vacated", () => {
@@ -360,6 +386,48 @@ describe("#99 Craft a Card — the fused result (R77, R102)", () => {
     expect(s.hand("p1")).toHaveLength(HAND_CAP);
     expect(s.hand("p1").filter((card) => card.defId === fused.id)).toHaveLength(1);
     expect(eventsOf(s, "burned")).toHaveLength(0);
+  });
+
+  it("the base face draws nothing after the fusion", () => {
+    const { s } = craft({ p1: { library: [TIMMY, TIMMY], mana: 8 } });
+    fusedDefOf(s.state);
+    expect(eventsOf(s, "drawn")).toHaveLength(0);
+    expect(s.pile("p1", "library")).toHaveLength(2);
+  });
+});
+
+describe("#99 Craft a Card — radiant's draw (R275)", () => {
+  it("R275 draws 1 once the fused card has gone to your hand", () => {
+    const { s } = craft({ radiantFace: true, p1: { library: [TIMMY, MENACE], mana: 8 } });
+    const fused = fusedDefOf(s.state);
+
+    // The fuse, then the draw: the top of the library, and only that card.
+    const types = s.events.map((event) => event.type);
+    const fusedAt = types.indexOf("fused");
+    const drawnAt = types.indexOf("drawn");
+    expect(fusedAt).toBeGreaterThanOrEqual(0);
+    expect(drawnAt).toBeGreaterThan(fusedAt);
+    expect(eventsOf(s, "drawn")).toHaveLength(1);
+    expect(s.hand("p1").map((card) => card.defId)).toEqual([SPARE, fused.id, TIMMY]);
+    expect(s.pile("p1", "library").map((card) => card.defId)).toEqual([MENACE]);
+  });
+
+  it("R4 the draw comes after the fusion, so with the hand full it is the draw that burns", () => {
+    // #99 leaves the hand to resolve, the crafted card takes that slot (above), and the hand is at
+    // HAND_CAP when the draw lands: the drawn card burns and the crafted one stays.
+    const filler = Array.from({ length: HAND_CAP - 2 }, () => SPARE);
+    const { s } = craft({ radiantFace: true, p1: { hand: filler, library: [TIMMY], mana: 8 } });
+    const fused = fusedDefOf(s.state);
+
+    expect(s.hand("p1")).toHaveLength(HAND_CAP);
+    expect(s.hand("p1").filter((card) => card.defId === fused.id)).toHaveLength(1);
+    expect(eventsOf(s, "burned").map((event) => event.defId)).toEqual([TIMMY]);
+  });
+
+  it("§2.4 an empty library makes the radiant draw a fatigue hit", () => {
+    const { s } = craft({ radiantFace: true, p1: { health: 20, mana: 8 } });
+    fusedDefOf(s.state);
+    s.expectHealth("p1", 19);
   });
 });
 

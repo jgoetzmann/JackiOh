@@ -12,6 +12,9 @@
 //
 // §7 and R37: the Bread Token is printed 0/0 and "always summoned as X/X through `statsOverride`",
 // so every assertion below reads the def id AND the stats: the def alone would pass at 0/0.
+//
+// The X a token would get if the turn ended now, its R280 `preview`, is proved in
+// test/preview.test.ts, with the face-down case (its controller alone sees it).
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";

@@ -1312,3 +1312,30 @@ enlarged preview opens only while both it and `CardSettings.hoverPreviews` allow
 mounts no second "Hover previews". A prompt's card option now draws its face with the view's live
 cost (`liveCost`), reads its cost out in its accessible name, and on a mulligan carries a Keep or
 Redraw stamp across the foot of the art window.
+
+## Addendum: the Radiant pass (2026-09-24, R277, R279, R280)
+
+The Radiant pass (`docs/radiant-audit.md`) supersedes this note's reading of a Radiant face in three
+places; the behaviours above that name `radiantText.ts`, `.cf-text-radiant` or a gold rule under the
+base text (B7, B14, and the model's `text: { base, radiant }`) describe the code before it.
+
+- **The catalog prints each Radiant face whole.** `radiant.text` is SPEC §8's Radiant cell read by
+  §8's Conventions and written out, so the client no longer reconstructs a face from shorthand:
+  `radiantText.ts` is gone, `FaceModel.text` is `{ full, marks }`, and the rules box prints `full`
+  in one `.cf-text-base` on both faces.
+- **What changed is marked, not ruled off** (R277). `cards/radiantDiff.ts` diffs the two catalog
+  texts word by word (case aside; a fused text line by line) and `RulesText` draws each marked
+  stretch as `.cf-mark`: a dark gold ink with a gold underline and highlighter band on the
+  parchment (4.4:1 or better on every stop of the Radiant rules box), the bright `--radiant` gold on
+  the dark inspect panels, bold and underlined everywhere so colour is not the only cue. A printed
+  Radiant unit's raised attack and health carry `data-grew`.
+- **References** (R279). `cards/refs.ts` finds the names a card's `refs` list in its text, with the
+  rule `packages/cards/test/references.test.ts` proves the catalog against, and `CardRef` wraps each
+  one: a `.cf-ref` mark everywhere, and inside `RefsInteractive` (the detail view, the touch sheet)
+  a focusable control whose tooltip (`card-ref-tooltip`, `role="tooltip"`, `aria-describedby`) is
+  the named card's printed face. The hover preview, which takes no pointer events, lists the named
+  faces in a "Mentions" column (`inspect-refs`). Defs come from `CardDefsProvider` (the deck
+  builder's route) or the board's `CatalogContext`.
+- **Computed values** (R280). A face in play takes `CardView.preview` through `game/faces.ts` into
+  `FaceModel.values`, and `RulesText` prints each as "{n}" (`.cf-value`) after its label. The
+  collection prints none.

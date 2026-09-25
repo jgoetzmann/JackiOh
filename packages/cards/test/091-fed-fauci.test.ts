@@ -9,6 +9,9 @@
 // Every test that crosses a turn boundary gives BOTH sides a card in hand: the engine auto-ends a
 // turn with nothing meaningful left on it (R82), which would otherwise cascade several turns
 // forward and fire the start-of-turn hook more than once.
+//
+// The mana it would give at its controller's next start of turn, its R280 `preview`, is proved in
+// test/preview.test.ts.
 
 import { describe, expect, it } from "vitest";
 import type { CardInstance } from "@jackioh/engine";

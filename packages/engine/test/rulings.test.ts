@@ -177,6 +177,21 @@ const CARDS_COIN_TEST = "../../cards/test/t-coin.test.ts";
 /** R247's proofs: the live-cards change — #82's options are numbers, and the client draws them so. */
 const CARDS_KYS_TRIAL_TEST = "../../cards/test/082-kys-trial.test.ts";
 const WEB_PROMPT_CARDS_TEST = "../../../apps/web/src/game/PromptCards.test.tsx";
+/** R275 to R283's proofs: the Radiant pass (docs/radiant-audit.md) and what it brought the client. */
+const CARDS_RADIANT_STANDARD_TEST = "../../cards/test/radiant-standard.test.ts";
+const CARDS_CATALOG_TEST = "../../cards/test/catalog.test.ts";
+const CARDS_REFERENCES_TEST = "../../cards/test/references.test.ts";
+const CARDS_PREVIEW_TEST = "../../cards/test/preview.test.ts";
+const CARDS_QUICKSTRIKER_TEST = "../../cards/test/038-quickstriker.test.ts";
+const CARDS_KPOP_FANATIC_TEST = "../../cards/test/050-kpop-fanatic.test.ts";
+const CARDS_MY_PAWN_TEST = "../../cards/test/096-my-pawn.test.ts";
+const WEB_RADIANT_DIFF_TEST = "../../../apps/web/src/cards/radiantDiff.test.ts";
+const WEB_FILTERS_TEST = "../../../apps/web/src/game/deckbuilder/filters.test.ts";
+const WEB_REFERENCES_TEST = "../../../apps/web/src/cards/references.test.tsx";
+const WEB_COMPUTED_TEST = "../../../apps/web/src/cards/computed.test.tsx";
+/** R278's schema half: migration 0010 lets the Jlockeed tag into `public.cards`. */
+const SERVER_SEED_CATALOG_TEST = "../../../apps/server/test/db/seed-catalog.test.ts";
+const SERVER_SEED_CATALOG_SPEC = "../../../apps/server/test/db/seed-catalog.spec.ts";
 /** R185, R186 and R188's proofs in `packages/ai`, and R187's in the practice worker's core (§9.9). */
 const AI_OBSERVE_TEST = "../../ai/test/observe.test.ts";
 /** The match actor's and the clock's own tests, which prove the concurrent mulligan's server half. */
@@ -2194,6 +2209,69 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // to mint is refused as malformed, and the expiry still times out the seat left.
   it("R270 refuses a client nonce with the server's own prefix", () => {
     provenIn(270, SERVER_ACTOR_TEST);
+  });
+
+  // Proved by radiant-standard.test.ts "R275 …": every Unit face's attack and health are at least
+  // twice its base face's, a 0 staying 0, with the exceptions the test names (none).
+  it("R275 holds every Radiant face to about twice its base face", () => {
+    provenIn(275, CARDS_RADIANT_STANDARD_TEST);
+  });
+
+  // Proved by radiant-standard.test.ts "R276 …": every catalog entry's Radiant face differs from its
+  // base face in text, stats or keywords, the five cards that had none included.
+  it("R276 gives every card a Radiant face that changes it", () => {
+    provenIn(276, CARDS_RADIANT_STANDARD_TEST);
+  });
+
+  // Proved by radiantDiff.test.ts "R277 …": the word diff marks exactly what the Radiant text adds,
+  // case aside, and every card's Radiant face renders it gold, bold and underlined.
+  it("R277 prints a Radiant face whole and marks what differs from the base", () => {
+    provenIn(277, WEB_RADIANT_DIFF_TEST);
+  });
+
+  // Proved by catalog.test.ts "R278 …" (the tag is on #13 and #14 alone), filters.test.ts
+  // "R278 …" (the deck builder offers and applies it), and the schema's half, migration 0010:
+  // seed-catalog.test.ts "R278 …" (every catalog tag is one the latest cards_tags_check admits),
+  // 01_schema_invariants.sql "=== CHECK 18 (R278): … ===" and seed-catalog.spec.ts "R278 …" (the
+  // real catalog seeds into Postgres, #13 and #14 tagged Jlockeed).
+  it("R278 tags #13 and #14 Jlockeed, a filter and nothing else", () => {
+    provenIn(
+      278,
+      CARDS_CATALOG_TEST,
+      WEB_FILTERS_TEST,
+      SERVER_SEED_CATALOG_TEST,
+      SERVER_SCHEMA_SQL,
+      SERVER_SEED_CATALOG_SPEC,
+    );
+  });
+
+  // Proved by references.test.ts "R279 …" in packages/cards (the map against the texts, both ways,
+  // and every token but The Coin named) and in apps/web (the reference opens the named face).
+  it("R279 links the cards and tokens a card's text names", () => {
+    provenIn(279, CARDS_REFERENCES_TEST, WEB_REFERENCES_TEST);
+  });
+
+  // Proved by preview.test.ts "R280 …" in the engine (where `viewFor` carries `preview` and where
+  // not), in packages/cards (each Core formula, and what it may read), and computed.test.tsx "R280 …"
+  // (the braces in hand and on the field, none in the collection).
+  it("R280 carries the number a formula comes to now in the view", () => {
+    provenIn(280, "preview.test.ts", CARDS_PREVIEW_TEST, WEB_COMPUTED_TEST);
+  });
+
+  // Proved by 038-quickstriker.test.ts "R281 …": the Radiant face's 2X is one damage instance.
+  it("R281 deals Radiant Quickstriker's 2X as one hit", () => {
+    provenIn(281, CARDS_QUICKSTRIKER_TEST);
+  });
+
+  // Proved by 050-kpop-fanatic.test.ts "R282 …": the rider lands only on a card the steal took.
+  it("R282 makes Radiant only a permanent Radiant Kpop Fanatic's steal took", () => {
+    provenIn(282, CARDS_KPOP_FANATIC_TEST);
+  });
+
+  // Proved by 096-my-pawn.test.ts "R283 …": the attacker is destroyed after the cancel and before
+  // the AI turn, and an Indestructible one is knocked down instead.
+  it("R283 has Radiant My Pawn destroy the attacker it stops", () => {
+    provenIn(283, CARDS_MY_PAWN_TEST);
   });
 
   // Proved by handicap.test.ts "R290 …" (AI_TUTORIAL's numbers, `heroHealth` stored only off 30 and

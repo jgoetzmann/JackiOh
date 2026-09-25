@@ -141,9 +141,14 @@ describe("CardDetail (B29)", () => {
   });
 
   it("B29 a card whose faces name no term and carry no keyword renders no glossary", () => {
-    const def = defOf("core-t-felinor");
-    expect(def.base.text).toBe("");
-    expect(def.radiant.text).toBe("");
+    // Every Core card now names a term or carries a keyword on one face (the Felinor Token's radiant
+    // face has Rush, R276), so the case is a made-up def with nothing on either face.
+    const def: CardDef = {
+      ...defOf("core-t-felinor"),
+      id: "x-blank",
+      base: { attack: 1, health: 1, keywords: [], text: "" },
+      radiant: { attack: 2, health: 2, keywords: [], text: "" },
+    };
     render(<CardDetail def={def} onClose={() => undefined} />);
     expect(within(screen.getByTestId(INSPECT_DETAIL)).queryByTestId(INSPECT_GLOSSARY)).toBeNull();
   });
@@ -178,21 +183,28 @@ describe("CardDetail (B29)", () => {
     expect(within(detail).getByTestId(INSPECT_CLOSE)).toBeInTheDocument();
   });
 
-  it("B29 a radiant face that only restates the base text is still the radiant face", () => {
-    const def = defOf("core-008");
+  it("B29 a radiant face whose text is the base text is still the radiant face, and marks only its stats", () => {
+    const def = defOf("core-012");
     expect(def.radiant.text).toBe(def.base.text);
     render(<CardDetail def={def} onClose={() => undefined} />);
     expect(faceRoot(INSPECT_FACE_RADIANT)).toHaveAttribute("data-radiant-face", "true");
-    // B7/B14: nothing new to say, so the radiant clause is not printed a second time.
-    expect(faceRoot(INSPECT_FACE_RADIANT).querySelector(".cf-text-radiant")).toBeNull();
+    expect(faceRoot(INSPECT_FACE_RADIANT).querySelector(".cf-mark")).toBeNull();
+    expect(faceRoot(INSPECT_FACE_RADIANT).querySelector('.cf-atk[data-grew="true"]')).not.toBeNull();
   });
 
-  it("B29 the base face never prints the radiant clause; the radiant face does when it says something new", () => {
+  it("R277 the base face prints its text; the radiant face prints its own whole text with the new words marked", () => {
     const def = defOf("core-043");
     expect(def.radiant.text).not.toBe(def.base.text);
     render(<CardDetail def={def} onClose={() => undefined} />);
-    expect(faceRoot(INSPECT_FACE_BASE).querySelector(".cf-text-radiant")).toBeNull();
-    expect(faceRoot(INSPECT_FACE_RADIANT).querySelector(".cf-text-radiant")).toHaveTextContent(def.radiant.text);
+    expect(faceRoot(INSPECT_FACE_BASE).querySelector(".cf-text-base")).toHaveTextContent(def.base.text);
+    expect(faceRoot(INSPECT_FACE_BASE).querySelector(".cf-mark")).toBeNull();
+    expect(faceRoot(INSPECT_FACE_RADIANT).querySelector(".cf-text-base")).toHaveTextContent(def.radiant.text);
+    expect([...faceRoot(INSPECT_FACE_RADIANT).querySelectorAll(".cf-mark")].map((mark) => mark.textContent)).toEqual([
+      "enemy",
+    ]);
+    // The reading-size Radiant line marks the same words.
+    const line = screen.getByTestId(INSPECT_DETAIL).querySelector(".inspect-rules-line--radiant");
+    expect([...(line?.querySelectorAll(".cf-mark") ?? [])].map((mark) => mark.textContent)).toEqual(["enemy"]);
   });
 
   it("B29 every catalog card opens a detail with its name on both faces and its #index in the meta", () => {
