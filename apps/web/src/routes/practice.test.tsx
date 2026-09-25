@@ -1661,7 +1661,7 @@ describe("R265 the practice mulligan: the human and the AI answer in either orde
         hostFactory={realHost}
         pacing={PRACTICE_PACING_FAST}
         account={ANONYMOUS}
-        loadLoadout={vi.fn(() => Promise.reject(new Error("no loadout")))}
+        loadDecks={vi.fn(() => Promise.reject(new Error("no saved decks")))}
       />,
     );
     const picker = await mulliganPicker();
@@ -1687,7 +1687,7 @@ describe("R265 the practice mulligan: the human and the AI answer in either orde
         hostFactory={realHost}
         pacing={{ firstActionMs: 0, actionGapMs: 0, promptAnswerMs: 0 }}
         account={ANONYMOUS}
-        loadLoadout={vi.fn(() => Promise.reject(new Error("no loadout")))}
+        loadDecks={vi.fn(() => Promise.reject(new Error("no saved decks")))}
       />,
     );
     const picker = await mulliganPicker();
