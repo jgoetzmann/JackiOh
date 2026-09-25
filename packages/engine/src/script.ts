@@ -1,7 +1,7 @@
 // The card-script contract (SPEC §10.9). A card file returns Effect[] from the effects library and
 // never touches state itself (CLAUDE.md rule 5); the engine applies the effects.
 
-import type { GameEvent, Keyword, ModeDecl, PlayerId, Selection, TargetDecl } from "@jackioh/shared";
+import type { GameEvent, Keyword, ModeDecl, PlayerId, PreviewValue, Selection, TargetDecl } from "@jackioh/shared";
 import type { Rng } from "./rng";
 import type { CardInstance, GameState } from "./state";
 import type { EventStay } from "./stays";
@@ -155,9 +155,12 @@ export type StaticFlags = {
   /** R30, R209: the Echo this permanent's rider gives the next Spell, read off its face now (#79). */
   echoGrant?: number;
   /**
-   * #38: while on the field, its controller's cards gain "Combo X: X damage to the enemy hero". A
-   * number is how many times the card grants it: a card fused from two Quickstrikers carries both
-   * texts (R102), and `true` is once.
+   * #38: while on the field, its controller's cards gain "Combo X: deal X damage to the enemy hero"
+   * (radiant 2X, dealt as one hit, R281). A number is how many times the card grants it: a card
+   * fused from two Quickstrikers carries both texts (R102), and `true` is once. The multiple of X
+   * each grant deals is not the flag's: it is `QUICKSTRIKER_COMBO_MULTIPLE` in `config.ts`, picked by
+   * the granting instance's own face, as #84's Armor is (`HERO_ARMOR`), so a base and a Radiant
+   * Quickstriker side by side deal X and then 2X.
    */
   quickstriker?: boolean | number;
   /**
@@ -187,18 +190,23 @@ export type StaticFlags = {
   heroArmor?: boolean | number;
 };
 
-/** R195: where `viewFor` is asking about a card. */
+/** R195, R280: where `viewFor` is asking about a card. */
 export type ConditionZone = "hand" | "field";
 
 /**
- * R195, §10.9: the argument of the Hearthstone "yellow glow" predicate. A hook is a PURE READ — it
- * never writes, never draws from `rng`, never returns effects — and must agree with the branch the
- * card's own resolution would take if it resolved now.
+ * R195, R280, §10.9: the argument of the two read-only hooks `viewFor` asks, the Hearthstone "yellow
+ * glow" predicate (`conditionMet`) and the number a formula comes to now (`preview`). A hook is a
+ * PURE READ — it never writes, never draws from `rng` (the context carries none), never returns
+ * effects — and must agree with what the card's own resolution would do if it resolved now.
  */
 export type ConditionContext = {
   state: GameState;
   self: CardInstance;
-  /** The card's controller. R195 only ever asks about the viewer's own cards, so this is the viewer. */
+  /**
+   * The card's controller. R195 only ever asks about the viewer's own cards, so there this is the
+   * viewer; R280 asks about any card the viewer may read, the other seat's public ones included, so
+   * there it is the card's controller and never the viewer as such.
+   */
   controller: PlayerId;
   /** Whether the Radiant face is the one running (§5.2). */
   radiant: boolean;
@@ -209,6 +217,21 @@ export type ConditionContext = {
 };
 
 export type ConditionHook = (ctx: ConditionContext) => boolean;
+
+/**
+ * R280, §10.9: the labelled numbers a card's formula comes to now — #31's Fib(cost+1), #70's sum
+ * over missing health and exile. Each `label` is the formula as the running face prints it, an
+ * exact substring of that face's catalog text (the client prints the value in braces right after
+ * the label's first occurrence, §10.10), and each `value` what it would come to if the card resolved
+ * now. The hook is asked with the same context `conditionMet` is (the running face, the card's
+ * controller, the zone, `yourTurn`) and is a PURE READ, built on the same function the card's own
+ * resolution computes the number with, so the two cannot disagree. It reads only what the card's
+ * controller may read (§9.1) — a hero's health, a pile's size, the plays this turn, its own cost and
+ * counters — never a library's contents or order or a hidden hand, because `viewFor` shows the
+ * result to every viewer who may read the card, the other seat included (`preview.ts`). An empty
+ * list is no preview at all.
+ */
+export type PreviewHook = (ctx: ConditionContext) => PreviewValue[];
 
 export type Script = {
   /** Ceaseless Void's computed cost (R55); everything else uses the printed cost. */
@@ -239,6 +262,8 @@ export type Script = {
   modes?: ModeDecl[];
   /** R195: the condition `viewFor` surfaces as `conditionActive` (§10.8). */
   conditionMet?: ConditionHook;
+  /** R280: the numbers the card's formula comes to now, which `viewFor` surfaces as `preview` (§10.8). */
+  preview?: PreviewHook;
 };
 
 export type CardScripts = { base: Script; radiant: Script };

@@ -60,8 +60,10 @@
 // Indestructible attacker is knocked down instead (R46) and a Reborn one comes back, and the attack
 // is cancelled either way (R44). The attacker is named by the id the declaration carries, so the
 // destroy is aimed at the stay it attacked from (R174) and fizzles if it has somehow left since.
-// R283 has the state check collect it before the AI takes the turn; the destroy is in its place in
-// the list, and settling the board before the playout's first action is `aiPlaysOutTurn`'s.
+// R283 has the state check collect it before the AI takes the turn: the destroy is in its place in
+// the list, and `aiPlaysOutTurn`'s `settleFirst` runs the check before the playout's first action,
+// so the AI acts from a board the attacker has already left. The base face has nothing to settle
+// and keeps the playout exactly as it was.
 
 import type { Effect, Script, TrapTrigger } from "@jackioh/engine";
 import { attackTargetOf, findInstance, subsystems } from "@jackioh/engine";
@@ -114,7 +116,7 @@ function myPawn(destroysAttacker: boolean): TrapTrigger {
     run: (ctx) => [
       cancelAttack(),
       ...(destroysAttacker ? destroyTheAttacker(ctx.event) : []),
-      aiPlaysOutTurn({ player: "enemy" }),
+      aiPlaysOutTurn({ player: "enemy", ...(destroysAttacker ? { settleFirst: true } : {}) }),
     ],
   };
 }

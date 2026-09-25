@@ -804,7 +804,8 @@ describe("R195 in SPEC §10.8, §10.9 and §11, and in the rulings index (B10)",
     expect(view).toContain("R195");
 
     const scripts = specBetween(spec, "### 10.9", "### 10.10");
-    expect(scripts).toMatch(/`Script = \{[^`]*\bmodes\?, conditionMet\? \}`/);
+    // R280 appended `preview?` after it.
+    expect(scripts).toMatch(/`Script = \{[^`]*\bmodes\?, conditionMet\?, preview\? \}`/);
     expect(scripts).toContain("`conditionMet` is R195's read-only predicate");
     expect(scripts).toContain("a card with `conditionMet` also tests both answers of it");
   });

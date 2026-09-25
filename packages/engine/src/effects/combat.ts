@@ -21,6 +21,7 @@ import { forceAttacksOn, type AttackTarget } from "../combat";
 import { summonedSoFar } from "../prompts";
 import type { Effect, EffectContext } from "../script";
 import type { CardInstance } from "../state";
+import { stateCheck } from "../stateCheck";
 import { exitMark } from "../stays";
 import { playOutTurn } from "../subsystems/aiPolicy";
 import { activeUnitsOf } from "../zones";
@@ -177,13 +178,24 @@ export function cancelAttack(): Effect {
  * new afterwards, so no effect after this one may hold a `CardInstance` it read before it — `#96`'s
  * list ends here for that reason.
  *
+ * `settleFirst` (R283, R59) runs the state check once the lockout is set and before the AI's first
+ * action. `destroy` only marks (§6.3), and the check that collects a mark runs after each whole
+ * effect (R59) — which, for a list that ends in this effect, is inside the playout's first
+ * `reduce`, after the AI has already chosen from a board that still holds the marked unit. Radiant
+ * #96 destroys the attacker it stopped and then hands the turn over, and R283 has the check collect
+ * that attacker "before the AI takes the turn", so its face asks for the check here; the destroy
+ * before this effect is whole, so this is R59's check between two effects, never one between the
+ * hits of one. A check that ends the game ends the effect with it. Off by default, so every other
+ * list, base #96's included, plays out exactly as before.
+ *
  * IMPORT CYCLE, deliberately static: this module → `../subsystems/aiPolicy` → `../reduce` →
  * `./playSteps` → `./effects` (the barrel) → this module. It is safe as written because the only
  * use of `playOutTurn` is inside `apply`, long after every module has evaluated, and because these
  * are hoisted function declarations under ESM live bindings. A lazy `import()` is not an option in
- * the first place: §9.3 and CLAUDE.md rule 4 ban a promise inside `reduce`.
+ * the first place: §9.3 and CLAUDE.md rule 4 ban a promise inside `reduce`. `../stateCheck` is
+ * imported the same way `./destroy` imports it.
  */
-export function aiPlaysOutTurn(args: { player?: PlayerSpec } = {}): Effect {
+export function aiPlaysOutTurn(args: { player?: PlayerSpec; settleFirst?: boolean } = {}): Effect {
   return {
     kind: "aiPlaysOutTurn",
     apply(ctx): void {
@@ -193,6 +205,10 @@ export function aiPlaysOutTurn(args: { player?: PlayerSpec } = {}): Effect {
       // and a lockout set then would fall on the other player's turn, which no My Pawn took (R152).
       if (ctx.state.active !== player || ctx.state.result !== null) return;
       ctx.state.players[player].aiTurn = true;
+      if (args.settleFirst === true) {
+        stateCheck(ctx);
+        if (ctx.state.result !== null) return;
+      }
       playOutTurn(ctx, player);
     },
   };

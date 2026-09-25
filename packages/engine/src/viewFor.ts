@@ -29,6 +29,10 @@
 //     one, #64 and #79 install theirs without one, and only #77 is a Cry. The caption is built from
 //     the modifier's own kind and numbers and never from its `sourceId`, so no card identity can
 //     leave through a badge.
+//   - R195, R280: two things the engine works out for a card ride on its view. `conditionActive`
+//     (the yellow glow) on the viewer's own cards only; `preview` (what a formula comes to now) on
+//     every card view the viewer may read — the viewer's hand, the top of a unit pile and a backrow
+//     card face-up to the viewer — and on no other (`preview.ts` owns that rule).
 //
 // Stats are never read off an instance: `layers.unitView` recomputes every stat and keyword on read
 // (§10.4), so no stored total ever reaches the client.
@@ -44,6 +48,7 @@ import type {
   PendingView,
   PlayerId,
   PlayerView,
+  PreviewValue,
   Row,
   SideView,
   UnitView,
@@ -68,6 +73,7 @@ import {
 } from "./state";
 import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
+import { previewOf } from "./preview";
 import { returnedAwaitingShuffle } from "./setup";
 import { isReserved, slotsOf } from "./zones";
 
@@ -237,6 +243,15 @@ function withCondition<T extends CardView>(view: T, active: boolean): T {
 }
 
 /**
+ * R280, §10.8: what a card's formula comes to now rides on its view as `preview`, or not at all —
+ * never `[]`. `preview.previewOf` owns where it may: this file asks only about a card it shows the
+ * viewer (the viewer's own hand, the top of a unit pile, a backrow card face-up to the viewer).
+ */
+function withPreview<T extends CardView>(view: T, values: PreviewValue[] | null): T {
+  return values === null ? view : { ...view, preview: values };
+}
+
+/**
  * The card that acts in a unit zone: the top of the pile (§3.2). `buried` is how many dormant cards
  * sit under it (R13) — a count, so no buried identity reaches either player.
  */
@@ -245,7 +260,10 @@ function unitViewOf(state: GameState, pile: Pile, viewer: PlayerId): UnitView | 
   if (top === undefined) return null;
   const layers = unitLayers(state, top);
   return {
-    ...withCondition(cardView(state, top), conditionActive(state, top, viewer, "field")),
+    ...withPreview(
+      withCondition(cardView(state, top), conditionActive(state, top, viewer, "field")),
+      previewOf(state, top, viewer, "field"),
+    ),
     owner: top.owner,
     controller: top.controller,
     attack: layers.attack,
@@ -287,7 +305,10 @@ function backrowView(state: GameState, card: CardInstance | null, viewer: Player
   if (!backrowIsPublic(state, card, viewer)) return { faceDown: true };
   const grade = card.counters.grade;
   return {
-    ...withCondition(cardView(state, card), conditionActive(state, card, viewer, "field")),
+    ...withPreview(
+      withCondition(cardView(state, card), conditionActive(state, card, viewer, "field")),
+      previewOf(state, card, viewer, "field"),
+    ),
     faceDown: false,
     type: defOf(state, card.defId).type,
     counters: grade === undefined ? {} : { grade },
@@ -425,7 +446,12 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     // §10.8: the viewer's own hand in full, the opponent's as a count.
     hand:
       player === viewer
-        ? side.hand.map((card) => withCondition(handCardView(state, card), conditionActive(state, card, viewer, "hand")))
+        ? side.hand.map((card) =>
+            withPreview(
+              withCondition(handCardView(state, card), conditionActive(state, card, viewer, "hand")),
+              previewOf(state, card, viewer, "hand"),
+            ),
+          )
         : { count: side.hand.length },
     // §9.1: a library is a count for both players; nothing in it, and no order, ever ships.
     libraryCount: side.library.length,

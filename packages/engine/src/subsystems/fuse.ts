@@ -65,6 +65,7 @@ export const CRAFTED_CARD_COST = 0;
  * `conditionMet`, R195's yellow glow, answers a boolean, so the ingredients' hooks are or-ed
  * (R196). A new member of `Script` that returns something other than a list belongs in this set:
  * left to `combineValues`, two such hooks become one that returns an array of their answers.
+ * (`preview`, R280, returns a list, but of numbers rather than effects: it is one of `EAGER_KEYS`.)
  */
 const COST_KEY = "cost";
 /** The `Script` key of the step table a continuation re-enters (`prompts.RESUME_HOOK`). */
@@ -124,6 +125,18 @@ function unionTags(defs: readonly CardDef[]): Tag[] {
   const seen = new Set<Tag>();
   for (const def of defs) for (const tag of def.tags) seen.add(tag);
   return [...seen];
+}
+
+/**
+ * R279, R102: the cards a fused text names are every ingredient's — the fused face prints both texts
+ * (`fusedFace`), so each name in them still links. The union keeps the first appearance of each id,
+ * in ingredient order, and is null when no ingredient names any card, so the def omits the key just
+ * as a catalog card with no reference does.
+ */
+function unionRefs(defs: readonly CardDef[]): string[] | null {
+  const seen = new Set<string>();
+  for (const def of defs) for (const ref of def.refs ?? []) seen.add(ref);
+  return seen.size === 0 ? null : [...seen];
 }
 
 /**
@@ -271,6 +284,7 @@ function buildDef(
   targetDef: CardDef | null,
 ): CardDef {
   const id = nextTransientId(state, defs);
+  const refs = unionRefs(defs);
   return {
     id,
     // Transient defs are not catalog cards, so no random pool or Discover can reach one (§5.1);
@@ -285,6 +299,7 @@ function buildDef(
     // gives a result that no longer ceases to exist off the field (R11).
     token: defs.every((def) => def.token),
     cost: fusedCost(state, ingredients),
+    ...(refs === null ? {} : { refs }),
     base: fusedFace(ingredients, defs, false),
     radiant: fusedFace(ingredients, defs, true),
   };
@@ -300,9 +315,13 @@ type ListFn = (...args: unknown[]) => unknown[];
 /**
  * The script keys whose functions return something other than effects, so they combine by building
  * every ingredient's list at once: an aura's entries are read off the field on every stat read
- * (§10.4), and there is no "when the list reaches it" for them.
+ * (§10.4), and there is no "when the list reaches it" for them. `preview` (R280) is the other: the
+ * labelled numbers `viewFor` shows, a pure read with nothing to resolve, so a fusion's list is its
+ * ingredients' lists in ingredient order, each asked with the fused card's own context (the fused
+ * instance as `self`, the face it runs, the zone it is asked about), as R196 asks `conditionMet` —
+ * and each label still sits in the fused face's text, which prints every ingredient's text whole.
  */
-const EAGER_KEYS: readonly string[] = ["aura"];
+const EAGER_KEYS: readonly string[] = ["aura", "preview"];
 
 /**
  * §10.4 layer 5: each ingredient's aura, reading "this" as the fused card at the price that

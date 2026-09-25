@@ -1,13 +1,15 @@
 // #40 Echoes of the Forgotten — SPEC §8.2 row 40, BUILD M4-T4 row 40: "Start of turn: damage =
-// exile count, then bottom card exiled; empty library → no exile, no fatigue; radiant +3".
+// exile count, then bottom card exiled; empty library → no exile, no fatigue"; the Radiant face deals
+// twice the exile count (R275 raised it from "+3").
+// The damage it would deal now, its R280 `preview`, is proved in test/preview.test.ts.
 //
 // The rulings these tests are named after:
 //   R72  "cards in exile" means YOUR OWN exile pile — never the opponent's and never the game-wide
 //        `counters.exiled`;
 //   R62  start-of-turn triggers run before the draw, so the bottom card this exiles is gone before
 //        the top card is drawn;
-//   R63  a hit of 0 is not a damage instance: an empty exile pile on the base face emits no
-//        `damage` event at all;
+//   R63  a hit of 0 is not a damage instance: an empty exile pile emits no `damage` event at all,
+//        on either face (twice 0 is 0);
 //   §2.4/R3  fatigue belongs to the DRAW. "Empty library → no fatigue" means this card's exile
 //        clause adds none, so a turn that starts on an empty library shows exactly ONE fatigue
 //        instance (the draw's, FATIGUE_DAMAGE(1) = 1) and not two.
@@ -155,7 +157,7 @@ describe("#40 Echoes of the Forgotten — base", () => {
 });
 
 describe("#40 Echoes of the Forgotten — radiant", () => {
-  it("'+3 damage': the exile count plus 3", () => {
+  it("'twice the cards in your exile': three exiled cards deal 6", () => {
     const s = scenario({
       p1: { backrow: [{ def: ECHOES, radiant: true }], exile: [...EXILE_THREE], library: [...LIBRARY] },
       p2: {},
@@ -163,11 +165,11 @@ describe("#40 Echoes of the Forgotten — radiant", () => {
 
     s.startTurn();
 
-    s.expectHealth("p2", 24); // 3 + 3
+    s.expectHealth("p2", 24); // 2 × 3
     expect(damageTo(s, "hero-p2")).toEqual([6]);
   });
 
-  it("the +3 lands even with an empty exile pile", () => {
+  it("R63 an empty exile pile deals nothing on the radiant face either: twice 0 is 0", () => {
     const s = scenario({
       p1: { backrow: [{ def: ECHOES, radiant: true }], library: [...LIBRARY] },
       p2: {},
@@ -175,11 +177,13 @@ describe("#40 Echoes of the Forgotten — radiant", () => {
 
     s.startTurn();
 
-    s.expectHealth("p2", 27);
-    expect(damageTo(s, "hero-p2")).toEqual([3]);
+    s.expectHealth("p2", 30);
+    expect(damageTo(s, "hero-p2")).toEqual([]);
+    // The exile clause still runs, so next turn pays out 2.
+    expect(defsIn(s, "p1", "exile")).toEqual([POSTDOC]);
   });
 
-  it("§8 Conventions: the radiant cell changes only the number, so the bottom card is still exiled", () => {
+  it("the radiant face changes only the multiple, so the bottom card is still exiled", () => {
     const s = scenario({
       p1: { backrow: [{ def: ECHOES, radiant: true }], exile: [STOCKPILE], library: [...LIBRARY] },
       p2: {},
@@ -187,20 +191,40 @@ describe("#40 Echoes of the Forgotten — radiant", () => {
 
     s.startTurn();
 
-    s.expectHealth("p2", 26); // 1 + 3
+    s.expectHealth("p2", 28); // 2 × 1
     expect(defsIn(s, "p1", "exile")).toEqual([STOCKPILE, POSTDOC]);
     expect(exiledEvents(s)).toEqual([POSTDOC]);
   });
 
+  it("the exile this turn pays out twice next turn: 0 damage, then 2", () => {
+    const s = scenario({
+      p1: {
+        backrow: [{ def: ECHOES, radiant: true }],
+        hand: [STOCKPILE, TIMMY],
+        library: [MENACE, TIMMY, POSTDOC, BIG_D],
+      },
+      p2: { hand: [STOCKPILE, TIMMY], library: [MENACE, TIMMY] },
+    });
+
+    s.startTurn();
+    s.expectHealth("p2", 30);
+
+    s.endTurn();
+    s.endTurn();
+
+    s.expectHealth("p2", 28);
+    expect(damageTo(s, "hero-p2")).toEqual([2]);
+  });
+
   it("R72 the radiant face counts your own pile too", () => {
     const s = scenario({
-      p1: { backrow: [{ def: ECHOES, radiant: true }], library: [...LIBRARY] },
+      p1: { backrow: [{ def: ECHOES, radiant: true }], exile: [STOCKPILE], library: [...LIBRARY] },
       p2: { exile: [STOCKPILE, TIMMY, MENACE] },
     });
 
     s.startTurn();
 
-    s.expectHealth("p2", 27); // 0 + 3, not 3 + 3
+    s.expectHealth("p2", 28); // 2 × 1, not 2 × 3 or 2 × 4
   });
 
   it("§8.2 an empty library still exiles nothing on the radiant face", () => {
@@ -211,7 +235,7 @@ describe("#40 Echoes of the Forgotten — radiant", () => {
 
     s.startTurn();
 
-    s.expectHealth("p2", 25); // 2 + 3
+    s.expectHealth("p2", 26); // 2 × 2
     expect(exiledEvents(s)).toEqual([]);
     expect(s.pile("p1", "exile")).toHaveLength(2);
     s.expectHealth("p1", 29);
