@@ -98,7 +98,8 @@ describe("21 — a card's marks in play: a computed value, a reference and a Rad
     // A long press opens the sheet, where the name is a control.
     cy.get(inHand(MASOCHISM_MASK)).trigger("pointerdown", { pointerType: "touch", pointerId: 7, button: 0 });
     cy.get(ts(INSPECT_SHEET), { timeout: timeouts.view }).should("be.visible");
-    cy.get(inHand(MASOCHISM_MASK)).trigger("pointerup", { pointerType: "touch", pointerId: 7, button: 0 });
+    // The finger lifts off the card the sheet now covers.
+    cy.get(inHand(MASOCHISM_MASK)).trigger("pointerup", { pointerType: "touch", pointerId: 7, button: 0, force: true });
     cy.get(`${ts(INSPECT_SHEET)} ${CARD_REF}[data-ref="${SPIKEY_PILLOW}"]`)
       .first()
       .should("have.attr", "tabindex", "0")
