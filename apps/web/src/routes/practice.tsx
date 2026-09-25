@@ -753,7 +753,15 @@ function PracticeScreen({
 
   const board = (
     // The result panel is practice's own dialog (PracticeResult), so the board keeps to its chip.
-    <Game view={snapshot.view} legal={snapshot.legal} onAction={onAction} error={snapshot.error} resultForm="chip" />
+    // R345: a lesson keeps R82's automatic turn end on, since its coach is written around it.
+    <Game
+      view={snapshot.view}
+      legal={snapshot.legal}
+      onAction={onAction}
+      error={snapshot.error}
+      resultForm="chip"
+      {...(config.lesson === undefined ? {} : { autoEndTurn: true })}
+    />
   );
   const result = snapshot.view.result;
   const outcome = result === null ? null : outcomeOf(result, snapshot.view.viewer);

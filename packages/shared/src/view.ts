@@ -233,6 +233,11 @@ export type PlayerView = {
    */
   drawOffer?: { by: PlayerId };
   /**
+   * R345: `false` when the viewer has turned R82's automatic turn end off for themselves. Absent
+   * means on, the rule's default. Only ever the viewer's own preference, never the opponent's.
+   */
+  autoEndTurn?: false;
+  /**
    * R243: the definitions of the match-made cards this view names — a Fuse's (R77), a crafted
    * card's (R102, R179) — by id. They exist only in the match, so no catalog a client holds has
    * them, and a card the view shows could not otherwise be read. Only a card the viewer may read

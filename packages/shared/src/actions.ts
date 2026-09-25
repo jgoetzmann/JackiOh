@@ -34,6 +34,12 @@ export type ActionBody =
   | { type: "answerDraw"; accept: boolean }
   | { type: "concede" }
   | { type: "endTurn" }
+  /**
+   * R345: the sender's own preference for R82's automatic turn end. A setting, not a move: it is
+   * accepted from either seat at any moment of a live game, changes nothing on the board, and is
+   * never offered by `legalActions`, so no policy ever sends it.
+   */
+  | { type: "setAutoEndTurn"; enabled: boolean }
   // Server-only (R79): never sent by a client.
   | { type: "timeout" }
   | { type: "disconnectExpired"; player: PlayerId }
@@ -54,6 +60,7 @@ export const NON_ACTIVE_ACTION_TYPES = [
   "answer",
   "concede",
   "answerDraw",
+  "setAutoEndTurn",
   "disconnectExpired",
   "timeout",
   "ceilingReached",
@@ -64,6 +71,7 @@ export const PROMPT_OPEN_ACTION_TYPES = [
   "answer",
   "mulligan",
   "concede",
+  "setAutoEndTurn",
   "timeout",
   "disconnectExpired",
   "ceilingReached",

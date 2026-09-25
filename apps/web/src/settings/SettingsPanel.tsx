@@ -37,7 +37,7 @@ type SectionSpec = {
 };
 
 const SECTIONS: readonly SectionSpec[] = [
-  { id: "gameplay", title: "Gameplay", controls: ["dragToPlay", "confirmEndTurn", "hoverPreviews"] },
+  { id: "gameplay", title: "Gameplay", controls: ["dragToPlay", "confirmEndTurn", "autoEndTurn", "hoverPreviews"] },
   { id: "visuals", title: "Visuals", controls: ["reduceMotion"] },
   { id: "audio", title: "Audio", controls: [] },
 ];
@@ -51,6 +51,10 @@ const CONTROLS: Readonly<Record<SettingKey, { label: string; hint: string }>> = 
   confirmEndTurn: {
     label: "Confirm end turn",
     hint: "Ask again before ending the turn while you can still play or attack.",
+  },
+  autoEndTurn: {
+    label: "End turn automatically",
+    hint: "End your turn by itself when there is nothing left to play or attack with. Off: press End turn yourself.",
   },
   // One switch for both hover behaviours: task 7's hand lift and task 6's enlarged preview, which
   // opens only while this is on (cards/inspect/useInspectTrigger.tsx).
