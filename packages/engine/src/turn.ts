@@ -694,6 +694,8 @@ export function hasStandingDrawOffer(state: GameState, player: PlayerId): boolea
  * and the other seat that it has an offer to answer, and a reconnect shows the same.
  */
 export function standingDrawOffer(state: GameState): PlayerId | null {
+  // R216: nothing stands once the game is over, an offer included (a concede, the turn cap).
+  if (state.result !== null) return null;
   return hasStandingDrawOffer(state, opponentOf(state.active)) ? state.active : null;
 }
 

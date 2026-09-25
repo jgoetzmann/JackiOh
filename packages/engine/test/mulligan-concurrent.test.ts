@@ -181,6 +181,13 @@ describe("R266 an answer is sealed until both are in", () => {
     expect(own.pending).toEqual({ forYou: false, pendingFor: "p2" });
     expect(viewFor(keptAll, "p1").mulligan?.kept).toEqual(hand);
 
+    // An answer is a set (R221): two spellings of one answer are one state.
+    const twoCards = hand.slice(0, 2);
+    const forwards = act(begun, { type: "mulligan", keep: twoCards, playerId: "p1" });
+    const backwards = act(begun, { type: "mulligan", keep: [...twoCards].reverse(), playerId: "p1" });
+    expect(hashState(backwards)).toBe(hashState(forwards));
+    expect(viewFor(backwards, "p1").mulligan?.kept).toEqual(twoCards);
+
     // Before anyone answers, each seat sees its own prompt; after, the window is gone from the view.
     expect(viewFor(begun, "p1").mulligan).toEqual({ youReady: false, opponentReady: false });
     const done = act(keptNone, { type: "mulligan", keep: [], playerId: "p2" });
@@ -307,6 +314,19 @@ describe("R269 a draw offer's lifetime", () => {
     state = act(state, { type: "answerDraw", accept: false, playerId: "p2" });
     for (const seat of SEATS) expect(viewFor(state, seat).drawOffer).toBeUndefined();
     expect(legalActions(state, "p1").some((action) => action.type === "offerDraw")).toBe(false);
+  });
+
+  it("R269 is gone once the game is over, however it ended (R216)", () => {
+    const offered = act(playing("r269-over"), { type: "offerDraw", playerId: "p1" });
+    for (const [who, body] of [
+      ["p2", { type: "concede" }],
+      ["p1", { type: "concede" }],
+      ["p1", { type: "ceilingReached" }],
+    ] as const) {
+      const over = act(offered, { ...body, playerId: who } as ActionInput);
+      expect(over.result).not.toBeNull();
+      for (const seat of SEATS) expect(viewFor(over, seat).drawOffer).toBeUndefined();
+    }
   });
 
   it("R269 does not survive into a copy of the state as anything but the same offer", () => {

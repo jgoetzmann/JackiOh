@@ -21,11 +21,16 @@ import {
   createRng,
   defOf,
   hashState,
+  effects,
+  newInstance,
   query,
+  registerScripts,
+  registeredScripts,
   seatToAct,
   viewFor,
   type CardInstance,
   type GameState,
+  type Script,
 } from "@jackioh/engine";
 import {
   AI_DETERMINIZE,
@@ -263,6 +268,48 @@ describe("redact (B9)", () => {
     // The seat's own mulligan keeps its options, and it answers it without waiting.
     expect(pub.mulligan?.p1.prompt.options).toEqual(keptAll.mulligan?.p1.prompt.options);
     expect(decide(keptAll, AI, { rng: createRng("observe-their-mulligan") })?.reason).toBe("mulligan");
+  });
+
+  it("R266 B9: a sealed answer owed behind the seat's own paused resolution reaches it as keeping everything", () => {
+    // A cast-on-draw Spell that asks its caster (no Core one asks, so a fixture): p1's replacement
+    // draw casts it, and p2's sealed answer waits in setup's owed item until p1 answers (R224, R265).
+    const asking = "ai-r266-cod-asks";
+    const script: Script = {
+      staticFlags: { castOnDraw: true },
+      cry: () => [effects.chooseMode({ options: ["ok"], step: "ok", prompt: "the cast's question" })],
+      resume: { ok: () => [] },
+    };
+    registerScripts({ ...registeredScripts(), [asking]: { base: script, radiant: script } });
+    const paused = (p2Keeps: "all" | "none"): GameState => {
+      const dealt = dealtGame("observe-owed-mulligan");
+      dealt.transientDefs[asking] = {
+        id: asking,
+        index: asking,
+        name: asking,
+        set: "Core",
+        type: "Spell",
+        tags: [],
+        rarity: "Common",
+        token: false,
+        cost: 0,
+        base: { keywords: [], text: asking },
+        radiant: { keywords: [], text: asking },
+      };
+      dealt.players.p1.library.unshift(newInstance(dealt, asking, "p1", { z: "library", player: "p1" }));
+      const keep = p2Keeps === "all" ? dealt.players.p2.hand.map((card) => card.id) : [];
+      const sealed = act(dealt, "p2", { type: "mulligan", keep });
+      return act(sealed, "p1", { type: "mulligan", keep: sealed.players.p1.hand.slice(1).map((card) => card.id) });
+    };
+    const keptAll = paused("all");
+    const keptNone = paused("none");
+    expect(keptAll.pending?.playerId).toBe(AI);
+    expect(keptAll.work.length).toBeGreaterThan(0);
+
+    // The seat is asked now, and what it may know is the same whatever p2 kept.
+    expect(hashState(redact(keptNone, AI))).toBe(hashState(redact(keptAll, AI)));
+    expect(decide(keptNone, AI, { rng: createRng("observe-owed") })?.action).toEqual(
+      decide(keptAll, AI, { rng: createRng("observe-owed") })?.action,
+    );
   });
 
   it("R185 B9: a card in the seat's own library that was minted for the opponent's deck (R73) is hidden too", () => {

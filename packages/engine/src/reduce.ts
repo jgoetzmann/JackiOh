@@ -252,7 +252,7 @@ function answerForLockedOut(sink: EngineSink): void {
     const state = sink.state;
     const pending = state.pending;
     if (state.result !== null || pending === null) return;
-    if (!state.players[pending.playerId].aiTurn || pending.kind === "mulligan") return;
+    if (!state.players[pending.playerId].aiTurn) return;
     if (playOutTurn(sink, pending.playerId).actions.length === 0) return;
   }
 }

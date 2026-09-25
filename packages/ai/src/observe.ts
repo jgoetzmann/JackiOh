@@ -12,6 +12,7 @@
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
 import {
+  SETUP_WORK,
   cloneState,
   findDef,
   handicapOf,
@@ -154,6 +155,35 @@ function scrubResume<T>(entry: T, hidden: ReadonlySet<string>): T {
   } as T;
 }
 
+/**
+ * R266, R185: setup's owed mulligan item (R224, R265) carries two things the seat may not read: the
+ * sealed answers of the seats still to resolve (`rest`), and, while a seat's own resolution waits on
+ * a cast's question, the cards it returned (`returned`, full instances until they go back). The
+ * opponent's sealed answer becomes "keeps everything it was offered", which says nothing, and its
+ * returned cards become placeholders.
+ */
+function scrubOwedMulligan<T extends { resume: { hook: string; data: Loose } }>(item: T, opp: PlayerId): T {
+  if (item.resume.hook !== SETUP_WORK) return item;
+  const owed: unknown = item.resume.data.owed;
+  if (owed === null || typeof owed !== "object") return item;
+  const copy: Loose = { ...(owed as Loose) };
+  if (Array.isArray(copy.rest)) {
+    copy.rest = copy.rest.map((entry: unknown) => {
+      const seat = entry as { player?: unknown; offered?: unknown };
+      if (seat.player !== opp || !Array.isArray(seat.offered)) return entry;
+      return { ...(entry as Loose), keep: [...(seat.offered as unknown[])] };
+    });
+  }
+  if (copy.player === opp && Array.isArray(copy.returned)) {
+    copy.returned = copy.returned.map((card: unknown) => {
+      const hidden = JSON.parse(JSON.stringify(card)) as CardInstance;
+      toPlaceholder(hidden);
+      return hidden;
+    });
+  }
+  return { ...item, resume: { ...item.resume, data: { ...item.resume.data, owed: copy } } };
+}
+
 /** R185: the state as `seat` may know it. Pure; the input is not mutated. */
 export function redact(state: GameState, seat: PlayerId): GameState {
   const opp = opponentOf(seat);
@@ -188,7 +218,7 @@ export function redact(state: GameState, seat: PlayerId): GameState {
       if (index < next.workCursor) cursor -= 1;
       return;
     }
-    keptWork.push(scrubResume(item, hidden));
+    keptWork.push(scrubOwedMulligan(scrubResume(item, hidden), opp));
   });
   next.work = keptWork;
   next.workCursor = Math.max(0, Math.min(cursor, keptWork.length));

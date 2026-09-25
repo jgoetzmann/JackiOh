@@ -5,7 +5,8 @@
 // once, either seat may answer first, and an answer is sealed — it changes nothing until the other
 // seat has answered too (R266). The second answer resolves both, always in seat order (player 1's
 // replacement draws and shuffle-back, then player 2's), so the game that follows is the same
-// whichever seat answered first, and the same one the sequential mulligan dealt before it.
+// whichever seat answered first — the game the one-at-a-time mulligan dealt for the same answers,
+// though the ids and `nextSeq` that setup's own events and casts take may be numbered differently.
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS } from "@jackioh/shared";
@@ -69,8 +70,7 @@ function mulliganPrompt(sink: EngineSink, player: PlayerId): PendingChoice {
  * §2.1 step 3, R265: both seats' prompts, opened together in seat order once the opening deal is
  * done. They are not `state.pending`, which stays the one prompt §10.1 allows: every caller opens
  * them only once nothing is waiting (a cast's question during the deal owes them instead,
- * `SETUP_WORK`). Each prompt takes its id in seat order, so the ids are the ones the sequential
- * mulligan handed out.
+ * `SETUP_WORK`). Each prompt takes its id in seat order, before either is answered.
  */
 function openMulligans(sink: EngineSink): void {
   const state = sink.state;
@@ -198,7 +198,10 @@ export function answerMulligan(sink: EngineSink, player: PlayerId, keep: readonl
   const state = sink.state;
   const seat = state.mulligan?.[player];
   if (seat === undefined || seat.keep !== null) return;
-  seat.keep = [...new Set(keep)];
+  // An answer is a set: stored in the order the prompt offered it (R221), so two spellings of one
+  // answer are one state.
+  const chosen = new Set(keep);
+  seat.keep = seat.prompt.options.map((option) => option.key).filter((key) => chosen.has(key));
   // §10.6: the answer names the prompt it answers, as every other does. That a seat has answered is
   // public — the other seat is told it is ready — and what it kept is not (R266, §9.1).
   sink.events.push({ type: "promptAnswered", player, choiceId: seat.prompt.id });
