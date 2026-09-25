@@ -21,7 +21,7 @@
       "attack": 0,
       "health": 16,
       "keywords": [],
-      "text": "+4 Armor"
+      "text": "Aura: your units in Defense Position have +4 Armor"
     }
   },
   "core-002": {
@@ -61,6 +61,9 @@
     "rarity": "Common",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-003"
+    ],
     "base": {
       "attack": 1,
       "health": 1,
@@ -116,7 +119,7 @@
       "attack": 2,
       "health": 2,
       "keywords": [],
-      "text": "7 coins; +2 per heads, +2 per tails"
+      "text": "Cry: flip 7 coins; +2 attack per heads, +2 max health per tails"
     }
   },
   "core-005": {
@@ -135,7 +138,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Draw 5; heal 5"
+      "text": "Draw 5; heal your hero 5"
     }
   },
   "core-006": {
@@ -154,7 +157,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Gain 2"
+      "text": "Start of turn: gain 2 mana"
     }
   },
   "core-007": {
@@ -208,9 +211,12 @@
       "keywords": [
         {
           "kind": "Immutable"
+        },
+        {
+          "kind": "Divine Shield"
         }
       ],
-      "text": "Immutable"
+      "text": "Immutable, Divine Shield"
     }
   },
   "core-009": {
@@ -238,7 +244,7 @@
           "n": 1
         }
       ],
-      "text": "Armor 1; same"
+      "text": "Armor 1; Start of turn: every enemy unit attacks this"
     }
   },
   "core-010": {
@@ -257,7 +263,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Combo 3: draw 6"
+      "text": "Combo 3: draw 6; otherwise nothing"
     }
   },
   "core-011": {
@@ -318,10 +324,10 @@
       "text": "Cry: summon a copy of this unit"
     },
     "radiant": {
-      "attack": 5,
+      "attack": 6,
       "health": 9,
       "keywords": [],
-      "text": "Same"
+      "text": "Cry: summon a copy of this unit"
     }
   },
   "core-013": {
@@ -330,7 +336,9 @@
     "name": "Jlockeed Shredder-10",
     "set": "Core",
     "type": "Unit",
-    "tags": [],
+    "tags": [
+      "Jlockeed"
+    ],
     "rarity": "Common",
     "token": false,
     "cost": 3,
@@ -344,7 +352,7 @@
       "attack": 16,
       "health": 20,
       "keywords": [],
-      "text": "5 damage"
+      "text": "End of turn: deal 5 damage to each enemy unit and the enemy hero"
     }
   },
   "core-014": {
@@ -353,7 +361,9 @@
     "name": "Jlockeed's Weapons",
     "set": "Core",
     "type": "Field Spell",
-    "tags": [],
+    "tags": [
+      "Jlockeed"
+    ],
     "rarity": "Common",
     "token": false,
     "cost": 4,
@@ -363,7 +373,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "+10 attack"
+      "text": "Aura: your units have +10 attack, Rush, First Strike"
     }
   },
   "core-015": {
@@ -378,6 +388,9 @@
     "rarity": "Common",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "attack": 1,
       "health": 1,
@@ -426,7 +439,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Choose one: bounce all units, bounce all enemy units, destroy all enemy units; then draw 1"
+      "text": "Choose one: bounce all units on both sides, bounce all enemy units, or destroy all enemy units; then draw 1"
     }
   },
   "core-018": {
@@ -439,13 +452,16 @@
     "rarity": "Epic",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-t-bread"
+    ],
     "base": {
       "keywords": [],
       "text": "When any player ends a turn with unspent mana: summon a Bread Token X/X for the trap's controller, X = that player's unspent mana"
     },
     "radiant": {
       "keywords": [],
-      "text": "X = 3 \u00d7 unspent"
+      "text": "When any player ends a turn with unspent mana: summon a Bread Token X/X for the trap's controller, X = 3 \u00d7 that player's unspent mana"
     }
   },
   "core-019": {
@@ -479,7 +495,7 @@
           "kind": "Immutable"
         }
       ],
-      "text": "Taunt, Immutable; same"
+      "text": "Taunt, Immutable; End of turn: heal to full"
     }
   },
   "core-020": {
@@ -534,7 +550,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 lower"
+      "text": "Cast on draw: the opponent's next mana refresh is 2 lower"
     }
   },
   "core-022": {
@@ -557,7 +573,7 @@
       "attack": 8,
       "health": 12,
       "keywords": [],
-      "text": "Death: fill your board with copies"
+      "text": "Cry: Tribute one of your other permanents and remember it. Death: fill your board with copies of the remembered card"
     }
   },
   "core-023": {
@@ -581,7 +597,7 @@
           "n": 1
         }
       ],
-      "text": "Lucky 1 (two rolls, keep the success) at 40%"
+      "text": "Lucky 1. 40% chance a random card in your hand becomes Radiant. End of turn: returns from the GY to your hand"
     }
   },
   "core-024": {
@@ -600,7 +616,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Uses X+1"
+      "text": "Choose one: deal 2X damage to a target; heal a target 4X; gain X mana next turn. End of turn: returns to hand"
     }
   },
   "core-025": {
@@ -625,8 +641,8 @@
       "text": "Armor 7"
     },
     "radiant": {
-      "attack": 7,
-      "health": 7,
+      "attack": 14,
+      "health": 14,
       "keywords": [
         {
           "kind": "Indestructible"
@@ -651,7 +667,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Choose 2"
+      "text": "Choose 2 cards in your hand; they become Radiant"
     }
   },
   "core-027": {
@@ -670,7 +686,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 random cards"
+      "text": "Cast on draw: 2 random cards in your hand become Radiant; you lose 5 health"
     }
   },
   "core-028": {
@@ -689,7 +705,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "5"
+      "text": "5 random cards among your library, hand and field become Radiant"
     }
   },
   "core-029": {
@@ -708,7 +724,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Hand and all your permanents"
+      "text": "Every card in your hand and every permanent you control becomes Radiant"
     }
   },
   "core-030": {
@@ -731,7 +747,7 @@
       "attack": 8,
       "health": 10,
       "keywords": [],
-      "text": "Cry: draw both"
+      "text": "Cry: draw the highest-cost card in your library and the lowest"
     }
   },
   "core-031": {
@@ -752,7 +768,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Fib(cost+2)"
+      "text": "Deal Fib(cost+3) damage to a target. End of turn: return to hand with cost +1"
     }
   },
   "core-032": {
@@ -786,7 +802,7 @@
           "kind": "Cleave"
         }
       ],
-      "text": "Rush, Cleave; same"
+      "text": "Rush, Cleave; whenever this destroys a unit, draw 2"
     }
   },
   "core-033": {
@@ -805,7 +821,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "One of the 3 is Radiant"
+      "text": "After you play a card, shuffle 3 Radiant copies of it into your library"
     }
   },
   "core-034": {
@@ -824,7 +840,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Also the permanents adjacent to the target in its row"
+      "text": "Exile target permanent, the permanents adjacent to it in its row, and a random card from the opponent's library"
     }
   },
   "core-035": {
@@ -843,7 +859,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "6 damage; 2 less"
+      "text": "Deal 6 damage to a target; the next Spell you play this turn costs 2 less"
     }
   },
   "core-036": {
@@ -885,7 +901,7 @@
       "attack": 8,
       "health": 10,
       "keywords": [],
-      "text": "Discover one from your GY; it costs 1 less"
+      "text": "Start of turn: Discover a card from your GY; it costs 1 less"
     }
   },
   "core-038": {
@@ -904,7 +920,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Your cards gain \"Combo X: deal X damage to the enemy hero\", X = cards you played earlier this turn"
+      "text": "Your cards gain \"Combo X: deal 2X damage to the enemy hero\", X = cards you played earlier this turn"
     }
   },
   "core-039": {
@@ -923,7 +939,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Copies cost 1 less"
+      "text": "Exile this on play. End of turn: add a Radiant copy of every other card you played this turn to your hand; the copies cost 1 less"
     }
   },
   "core-040": {
@@ -942,7 +958,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "+3 damage"
+      "text": "Start of your turn: deal damage to the enemy hero equal to twice the cards in your exile; then exile the bottom card of your library"
     }
   },
   "core-041": {
@@ -955,13 +971,17 @@
     "rarity": "Epic",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-t-sheep",
+      "core-055"
+    ],
     "base": {
       "keywords": [],
       "text": "When the opponent plays a Unit: Transform it into a Sheep Token"
     },
     "radiant": {
       "keywords": [],
-      "text": "Also add a Lava Golem costing 0 to your hand"
+      "text": "When the opponent plays a Unit: Transform it into a Sheep Token. Also add a Lava Golem costing 0 to your hand"
     }
   },
   "core-042": {
@@ -985,7 +1005,7 @@
           "n": 1
         }
       ],
-      "text": "Lucky 1 at 40%"
+      "text": "Lucky 1. Exile 8 random cards from your library; each remaining library card has a 40% chance to become Radiant"
     }
   },
   "core-043": {
@@ -1010,7 +1030,7 @@
       "attack": 6,
       "health": 20,
       "keywords": [],
-      "text": "Enemy non-Felinor units only"
+      "text": "Cry: destroy all enemy non-Felinor units"
     }
   },
   "core-044": {
@@ -1029,7 +1049,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "9"
+      "text": "Deal 9 damage to a target, ignoring Armor; exile this"
     }
   },
   "core-045": {
@@ -1066,7 +1086,7 @@
           "n": 1
         }
       ],
-      "text": "Charge, Armor 1; same"
+      "text": "Charge, Armor 1; may attack and switch position in the same turn"
     }
   },
   "core-046": {
@@ -1109,7 +1129,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "50"
+      "text": "Heal a target 50"
     }
   },
   "core-048": {
@@ -1128,7 +1148,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Choose: all enemy units, or all units"
+      "text": "Choose one: switch the position of every enemy unit, or of every unit"
     }
   },
   "core-049": {
@@ -1147,7 +1167,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "It also becomes Radiant"
+      "text": "Steal target enemy permanent; it becomes Radiant"
     }
   },
   "core-050": {
@@ -1174,7 +1194,7 @@
           "kind": "Divine Shield"
         }
       ],
-      "text": "Divine Shield; same"
+      "text": "Divine Shield; Cry: choose an enemy permanent; at the start of your next turn, steal it; it becomes Radiant"
     }
   },
   "core-051": {
@@ -1189,13 +1209,16 @@
     "rarity": "Epic",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-051-1"
+    ],
     "base": {
       "keywords": [],
       "text": "Choose a type (Spell, Unit, Field Spell, Trap), then a cost bracket (0\u20131, 2, 3, 4+), offering only options with a match in your library; reveal 3 random matching library cards; choose one to hand. No match at all \u2192 add a KY's Empty Notebook"
     },
     "radiant": {
       "keywords": [],
-      "text": "Echo (resolves a second time)"
+      "text": "Echo 1. Choose a type (Spell, Unit, Field Spell, Trap), then a cost bracket (0\u20131, 2, 3, 4+), offering only options with a match in your library; reveal 3 random matching library cards; choose one to hand. No match at all \u2192 add a KY's Empty Notebook"
     }
   },
   "core-051-1": {
@@ -1242,7 +1265,7 @@
       "attack": 8,
       "health": 8,
       "keywords": [],
-      "text": "Cards that would move to the opponent are bounced to their owner's hand costing 0 instead"
+      "text": "Cry: choose left or right; rotate every card on the field one step around its ring (3.1); cards crossing sides change control, except that cards that would move to the opponent are bounced to their owner's hand costing 0 instead"
     }
   },
   "core-053": {
@@ -1267,7 +1290,7 @@
       "attack": 8,
       "health": 12,
       "keywords": [],
-      "text": "60"
+      "text": "Cry: if your hero is below 60, set it to 60"
     }
   },
   "core-054": {
@@ -1290,7 +1313,7 @@
       "attack": 16,
       "health": 16,
       "keywords": [],
-      "text": "They cost 0"
+      "text": "Cry: add 2 random Radiant Units costing 3 or 4 to your hand; they cost 0"
     }
   },
   "core-055": {
@@ -1332,7 +1355,7 @@
           "kind": "Indestructible"
         }
       ],
-      "text": "Plus Indestructible"
+      "text": "Tribute 3, Armor 3, Taunt, Indestructible; may tribute enemy units"
     }
   },
   "core-056": {
@@ -1402,7 +1425,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 random plus 2 random Radiant KY cards"
+      "text": "Add 2 random KY cards and 2 random Radiant KY cards to your hand"
     }
   },
   "core-058": {
@@ -1415,13 +1438,16 @@
     "rarity": "Common",
     "token": false,
     "cost": 2,
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "keywords": [],
       "text": "Start of turn: summon a Rush Token"
     },
     "radiant": {
       "keywords": [],
-      "text": "Aura: your Rush Tokens +3/+3; same"
+      "text": "Start of turn: summon a Rush Token. Aura: your Rush Tokens have +3/+3"
     }
   },
   "core-059": {
@@ -1443,7 +1469,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "A random Radiant card (paid 4: it costs 0)"
+      "text": "Start of turn: add a random Radiant card to your hand (paid 4: it costs 0)"
     }
   },
   "core-060": {
@@ -1456,13 +1482,16 @@
     "rarity": "Epic",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "keywords": [],
       "text": "When the opponent plays a card costing 1 or less: summon 2 Rush Tokens; if it was a Unit, they attack it"
     },
     "radiant": {
       "keywords": [],
-      "text": "Any card; fill your board with Rush Tokens; same"
+      "text": "When the opponent plays a card: fill your board with Rush Tokens; if it was a Unit, they attack it"
     }
   },
   "core-061": {
@@ -1487,7 +1516,7 @@
       "attack": 4,
       "health": 8,
       "keywords": [],
-      "text": "Any unit"
+      "text": "Cry: choose a unit on the field; summon a Vanilla copy"
     }
   },
   "core-062": {
@@ -1500,13 +1529,16 @@
     "rarity": "Common",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-t-felinor"
+    ],
     "base": {
       "keywords": [],
       "text": "Fill your board with Felinor Tokens"
     },
     "radiant": {
       "keywords": [],
-      "text": "Then your units get +2/+2"
+      "text": "Fill your board with Felinor Tokens, then your units get +2/+2"
     }
   },
   "core-063": {
@@ -1525,7 +1557,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "+6/+6 and 2 random keywords"
+      "text": "Target unit gets +6/+6 and 2 random keywords"
     }
   },
   "core-064": {
@@ -1544,7 +1576,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 or less"
+      "text": "The first card costing 2 or less you play each turn becomes Radiant as it is played"
     }
   },
   "core-065": {
@@ -1559,13 +1591,16 @@
     "rarity": "Epic",
     "token": false,
     "cost": 2,
+    "refs": [
+      "core-065-1"
+    ],
     "base": {
       "keywords": [],
       "text": "Start of turn: choose one: exile the bottom card of your library, lose 3 health, or summon a Spikey Pillow"
     },
     "radiant": {
       "keywords": [],
-      "text": "Choose twice from: nothing, exile bottom, lose 3, summon Spikey Pillow"
+      "text": "Start of turn: choose twice from: nothing, exile the bottom card of your library, lose 3 health, or summon a Spikey Pillow"
     }
   },
   "core-065-1": {
@@ -1580,6 +1615,9 @@
     "rarity": "Token",
     "token": true,
     "cost": 1,
+    "refs": [
+      "core-065-1"
+    ],
     "base": {
       "attack": 0,
       "health": 2,
@@ -1590,7 +1628,7 @@
       "attack": 0,
       "health": 4,
       "keywords": [],
-      "text": "Aura: your non-Spikey-Pillow units have \u22122 attack"
+      "text": "Cannot be in Defense Position. Aura: your units other than Spikey Pillows have \u22122 attack"
     }
   },
   "core-066": {
@@ -1626,7 +1664,7 @@
           "kind": "Immutable"
         }
       ],
-      "text": "Plus Immutable"
+      "text": "Tribute 1, Indestructible, Immutable"
     }
   },
   "core-067": {
@@ -1651,7 +1689,7 @@
       "attack": 2,
       "health": 4,
       "keywords": [],
-      "text": "Any random Trap"
+      "text": "Cry: summon a random Radiant Trap face-down into your backrow zone in this lane"
     }
   },
   "core-068": {
@@ -1674,7 +1712,7 @@
       "attack": 10,
       "health": 10,
       "keywords": [],
-      "text": "6, or 12"
+      "text": "Cry: deal 8 damage to a target, 16 if your hero is below 10"
     }
   },
   "core-069": {
@@ -1693,7 +1731,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 or less"
+      "text": "Recruit 3 Units costing 2 or less"
     }
   },
   "core-070": {
@@ -1712,7 +1750,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "4 base, per full 3 health"
+      "text": "Deal 4 damage to a target, +1 per full 3 health your hero is below 30, +2 per card in your exile"
     }
   },
   "core-071": {
@@ -1731,7 +1769,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "2 or less"
+      "text": "At the end of any turn, if your library has more cards than the opponent's: Recruit a Unit costing 2 or less"
     }
   },
   "core-072": {
@@ -1750,7 +1788,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "It costs 0"
+      "text": "Discover a card from your GY; it costs 0; exile this"
     }
   },
   "core-073": {
@@ -1769,7 +1807,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Cap 3"
+      "text": "Your hero can't take more than 3 damage in one instance. Cry: draw 2"
     }
   },
   "core-074": {
@@ -1782,13 +1820,16 @@
     "rarity": "Rare",
     "token": false,
     "cost": "X",
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "keywords": [],
       "text": "Deal X damage to a target, heal your hero X, draw X, summon an X/X Rush Token"
     },
     "radiant": {
       "keywords": [],
-      "text": "2X damage, heal 3X, draw 2X, a 3X/3X token"
+      "text": "Deal 2X damage to a target, heal your hero 3X, draw 2X, summon a 3X/3X Rush Token"
     }
   },
   "core-075": {
@@ -1801,13 +1842,16 @@
     "rarity": "Rare",
     "token": false,
     "cost": 0,
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "keywords": [],
       "text": "Draws from an empty library give you a Rush Token card instead of fatigue"
     },
     "radiant": {
       "keywords": [],
-      "text": "Cry: draw 3; same"
+      "text": "Draws from an empty library give you a Rush Token card instead of fatigue. Cry: draw 3"
     }
   },
   "core-076": {
@@ -1820,13 +1864,16 @@
     "rarity": "Rare",
     "token": false,
     "cost": 3,
+    "refs": [
+      "core-072"
+    ],
     "base": {
       "keywords": [],
       "text": "Replace your hand with the same number of Reminisce; exile this"
     },
     "radiant": {
       "keywords": [],
-      "text": "Radiant Reminisce"
+      "text": "Replace your hand with the same number of Radiant Reminisce; exile this"
     }
   },
   "core-077": {
@@ -1851,7 +1898,7 @@
       "attack": 8,
       "health": 10,
       "keywords": [],
-      "text": "2 less"
+      "text": "Cry: during your next turn, cards whose cost is 4 cost 2 less"
     }
   },
   "core-078": {
@@ -1870,7 +1917,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Cost 2 less"
+      "text": "Gain 4 mana; this turn your cards cost 2 less and gain \"Combo: draw 1\"; at end of turn, exile your hand"
     }
   },
   "core-079": {
@@ -1889,7 +1936,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Echo +2"
+      "text": "The next Spell you play gains Echo +2"
     }
   },
   "core-080": {
@@ -1902,13 +1949,16 @@
     "rarity": "Rare",
     "token": false,
     "cost": 2,
+    "refs": [
+      "core-t-rush"
+    ],
     "base": {
       "keywords": [],
       "text": "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords"
     },
     "radiant": {
       "keywords": [],
-      "text": "Discard 2 cards of your choice; summon 2 Rush Tokens, each with 2 random keywords"
+      "text": "Discard 2 cards of your choice; summon 2 Radiant Rush Tokens, each with 2 random keywords"
     }
   },
   "core-081": {
@@ -1941,7 +1991,7 @@
           "kind": "Reborn"
         }
       ],
-      "text": "Reborn; Death: all your other units become Radiant"
+      "text": "Reborn; Death: all your other units and every card in your hand become Radiant"
     }
   },
   "core-082": {
@@ -1962,7 +2012,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "It costs 0"
+      "text": "Discover among 3 distinct random numbers 1\u2013100; add the Radiant Core card with that index to your hand; it costs 0"
     }
   },
   "core-083": {
@@ -1981,7 +2031,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Random Radiant Legendaries"
+      "text": "Replace every card in your library, board, GY and exile with a random Radiant Legendary"
     }
   },
   "core-084": {
@@ -2005,7 +2055,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Armor 4 (paid 4: 10)"
+      "text": "Your hero has Armor 4 (paid 4: 10)"
     }
   },
   "core-085": {
@@ -2024,7 +2074,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Onto every such permanent"
+      "text": "When the opponent plays a permanent whose type matches one you control: Fuse it onto every permanent of yours of that type"
     }
   },
   "core-086": {
@@ -2052,8 +2102,12 @@
     "radiant": {
       "attack": 2,
       "health": 2,
-      "keywords": [],
-      "text": "Can attack; same"
+      "keywords": [
+        {
+          "kind": "Taunt"
+        }
+      ],
+      "text": "Taunt. Death: steal all enemy units"
     }
   },
   "core-087": {
@@ -2066,13 +2120,16 @@
     "rarity": "Legendary",
     "token": false,
     "cost": 2,
+    "refs": [
+      "core-087"
+    ],
     "base": {
       "keywords": [],
       "text": "Choose one: swap hero health, swap boards (every zone, lane-preserving), or swap libraries with the opponent; then add a Pocket Chaos to the opponent's hand; exile this"
     },
     "radiant": {
       "keywords": [],
-      "text": "You may skip adding it"
+      "text": "Choose one: swap hero health, swap boards (every zone, lane-preserving), or swap libraries with the opponent; then you may add a Pocket Chaos to the opponent's hand; draw 1; exile this"
     }
   },
   "core-088": {
@@ -2091,7 +2148,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Choose: all enemy permanents, or all"
+      "text": "Choose one: destroy all enemy permanents, or destroy all permanents"
     }
   },
   "core-089": {
@@ -2125,7 +2182,7 @@
           "kind": "Divine Shield"
         }
       ],
-      "text": "Rush, Divine Shield; gains double"
+      "text": "Rush, Divine Shield. While in your hand: whenever a unit on either side dies, this gains double its attack and max health"
     }
   },
   "core-090": {
@@ -2140,13 +2197,16 @@
     "rarity": "Rare",
     "token": false,
     "cost": 1,
+    "refs": [
+      "core-090-1"
+    ],
     "base": {
       "keywords": [],
       "text": "Shuffle a CN-Virus into the opponent's library"
     },
     "radiant": {
       "keywords": [],
-      "text": "A Radiant CN-Virus"
+      "text": "Shuffle a Radiant CN-Virus into the opponent's library"
     }
   },
   "core-090-1": {
@@ -2168,7 +2228,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "3 copies"
+      "text": "Cast on draw: take 2 damage; shuffle 3 copies of this into your library"
     }
   },
   "core-091": {
@@ -2201,7 +2261,7 @@
           "kind": "Rush"
         }
       ],
-      "text": "Rush; +2 mana per token"
+      "text": "Rush. Whenever this takes damage, +1 Plague Token. Start of turn: +2 mana per Plague Token"
     }
   },
   "core-092": {
@@ -2237,7 +2297,7 @@
           "kind": "Charge"
         }
       ],
-      "text": "Stack, Charge; same"
+      "text": "Stack, Charge. Stats = printed plus the combined stats of all your Felinors, including ones under a Stack"
     }
   },
   "core-093": {
@@ -2250,13 +2310,16 @@
     "rarity": "Legendary",
     "token": false,
     "cost": 2,
+    "refs": [
+      "core-093-1"
+    ],
     "base": {
       "keywords": [],
       "text": "Grade counter, starts at E (E,D,C,B,A,S = 1\u20136). End of turn: if cards played this turn \u2265 grade, grade +1 and run every step from E up to the new grade. E: add a copy of a random card played this turn to your hand. D: 2 different random hand cards cost 1 less. C: opponent exiles a random hand card. B: a random hand card becomes Radiant. A: 8 damage to the enemy hero with Lifesteal. S: run E\u2013A again"
     },
     "radiant": {
       "keywords": [],
-      "text": "Start of turn: add a Combo-Fodder to your hand; same"
+      "text": "Grade counter, starts at E (E,D,C,B,A,S = 1\u20136). End of turn: if cards played this turn \u2265 grade, grade +1 and run every step from E up to the new grade. E: add a copy of a random card played this turn to your hand. D: 2 different random hand cards cost 1 less. C: opponent exiles a random hand card. B: a random hand card becomes Radiant. A: 8 damage to the enemy hero with Lifesteal. S: run E\u2013A again. Start of turn: add a Combo-Fodder to your hand"
     }
   },
   "core-093-1": {
@@ -2285,7 +2348,7 @@
           "kind": "Lifesteal"
         }
       ],
-      "text": "Deal 2 damage to a target, Lifesteal"
+      "text": "Deal 4 damage to a target, Lifesteal"
     }
   },
   "core-094": {
@@ -2304,7 +2367,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Gain 6"
+      "text": "Draw every 2-cost card from your library; exile every odd-cost card in your library, hand and GY (X-cost cards exempt); gain 6 mana"
     }
   },
   "core-095": {
@@ -2319,13 +2382,18 @@
     "rarity": "Legendary",
     "token": false,
     "cost": 4,
+    "refs": [
+      "core-095",
+      "core-t-rush",
+      "core-095-1"
+    ],
     "base": {
       "keywords": [],
       "text": "One random effect: summon 3 random 3-cost Units; heal your hero 30; draw your whole library and gain 4 mana; add 3 random cards to hand costing 0; your hand becomes Radiant; summon five Radiant Rush Tokens; every card in your hand and library costs 2 less; summon a Chaos Golem; summon 5 random Field Spells or Traps (Field Traps included, traps face-down) into your backrow; cast a random Call to Chaos"
     },
     "radiant": {
       "keywords": [],
-      "text": "Two random effects: \"cast a random Call to Chaos\" plus one drawn from the other 9"
+      "text": "Two random effects: cast a random Call to Chaos, plus one of: summon 3 random 3-cost Units; heal your hero 30; draw your whole library and gain 4 mana; add 3 random cards to hand costing 0; your hand becomes Radiant; summon five Radiant Rush Tokens; every card in your hand and library costs 2 less; summon a Chaos Golem; summon 5 random Field Spells or Traps (Field Traps included, traps face-down) into your backrow"
     }
   },
   "core-095-1": {
@@ -2360,11 +2428,11 @@
       "text": "Rush, Lifesteal, Divine Shield, First Strike"
     },
     "radiant": {
-      "attack": 10,
-      "health": 10,
+      "attack": 20,
+      "health": 20,
       "keywords": [
         {
-          "kind": "Rush"
+          "kind": "Charge"
         },
         {
           "kind": "Lifesteal"
@@ -2376,7 +2444,7 @@
           "kind": "First Strike"
         }
       ],
-      "text": "Rush, Lifesteal, Divine Shield, First Strike"
+      "text": "Charge, Lifesteal, Divine Shield, First Strike"
     }
   },
   "core-096": {
@@ -2395,7 +2463,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "When the opponent declares an attack that would be lethal to your hero: cancel it, and an AI plays the rest of their turn with random legal actions"
+      "text": "When the opponent declares an attack that would be lethal to your hero: cancel it, destroy the attacker, and an AI plays the rest of their turn with random legal actions"
     }
   },
   "core-097": {
@@ -2414,7 +2482,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "A perfect Radiant card"
+      "text": "Discover the \"perfect\" Radiant card from the Core set; exile this"
     }
   },
   "core-098": {
@@ -2429,6 +2497,10 @@
     "rarity": "Mythic",
     "token": false,
     "cost": "X",
+    "refs": [
+      "core-t-rush",
+      "core-t-felinor"
+    ],
     "base": {
       "keywords": [
         {
@@ -2443,7 +2515,7 @@
           "kind": "Indestructible"
         }
       ],
-      "text": "Powers become: Recruit and make it Radiant; lose 2, draw 2; deal 2; 4 to each opposing hero; two Rush Tokens; two Felinor Tokens; Discover a Radiant Unit"
+      "text": "Indestructible. Start of game: gain one of 7 random powers, each \"Once per turn, spend X\": (3) Recruit a permanent and make it Radiant; (1) lose 2 health, draw 2; (1) deal 2 damage to a target; (1) deal 4 damage to each opposing hero; (2) summon two Rush Tokens; (1) summon two Felinor Tokens; (2) Discover a Radiant Unit. Playing it costs the power's X and activates it once"
     }
   },
   "core-099": {
@@ -2462,7 +2534,7 @@
     },
     "radiant": {
       "keywords": [],
-      "text": "Three Discovers"
+      "text": "Discover a Unit, then Discover another, then a third; Fuse them; the result costs 0 and goes to your hand; draw 1"
     }
   },
   "core-100": {
@@ -2482,14 +2554,14 @@
       "text": "Cry: exile all other permanents on both sides. Costs 1 less per card drawn, played, destroyed or exiled this game by either player"
     },
     "radiant": {
-      "attack": 10,
-      "health": 10,
+      "attack": 20,
+      "health": 20,
       "keywords": [
         {
           "kind": "Charge"
         }
       ],
-      "text": "Plus Charge"
+      "text": "Charge. Cry: exile all other permanents on both sides. Costs 1 less per card drawn, played, destroyed or exiled this game by either player"
     }
   },
   "core-t-rush": {
@@ -2520,9 +2592,12 @@
       "keywords": [
         {
           "kind": "Rush"
+        },
+        {
+          "kind": "Cleave"
         }
       ],
-      "text": "Rush"
+      "text": "Rush, Cleave."
     }
   },
   "core-t-sheep": {
@@ -2547,7 +2622,7 @@
       "attack": 2,
       "health": 2,
       "keywords": [],
-      "text": "Worth 3 Tributes"
+      "text": "Worth 3 Tributes while on the field."
     }
   },
   "core-t-felinor": {
@@ -2572,8 +2647,12 @@
     "radiant": {
       "attack": 2,
       "health": 2,
-      "keywords": [],
-      "text": ""
+      "keywords": [
+        {
+          "kind": "Rush"
+        }
+      ],
+      "text": "Rush"
     }
   },
   "core-t-bread": {

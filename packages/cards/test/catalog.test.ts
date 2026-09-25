@@ -22,12 +22,11 @@
 //                         rows, and the Token tag follows §7's token rules ("it counts as a
 //                         Token for every filter") with BUILD M4-T2 ("`catalog.query` never
 //                         returns a token unless `tags` includes `Token`").
-//   `noRadiantForm`     — the §8 "Radiant effect" cell reading "No radiant form" (#38, #80,
-//                         #93.1, #95.1, #96) and the §7 "Radiant form" cell reading "none"
-//                         (the four shared tokens).
+//   radiant faces       — no §8 or §7 cell reads "No radiant form" or "none" any more: every
+//                         entry has a Radiant face of its own (§5.2, R276).
 //   rarity distribution — SPEC §8's rarity paragraph (35/37/16/7/5, superseding the source
 //                         list's #1–20 Common … grouping) and BUILD M4-T1.
-//   tag vocabulary      — SPEC §5/§6 tags as BUILD M4-T1 lists them.
+//   tag vocabulary      — SPEC §5/§6 tags as BUILD M4-T1 lists them, and R278's Jlockeed.
 //
 // BUILD M4-T1's bullets do not ask for `name`; it is compared anyway, from the same §8 "Name"
 // column (§5.3 settles #12, #31, #51 and #90.1), because a row whose name drifts is a row a reader
@@ -53,8 +52,6 @@ type SpecRow = {
   readonly rarity: Rarity;
   readonly base: StatPair;
   readonly radiant: StatPair;
-  /** §8's Radiant cell says "No radiant form" (§7: "none"): the radiant face is the base face. */
-  readonly noRadiantForm?: true;
 };
 
 const SPEC_8: readonly SpecRow[] = [
@@ -69,9 +66,9 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "9", name: "Moths to the Flame", cost: 2, type: "Unit", tags: [], rarity: "Rare", base: [1, 14], radiant: [2, 28] },
   { index: "10", name: "Rapid Replenish", cost: 0, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "11", name: "Tempo Timmy", cost: 1, type: "Unit", tags: ["Human"], rarity: "Common", base: [3, 3], radiant: [6, 6] },
-  { index: "12", name: "Duplicating Felinors", cost: 2, type: "Unit", tags: ["Felinor"], rarity: "Rare", base: [3, 4], radiant: [5, 9] },
-  { index: "13", name: "Jlockeed Shredder-10", cost: 3, type: "Unit", tags: [], rarity: "Common", base: [8, 10], radiant: [16, 20] },
-  { index: "14", name: "Jlockeed's Weapons", cost: 4, type: "Field Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
+  { index: "12", name: "Duplicating Felinors", cost: 2, type: "Unit", tags: ["Felinor"], rarity: "Rare", base: [3, 4], radiant: [6, 9] },
+  { index: "13", name: "Jlockeed Shredder-10", cost: 3, type: "Unit", tags: ["Jlockeed"], rarity: "Common", base: [8, 10], radiant: [16, 20] },
+  { index: "14", name: "Jlockeed's Weapons", cost: 4, type: "Field Spell", tags: ["Jlockeed"], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "15", name: "Me and Mr Token", cost: 1, type: "Unit", tags: ["Human"], rarity: "Common", base: [1, 1], radiant: [2, 2] },
   { index: "16", name: "Hit Job", cost: 2, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "17", name: "Flood", cost: 3, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
@@ -82,7 +79,7 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "22", name: "Carnivorous Cube", cost: 3, type: "Unit", tags: [], rarity: "Epic", base: [4, 6], radiant: [8, 12] },
   { index: "23", name: "Reoccurring Dream", cost: 1, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "24", name: "Efficiency Dividend", cost: "X", type: "Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
-  { index: "25", name: "4-mana 7/7", cost: 4, type: "Unit", tags: [], rarity: "Common", base: [7, 7], radiant: [7, 7] },
+  { index: "25", name: "4-mana 7/7", cost: 4, type: "Unit", tags: [], rarity: "Common", base: [7, 7], radiant: [14, 14] },
   { index: "26", name: "Glowy Jelly Bean", cost: 3, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "27", name: "Blood Ridden Glowy Jelly Bean", cost: 1, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "28", name: "Knockoff Temu Glowy Jelly Bean", cost: 2, type: "Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
@@ -95,7 +92,7 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "35", name: "Lunar Eclipse", cost: 1, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "36", name: "Magic Jammed", cost: 1, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "37", name: "Gravedigger", cost: 2, type: "Unit", tags: [], rarity: "Rare", base: [4, 5], radiant: [8, 10] },
-  { index: "38", name: "Quickstriker", cost: 3, type: "Field Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null], noRadiantForm: true },
+  { index: "38", name: "Quickstriker", cost: 3, type: "Field Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
   { index: "39", name: "Recycling Initiative", cost: 0, type: "Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
   { index: "40", name: "Echoes of the Forgotten", cost: 2, type: "Field Spell", tags: [], rarity: "Common", base: [null, null], radiant: [null, null] },
   { index: "41", name: "Sheepish", cost: 1, type: "Trap", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
@@ -139,7 +136,7 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "77", name: "Professor Curvature", cost: 2, type: "Unit", tags: ["Human"], rarity: "Rare", base: [4, 5], radiant: [8, 10] },
   { index: "78", name: "/fullsend", cost: 4, type: "Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
   { index: "79", name: "Twinspell", cost: 2, type: "Field Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
-  { index: "80", name: "Zao Gao", cost: 2, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null], noRadiantForm: true },
+  { index: "80", name: "Zao Gao", cost: 2, type: "Spell", tags: [], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "81", name: "Radiant Saintess", cost: 1, type: "Unit", tags: ["Human"], rarity: "Epic", base: [2, 2], radiant: [4, 4] },
   { index: "82", name: "KY's Trial", cost: 1, type: "Spell", tags: ["KY"], rarity: "Rare", base: [null, null], radiant: [null, null] },
   { index: "83", name: "Transmogulate", cost: 2, type: "Spell", tags: [], rarity: "Legendary", base: [null, null], radiant: [null, null] },
@@ -154,15 +151,15 @@ const SPEC_8: readonly SpecRow[] = [
   { index: "91", name: "Fed Fauci", cost: 2, type: "Unit", tags: ["Human"], rarity: "Rare", base: [1, 6], radiant: [2, 12] },
   { index: "92", name: "Felinor Fiender", cost: 2, type: "Unit", tags: ["Human"], rarity: "Legendary", base: [5, 7], radiant: [10, 14] },
   { index: "93", name: "Combo-Index", cost: 2, type: "Field Spell", tags: [], rarity: "Legendary", base: [null, null], radiant: [null, null] },
-  { index: "93.1", name: "Combo-Fodder", cost: 0, type: "Spell", tags: ["Token"], rarity: "Token", base: [null, null], radiant: [null, null], noRadiantForm: true },
+  { index: "93.1", name: "Combo-Fodder", cost: 0, type: "Spell", tags: ["Token"], rarity: "Token", base: [null, null], radiant: [null, null] },
   { index: "94", name: "Genn's Greed", cost: 4, type: "Spell", tags: [], rarity: "Epic", base: [null, null], radiant: [null, null] },
   { index: "95", name: "Call to Chaos (Core Edition)", cost: 4, type: "Spell", tags: ["Call to Chaos"], rarity: "Legendary", base: [null, null], radiant: [null, null] },
-  { index: "95.1", name: "Chaos Golem", cost: 4, type: "Unit", tags: ["Token"], rarity: "Token", base: [10, 10], radiant: [10, 10], noRadiantForm: true },
-  { index: "96", name: "My Pawn", cost: 1, type: "Trap", tags: [], rarity: "Mythic", base: [null, null], radiant: [null, null], noRadiantForm: true },
+  { index: "95.1", name: "Chaos Golem", cost: 4, type: "Unit", tags: ["Token"], rarity: "Token", base: [10, 10], radiant: [20, 20] },
+  { index: "96", name: "My Pawn", cost: 1, type: "Trap", tags: [], rarity: "Mythic", base: [null, null], radiant: [null, null] },
   { index: "97", name: "Zephyrs", cost: 0, type: "Spell", tags: [], rarity: "Mythic", base: [null, null], radiant: [null, null] },
   { index: "98", name: "Heroic Power", cost: "X", type: "Field Spell", tags: ["Quickdraw"], rarity: "Mythic", base: [null, null], radiant: [null, null] },
   { index: "99", name: "Craft a Card", cost: 3, type: "Spell", tags: [], rarity: "Mythic", base: [null, null], radiant: [null, null] },
-  { index: "100", name: "Ceaseless Void", cost: 100, type: "Unit", tags: [], rarity: "Mythic", base: [10, 10], radiant: [10, 10] },
+  { index: "100", name: "Ceaseless Void", cost: 100, type: "Unit", tags: [], rarity: "Mythic", base: [10, 10], radiant: [20, 20] },
   { index: "T-rush", name: "Rush Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [3, 3], radiant: [6, 6] },
   { index: "T-sheep", name: "Sheep Token", cost: 1, type: "Unit", tags: ["Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
   { index: "T-felinor", name: "Felinor Token", cost: 1, type: "Unit", tags: ["Felinor", "Token"], rarity: "Token", base: [1, 1], radiant: [2, 2] },
@@ -179,6 +176,7 @@ const ALLOWED_TAGS: readonly string[] = [
   "Fruit",
   "Call to Chaos",
   "Quickdraw",
+  "Jlockeed",
   "Token",
 ];
 
@@ -190,9 +188,6 @@ const RARITY_COUNTS: Readonly<Record<string, number>> = {
   Legendary: 7,
   Mythic: 5,
 };
-
-/** BUILD M4-T1: the entries §8 gives no distinct radiant form. */
-const NO_RADIANT_FORM: readonly string[] = ["38", "80", "93.1", "95.1", "96"];
 
 const ENTRIES: readonly CardDef[] = Object.values(CATALOG);
 
@@ -331,7 +326,7 @@ describe("rarity distribution (SPEC §8, BUILD M4-T1)", () => {
 });
 
 describe("tag vocabulary (BUILD M4-T1)", () => {
-  it("uses only Human, Felinor, KY, CN, Fruit, Call to Chaos, Quickdraw and Token", () => {
+  it("uses only Human, Felinor, KY, CN, Fruit, Call to Chaos, Quickdraw, Jlockeed and Token", () => {
     const wrong: string[] = [];
     for (const entry of ENTRIES) {
       for (const tag of entry.tags) {
@@ -344,26 +339,23 @@ describe("tag vocabulary (BUILD M4-T1)", () => {
   });
 });
 
-describe("no distinct radiant form (SPEC §8, §7, BUILD M4-T1)", () => {
-  it("is exactly #38, #80, #93.1, #95.1 and #96 — the four unit tokens now have radiant forms", () => {
-    const fromFixture = SPEC_8.filter((row) => row.noRadiantForm === true).map((row) => row.index);
-    expect(fromFixture.sort(), "SPEC rows with no radiant form").toEqual([...NO_RADIANT_FORM].sort());
+describe("the Jlockeed tag (SPEC §5, §8, R278)", () => {
+  it("R278 tags #13 Jlockeed Shredder-10 and #14 Jlockeed's Weapons, and no other entry", () => {
+    const tagged = ENTRIES.filter((entry) => entry.tags.includes("Jlockeed")).map((entry) => entry.index);
+    expect(tagged.sort(), "entries tagged Jlockeed").toEqual(["13", "14"]);
+    // The tag follows the name: every entry whose name or text says Jlockeed carries it.
+    const named = ENTRIES.filter((entry) =>
+      [entry.name, entry.base.text, entry.radiant.text].some((text) => text.includes("Jlockeed")),
+    ).map((entry) => entry.index);
+    expect(named.sort(), "entries whose name or text names Jlockeed").toEqual(["13", "14"]);
   });
+});
 
-  for (const index of NO_RADIANT_FORM) {
-    it(`#${index} has radiant deep-equal to base`, () => {
-      const entry = entryFor(index);
-      expect(entry.radiant, `${entry.id} (#${index}) radiant must deep-equal base`).toEqual(entry.base);
-    });
-  }
-
-  it("gives every other entry a radiant face of its own", () => {
-    const noRadiant = new Set(NO_RADIANT_FORM);
-    const same = ENTRIES.filter(
-      (entry) =>
-        !noRadiant.has(entry.index) &&
-        JSON.stringify(entry.radiant) === JSON.stringify(entry.base),
-    ).map((entry) => `${entry.id} (#${entry.index}) radiant is a copy of base`);
+describe("every entry has a radiant face of its own (SPEC §5.2, R276)", () => {
+  it("gives no entry a radiant face identical to its base face — the five that had none included", () => {
+    const same = ENTRIES.filter((entry) => JSON.stringify(entry.radiant) === JSON.stringify(entry.base)).map(
+      (entry) => `${entry.id} (#${entry.index}) radiant is a copy of base`,
+    );
     expect(same, "entries whose radiant face is identical to base").toEqual([]);
   });
 });

@@ -27,6 +27,7 @@ const TAGS = [
   "Fruit",
   "Call to Chaos",
   "Quickdraw",
+  "Jlockeed",
   "Token",
 ] as const satisfies readonly Tag[];
 const RARITIES = ["Common", "Rare", "Epic", "Legendary", "Mythic", "Token"] as const satisfies readonly Rarity[];
@@ -70,6 +71,22 @@ const EXPECTED_RARITY_COUNTS: Readonly<Record<string, number>> = {
   Epic: 16,
   Legendary: 7,
   Mythic: 5,
+};
+
+/**
+ * §5, §7, §8: how many catalog entries carry each tag, tokens included — a census, so a tag that
+ * drifts onto or off a card fails here (R278: Jlockeed is #13 and #14's and no other card's).
+ */
+const EXPECTED_TAG_COUNTS: Readonly<Record<(typeof TAGS)[number], number>> = {
+  Human: 18,
+  Felinor: 4,
+  KY: 5,
+  CN: 2,
+  Fruit: 1,
+  "Call to Chaos": 1,
+  Quickdraw: 3,
+  Jlockeed: 2,
+  Token: 10,
 };
 
 /* ------------------------------------------------------------------ helpers */
@@ -171,6 +188,9 @@ if (entries.length !== EXPECTED_TOTAL) {
 let nonTokenCount = 0;
 let tokenCount = 0;
 const rarityCounts = new Map<string, number>();
+const tagCounts = new Map<string, number>();
+/** R279: every entry's `refs`, checked against the ids once the whole file has been read. */
+const refsByCard = new Map<string, unknown>();
 const seenIndices = new Map<string, string[]>();
 
 for (const [key, value] of entries) {
@@ -223,6 +243,7 @@ for (const [key, value] of entries) {
     fail(where, `\`tags\` must be an array (got ${describe(tags)})`);
   } else {
     tagList = tags.map(String);
+    for (const tag of tagList) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     tags.forEach((tag: unknown, i: number) => {
       if (typeof tag !== "string" || !(TAGS as readonly string[]).includes(tag)) {
         fail(where, `tags[${i}] is not a Tag (got ${describe(tag)})`);
@@ -276,8 +297,10 @@ for (const [key, value] of entries) {
   validateFace(where, "base", value["base"], isUnit);
   validateFace(where, "radiant", value["radiant"], isUnit);
 
+  if ("refs" in value) refsByCard.set(key, value["refs"]);
+
   const unknownFields = Object.keys(value).filter(
-    (k) => !["id", "index", "name", "set", "type", "tags", "rarity", "token", "cost", "base", "radiant"].includes(k),
+    (k) => !["id", "index", "name", "set", "type", "tags", "rarity", "token", "cost", "refs", "base", "radiant"].includes(k),
   );
   if (unknownFields.length > 0) fail(where, `unknown field(s) ${unknownFields.join(", ")}`);
 }
@@ -311,6 +334,26 @@ for (const [rarity, found] of rarityCounts) {
   }
 }
 
+// 11. The tag census (R278).
+for (const [tag, expected] of Object.entries(EXPECTED_TAG_COUNTS)) {
+  const found = tagCounts.get(tag) ?? 0;
+  if (found !== expected) fail("catalog", `expected ${expected} entries tagged "${tag}", found ${found}`);
+}
+
+// 12. R279: `refs` is a non-empty list of distinct catalog ids. Whether each one is named in the
+// card's text, and every named card listed, is test/references.test.ts's to prove.
+for (const [key, refs] of refsByCard) {
+  const where = `catalog["${key}"].refs`;
+  if (!Array.isArray(refs) || refs.length === 0) {
+    fail(where, `must be a non-empty array of card ids when present (got ${describe(refs)})`);
+    continue;
+  }
+  if (new Set(refs).size !== refs.length) fail(where, `repeats an id (${refs.join(", ")})`);
+  for (const ref of refs) {
+    if (typeof ref !== "string" || !(ref in catalog)) fail(where, `${describe(ref)} is not a catalog id`);
+  }
+}
+
 /* ------------------------------------------------------------------ verdict */
 
 if (failures.length > 0) {
@@ -323,6 +366,11 @@ if (failures.length > 0) {
 console.log(`validate-catalog: OK`);
 console.log(`  ${entries.length} entries (${nonTokenCount} cards + ${tokenCount} tokens)`);
 console.log(`  indices 1-100 plus ${CARD_DEFINED_TOKEN_INDICES.join(", ")} and ${SHARED_TOKEN_INDICES.join(", ")}`);
+console.log(
+  `  tags ${Object.entries(EXPECTED_TAG_COUNTS)
+    .map(([tag, n]) => `${n} ${tag}`)
+    .join(", ")}; refs on ${refsByCard.size} entries`,
+);
 console.log(
   `  rarities ${Object.entries(EXPECTED_RARITY_COUNTS)
     .map(([r, n]) => `${n} ${r}`)
