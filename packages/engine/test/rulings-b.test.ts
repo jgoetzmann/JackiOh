@@ -419,6 +419,7 @@ function handCard(state: GameState, defId: string, player: "p1" | "p2" = "p1"): 
 const SERVER_CONSTANTS = [
   "TURN_CLOCK_SECONDS",
   "PROMPT_CLOCK_SECONDS",
+  "MULLIGAN_CLOCK_SECONDS",
   "DISCONNECT_GRACE_SECONDS",
   "MATCH_CEILING_MINUTES",
   "ROOM_CODE_LENGTH",
