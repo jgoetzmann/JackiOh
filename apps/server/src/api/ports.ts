@@ -146,7 +146,7 @@ export type LoadoutValidateInput = {
    */
   names?: readonly string[];
   /**
-   * R253: `"trio"` (the default) checks L1–L6 over three decks — a Best-of-3 trio is §9.4's
+   * R253: `"trio"` (the default) checks L1–L6 over three decks — a Conquest trio is §9.4's
    * loadout. `"deck"` checks one Best-of-1 deck against L2, L3, L5 and L6.
    */
   scope?: "trio" | "deck";
@@ -445,7 +445,7 @@ export type QueueMode = "bo1" | "bo3" | "random";
 /** One deck as a match or a series freezes it: the cards and the name the player gave them. */
 export type FrozenDeck = { name: string; cards: string[] };
 
-/** R259: a Best-of-3 player's trio, frozen at enqueue (or at room create/join). */
+/** R259: a Conquest player's trio, frozen at enqueue (or at room create/join). */
 export type FrozenTrio = { name: string; decks: [FrozenDeck, FrozenDeck, FrozenDeck] };
 
 export type MatchStatus = "live" | "finished";
@@ -495,7 +495,7 @@ export type MatchStore = {
   /** For the reaper (§9.5). */
   live: () => Promise<MatchRow[]>;
   /**
-   * R263: forget a match id that was reserved and never started — the first game of a Best-of-3
+   * R263: forget a match id that was reserved and never started — the first game of a Conquest
    * series that ended (forfeit, abandoned) before it was played. In Postgres the reservation is an
    * `open` row (`tickets.claimPair`'s skeleton, or a claimed room), and dropping it releases a room
    * code for reuse (R110). A no-op for an id with no such row, and never touches a live or finished
@@ -511,7 +511,7 @@ export type Room = {
   mode: QueueMode;
   /** The host's frozen Best-of-1 deck; `[]` in the other two modes. */
   hostDeck: string[];
-  /** The host's frozen trio in a Best-of-3 room; null otherwise. */
+  /** The host's frozen trio in a Conquest room; null otherwise. */
   hostTrio: FrozenTrio | null;
   catalogVersion: string;
   createdAt: number;
@@ -542,10 +542,10 @@ export type Ticket = {
   mode: QueueMode;
   /**
    * §9.4, §9.5: the Best-of-1 deck is frozen into the ticket; editing a saved deck later cannot
-   * change it. `[]` for a Best-of-3 or an All Random ticket.
+   * change it. `[]` for a Conquest or an All Random ticket.
    */
   deck: string[];
-  /** R259: a Best-of-3 ticket's frozen trio; null in the other two modes. */
+  /** R259: a Conquest ticket's frozen trio; null in the other two modes. */
   trio: FrozenTrio | null;
   catalogVersion: string;
   enqueuedAt: number;
@@ -600,7 +600,7 @@ export type ResultStore = {
 };
 
 // ---------------------------------------------------------------------------
-// The Best-of-3 series (SPEC §9.5, R259–R263). One row per series, persisted so a series survives a
+// The Conquest series (SPEC §9.5, R330–R338, R262–R264). One row per series, persisted so a series survives a
 // server restart; every transition is a pure function in `src/api/series-rules.ts` written back
 // with `SeriesStore.update`, which is compare-and-set on `version`.
 // ---------------------------------------------------------------------------
@@ -609,16 +609,17 @@ export type ResultStore = {
 export type SeriesSeat = "p1" | "p2";
 
 /**
- * `picking` — both players are choosing the next game's deck (R259, R260);
+ * `picking` — both players are choosing the next game's deck (R331, R333);
  * `playing` — the game `nextMatchId` names is being played (or about to be started);
- * `over` — decided, played out, forfeited or abandoned (R261).
+ * `over` — decided, played out, forfeited or abandoned (R334).
  */
 export type SeriesStatus = "picking" | "playing" | "over";
 
 /**
- * Why a series ended (R261): a side reached `SERIES_WINS_NEEDED` (`decided`); every game was
- * played without that (`exhausted`); a side left between games (`forfeit`); or neither side picked
- * before the pick clock ran out (`abandoned`, unrated, R260).
+ * Why a series ended (R334): a side won with every deck, `SERIES_WINS_NEEDED` wins (`decided`, R330);
+ * `SERIES_MAX_GAMES` were played without that (`exhausted`); a side left between games (`forfeit`);
+ * or neither side picked before the pick clock ran out, or a game could not be started
+ * (`abandoned`, unrated, R333, R263).
  */
 export type SeriesEnd = "decided" | "exhausted" | "forfeit" | "abandoned";
 
@@ -628,7 +629,7 @@ export type SeriesGame = {
   matchId: string;
   /** The trio slot each side played, index 0 being series `p1`. */
   slots: [number, number];
-  /** Which side went first — was the match's `p1` (R259: odd games p1, even games p2). */
+  /** Which side went first — was the match's `p1` (R335: odd games p1, even games p2). */
   first: SeriesSeat;
   /** Null while the game is being played. */
   winner: SeriesSeat | "draw" | null;
@@ -638,10 +639,15 @@ export type SeriesGame = {
 export type SeriesSide = {
   profileId: string;
   trio: FrozenTrio;
+  /**
+   * Games this side has won. Each win locks the deck it was won with (R330), so this is also how
+   * many of its decks have won; which ones is read off `games`.
+   */
   wins: number;
   /**
-   * The trio slot this side picked for the next game, or null. Hidden from the other side until
-   * both have picked (R259): it leaves the server only in its owner's projection.
+   * The trio slot this side picked for the next game, or null. Sealed: final once in, and hidden
+   * from the other side until both have picked (R331): it leaves the server only in its owner's
+   * projection. Set by the server when one deck is left (R332).
    */
   pick: number | null;
 };
@@ -650,7 +656,7 @@ export type SeriesRow = {
   id: string;
   sides: [SeriesSide, SeriesSide];
   catalogVersion: string;
-  /** Each game's seed is `${seedBase}:${gameNo}` (R259). The server mints it; R143's e2e override feeds it. */
+  /** Each game's seed is `${seedBase}:${gameNo}` (R335). The server mints it; R143's e2e override feeds it. */
   seedBase: string;
   status: SeriesStatus;
   games: SeriesGame[];
@@ -659,7 +665,7 @@ export type SeriesRow = {
    * game 1, when the series is made — so a restart finds the same id (R263).
    */
   nextMatchId: string;
-  /** Epoch ms the pick phase closes (R260); null outside it. */
+  /** Epoch ms the pick phase closes (R333); null outside it. */
   pickDeadline: number | null;
   winner: SeriesSeat | "draw" | null;
   endReason: SeriesEnd | null;

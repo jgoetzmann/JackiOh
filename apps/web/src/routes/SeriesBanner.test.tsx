@@ -1,5 +1,6 @@
-// The board's series banner (R259): the score while a series game is on, and once it is over the
-// way on to the next game or the series' result. A match that is not a series game shows nothing.
+// The board's series banner (R336): the score and each side's won decks while a series game is on,
+// and once it is over the way on to the next game or the series' result. A match that is not a
+// series game shows nothing.
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,18 +32,19 @@ function series(overrides: Partial<SeriesView> = {}): SeriesView {
       wins: 0,
       trioName: "Main trio",
       decks: [
-        { slot: 0, name: "Aggro", cards: [], played: true },
-        { slot: 1, name: "Control", cards: [], played: false },
-        { slot: 2, name: "Ramp", cards: [], played: false },
+        { slot: 0, name: "Aggro", cards: [], won: false, games: 1 },
+        { slot: 1, name: "Control", cards: [], won: false, games: 0 },
+        { slot: 2, name: "Ramp", cards: [], won: false, games: 0 },
       ],
       pick: null,
+      autoPick: false,
     },
     opponent: {
       wins: 0,
       decks: [
-        { slot: 0, played: false },
-        { slot: 1, played: true },
-        { slot: 2, played: false },
+        { slot: 0, won: false },
+        { slot: 1, won: false },
+        { slot: 2, won: false },
       ],
       picked: false,
     },
@@ -71,18 +73,29 @@ afterEach(() => {
 });
 
 describe("the series banner", () => {
-  it("R259 shows the score on a series game, and no way on while the game is being played", async () => {
-    vi.mocked(getSeriesForMatch).mockResolvedValue({ series: series({ you: { ...series().you, wins: 1 } }) });
+  it("R336 shows the score and each side's won decks on a series game, and no way on while the game is played", async () => {
+    const you = series().you;
+    vi.mocked(getSeriesForMatch).mockResolvedValue({
+      series: series({
+        you: { ...you, wins: 1, decks: you.decks.map((deck) => (deck.slot === 0 ? { ...deck, won: true } : deck)) },
+        opponent: { ...series().opponent, wins: 1, decks: [{ slot: 0, won: false }, { slot: 1, won: false }, { slot: 2, won: true }] },
+      }),
+    });
     render(<Harness gameOver={false} />);
 
     const banner = await screen.findByTestId(seriesBannerTestid.banner);
     expect(vi.mocked(getSeriesForMatch)).toHaveBeenCalledWith(TOKEN, MATCH_ID);
     expect(banner).toHaveAttribute("data-series-id", "series-1");
-    expect(banner).toHaveTextContent(`Best of ${String(SERIES_MAX_GAMES)} · You 1 – 0 Opponent`);
+    expect(banner).toHaveTextContent("Conquest · You 1 – 1 Opponent");
+    expect(screen.getByTestId(seriesBannerTestid.yourDeck(0))).toHaveAttribute("data-won", "true");
+    expect(screen.getByTestId(seriesBannerTestid.yourDeck(1))).toHaveAttribute("data-won", "false");
+    expect(screen.getByTestId(seriesBannerTestid.opponentDeck(2))).toHaveAttribute("data-won", "true");
+    expect(screen.getByLabelText("Your decks: 1 of 3 decks have won")).toBeInTheDocument();
+    expect(screen.getByLabelText("Their decks: 1 of 3 decks have won")).toBeInTheDocument();
     expect(screen.queryByTestId(seriesBannerTestid.continue)).toBeNull();
   });
 
-  it("R259 once the game is over, reads the series again and offers Continue to the next game", async () => {
+  it("R338 once the game is over, reads the series again and offers Continue to the next game", async () => {
     vi.mocked(getSeriesForMatch).mockResolvedValue({ series: series() });
     const { rerender } = render(<Harness gameOver={false} />);
     await screen.findByTestId(seriesBannerTestid.banner);
@@ -102,7 +115,7 @@ describe("the series banner", () => {
     expect(screen.getByTestId(seriesBannerTestid.panelContinue)).toHaveAttribute("href", "/series/series-1");
   });
 
-  it("goes straight to the next game's board when it is already running (game 3's picks are automatic)", () => {
+  it("R332 goes straight to the next game's board when it is already running (both last decks were picked)", () => {
     const running = series({ gameNo: 3, currentMatchId: "m-3" });
     expect(nextStep(running, MATCH_ID)).toEqual({ href: "/match/m-3", label: "Continue to game 3" });
     // Still this game: the series has not moved on yet.

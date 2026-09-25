@@ -228,6 +228,9 @@ const WEB_DECK_SYNC_TEST = "../../../apps/web/src/game/deckbuilder/sync.test.ts"
 const WEB_WORKSHOP_TEST = "../../../apps/web/src/game/deckbuilder/DeckWorkshop.test.tsx";
 const WEB_PLAY_TEST = "../../../apps/web/src/routes/play.test.tsx";
 const WEB_SERIES_TEST = "../../../apps/web/src/routes/series.test.tsx";
+/** R330 to R341's proofs beyond those above: Conquest and trio codes. */
+const WEB_SERIES_BANNER_TEST = "../../../apps/web/src/routes/SeriesBanner.test.tsx";
+const WEB_TRIO_CODE_TEST = "../../../apps/web/src/game/deckbuilder/trioCode.test.ts";
 
 /** R345's proof on the client: the "End turn automatically" switch and what Game.tsx sends. */
 const WEB_SETTINGS_TEST = "../../../apps/web/src/test/ux/settings.test.tsx";
@@ -2132,22 +2135,21 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(258, SERVER_QUEUE_TEST, SERVER_ENGINE_REAL_TEST);
   });
 
-  // Proved by series-rules.test.ts and series.test.ts "R259 …", and series.test.tsx "R259 …" (the
-  // screen shows whether the opponent has picked, never what).
-  it("R259 plays a series to two wins, each deck once, picks hidden until both are in", () => {
-    expect(serverConstant(SERVER_CONFIG, "SERIES_WINS_NEEDED")).toBe("2");
-    expect(serverConstant(SERVER_CONFIG, "SERIES_MAX_GAMES")).toBe("3");
-    provenIn(259, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST, WEB_SERIES_TEST);
+  // Amended by R330–R336 (Conquest). What stands — the frozen trios, the hidden pick, the seeds and
+  // the seats, the hidden deck names — is proved by series-rules.test.ts and series.test.ts "R259 …".
+  it("R259 plays a series from the trios frozen at queue, one deck a side each game, picks hidden until both are in", () => {
+    provenIn(259, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
   });
 
-  // Proved by series-rules.test.ts and series.test.ts "R260 …".
-  it("R260 gives a late picker their first unplayed deck, and abandons a series nobody picks in", () => {
-    expect(serverConstant(SERVER_CONFIG, "SERIES_PICK_SECONDS")).toBe("60");
+  // Replaced by R333, which keeps its clock and its abandonment: series-rules.test.ts and
+  // series.test.ts name R260 on the tests of what stands.
+  it("R260 abandons a series nobody picks in (the clock is R333's now)", () => {
     provenIn(260, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
   });
 
-  // Proved by series-rules.test.ts and series.test.ts "R261 …".
-  it("R261 loses a game, not the series, to a concede or a disconnect; draws count for neither", () => {
+  // Replaced by R334, which keeps its concede, disconnect and forfeit: series-rules.test.ts and
+  // series.test.ts name R261 on those tests.
+  it("R261 loses a game, not the series, to a concede or a disconnect (the rest is R334's now)", () => {
     provenIn(261, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
   });
 
@@ -2315,6 +2317,83 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by apps/web tutorial/progress.test.ts "R294 …": the on-device store and the unlock order.
   it("R294 keeps tutorial progress on the device and opens the lessons in order", () => {
     provenIn(294, WEB_TUTORIAL_PROGRESS_TEST);
+  });
+
+  // Proved by series-rules.test.ts "R330 …" (a deck that wins is locked, a lost one comes back, three
+  // wins with three decks take the series, and over 400 seeded series a side's wins are always its
+  // won decks) and series.test.ts "R330 …" (a won deck refused through the API).
+  it("R330 plays the trio mode as Conquest: a win with each deck takes the series, and a deck that wins is locked", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_WINS_NEEDED")).toBe("3");
+    provenIn(330, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts "R331 …" (hidden, final, completing both starts the game),
+  // series.test.ts "R331 …" (a second slot refused, the same slot answered as success, a pick in the
+  // database before it is acknowledged), series-recovery.test.ts "R331 …" (a pick survives a
+  // restart, sealed and hidden) and series.test.tsx "R331 …" (choose, lock in, then wait).
+  it("R331 seals each player's pick until both are in, and keeps it across a restart", () => {
+    provenIn(331, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST, SERVER_SERIES_RECOVERY_TEST, WEB_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R332 …", series.test.tsx "R332 …" and
+  // SeriesBanner.test.tsx "R332 …".
+  it("R332 picks a player's last deck for them, and starts the game when both are down to one", () => {
+    provenIn(332, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST, WEB_SERIES_TEST, WEB_SERIES_BANNER_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R333 …", and series.test.tsx "R333 …".
+  it("R333 gives a late picker their first deck that has not won, and abandons a series nobody picks in", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_PICK_SECONDS")).toBe("60");
+    provenIn(333, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST, WEB_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R334 …": draws lock nothing, the cap and what
+  // it decides, concede and disconnect lose a game, forfeit between games only.
+  it("R334 counts a draw for neither side, caps a series at seven games, and loses only a game to a concede", () => {
+    expect(serverConstant(SERVER_CONFIG, "SERIES_MAX_GAMES")).toBe("7");
+    provenIn(334, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts and series.test.ts "R335 …".
+  it("R335 alternates who goes first by game number, draws included", () => {
+    provenIn(335, SERVER_SERIES_RULES_TEST, SERVER_SERIES_TEST);
+  });
+
+  // Proved by series-rules.test.ts "R336 …" (the projection, at every point of a series),
+  // series.test.tsx "R336 …" and SeriesBanner.test.tsx "R336 …" (both sides' won decks on screen).
+  it("R336 shows each side both sides' won decks, and nothing else of the other side's trio", () => {
+    provenIn(336, SERVER_SERIES_RULES_TEST, WEB_SERIES_TEST, WEB_SERIES_BANNER_TEST);
+  });
+
+  // Proved by series-rules.test.ts "R337 …": a Best-of-3 row at one win each goes on as Conquest.
+  it("R337 carries a series begun as a Best of 3 on as a Conquest", () => {
+    provenIn(337, SERVER_SERIES_RULES_TEST);
+  });
+
+  // Proved by series.test.tsx "R338 …" and SeriesBanner.test.tsx "R338 …": the pick on the series
+  // screen, and the way on from the board to it and to the game it starts.
+  it("R338 puts the pick on the series screen, laid out as the mulligan is", () => {
+    provenIn(338, WEB_SERIES_TEST, WEB_SERIES_BANNER_TEST);
+  });
+
+  // Proved by trioCode.test.ts "R339 …" (the round trip, totality, every refusal, each deck read as a
+  // deck code's) and DeckWorkshop.test.tsx "R339 …" (Copy trio code, and a code that cannot be read).
+  it("R339 shares a trio and its decks as a versioned, checksummed, length-capped code", () => {
+    expect(serverConstant(SERVER_CONFIG, "TRIO_CODE_VERSION")).toBe("1");
+    expect(serverConstant(SERVER_CONFIG, "TRIO_CODE_MAX_INPUT_LENGTH")).toBe("2048");
+    provenIn(339, WEB_TRIO_CODE_TEST, WEB_WORKSHOP_TEST);
+  });
+
+  // Proved by drafts.test.ts "R340 …" (the sentence), decks.test.ts "R340 …" (the server's refusal,
+  // nothing written), sync.test.ts and DeckWorkshop.test.tsx "R340 …" (refused before it is sent).
+  it("R340 fits a trio import under both caps or makes nothing, saying how many slots it needs", () => {
+    provenIn(340, VALIDATOR_DRAFTS_TEST, SERVER_DECKS_TEST, WEB_DECK_SYNC_TEST, WEB_WORKSHOP_TEST);
+  });
+
+  // Proved by decks.test.ts "R341 …" (every check, the rollback, the retry), sync.test.ts "R341 …"
+  // (one request, ids reused on a retry) and DeckWorkshop.test.tsx "R341 …".
+  it("R341 checks a trio import on the server and writes it all or nothing", () => {
+    provenIn(341, SERVER_DECKS_TEST, WEB_DECK_SYNC_TEST, WEB_WORKSHOP_TEST);
   });
 
   // Proved by auto-end-turn.test.ts "R345 …": off, an idle turn waits for End turn and on again it

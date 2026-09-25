@@ -250,9 +250,13 @@ describe("when another account signs in under an open workshop", () => {
 
     const sentAsOther = vi.mocked(putDeck).mock.calls.filter(([token]) => token === OTHER_TOKEN);
     expect(sentAsOther, "the first profile's new deck must not be created in the second's account").toEqual([]);
-    // Not lost either: it waits in the first profile's own mirror for that profile's next visit.
+    // Not lost either: it waits in the first profile's own mirror for that profile's next visit —
+    // unless the debounce ran out before the switch landed (a loaded run on the real clock takes
+    // longer than `DECK_AUTOSAVE_DEBOUNCE_MS` to re-read the gate), and then it was saved, with the
+    // first profile's own token, which is just as right.
     const kept = window.localStorage.getItem(mirrorKey(PROFILE)) ?? "";
     expect(kept).toContain("Deck 1");
-    expect(kept).toContain('"dirty":true');
+    const savedAsFirst = vi.mocked(putDeck).mock.calls.some(([token, , input]) => token === TOKEN && input.name === "Deck 1");
+    if (!savedAsFirst) expect(kept).toContain('"dirty":true');
   }, SWITCH_TEST_TIMEOUT_MS);
 });

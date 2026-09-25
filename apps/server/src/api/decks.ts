@@ -28,13 +28,14 @@ import {
 } from "../config";
 import { callerProfile, ownedMap } from "./collection";
 import { ApiError, badRequest, ok, route, str, stringList, type Route } from "./http";
-import { checkDeckDraft, checkTrioDraft, normalizeName } from "./loadout-validator";
+import { checkDeckDraft, checkImportRoom, checkTrioDraft, normalizeName, TRIO_DECKS } from "./loadout-validator";
 import type {
   FrozenDeck,
   FrozenTrio,
   SavedDeck,
   SavedTrio,
   ServerDeps,
+  Store,
   TrioSlots,
 } from "./ports";
 
@@ -165,13 +166,103 @@ function deckableIn(deps: ServerDeps): (cardId: string) => boolean {
   return (cardId) => known.has(cardId) && !deps.catalog.isToken(cardId);
 }
 
+
+// ---------------------------------------------------------------------------
+// A trio import (R340, R341)
+// ---------------------------------------------------------------------------
+
+/** One deck of an imported trio, as the body carries it: its client-minted id, name and cards. */
+type ImportedDeckInput = { id: string; name: string; cards: string[] };
+
+type TrioImportInput = {
+  catalogVersion: string;
+  trio: { id: string; name: string };
+  /** Slot by slot; null is a slot the code left empty. */
+  slots: (ImportedDeckInput | null)[];
+};
+
+const IMPORT_SHAPE =
+  'A trio import is { catalogVersion, trio: { id, name }, slots: [3 × ({ id, name, cards } or null)] }';
+
+function recordOf(value: unknown): Readonly<Record<string, unknown>> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : null;
+}
+
+/**
+ * R341: the body, read without trusting any of it. Shapes are checked here (ids are UUIDs, names
+ * are strings, cards are lists of strings, exactly `TRIO_DECKS` slots); what the shapes hold is the
+ * draft rules' to judge, in their own words.
+ */
+function importOf(body: Readonly<Record<string, unknown>>): TrioImportInput {
+  const catalogVersion = str(body, "catalogVersion");
+  const trio = recordOf(body["trio"]);
+  const trioId = savedIdOf(trio?.["id"]);
+  if (trio === null || trioId === null || typeof trio["name"] !== "string") throw badRequest(IMPORT_SHAPE);
+  const rawSlots = body["slots"];
+  if (!Array.isArray(rawSlots) || rawSlots.length !== TRIO_DECKS) throw badRequest(IMPORT_SHAPE);
+  const slots = rawSlots.map((raw: unknown): ImportedDeckInput | null => {
+    if (raw === null) return null;
+    const deck = recordOf(raw);
+    const id = savedIdOf(deck?.["id"]);
+    if (deck === null || id === null || typeof deck["name"] !== "string") throw badRequest(IMPORT_SHAPE);
+    return { id, name: deck["name"], cards: stringList(deck, "cards") };
+  });
+  return { catalogVersion, trio: { id: trioId, name: trio["name"] }, slots };
+}
+
+/** "Deck 2 (“Aggro”)": which of the code's decks a refusal is about. */
+function importedDeckLabel(slot: number, name: string): string {
+  return `Deck ${String(slot + 1)} (“${name}”)`;
+}
+
+/**
+ * R340: the room check, in the words the workshop shows, against what `t` holds now. Ids the
+ * caller already owns are a retry of an import that landed (R256's idempotent upsert): they take no
+ * new slot.
+ */
+async function assertImportRoom(
+  t: Store,
+  profileId: string,
+  deckIds: readonly string[],
+  trioId: string,
+): Promise<void> {
+  const decks = await t.decks.list(profileId);
+  const trios = await t.trios.list(profileId);
+  const heldDecks = new Set(decks.map((deck) => deck.id));
+  const room = checkImportRoom({
+    saved: { decks: decks.length, trios: trios.length },
+    limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS },
+    adding: {
+      decks: deckIds.filter((id) => !heldDecks.has(id)).length,
+      trios: trios.some((trio) => trio.id === trioId) ? 0 : 1,
+    },
+  });
+  if (!room.ok) {
+    throw new ApiError("conflict", `${room.message} Nothing was imported.`, {
+      decksShort: room.decksShort,
+      triosShort: room.triosShort,
+      limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS },
+    });
+  }
+}
+
+/** Thrown inside the import's transaction to roll back every write made before it. */
+function importOutcomeRefused(what: "deck" | "trio", outcome: string): ApiError {
+  if (outcome === "not_owner") return notFound(what);
+  // A cap reached between the room check and the write: another tab or device saved meanwhile.
+  return new ApiError("conflict", "Your decks changed while this import was on its way. Nothing was imported; try again.");
+}
+
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
 /**
- * `GET /api/decks`, `PUT`/`DELETE /api/decks/:id`, `PUT`/`DELETE /api/trios/:id`. All `active`, so
- * a pending account gets 403 from each (§9.4: "no collection, loadout, queue or match").
+ * `GET /api/decks`, `PUT`/`DELETE /api/decks/:id`, `PUT`/`DELETE /api/trios/:id` and
+ * `POST /api/trios/import` (R341). All `active`, so a pending account gets 403 from each (§9.4:
+ * "no collection, loadout, queue or match").
  */
 export function createDeckRoutes(): Route[] {
   return [
@@ -298,6 +389,83 @@ export function createDeckRoutes(): Route[] {
       return ok({ trio: trioView(saved) });
     }),
 
+    /**
+     * R340, R341: import a trio code's decks and the trio naming them, all or nothing. The client
+     * decoded the code (R339) and minted every id; this checks all of it as any save would — the
+     * catalog version, D1–D4 for each deck, T1–T3 for the trio — and then the room under both caps
+     * (R340). A refusal names what to fix and nothing is written; otherwise every deck and then the
+     * trio are upserted in one transaction, so a write that fails part-way rolls the others back.
+     * Sending the same ids again (a retry after a dropped answer) updates what the first attempt
+     * made and takes no new slot. Unowned cards and cards the decks share are kept: both are
+     * judged at queue (R253), and the workshop marks them.
+     */
+    route("POST", "/api/trios/import", "active", async (req, deps) => {
+      const profile = callerProfile(req);
+      const input = importOf(req.body);
+      assertCurrentCatalog(deps, input.catalogVersion);
+
+      const isDeckable = deckableIn(deps);
+      const decks = input.slots.map((deck, slot) => {
+        if (deck === null) return null;
+        const name = normalizeName(deck.name);
+        const issues = checkDeckDraft({ name, cards: deck.cards, isDeckable, nameMaxLength: DECK_NAME_MAX_LENGTH });
+        const first = issues[0];
+        if (first !== undefined) {
+          throw draftRefused(`${importedDeckLabel(slot, name)}: ${first.message}`, issues);
+        }
+        return { id: deck.id, name, cards: [...deck.cards] };
+      });
+      const deckIds = decks.map((deck) => deck?.id ?? null);
+      const trioName = normalizeName(input.trio.name);
+      const trioIssues = checkTrioDraft({ name: trioName, deckIds, nameMaxLength: DECK_NAME_MAX_LENGTH });
+      const firstTrioIssue = trioIssues[0];
+      if (firstTrioIssue !== undefined) throw draftRefused(firstTrioIssue.message, trioIssues);
+      const filledIds = deckIds.filter((id): id is string => id !== null);
+
+      const now = deps.timers.now();
+      await deps.store.tx(async (t) => {
+        await assertImportRoom(t, profile.id, filledIds, input.trio.id);
+        // Each deck one millisecond after the one before: the list is oldest first with ties broken
+        // on the id, and the ids are random, so one instant for all three would list them in any
+        // order rather than in their slots' (R341).
+        let order = 0;
+        for (const deck of decks) {
+          if (deck === null) continue;
+          const at = now + order;
+          order += 1;
+          const outcome = await t.decks.upsert(
+            { ...deck, profileId: profile.id, catalogVersion: input.catalogVersion, createdAt: at, updatedAt: at },
+            MAX_SAVED_DECKS,
+          );
+          if (outcome !== "created" && outcome !== "updated") throw importOutcomeRefused("deck", outcome);
+        }
+        const outcome = await t.trios.upsert(
+          {
+            id: input.trio.id,
+            profileId: profile.id,
+            name: trioName,
+            deckIds: deckIds as TrioSlots,
+            createdAt: now,
+            updatedAt: now,
+          },
+          MAX_SAVED_TRIOS,
+        );
+        if (outcome !== "created" && outcome !== "updated") throw importOutcomeRefused("trio", outcome);
+      });
+
+      // Read back, as a single save does, so the answer carries the kept `createdAt`s.
+      const savedDecks: DeckView[] = [];
+      for (const id of filledIds) {
+        const saved = await deps.store.decks.get(id);
+        if (saved === null || saved.profileId !== profile.id) throw notFound("deck");
+        savedDecks.push(deckView(saved));
+      }
+      const savedTrio = await deps.store.trios.get(input.trio.id);
+      if (savedTrio === null || savedTrio.profileId !== profile.id) throw notFound("trio");
+      deps.log.info("trio.imported", { profileId: profile.id, trioId: input.trio.id, decks: filledIds.length });
+      return ok({ decks: savedDecks, trio: trioView(savedTrio) });
+    }),
+
     /** Idempotent, as the deck's. The decks it named are untouched. */
     route("DELETE", "/api/trios/:id", "active", async (req, deps) => {
       const profile = callerProfile(req);
@@ -345,7 +513,7 @@ export function readModeChoice(body: Readonly<Record<string, unknown>>): ModeCho
 
   if (mode === "bo3") {
     const trioId = savedIdOf(body["trioId"]);
-    if (trioId === null) throw badRequest('Best of 3 needs "trioId", the id of one of your trios');
+    if (trioId === null) throw badRequest('Conquest needs "trioId", the id of one of your trios');
     return { mode, trioId };
   }
 
@@ -486,7 +654,7 @@ export async function freezeChoice(
 export async function assertNotInSeries(deps: ServerDeps, profileId: string): Promise<void> {
   const series = await deps.store.series.activeFor(profileId);
   if (series !== null) {
-    throw new ApiError("already_in_match", "Finish your best-of-three series first.", {
+    throw new ApiError("already_in_match", "Finish your Conquest series first.", {
       seriesId: series.id,
     });
   }

@@ -16,7 +16,7 @@
 // `GET /api/collection` (L5's quantities). Only the collection is optional: without it ownership is
 // neither claimed nor denied, and the queue still checks it.
 //
-// THE WRITES are the workshop's store's (sync.ts, R256), through the four functions below. They
+// THE WRITES are the workshop's store's (sync.ts, R256, R341), through the functions below. They
 // read the token at the moment they send, not when the screen opened: the gate renews an hour-old
 // token under an open screen (R194), and a save made after that must carry the new one. For the
 // same reason the reads run once per profile, not once per token, so a renewal does not reload
@@ -45,6 +45,7 @@ import {
   getCatalog,
   getCollection,
   getDecks,
+  importTrio,
   putDeck,
   putTrio,
   type DecksResponse,
@@ -111,6 +112,7 @@ export default function DecksRoute() {
       deleteDeck: async (id) => deleteDeck(await current(), id),
       putTrio: async (id, input) => putTrio(await current(), id, input),
       deleteTrio: async (id) => deleteTrio(await current(), id),
+      importTrio: async (input) => importTrio(await current(), input),
     };
   }, [workshopProfile]);
 

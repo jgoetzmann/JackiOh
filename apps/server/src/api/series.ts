@@ -1,5 +1,5 @@
 /**
- * The Best-of-3 series (SPEC §9.5, R259–R263): the store half of `series-rules.ts`.
+ * The Conquest series (SPEC §9.5, R330–R338, with R262–R264): the store half of `series-rules.ts`.
  *
  * The rules are pure functions over `SeriesRow` in `series-rules.ts`; this file reads a row,
  * applies one of them and writes the result back, and does the three things a pure function
@@ -9,12 +9,14 @@
  *    sweeper, and `results.ts` when a game ends — and `SeriesStore.update` writes only over the
  *    version it was computed from. A write that loses re-reads the row and re-applies the same
  *    transition to it, so the loser's intent lands on the winner's state or is refused by the rules
- *    (a pick that arrives after the game began finds `playing`).
+ *    (a pick that arrives after the game began finds `playing`). A pick is persisted in the row
+ *    before it is acknowledged, so a restart keeps it, and it leaves the server only in its owner's
+ *    projection (R331).
  *  - **The rating move** (R262). When a transition ends the series, its one Elo move is computed
  *    from both players' current ratings and written in the same transaction as the row, which
  *    records it (`ratingBefore`, `ratingAfter`). A game inside a series is never rated
  *    (`results.ts`). An abandoned series is unrated.
- *  - **Starting the game** (R259, R263). When both picks are in, the game in `nextMatchId` is
+ *  - **Starting the game** (R331, R263). When both picks are in, the game in `nextMatchId` is
  *    started through `deps.matches` with the seats and seed `gameSeats` names, and both players'
  *    in-match flags are set. It happens after the commit, because the actor must never run a game
  *    the series row does not name; a crash between the two leaves a `playing` series with no match,
@@ -34,6 +36,7 @@ import type { MatchSeat, ServerDeps, SeriesRow, SeriesSeat, Store, Timer } from 
 import {
   SeriesRefusal,
   abandonUnstarted,
+  alreadyPicked,
   forfeitSeries,
   gameEnded,
   gameSeats,
@@ -58,8 +61,8 @@ const MS_PER_SECOND = 1000;
 // ---------------------------------------------------------------------------
 
 /**
- * Makes the series in game 1's pick phase and persists it (R259, R260, R263). Called by pairing
- * (`queue.ts`) and by a Best-of-3 room's join (`match/rooms.ts`) with the match id they reserved,
+ * Makes the series in game 1's pick phase and persists it (R331, R333, R263). Called by pairing
+ * (`queue.ts`) and by a Conquest room's join (`match/rooms.ts`) with the match id they reserved,
  * which becomes game 1's. No match starts and no in-match flag is set: a series in its pick phase
  * is not a match, and `assertNotInSeries` is what keeps its players out of the queue meanwhile.
  *
@@ -75,9 +78,9 @@ export async function startSeries(
   const series = newSeries(input, now);
   await store.series.create(series);
   // §9.5: a player in a series is in no queue. The queue's own pairing has claimed both tickets
-  // already, but a player may have joined (or hosted) a Best-of-3 room while a ticket of theirs
+  // already, but a player may have joined (or hosted) a Conquest room while a ticket of theirs
   // waited. A match's result cancels such a ticket; a series can end with no game played (a
-  // forfeit or an abandoned pick, R260, R261), and then nothing would, and the stale ticket would
+  // forfeit or an abandoned pick, R333, R334), and then nothing would, and the stale ticket would
   // pair them into a match they stopped waiting for. So it goes now, as the series begins.
   for (const side of series.sides) {
     const stale = await store.tickets.openForProfile(side.profileId);
@@ -99,8 +102,8 @@ export async function startSeries(
 /**
  * Starts the game `series.nextMatchId` names when the series is `playing` and that match is
  * neither running in this process nor written to the store (R263). Safe to call from several
- * places at once — the request whose pick completed both, the result that auto-picked game 3, the
- * sweeper — because a start that loses to another start finds the row the winner wrote and stops.
+ * places at once — the request whose pick completed both, the result whose next game both sides'
+ * automatic picks began (R332), the sweeper — because a start that loses to another start finds the row the winner wrote and stops.
  */
 export async function ensureSeriesGame(deps: ServerDeps, series: SeriesRow): Promise<void> {
   await startSeriesGame(deps, series);
@@ -140,7 +143,7 @@ async function startSeriesGame(deps: ServerDeps, series: SeriesRow): Promise<boo
     throw error;
   }
 
-  // After the start, not before: for games 2 and 3 the match row is what `profiles`' in-match
+  // After the start, not before: for every game after the first the match row is what `profiles`' in-match
   // reference points at, and only the start writes it.
   await markInMatch(deps, seats, matchId);
   deps.log.info("series.game_started", {
@@ -273,7 +276,7 @@ async function writeTransition(
 
 export type SeriesGameResult = {
   matchId: string;
-  /** The match's seats, index 0 being the match's p1 — not necessarily series p1 (R259). */
+  /** The match's seats, index 0 being the match's p1 — not necessarily series p1 (R335). */
   seats: readonly [MatchSeat, MatchSeat];
   outcome: TerminalOutcome;
   at: number;
@@ -291,7 +294,7 @@ function seriesWinnerOf(series: SeriesRow, result: SeriesGameResult): SeriesSeat
 }
 
 /**
- * R261, R263: records the game `result.matchId` in `series` and, when that ends the series, R262's
+ * R334, R263: records the game `result.matchId` in `series` and, when that ends the series, R262's
  * rating move, all inside `t` — the transaction `results.ts` writes the game's result in, so the
  * result, the series' record of it and the rating move commit together or not at all. The next
  * game's match id is minted here, when its pick phase opens. Throws when the write cannot land, which
@@ -320,14 +323,14 @@ export async function advanceSeriesInTx(
 }
 
 // ---------------------------------------------------------------------------
-// The sweeper (R260, R263)
+// The sweeper (R333, R263)
 // ---------------------------------------------------------------------------
 
 export type SeriesSweep = { timedOut: string[]; started: string[]; abandoned: string[] };
 
 /**
  * One sweep over every series that is not over:
- *  - a pick phase past its deadline is settled (R260): missing picks are made and the game starts,
+ *  - a pick phase past its deadline is settled (R333): missing picks are made and the game starts,
  *    or, with no pick at all, the series is abandoned;
  *  - a `playing` series whose match is not running and whose row has not changed for
  *    `SERIES_START_GRACE_SECONDS` gets its match started (R263). The grace is what keeps the
@@ -436,7 +439,7 @@ function seriesNotFound(): ApiError {
 
 /** A rules refusal as the player hears it: a bad slot is their request, the rest is timing. */
 function refusalToApi(refusal: SeriesRefusal): ApiError {
-  if (refusal.reason === "slot_out_of_range" || refusal.reason === "slot_played") {
+  if (refusal.reason === "slot_out_of_range" || refusal.reason === "slot_won") {
     return badRequest(refusal.message);
   }
   return new ApiError("conflict", refusal.message);
@@ -462,6 +465,16 @@ function slotOf(body: Readonly<Record<string, unknown>>): number {
   return value;
 }
 
+/** R331: the game a pick is for, when the request names it (the client always does). */
+function gameNoOf(body: Readonly<Record<string, unknown>>): number | undefined {
+  const value = body["gameNo"];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw badRequest('"gameNo" must be the number of the game the pick is for');
+  }
+  return value;
+}
+
 /** A transition requested by a player: refusals become their HTTP answers. */
 async function playerTransition(
   deps: ServerDeps,
@@ -482,27 +495,41 @@ function view(deps: ServerDeps, series: SeriesRow, profileId: string): unknown {
 
 export function createSeriesRoutes(): Route[] {
   return [
-    /** The caller's view of the series (R259). 404 when it does not exist or they are not in it. */
+    /** The caller's view of the series (R336). 404 when it does not exist or they are not in it. */
     route("GET", "/api/series/:id", "active", async (req, deps) => {
       const { series, profileId } = await callersSeries(req, deps);
       return ok(view(deps, series, profileId));
     }),
 
     /**
-     * R259: pick a trio slot for the next game. The pick that completes both starts the game, and
-     * the answer then names it in `currentMatchId`. 409 while a game is being played or after the
-     * pick clock ran out (R260); 400 for a slot out of range or already played.
+     * R331: pick a trio slot for the next game, `{ slot, gameNo? }`. The pick is sealed: final once
+     * in, and shown to the other side only as "picked". The pick that completes both starts the
+     * game, and the answer then names it in `currentMatchId`. The same slot sent again (a retry
+     * whose first answer was lost) is answered with the current view, as the success it was; a pick
+     * naming a game other than the one being picked for is never applied to another game. 409 for a
+     * different slot once a pick is in, for another game's pick, while a game is being played, or
+     * after the pick clock ran out (R333); 400 for a slot out of range or one whose deck has won (R330).
      */
     route("POST", "/api/series/:id/pick", "active", async (req, deps) => {
       const slot = slotOf(req.body);
+      const gameNo = gameNoOf(req.body);
       const { series, seat, profileId } = await callersSeries(req, deps);
       const now = deps.timers.now();
-      const after = await playerTransition(deps, series.id, (row) => pickDeck(row, seat, slot, now));
-      deps.log.info("series.picked", { seriesId: series.id, seat, status: after.status });
-      return ok(view(deps, after, profileId));
+      try {
+        const { after } = await writeTransition(deps, series.id, (row) => pickDeck(row, seat, slot, now, gameNo));
+        deps.log.info("series.picked", { seriesId: series.id, seat, status: after.status });
+        return ok(view(deps, after, profileId));
+      } catch (error) {
+        if (!(error instanceof SeriesRefusal)) throw error;
+        if (error.reason === "pick_sealed" || error.reason === "not_picking" || error.reason === "stale_pick") {
+          const current = await deps.store.series.get(series.id);
+          if (current !== null && alreadyPicked(current, seat, slot, gameNo)) return ok(view(deps, current, profileId));
+        }
+        throw refusalToApi(error);
+      }
     }),
 
-    /** R261: leave the series between games; the other side wins it. 409 during a game. */
+    /** R334: leave the series between games; the other side wins it. 409 during a game. */
     route("POST", "/api/series/:id/forfeit", "active", async (req, deps) => {
       const { series, seat, profileId } = await callersSeries(req, deps);
       const now = deps.timers.now();
