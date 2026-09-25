@@ -415,6 +415,50 @@ describe("R81 inline pickers submit a play with no PendingChoice at all", () => 
     });
   });
 
+  it("a play's zone, target and Tribute picks say to tap the board; prompt.css shows it only where the picker is a bar with no options", () => {
+    const hint = (): string | null => document.querySelector(".prompt-board-hint")?.textContent ?? null;
+    const cases: [ActionBody[], string][] = [
+      [
+        [
+          { type: "play", instanceId: "h1", zone: { row: "units", lane: 3 } },
+          { type: "play", instanceId: "h1", zone: { row: "units", lane: 5 } },
+        ],
+        "Tap a highlighted zone on the board.",
+      ],
+      [
+        [
+          { type: "play", instanceId: "h2", targets: [{ pick: "instance", instanceId: "e1" }] },
+          { type: "play", instanceId: "h2", targets: [{ pick: "hero", player: "p2" }] },
+        ],
+        "Tap a highlighted target on the board.",
+      ],
+      [
+        [
+          { type: "play", instanceId: "h1", zone: { row: "units", lane: 1 }, tributes: ["u1", "u2"] },
+          { type: "play", instanceId: "h1", zone: { row: "units", lane: 1 }, tributes: ["u1", "e1"] },
+        ],
+        "Tap a highlighted unit on the board.",
+      ],
+    ];
+    for (const [candidates, text] of cases) {
+      const instanceId = candidates[0]?.type === "play" ? candidates[0].instanceId : "h1";
+      render(<Prompt view={viewWith()} interaction={playing(candidates, instanceId)} onAction={vi.fn()} />);
+      expect(hint()).toBe(text);
+      cleanup();
+    }
+
+    // An engine prompt keeps its sheet on every layout, so it has no hint.
+    render(
+      <Prompt
+        view={viewWith({
+          pending: pendingFor("zone", [{ key: "zone:p1:units:1", label: "Unit lane 1", player: "p1", row: "units", lane: 1 }]),
+        })}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(hint()).toBeNull();
+  });
+
   it("renders nothing when the play in flight needs no further choice", () => {
     const { container } = render(
       <Prompt view={viewWith()} interaction={playing([{ type: "play", instanceId: "h2" }])} onAction={vi.fn()} />,

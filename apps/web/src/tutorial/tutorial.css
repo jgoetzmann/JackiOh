@@ -666,7 +666,8 @@
 }
 
 /* The slim bubble while the coach waits (the AI's turn, a step whose moment has not come): one
-   line of what is happening, and Skip step. */
+   line of what is happening, and Skip step (not on your own turn, where the line says it is your
+   move and the step waiting for its moment retires by itself). */
 .coach.coach--float.coach--slim {
   flex-direction: row;
   flex-wrap: wrap;
@@ -697,6 +698,10 @@
 @media (max-width: 1024px), (pointer: coarse) {
   .app-shell .coach__ack,
   .app-shell .coach__skip {
+    min-height: 44px;
+  }
+
+  .coach.coach--panel .coach__actions {
     min-height: 44px;
   }
 }
@@ -769,10 +774,13 @@
   white-space: nowrap;
 }
 
+/* As tall as its buttons even when it has none (the waiting line on your own turn), so the panel
+   keeps its height from one display to the next. */
 .coach--panel .coach__actions {
   grid-area: actions;
   flex-wrap: nowrap;
   gap: 6px;
+  min-height: 40px;
   margin: 0;
 }
 
@@ -963,6 +971,40 @@
   font-size: 14px;
   line-height: 1.4;
   text-align: left;
+}
+
+/* After the last lesson, what is left to find: three short lines, in the tip's sunken box. */
+.tutorial-result__next {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--coach);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  text-align: left;
+}
+
+.app-shell .tutorial-result__next-title {
+  margin: 0;
+  color: var(--coach);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tutorial-result__next-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.4;
 }
 
 /* ---- tablets and phones: the path runs down the screen ----------------------------------- */

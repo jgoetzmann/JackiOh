@@ -91,6 +91,36 @@ describe("the coach bubble's placement", () => {
     expect(overlapArea(bubbleRect(place), hero)).toBe(0);
   });
 
+  it("keeps clear of what a play in progress asks for before anything soft: over your hand rather than the lane to drop in", () => {
+    // Lesson 1's "Play a unit" on a desktop: the card picked up from the hand, your five unit
+    // lanes glowing above it, the rest of the hand beside it.
+    const card: Rect = { left: 339, top: 580, width: 92, height: 124 };
+    const hand: Rect = { left: 20, top: 580, width: 976, height: 130 };
+    const lanes: Rect[] = [0, 1, 2, 3, 4].map((index) => ({ left: 24 + 194 * index, top: 330, width: 190, height: 90 }));
+    const soft = placeBubble(input({ anchor: card, avoid: [hand, ...lanes] }));
+    // With the lanes only soft, the side covering the least wins: above the card, on lanes 1-2.
+    expect(soft.side).toBe("above");
+    expect(lanes.some((lane) => overlapArea(bubbleRect(soft), lane) > 0)).toBe(true);
+
+    const clear = placeBubble(input({ anchor: card, avoid: [hand], keepClear: lanes }));
+    for (const lane of lanes) expect(overlapArea(bubbleRect(clear), lane), JSON.stringify(clear)).toBe(0);
+    expect(overlapArea(bubbleRect(clear), card)).toBe(0);
+    expect(inside(bubbleRect(clear), VIEWPORT, 8, 60)).toBe(true);
+  });
+
+  it("with no side clear of what a play asks for, covers the least of it", () => {
+    const anchor: Rect = { left: 560, top: 300, width: 160, height: 60 };
+    // Everything round the anchor is asked for, the left side least.
+    const around: Rect[] = [
+      { left: 0, top: 60, width: 1280, height: 230 },
+      { left: 0, top: 370, width: 1280, height: 350 },
+      { left: 730, top: 290, width: 550, height: 80 },
+      { left: 400, top: 290, width: 150, height: 20 },
+    ];
+    const place = placeBubble(input({ anchor, bubble: { width: 340, height: 60 }, keepClear: around, avoid: [] }));
+    expect(place.side).toBe("left");
+  });
+
   it("with no anchor, an info step floats in the middle and the waiting bubble in the corner", () => {
     const centre = placeBubble(input({}));
     expect(centre.side).toBe("center");

@@ -31,7 +31,10 @@ export const tutorialTestid = {
   coach: "coach",
   /** In the bubble: "Got it", on every tip and info step. */
   coachAck: "coach-ack",
-  /** In the bubble: "Skip step", always while the lesson is on. */
+  /**
+   * In the bubble: "Skip step", on every step and tip it shows and on its waiting line while the AI
+   * plays; not on the waiting line of the player's own turn (the HUD's Skip step is always there).
+   */
   coachSkip: "coach-skip",
   /** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
   coachRing: "coach-ring",
@@ -45,6 +48,8 @@ export const tutorialTestid = {
   back: "tutorial-back",
   /** In the result dialog after the last lesson: back to the lobby's practice setup. */
   playPractice: "tutorial-play-practice",
+  /** In the result dialog after the last lesson: "What's next" (the practice tiers, decks, draws). */
+  whatsNext: "tutorial-whats-next",
   /** In the result dialog: close it and look at the final board. */
   viewBoard: "tutorial-view-board",
 } as const;

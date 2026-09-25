@@ -6,7 +6,8 @@
 //  - A win completes the lesson on this device (progress.ts, R294). The route records it the
 //    moment the view says so, whether or not this dialog is ever seen; the dialog records it too,
 //    which is a no-op by then. It names what the win opened and offers the next lesson, or, after
-//    the last one, a practice game.
+//    the last one, a practice game, with a few lines on what is left to find: the practice tiers,
+//    building decks, and how a game can end in a draw.
 //  - A loss or a draw is "Not quite", the lesson's own tip, and Retry: the same lesson, the same
 //    seed, the same hands.
 //
@@ -14,10 +15,12 @@
 
 import { useEffect, useId, useRef, type CSSProperties, type ReactElement } from "react";
 
+import { DIFFICULTIES, TURN_CAP_PLAYER_TURNS } from "@jackioh/engine/config";
 import type { PlayerId, PlayerView } from "@jackioh/shared";
 
 import { PRACTICE_RESULT_PARTICLES } from "../practice/config.ts";
 import { outcomeOf } from "../practice/PracticeResult.tsx";
+import { DIFFICULTY_LABEL } from "../practice/Tier.tsx";
 import type { TutorialLesson } from "./lessons.ts";
 import { markLessonComplete } from "./progress.ts";
 import { tutorialTestid } from "./testids.ts";
@@ -63,6 +66,36 @@ function Emblem({ won, number }: { won: boolean; number: number }): ReactElement
         )}
       </svg>
     </div>
+  );
+}
+
+/** "Easy, Medium or Hard", in the tiers' order. */
+function tierList(): string {
+  const labels = DIFFICULTIES.map((tier) => DIFFICULTY_LABEL[tier]);
+  const last = labels.pop();
+  return labels.length === 0 ? (last ?? "") : `${labels.join(", ")} or ${last ?? ""}`;
+}
+
+/**
+ * After the last lesson: what the lessons did not cover, in a line each, so the last lesson need
+ * not end on a string of notes. The tiers are the engine's handicaps, never the AI's play (R180).
+ */
+function WhatsNext(): ReactElement {
+  const headingId = useId();
+  return (
+    <section className="tutorial-result__next" data-testid={tutorialTestid.whatsNext} aria-labelledby={headingId}>
+      <h3 className="tutorial-result__next-title" id={headingId}>
+        What&apos;s next
+      </h3>
+      <ul className="tutorial-result__next-list">
+        <li>Practice games at {tierList()}: the AI plays the same, only its resources change.</li>
+        <li>Build decks of your own under Decks.</li>
+        <li>
+          A game still going at the end of turn {TURN_CAP_PLAYER_TURNS} is a draw. Online, you can also offer a draw on your
+          turn.
+        </li>
+      </ul>
+    </section>
   );
 }
 
@@ -169,6 +202,7 @@ export function TutorialResult({
         </h2>
         <p className="practice-result__reason">{line}</p>
         {won ? null : <p className="tutorial-result__tip">Tip: {lesson.retryTip}</p>}
+        {won && next === undefined ? <WhatsNext /> : null}
         <p className="practice-result__meta">
           Tutorial · Lesson {lesson.number}: {lesson.title}
         </p>

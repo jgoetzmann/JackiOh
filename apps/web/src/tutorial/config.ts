@@ -2,6 +2,8 @@
 // opponent's handicap — are the engine's (`AI_TUTORIAL` in packages/engine/src/config.ts, R290);
 // these are the browser's own: the coach's patience, its mark's geometry, and where progress is kept.
 
+import { PRACTICE_SHOWCASE_HOLD_MAX_MS } from "../practice/config.ts";
+
 /**
  * A coach step still current after this many of the player's own turn starts is retired by itself
  * (coach.ts), so a step whose moment has passed never strands the lesson. The lesson's last step is
@@ -44,3 +46,10 @@ export const COACH_DOCK_QUERY = "(max-width: 600px), (orientation: landscape) an
  * show its title and buttons.
  */
 export const COACH_BUBBLE_MIN_HEIGHT_PX = 96;
+
+/**
+ * A new coach display waits while the board holds up the opponent's last card (`data-showcase`,
+ * game/showcase/CardShowcase.tsx), for at most this long, the same cap the AI's next step waits
+ * under (practice/config.ts): a mark that is never cleared must not freeze the coach.
+ */
+export const COACH_SHOWCASE_WAIT_MAX_MS = PRACTICE_SHOWCASE_HOLD_MAX_MS;

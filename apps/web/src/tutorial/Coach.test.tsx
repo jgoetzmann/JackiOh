@@ -12,7 +12,7 @@ import { baseView, card, emptySide, resetIds } from "../test/fixtures.ts";
 import { setReducedMotion } from "../test/setup.ts";
 import { Coach } from "./Coach.tsx";
 import type { LessonScript } from "./coach.ts";
-import { COACH_DOCK_QUERY } from "./config.ts";
+import { COACH_DOCK_QUERY, COACH_SHOWCASE_WAIT_MAX_MS, COACH_TRACK_INTERVAL_MS } from "./config.ts";
 import { inHand, myMain } from "./steps.ts";
 import { tutorialTestid } from "./testids.ts";
 import { COACH_HOLD, createCoachTracker, suggestedAction, type CoachSource, type CoachTracker } from "./tracker.ts";
@@ -164,6 +164,17 @@ function textHeights(scrollHeight: number, clientHeight: number): void {
   });
 }
 
+/**
+ * A new snapshot arrives. Its display shows a microtask later, once the board has had its chance to
+ * mark what it animates (Coach.tsx `useCaughtUp`).
+ */
+async function arrive(source: FakeSource, snapshot: PracticeSnapshot): Promise<void> {
+  await act(async () => {
+    source.push(snapshot);
+    await Promise.resolve();
+  });
+}
+
 function mount(source: FakeSource, root: HTMLElement | null): ReturnType<typeof render> {
   tracker = createCoachTracker(source, SCRIPT);
   return render(<Coach tracker={tracker} boardRoot={root} />);
@@ -235,16 +246,14 @@ describe("the coach bubble", () => {
     expect(tracker?.getState().coach.outcomes).toEqual({ welcome: "skipped", play: "skipped" });
   });
 
-  it("a step done on the board moves on by itself when the next snapshot shows it", () => {
+  it("a step done on the board moves on by itself when the next snapshot shows it", async () => {
     const source = fakeSource();
     source.push(snap(myTurn(1)));
     mount(source, boardWith([]));
     fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
     expect(bubble()).toHaveAttribute("data-coach-step", "play");
 
-    act(() => {
-      source.push(snap(myTurn(1, { you: emptySide("p1", { hand: [] }) }), [{ type: "endTurn" }]));
-    });
+    await arrive(source, snap(myTurn(1, { you: emptySide("p1", { hand: [] }) }), [{ type: "endTurn" }]));
     expect(bubble()).toHaveAttribute("data-coach-step", "end");
     expect(bubble()).toHaveAttribute("data-coach-anchor", "end-turn");
   });
@@ -269,7 +278,7 @@ describe("the coach bubble", () => {
     expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
   });
 
-  it("holds the AI while a holdAi step shows, and lets go when it goes, and on dispose", () => {
+  it("holds the AI while a holdAi step shows, and lets go when it goes, and on dispose", async () => {
     const source = fakeSource();
     source.push(snap(myTurn(1)));
     mount(source, boardWith([]));
@@ -279,9 +288,7 @@ describe("the coach bubble", () => {
     expect(source.setHold).toHaveBeenLastCalledWith(COACH_HOLD, false);
 
     // A holdAi tip arrives: held again until "Got it"; then the tracker goes and nothing is held.
-    act(() => {
-      source.push(snap(myTurn(1, { you: emptySide("p1", { libraryCount: 0, hand: [card({ instanceId: "h1", defId: VANILLA })] }) })));
-    });
+    await arrive(source, snap(myTurn(1, { you: emptySide("p1", { libraryCount: 0, hand: [card({ instanceId: "h1", defId: VANILLA })] }) })));
     expect(bubble()).toHaveAttribute("data-coach-mode", "tip");
     expect(bubble()).toHaveTextContent("Tip");
     expect(source.setHold).toHaveBeenLastCalledWith(COACH_HOLD, true);
@@ -375,13 +382,146 @@ describe("the coach bubble", () => {
     expect(bubble()).not.toHaveAttribute("data-stale");
   });
 
-  it("shows nothing once the game is over", () => {
+  it("looks at the board a microtask after a snapshot, so an animation the board marks in its next render holds the new display", async () => {
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    const root = boardWith(["hand-you", "hand-card-h1"]);
+    mount(source, root);
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
+    expect(bubble()).toHaveAttribute("data-coach-step", "play");
+
+    // The snapshot lands; the board draws `data-animating` in the render after it (Game.tsx plans
+    // the events in a layout effect), which here is after the coach's own effect has run.
+    act(() => {
+      source.push(snap(myTurn(1, { you: emptySide("p1", { hand: [] }) }), [{ type: "endTurn" }]));
+    });
+    root.firstElementChild?.setAttribute("data-animating", "summoned");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(bubble()).toHaveAttribute("data-coach-step", "play");
+    expect(bubble()).toHaveAttribute("data-stale", "true");
+
+    await act(async () => {
+      root.firstElementChild?.removeAttribute("data-animating");
+      await Promise.resolve();
+    });
+    expect(bubble()).toHaveAttribute("data-coach-step", "end");
+  });
+
+  it("waits while the opponent's card is held up (data-showcase), and at most COACH_SHOWCASE_WAIT_MAX_MS", async () => {
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    mount(source, boardWith(["hand-you", "hand-card-h1"]));
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
+
+    const showcase = document.createElement("div");
+    showcase.setAttribute("data-showcase", "played");
+    document.body.appendChild(showcase);
+    await arrive(source, snap(myTurn(1, { you: emptySide("p1", { hand: [] }) }), [{ type: "endTurn" }]));
+    expect(bubble()).toHaveAttribute("data-coach-step", "play");
+    expect(bubble()).toHaveAttribute("data-stale", "true");
+
+    // The card goes down: the display the board has caught up with shows.
+    await act(async () => {
+      showcase.remove();
+      await Promise.resolve();
+    });
+    expect(bubble()).toHaveAttribute("data-coach-step", "end");
+
+    // A mark that is never cleared holds the coach for the cap and no longer.
+    vi.useFakeTimers();
+    const stuck = document.createElement("div");
+    stuck.setAttribute("data-showcase", "played");
+    document.body.appendChild(stuck);
+    // A new turn: the last step is done, and the lesson's coach has nothing more to show.
+    await arrive(source, snap(myTurn(2), [{ type: "endTurn" }]));
+    expect(tracker?.getState().display).toEqual({ mode: "finished" });
+    expect(bubble()).toHaveAttribute("data-coach-step", "end");
+    expect(bubble()).toHaveAttribute("data-stale", "true");
+    act(() => {
+      vi.advanceTimersByTime(COACH_SHOWCASE_WAIT_MAX_MS - 1);
+    });
+    expect(bubble()).toHaveAttribute("data-stale", "true");
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByTestId(tutorialTestid.coach)).toBeNull();
+  });
+
+  it("rings an anchor the board draws a frame after the display, before the next tick", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    const root = boardWith([]);
+    mount(source, root);
+    expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
+
+    act(() => {
+      boardWith(["hand-you"]);
+      vi.advanceTimersToNextFrame();
+    });
+    expect(screen.getByTestId(tutorialTestid.coachRing)).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    expect(COACH_TRACK_INTERVAL_MS).toBeGreaterThan(16);
+  });
+
+  it("draws no ring round an anchor under the open prompt, and one round an anchor inside it or clear of it", () => {
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    const root = boardWith(["hand-you"]);
+    // A phone's picker sheet over the bottom of the screen, where the hand is (boardWith: top 500).
+    const sheet = document.createElement("div");
+    sheet.setAttribute("data-testid", "prompt-modal");
+    sheet.getBoundingClientRect = () =>
+      ({ left: 0, top: 450, width: 1280, height: 270, right: 1280, bottom: 720, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    document.body.appendChild(sheet);
+    mount(source, root);
+    expect(bubble()).toHaveAttribute("data-coach-anchor", "hand-you");
+    expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
+
+    // The same element inside the prompt (a card the picker offers) is what the step points at.
+    act(() => {
+      sheet.appendChild(root.firstElementChild as Element);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByTestId(tutorialTestid.coachRing)).toBeInTheDocument();
+
+    // A prompt clear of the anchor (a desktop's picker in the sidebar) hides nothing.
+    act(() => {
+      root.appendChild(sheet.firstElementChild as Element);
+      sheet.getBoundingClientRect = () =>
+        ({ left: 1000, top: 100, width: 260, height: 300, right: 1260, bottom: 400, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByTestId(tutorialTestid.coachRing)).toBeInTheDocument();
+  });
+
+  it("waiting on the player's own turn, says it is their move and offers no Skip step; on the AI's turn it says so and keeps it", async () => {
+    const script: LessonScript = {
+      lessonId: "later",
+      steps: [{ id: "later", kind: "act", title: "Later", text: "Not yet.", when: () => false, final: true }],
+      tips: [],
+    };
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    tracker = createCoachTracker(source, script);
+    render(<Coach tracker={tracker} boardRoot={boardWith([])} />);
+    expect(bubble()).toHaveAttribute("data-coach-mode", "waiting");
+    expect(bubble()).toHaveTextContent("Your move: play cards and attack, then press End turn.");
+    expect(screen.queryByTestId(tutorialTestid.coachSkip)).toBeNull();
+
+    await arrive(source, snap(myTurn(1, { active: "p2" }), [], true));
+    expect(bubble()).toHaveTextContent("The AI is taking its turn.");
+    expect(bubble()).not.toHaveTextContent("Your move");
+    expect(screen.getByTestId(tutorialTestid.coachSkip)).toBeInTheDocument();
+  });
+
+  it("shows nothing once the game is over", async () => {
     const source = fakeSource();
     source.push(snap(myTurn(1)));
     mount(source, boardWith([]));
-    act(() => {
-      source.push(snap(myTurn(1, { result: { winner: "p1", reason: "hero-death" } }), []));
-    });
+    await arrive(source, snap(myTurn(1, { result: { winner: "p1", reason: "hero-death" } }), []));
     expect(screen.queryByTestId(tutorialTestid.coach)).toBeNull();
     expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
     expect(source.setHold).toHaveBeenLastCalledWith(COACH_HOLD, false);

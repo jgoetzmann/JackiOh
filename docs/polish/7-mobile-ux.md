@@ -560,8 +560,11 @@ nothing in it carries a `hand-card-*` or `card-*` testid:
 - **Touch sizing.** Under the touch-sizing query, `.control` buttons, the gear, the log toggle,
   `.power-button` and `.hero` are at least 44×44 px, and each zone's smaller side is at least
   44 px. The in-card switch (⟳) keeps its small glyph but gains a transparent `::before` hit area
-  reaching 14 px left of it and below it; the card clips it (`overflow: hidden`), so it is about
-  32×32 px, which leaves the rest of a phone tile to the card's own tap and drag (B29).
+  reaching up to 16 px left of it and below it; the card clips it (`overflow: hidden`). On a small
+  tile the reach is capped (container units on the field card) so it stops short of the tile's
+  centre lines and stays in its top-right quarter, which leaves the rest of a phone tile, its centre
+  above all, to the card's own tap and drag. A switch that is not legal takes no pointer at all, so
+  a tap on it reaches the card beneath (B29; revised by the tutorial's review, SPEC §9.10).
 - **Safe areas.** Under the phone queries, `.board` pads with
   `max(6px, env(safe-area-inset-*))` on the left, right and bottom. The prompt sheet pads its
   bottom with `env(safe-area-inset-bottom)`.

@@ -603,7 +603,10 @@ export const TUTORIAL_OUTCOME = "tutorial-outcome";
 export const COACH = "coach";
 /** In the bubble: "Got it", on every tip and info step. */
 export const COACH_ACK = "coach-ack";
-/** In the bubble: "Skip step", always while the lesson is on. */
+/**
+ * In the bubble: "Skip step", on every step and tip it shows and on its waiting line while the AI
+ * plays; not on the waiting line of the player's own turn (TUTORIAL_SKIP is always there).
+ */
 export const COACH_SKIP = "coach-skip";
 /** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
 export const COACH_RING = "coach-ring";
@@ -617,6 +620,8 @@ export const TUTORIAL_RETRY = "tutorial-retry";
 export const TUTORIAL_BACK = "tutorial-back";
 /** In the result dialog after the last lesson: back to the lobby's practice setup. */
 export const TUTORIAL_PLAY_PRACTICE = "tutorial-play-practice";
+/** In the result dialog after the last lesson: "What's next" (the practice tiers, decks, draws). */
+export const TUTORIAL_WHATS_NEXT = "tutorial-whats-next";
 /** In the result dialog: close it and look at the final board. */
 export const TUTORIAL_VIEW_BOARD = "tutorial-view-board";
 

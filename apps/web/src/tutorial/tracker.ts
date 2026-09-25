@@ -33,6 +33,7 @@ import {
   type CoachState,
   type LessonScript,
 } from "./coach.ts";
+import { myMain } from "./steps.ts";
 import { coachTargets } from "./targets.ts";
 
 /** What the tracker needs of the controller. */
@@ -50,6 +51,11 @@ export type CoachView = {
   targets: readonly string[];
   /** It is the AI's turn, or the AI owes an answer: what the waiting bubble says. */
   aiBusy: boolean;
+  /**
+   * The human's own main phase, nothing open: the waiting bubble says whose move it is, and has no
+   * Skip step (a step waiting on its moment retires by itself, TUTORIAL_STEP_TURNS_MAX).
+   */
+  yourMove: boolean;
 };
 
 export type CoachTracker = {
@@ -74,7 +80,7 @@ export function displayKey(display: CoachDisplay): string {
 }
 
 function viewOf(coach: CoachState, ctx: CoachCtx | null, script: LessonScript): CoachView {
-  if (ctx === null) return { coach, ctx, display: FINISHED, targets: [], aiBusy: false };
+  if (ctx === null) return { coach, ctx, display: FINISHED, targets: [], aiBusy: false, yourMove: false };
   const display = coachDisplay(script, coach, ctx);
   const anchor = display.mode === "tip" || display.mode === "step" ? display.anchor : null;
   const view = ctx.view;
@@ -84,6 +90,7 @@ function viewOf(coach: CoachState, ctx: CoachCtx | null, script: LessonScript): 
     display,
     targets: coachTargets(anchor, view),
     aiBusy: ctx.aiToAct || (view.result === null && view.active !== view.viewer),
+    yourMove: myMain(ctx),
   };
 }
 

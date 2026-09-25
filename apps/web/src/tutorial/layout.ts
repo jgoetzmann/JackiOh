@@ -5,9 +5,12 @@
 //
 //  - Beside the anchor, `gap` away, on the first side it fits whole — above or below first
 //    (whichever has the anchor's far side of the screen), then right or left — slid along that
-//    side to stay `margin` inside the viewport. A side that also covers a soft obstacle (an open
-//    prompt the step is not about, a unit row) loses to one that does not, and when every side
-//    covers one, the side covering the least of them wins.
+//    side to stay `margin` inside the viewport. A side that also covers an obstacle loses to one
+//    that does not. There are two kinds: `keepClear` (the zones and targets a play in progress
+//    asks for, which the player is about to tap or drop on) and `avoid`, the soft ones (an open
+//    prompt the step is not about, your hand, a unit row). When every side covers one, the side
+//    covering the least of `keepClear` wins, then the least of the soft ones: a bubble on your
+//    hand beats one on the zone you are asked to drop a card in.
 //  - If no side fits (a big anchor on a short screen), it docks at its own width, centred on the
 //    anchor, against the top or bottom edge, whichever side of the anchor has more room, and never
 //    taller than that room (its text scrolls) unless the room is under `minHeight`: an anchor that
@@ -48,6 +51,11 @@ export type PlaceInput = {
   insetTop: number;
   /** Prefer a side that does not cover these. */
   avoid?: readonly Rect[];
+  /**
+   * Prefer a side that does not cover these even over one that covers `avoid`: what a play in
+   * progress asks the player to tap or drop on.
+   */
+  keepClear?: readonly Rect[];
   gap: number;
   margin: number;
   minHeight: number;
@@ -162,32 +170,34 @@ export function placeBubble(input: PlaceInput): BubblePlacement {
       maxHeight: null,
     };
     // The middle of the screen is where a prompt opens (the mulligan, a Discover): step beside it.
-    const blocked = (input.avoid ?? []).find(
+    const blocked = [...(input.keepClear ?? []), ...(input.avoid ?? [])].find(
       (rect) => overlapArea({ left: centre.left, top: centre.top, ...bubble }, rect) > 0,
     );
-    return blocked === undefined ? centre : placeBubble({ ...input, anchor: blocked, avoid: [] });
+    return blocked === undefined ? centre : placeBubble({ ...input, anchor: blocked, avoid: [], keepClear: [] });
   }
 
   const fitting = candidates(input, anchor).filter((candidate) => candidate.fits);
   if (fitting.length === 0) return dock(input, anchor);
-  const avoid = input.avoid ?? [];
-  const covers = (candidate: Candidate): number =>
-    avoid.reduce(
+  const covers = (candidate: Candidate, rects: readonly Rect[]): number =>
+    rects.reduce(
       (sum, rect) => sum + overlapArea({ left: candidate.left, top: candidate.top, ...bubble }, rect),
       0,
     );
-  // The first side that covers no soft obstacle; when every side covers one, the side that covers
-  // the least of them (a bubble below the enemy hero sat on the enemy's whole front row, where one
-  // beside it clips only the row's top edge: e2e spec 22).
+  // The first side that covers no obstacle; when every side covers one, the side that covers the
+  // least of `keepClear`, then the least of the soft ones (a bubble below the enemy hero sat on the
+  // enemy's whole front row, where one beside it clips only the row's top edge: e2e spec 22).
   let best: Candidate | undefined;
-  let least = Infinity;
+  let leastClear = Infinity;
+  let leastSoft = Infinity;
   for (const candidate of fitting) {
-    const covered = covers(candidate);
-    if (covered < least) {
+    const clear = covers(candidate, input.keepClear ?? []);
+    const soft = covers(candidate, input.avoid ?? []);
+    if (clear < leastClear || (clear === leastClear && soft < leastSoft)) {
       best = candidate;
-      least = covered;
+      leastClear = clear;
+      leastSoft = soft;
     }
-    if (covered === 0) break;
+    if (clear === 0 && soft === 0) break;
   }
   if (best === undefined) return dock(input, anchor);
   return { side: best.side, left: best.left, top: best.top, maxHeight: null };

@@ -4,6 +4,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TURN_CAP_PLAYER_TURNS } from "@jackioh/engine/config";
+
 import { TUTORIAL_LESSONS, type TutorialLesson } from "./lessons.ts";
 import { __resetTutorialProgressForTests, lessonStatus, readTutorialProgress } from "./progress.ts";
 import { tutorialTestid } from "./testids.ts";
@@ -92,6 +94,34 @@ describe("the end of a lesson", () => {
     fireEvent.click(screen.getByTestId(tutorialTestid.playPractice));
     expect(on.onPlayPractice).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId(tutorialTestid.back)).toBeInTheDocument();
+  });
+
+  it("the tutorial complete says what's next: the practice tiers, your own decks, and how a game is drawn", () => {
+    const last = lesson(TUTORIAL_LESSONS.length);
+    render(
+      <TutorialResult result={{ winner: "p1", reason: "hero-death" }} viewer="p1" lesson={last} next={undefined} unlockedNow={false} {...handlers()} />,
+    );
+    const next = screen.getByTestId(tutorialTestid.whatsNext);
+    expect(next).toHaveAccessibleName("What's next");
+    const lines = [...next.querySelectorAll("li")].map((item) => item.textContent);
+    expect(lines).toEqual([
+      "Practice games at Easy, Medium or Hard: the AI plays the same, only its resources change.",
+      "Build decks of your own under Decks.",
+      `A game still going at the end of turn ${String(TURN_CAP_PLAYER_TURNS)} is a draw. Online, you can also offer a draw on your turn.`,
+    ]);
+  });
+
+  it("says what's next only once the last lesson is won", () => {
+    const { unmount } = render(
+      <TutorialResult result={{ winner: "p1", reason: "hero-death" }} viewer="p1" lesson={lesson(1)} next={lesson(2)} unlockedNow {...handlers()} />,
+    );
+    expect(screen.queryByTestId(tutorialTestid.whatsNext)).toBeNull();
+    unmount();
+    const last = lesson(TUTORIAL_LESSONS.length);
+    render(
+      <TutorialResult result={{ winner: "p2", reason: "hero-death" }} viewer="p1" lesson={last} next={undefined} unlockedNow={false} {...handlers()} />,
+    );
+    expect(screen.queryByTestId(tutorialTestid.whatsNext)).toBeNull();
   });
 
   it("a loss is Not quite, with the lesson's tip and Retry, and completes nothing", () => {
