@@ -621,10 +621,10 @@ The practice page opens with a tutorial: a path of four lessons, each a practice
 
 | # | Lesson | What it teaches | The human |
 | --- | --- | --- | --- |
-| 1 | First steps | Mana, playing units into lanes, summoning sickness, attacking units and the hero, hero health, winning | goes first |
-| 2 | Spells and keywords | Spells and their targets, Cry, Taunt, Divine Shield, Reborn, Rush, Charge, First Strike, Defense Position | goes first |
-| 3 | The backrow | Traps set face-down and springing on either turn, the opponent's face-down cards, Field Spells, tokens, Quickdraw | goes first |
-| 4 | Tricks of the trade | The mulligan, going second and The Coin, Radiant cards, tribes, tokens, Tribute | goes second |
+| 1 | First steps | Heroes and their health, mana, playing units into lanes, summoning sickness, attacking the hero, trading with units, winning | goes first |
+| 2 | Spells and keywords | Spells and their targets, removal, a Cry with a target, Taunt, Divine Shield, Reborn, Rush, Charge, First Strike, Armor, Defense Position | goes first |
+| 3 | The backrow | Traps set face-down and springing on either turn, the opponent's face-down cards, Field Spells, a hero's Armor, tokens, Quickdraw | goes first |
+| 4 | Tricks of the trade | The mulligan, going second and The Coin, Radiant cards, a tribe and its payoff, tokens, Tribute, the yellow glow | goes second |
 
 - **The tutorial opponent.** The AI seat plays with the tutorial handicap, `AI_TUTORIAL`, the one below Easy (R290): a 12-card deck, at most 3 mana crystals, and a hero that starts at 20 health instead of 30. Its search, evaluation and budget are every tier's, so it plays sensibly with less. Its deck is the lesson's own fixed list, not a dealt one, and holds nothing the lessons before it have not taught: no Spell in lesson 1, no Trap or Field Spell before lesson 3 (R291).
 - **Fixed deals.** Each lesson has a fixed seed, a fixed seat and two fixed decks; the human's is a legal twenty-card deck of mostly Common, Rare and Epic cards. So a lesson deals the same opening hands and the same draws every time, and the coach can name the cards it points at. A lesson replays from `(seed, decks, handicaps, log)` like any practice game (R187), and The Coin goes to the seat going second as always (R244), which is why only the lesson that teaches it seats the human second.
