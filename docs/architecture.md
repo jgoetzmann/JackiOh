@@ -19,9 +19,9 @@ flowchart TD
   CDN["Static host / CDN"]
   AUTH["Supabase Auth<br/>email + password, verification"]
   PGR["Supabase Data API (PostgREST)<br/>role: authenticated"]
-  API["apps/server HTTP routes<br/>codes, collection, loadouts, queue, rooms"]
+  API["apps/server HTTP routes<br/>codes, collection, decks, trios, queue, rooms, series"]
   ACT["apps/server match actor<br/>one per live match"]
-  PG[("Supabase Postgres<br/>13 tables + private app schema")]
+  PG[("Supabase Postgres<br/>16 tables + private app schema")]
   ENG["packages/engine<br/>reduce / viewFor / fold"]
   CAT["packages/cards<br/>catalog.json + scripts"]
 
@@ -47,9 +47,9 @@ deployment decision that can be made later without touching the code.
 | --- | --- | --- | --- |
 | `apps/web` | Static bundle on any CDN | No | Rendering `viewFor`, composing intent, the bundled catalog |
 | Supabase Auth | Supabase | Managed | Signup, password hashing, email verification, sessions, JWTs |
-| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6, RLS, the private `app` schema |
+| Supabase Postgres | Supabase | Yes (durable) | The 13 tables of BUILD M6 plus `decks`, `trios` and `series` (R250–R263), RLS, the private `app` schema |
 | Supabase Data API | Supabase | No | Read-only projections to the browser, RLS-enforced |
-| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, `saveLoadout`, enqueue, room create/join |
+| `apps/server` HTTP routes | One Node process | No | Redemption, collection reads, deck and trio saves, enqueue in three modes, room create/join, the Best-of-3 series and its sweeper |
 | `apps/server` match actor | The same Node process | **Yes (in memory)** | `GameState`, two WebSockets, the turn clock, the action log |
 | `packages/engine` + `packages/cards` | Imported by both of the above | No (pure) | Every rule, `reduce`, `viewFor`, `fold` |
 
@@ -62,8 +62,8 @@ SPEC §9.1, restated as channels rather than domains:
 | Channel | Credential | What it carries |
 | --- | --- | --- |
 | Browser → Supabase Auth | publishable key (`sb_publishable_…`) | signup, login, email verification, token refresh |
-| Browser → Data API | publishable key + the user's JWT | **reads only**: own profile row, own collection, own loadout, own tickets, own results, the `cards` projection |
-| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this loadout", "enqueue slot 2", "create a room", "join ABC234" |
+| Browser → Data API | publishable key + the user's JWT | **reads only**: own profile row, own collection, own decks and trios, own tickets, own results, the `cards` projection |
+| Browser → server HTTP | the user's JWT as `Authorization: Bearer` | intent: "redeem this code", "save this deck", "enqueue Best of 3 with this trio", "pick my second deck", "create a room", "join ABC234" |
 | Browser → server WebSocket | the user's JWT in the `hello` frame | intent: one `Action` at a time; receives `viewFor` and nothing else |
 
 One rule, from SPEC §9.1: **the client sends intent, never state.** "Play instance 7 in zone 3 with
@@ -112,13 +112,16 @@ the policy in the third column. `service_role` bypasses RLS and is the only writ
 | `cards` | all rows | `true` | none — the catalog is static data (§9.4) |
 | `collection` | own rows | `profile_id = auth.uid()` | **none** — §9.4: "no client path writes either" |
 | `collection_grants` | own rows | `profile_id = auth.uid()` | none; append-only by trigger |
-| `loadouts` | own row | `profile_id = auth.uid()` | **none** — saving is all-three-decks-or-nothing (§9.4) |
+| `loadouts` | own row | `profile_id = auth.uid()` | **none** — retired by R254, kept unread so nothing saved is lost |
 | `loadout_decks` | own rows | `profile_id = auth.uid()` | none |
 | `loadout_deck_cards` | own rows | `profile_id = auth.uid()` | none |
+| `decks` | own rows | `profile_id = auth.uid()` | **none** — the server upserts a draft by the id the client minted (R250, R256) |
+| `trios` | own rows | `profile_id = auth.uid()` | none (R252) |
 | `tickets` | own rows | `profile_id = auth.uid()` | none — enqueue freezes a deck (§9.5) |
 | `matches` | **none** | no policy | none — holds `seed` and both decks (§3.1) |
 | `match_actions` | **none** | no policy | none — append-only by trigger (§9.3) |
 | `results` | rows you played in | `auth.uid() in (p1_profile_id, p2_profile_id)` | none |
+| `series` | **none** | no policy | none — holds both frozen trios and the hidden picks (R259) |
 
 Three Supabase-specific traps this schema avoids on purpose:
 
@@ -126,7 +129,7 @@ Three Supabase-specific traps this schema avoids on purpose:
   `create view … with (security_invoker = true)`.
 - **`SECURITY DEFINER` functions in an exposed schema are reachable over HTTP.** Every one of ours
   lives in the private `app` schema, which is not in the Data API's exposed schema list, so
-  `app.redeem_invite_code` and `app.save_loadout` have **no HTTP path at all** — they are reachable
+  `app.redeem_invite_code`, `app.upsert_deck` and `app.upsert_trio` have **no HTTP path at all** — they are reachable
   only over `DATABASE_URL`.
 - **`user_metadata` is user-editable** and can appear in `auth.jwt()`. No policy or function reads it.
   Authorization comes from `profiles.status`, which only the server writes.
@@ -296,8 +299,8 @@ They do not have to. They are stateless and could be Edge Functions. They share 
 
 - They import `@jackioh/validator` and `@jackioh/engine`, which are TypeScript workspace packages;
   one Node process resolves them the way the rest of the repo does, with no bundling step.
-- `saveLoadout`, the redemption transaction and the ticket claim need multi-statement transactions
-  over `DATABASE_URL`, which is a server-only credential either way.
+- A deck's capped upsert, the redemption transaction, the ticket claim and a series' compare-and-set
+  need multi-statement transactions over `DATABASE_URL`, which is a server-only credential either way.
 - Matchmaking's opportunistic pairing on enqueue (SPEC §9.5) wants to hand the paired match straight
   to a local actor.
 
@@ -310,6 +313,12 @@ and still be the only writers.
 
 SPEC §9.3: "Seeded RNG only… `(seed, log)` reconstructs any match." The in-memory `GameState` is a
 cache of a fold, not the record.
+
+A Best-of-3 series (R259–R263) sits above its games and is not folded: `series` is a row of its own,
+written by compare-and-set on `version`. Each of its games is an ordinary match with its own `(seed,
+log)`; the series records which match each game was, and a game's result and the series' record of it
+commit in one transaction (`src/api/results.ts`). A sweeper runs the pick clock and starts a game
+whose picks are in but whose match a restart left unstarted.
 
 What this buys, in the order it will be needed:
 
@@ -329,7 +338,7 @@ What the database therefore stores per match, and nothing more:
 | Column | Role in the fold |
 | --- | --- |
 | `matches.seed` | the only entropy in the system |
-| `matches.p1_deck`, `matches.p2_deck` | the frozen decklists — SPEC §9.5: decks are frozen into the ticket, never resolved from the loadout at match start |
+| `matches.p1_deck`, `matches.p2_deck` | the frozen decklists — SPEC §9.5: decks are frozen into the ticket (or dealt, in All Random, R258), never read from a saved deck at match start |
 | `matches.catalog_version` | which card definitions the fold must use |
 | `match_actions (match_id, seq, action)` | the ordered log; `seq` is assigned under a row lock |
 | `match_actions (match_id, nonce)` unique | server-side dedupe so a retrying client is safe (SPEC §9.3) |
@@ -352,7 +361,7 @@ at save and queue."
 | --- | --- | --- |
 | `packages/cards/catalog.json` | the repo, bundled into `apps/web` | every card name, cost, stat and rules text the client renders |
 | `packages/cards/src/scripts/*` | imported by the engine, server-side only | what cards actually do |
-| `public.cards` | Postgres | referential integrity for `collection` and `loadout_deck_cards`, and the server-side L6 check ("exists in the current catalog version and is not banned") |
+| `public.cards` | Postgres | referential integrity for `collection`, and the server-side L6 check ("exists in the current catalog version and is not banned") |
 
 `public.cards` is a projection, loaded by `pnpm --filter @jackioh/server db:seed-catalog`, which stamps
 `catalog_version` on every row and writes the same value to `app.settings`. It is not a source of
@@ -360,8 +369,9 @@ truth for rules: the deck builder is fast because a collection read is a short l
 `(card_id, quantity)` and the card data is already in the bundle.
 
 Version mismatch has one behaviour everywhere: `app.assert_catalog_version` raises `update required`,
-the server maps that to a 409 with the same message, and the client prompts a reload. Checked at
-`saveLoadout` and again at enqueue (SPEC §9.4, §9.5).
+the server maps that to a 409 with the same message, and the client prompts a reload. Checked when a
+deck is saved (SPEC §9.4); at enqueue the chosen deck or trio is checked against the current catalog
+by L6, whatever version it was saved under (R253).
 
 ---
 
@@ -470,17 +480,19 @@ step that is not yet implemented says which BUILD task delivers it.
    `PUBLIC_ORIGINS` and `CATALOG_VERSION`. Then `pnpm install`. Every `@jackioh/server` script runs
    under `--env-file-if-exists=.env`, so this file is read without a dotenv dependency; a variable
    set in the shell still overrides it, and a missing file is a warning rather than an error.
-4. **Apply the migrations.** `pnpm --filter @jackioh/server db:migrate`, which applies
-   `0001_profiles_and_invites.sql` → `0002_collection.sql` → `0003_loadouts.sql` →
-   `0004_matches.sql` in order and records them in `app.migrations`. Expected result: 13 tables in
-   `public`, all with RLS enabled, plus the private `app` schema.
+4. **Apply the migrations.** `pnpm --filter @jackioh/server db:migrate`, which applies every file in
+   `apps/server/src/db/migrations/` in order — `0001_profiles_and_invites.sql` → `0002_collection.sql`
+   → `0003_loadouts.sql` → `0004_matches.sql` → `0005` → `0006` → `0007_decks_and_trios.sql` →
+   `0008_queue_modes.sql` → `0009_series.sql` — and records them in `app.migrations`. Expected
+   result: 16 tables in `public`, all with RLS enabled, plus the private `app` schema. On a project
+   that already had loadouts, 0007 turns each into three saved decks and a trio named "My trio"
+   (R254) and leaves the loadout tables where they are.
 5. **Verify the invariants before trusting anything.** `sh apps/server/test/sql/run.sh` runs all of
    §12's checks against a throwaway Docker Postgres, which is the fast way to confirm the migrations
    are intact before you point them at a real project. Against the project itself, in Studio's SQL
    editor:
    - `select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;` → **must return zero rows.**
-   - `select indexdef from pg_indexes where indexname = 'loadout_card_unique';` → the unique index on
-     `loadout_deck_cards (profile_id, card_id)`, which is L4 as a database invariant (§9.4).
+   - `select count(*) from public.decks;` → three per loadout that existed before 0007 (R254).
    - `insert into public.collection …` as an `authenticated` user → must be refused. There is no
      policy, so there is no path (§9.4).
 6. **Seed the catalog.** `pnpm --filter @jackioh/server db:seed-catalog`. Requires
@@ -515,19 +527,19 @@ step that is not yet implemented says which BUILD task delivers it.
       trusting a caller's entries hands the per-IP key back to the caller.
 9. **Sign up two accounts** (BUILD M6-T1). Each gets a `profiles` row at `pending` from the
    `auth.users` trigger. Verify both emails. Confirm a pending account gets 403 from
-   `/api/collection`, `/api/loadouts` and `/api/queue`.
+   `/api/collection`, `/api/decks` and `/api/queue`.
 10. **Redeem a code on each** (BUILD M6-T1). `status` flips to `active`, the activation trigger fires
     the launch grant, and `select count(*) from public.collection;` shows every non-token card for
     both profiles (§9.1: "Everyone owns every card at launch; keep the ledger anyway"). Confirm the
     three failure kinds — missing, expired, exhausted — return the identical message.
-11. **Save a legal loadout on each** (BUILD M6-T3). Three decks, 20 cards each, no card in two decks.
-    Confirm `@jackioh/validator` names the rule on a failure, and that raw SQL putting one card in two
-    decks is refused by `loadout_card_unique` even with the application check bypassed.
-12. **Create a room** (BUILD M6-T4). `POST /api/rooms { slot }` → a 6-character code from
-    `CODE_ALPHABET` (R79). A `matches` row appears at `status = 'open'` with the seed and p1's frozen
-    deck.
-13. **Join it from the second browser.** `POST /api/rooms/:code/join { slot }` → `app.join_room`
-    claims the open row atomically, sets p2 and flips it to `live`.
+11. **Build a deck on each** in `/decks` (R250). It saves as you go, whether or not it is finished;
+    `/play` shows whether it can be queued and, if not, the validator's reason, naming the deck and
+    the card. `db:seed-accounts` gives its accounts three starter decks and a trio instead.
+12. **Create a room** (BUILD M6-T4). `POST /api/rooms { mode: "bo1", deckId }` → a 6-character code
+    from `CODE_ALPHABET` (R79). A `matches` row appears at `status = 'open'` with p1's frozen deck.
+13. **Join it from the second browser.** `POST /api/rooms/:code/join { mode: "bo1", deckId }` claims
+    the open row atomically, sets p2 and makes it `live`. A Best-of-3 room makes a series instead,
+    and both players pick their first deck on `/series/:id` (R259, R264).
 14. **Play.** Both sockets connect with their JWTs, the actor calls `createGame` and `beginGame`, and
     each player gets their own `viewFor`. Every action appends one `match_actions` row and pushes two
     views. **This is the milestone: a working room-code match.**

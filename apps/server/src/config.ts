@@ -346,7 +346,7 @@ export const DECK_AUTOSAVE_RETRY_SECONDS = 5;
 export const SERIES_WINS_NEEDED = 2;
 /**
  * SPEC §11 R259: the most games a series plays: one per deck of a trio, since a deck is played at
- * most once in a series. `test/api/series.test.ts` asserts it equals the validator's `TRIO_DECKS`.
+ * most once in a series. `test/api/series-rules.test.ts` asserts it equals the validator's `TRIO_DECKS`.
  */
 export const SERIES_MAX_GAMES = 3;
 /** SPEC §11 R260: how long both players have to pick their deck for the next game of a series. */
@@ -358,6 +358,13 @@ export const SERIES_SWEEP_INTERVAL_SECONDS = 5;
  * than any request that is starting it itself, so the sweeper never races a live start.
  */
 export const SERIES_START_GRACE_SECONDS = 15;
+/**
+ * SPEC §11 R263: how many times one request re-reads a series and re-applies its transition after
+ * losing the compare-and-set, before it gives up with a 409. Each loss means another writer's
+ * transition landed, and a series has at most a handful of writers, so three losses in a row is a
+ * storm, not a race worth waiting out.
+ */
+export const SERIES_WRITE_ATTEMPTS = 3;
 /** How often the series screen and the match screen's series banner re-read the series. */
 export const SERIES_POLL_SECONDS = 2;
 
@@ -435,6 +442,7 @@ export const SERVER_CONFIG = Object.freeze({
   SERIES_PICK_SECONDS,
   SERIES_SWEEP_INTERVAL_SECONDS,
   SERIES_START_GRACE_SECONDS,
+  SERIES_WRITE_ATTEMPTS,
   SERIES_POLL_SECONDS,
   TURN_CLOCK_MS,
   PROMPT_CLOCK_MS,
