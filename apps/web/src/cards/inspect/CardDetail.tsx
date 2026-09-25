@@ -3,6 +3,10 @@
 // modal dialog over a scrim, closed by Close, the scrim or Escape (B25), and it takes the one
 // inspect slot: opening it closes any hover preview or sheet, and closeInspect() closes it.
 //
+// Both faces and the reading-size rules are where a reference in a card's text is a control (R279):
+// hovering, focusing or tapping a name shows the card it names. The Radiant face and the Radiant
+// line mark what the base face does not have in gold (R277).
+//
 // Under the faces, the rules text is printed again at reading size. Two faces side by side on a
 // 390 px phone are about 170 px wide each, where a 400-character card prints at 5 px; inspect.css
 // shows this block on narrow screens and short ones, and on any screen for a card long enough to
@@ -20,6 +24,7 @@ import { textTier } from "../fit.ts";
 import { faceModel, type FaceModel } from "../model.ts";
 import { glossaryFor } from "../rules.ts";
 import { RulesText } from "../RulesText.tsx";
+import { RefsInteractive } from "../refContext.tsx";
 import { Glossary, mergeGlossary } from "./Glossary.tsx";
 import { closeInspect, OVERLAY_ROOT_PROPS, registerDetail, useModalOverlay } from "./store.ts";
 import {
@@ -43,50 +48,31 @@ function detailMetaLine(def: CardDef): string {
 /** Text tiers whose printed face shrinks far enough to want the reading-size copy on any screen. */
 const LONG_TEXT_TIERS: ReadonlySet<string> = new Set(["xl", "xxl"]);
 
-function printed(face: FaceModel): string {
-  return face.text.radiant === null ? face.text.base : `${face.text.base} ${face.text.radiant}`;
-}
-
 /**
- * The radiant line says what the radiant face prints that the base face does not. When the radiant
- * face keeps the base text whole it is only the new clause ("Radiant: 7 coins; +2 per heads …");
- * when it has dropped or replaced part of it (a new keyword line, a restated Cry) it is the radiant
- * face's whole text, with the changed part marked as on the face.
+ * The rules at reading size: the base text, then the Radiant face's whole text with what the base
+ * face does not have marked (R277). A Radiant text equal to the base one (a card whose Radiant face
+ * changes only its stats) is not printed twice.
  */
-function radiantLineOf(base: FaceModel, radiant: FaceModel): ReactElement | null {
-  const kept = radiant.text.base === base.text.base ? "" : radiant.text.base;
-  if (kept === "" && radiant.text.radiant === null) return null;
-  return (
-    <>
-      {kept === "" ? null : <RulesText text={kept} />}
-      {kept === "" || radiant.text.radiant === null ? null : " "}
-      {radiant.text.radiant === null ? null : (
-        <span className="inspect-rules-changed">
-          <RulesText text={radiant.text.radiant} />
-        </span>
-      )}
-    </>
-  );
-}
-
 function DetailRules({ base, radiant }: { base: FaceModel; radiant: FaceModel }): ReactElement | null {
-  const radiantLine = radiantLineOf(base, radiant);
-  if (base.text.base === "" && radiantLine === null) return null;
-  const long = LONG_TEXT_TIERS.has(textTier(printed(base))) || LONG_TEXT_TIERS.has(textTier(printed(radiant)));
+  const radiantLine = radiant.text.full === base.text.full ? null : radiant.text;
+  if (base.text.full === "" && radiantLine === null) return null;
+  const long = LONG_TEXT_TIERS.has(textTier(base.text.full)) || LONG_TEXT_TIERS.has(textTier(radiant.text.full));
   return (
     <div className="inspect-rules" data-long={long ? "true" : "false"}>
-      {base.text.base === "" ? null : (
+      {base.text.full === "" ? null : (
         <p className="inspect-rules-line">
           <span className="inspect-rules-label">Base</span>
           <span className="inspect-rules-text">
-            <RulesText text={base.text.base} />
+            <RulesText text={base.text.full} refs={base.refs} />
           </span>
         </p>
       )}
       {radiantLine === null ? null : (
         <p className="inspect-rules-line inspect-rules-line--radiant">
           <span className="inspect-rules-label">Radiant</span>
-          <span className="inspect-rules-text">{radiantLine}</span>
+          <span className="inspect-rules-text">
+            <RulesText text={radiantLine.full} marks={radiantLine.marks} refs={radiant.refs} />
+          </span>
         </p>
       )}
     </div>
@@ -126,28 +112,30 @@ export function CardDetail({ def, onClose, actions, meta }: CardDetailProps): Re
         {/* The faces and everything about them scroll; the actions row is pinned under them, so
             Add and Close are on screen as the dialog opens, whatever the card's length. */}
         <div className="inspect-detail-body">
-          <div className="inspect-detail-faces">
-            <figure className="inspect-detail-face">
-              <div className="inspect-face inspect-face--detail" data-testid={INSPECT_FACE_BASE}>
-                <CardFace face={base} layout="full" />
-              </div>
-              <figcaption className="inspect-detail-caption">Base</figcaption>
-            </figure>
-            <figure className="inspect-detail-face inspect-detail-face--radiant">
-              <div className="inspect-face inspect-face--detail" data-testid={INSPECT_FACE_RADIANT}>
-                <CardFace face={radiant} layout="full" />
-              </div>
-              <figcaption className="inspect-detail-caption">Radiant</figcaption>
-            </figure>
-          </div>
-          {/* Everything but the faces, as one column: under the faces on a tall screen, beside
-              them on a wide, short one such as a 1280x720 desktop (inspect.css). */}
-          <div className="inspect-detail-info">
-            <p className="inspect-meta">{detailMetaLine(def)}</p>
-            <DetailRules base={base} radiant={radiant} />
-            <Glossary entries={glossary} />
-            {meta === undefined || meta === null ? null : <div className="inspect-detail-meta">{meta}</div>}
-          </div>
+          <RefsInteractive>
+            <div className="inspect-detail-faces">
+              <figure className="inspect-detail-face">
+                <div className="inspect-face inspect-face--detail" data-testid={INSPECT_FACE_BASE}>
+                  <CardFace face={base} layout="full" />
+                </div>
+                <figcaption className="inspect-detail-caption">Base</figcaption>
+              </figure>
+              <figure className="inspect-detail-face inspect-detail-face--radiant">
+                <div className="inspect-face inspect-face--detail" data-testid={INSPECT_FACE_RADIANT}>
+                  <CardFace face={radiant} layout="full" />
+                </div>
+                <figcaption className="inspect-detail-caption">Radiant</figcaption>
+              </figure>
+            </div>
+            {/* Everything but the faces, as one column: under the faces on a tall screen, beside
+                them on a wide, short one such as a 1280x720 desktop (inspect.css). */}
+            <div className="inspect-detail-info">
+              <p className="inspect-meta">{detailMetaLine(def)}</p>
+              <DetailRules base={base} radiant={radiant} />
+              <Glossary entries={glossary} />
+              {meta === undefined || meta === null ? null : <div className="inspect-detail-meta">{meta}</div>}
+            </div>
+          </RefsInteractive>
         </div>
         <div className="inspect-actions">
           {actions}

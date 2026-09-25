@@ -25,7 +25,7 @@ function namesOf(def: CardDef): string[] {
   return bare === def.name ? [def.name] : [def.name, bare];
 }
 
-const WORD = /[A-Za-z0-9'\-]/;
+const WORD = /[A-Za-z0-9'-]/;
 
 /** Whether `text` names `name` as whole words, alone or plural. */
 function names(text: string, name: string): boolean {

@@ -432,7 +432,7 @@ describe("filtering (B31)", () => {
       ...FILTER_TAGS.map(filterTagId),
       ...FILTER_RARITIES.map(filterRarityId),
     ];
-    expect(ids).toHaveLength(8 + 5 + 7 + 5);
+    expect(ids).toHaveLength(8 + 5 + 8 + 5);
     for (const id of ids) {
       const chip = within(filters).getByTestId(id);
       expect(chip.tagName, id).toBe("BUTTON");

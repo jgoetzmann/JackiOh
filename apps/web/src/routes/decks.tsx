@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { CatalogSnapshot, Collection, LoadoutError, LoadoutRule } from "@jackioh/validator";
 
+import { CardDefsProvider } from "../cards/index.ts";
 import Deckbuilder, { type SaveOutcome } from "../game/deckbuilder/Deckbuilder.tsx";
 import { collectionFrom } from "../game/deckbuilder/loadout.ts";
 import { DECKBUILDER_ERROR, DECKBUILDER_LOADING } from "../game/deckbuilder/testids.ts";
@@ -218,12 +219,15 @@ export default function DecksRoute() {
     );
   }
 
+  // R279: a reference in a card's text shows the card the catalog names.
   return (
-    <Deckbuilder
-      catalog={screen.data.catalog}
-      collection={screen.data.collection}
-      initialDecks={screen.data.decks}
-      save={save}
-    />
+    <CardDefsProvider defs={screen.data.catalog.cards}>
+      <Deckbuilder
+        catalog={screen.data.catalog}
+        collection={screen.data.collection}
+        initialDecks={screen.data.decks}
+        save={save}
+      />
+    </CardDefsProvider>
   );
 }

@@ -442,6 +442,10 @@ export const INSPECT_FACE_RADIANT = "inspect-face-radiant";
 export const INSPECT_GLOSSARY = "inspect-glossary";
 /** A14: a face in play's printed text, beside it in the preview or the sheet where the two differ (SPEC §10.10). */
 export const INSPECT_PRINTED = "inspect-printed";
+/** A14: R279, the hover preview's column of the cards a face's text names. */
+export const INSPECT_REFS = "inspect-refs";
+/** A14: R279, the tooltip a reference in a card's text opens (`[data-ref]` names the card). */
+export const CARD_REF_TOOLTIP = "card-ref-tooltip";
 
 /** A14: lower-case, every run of characters outside `[a-z0-9]` becomes one "-", trimmed of "-". */
 export function slugOf(value: string): string {

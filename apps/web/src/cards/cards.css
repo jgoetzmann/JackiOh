@@ -614,22 +614,13 @@
   word-break: normal;
 }
 
-.cf .cf-text-base,
-.cf .cf-text-radiant {
+.cf .cf-text-base {
   display: block;
   flex: 0 0 auto;
 }
 
-.cf .cf-text-radiant {
-  margin-top: 0.35em;
-  padding-top: 0.3em;
-  border-top: 0.3cqh solid color-mix(in srgb, var(--foil-gold) 80%, #7a5200);
-  color: #5e3f00;
-}
-
 /* A fused card's text is a line per ingredient (R102): keep the lines, collapse everything else. */
-.cf .cf-text-base,
-.cf .cf-text-radiant {
+.cf .cf-text-base {
   white-space: pre-line;
 }
 
@@ -656,20 +647,91 @@
   opacity: 0.8;
 }
 
-/* A radiant clause that replaced the only base clause (Bigot's Cry) has nothing above its rule. */
+/* A face with no text (a Felinor Token) prints no empty line above what it has gained. */
 .cf .cf-text-base:empty {
   display: none;
-}
-
-.cf .cf-text-base:empty + .cf-text-radiant {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
 .cf .cf-term {
   font-weight: 800;
   color: inherit;
+}
+
+/* R277: what a Radiant face prints that its base face does not — gold, and bold and underlined so
+   the mark does not rest on colour alone. On the parchment the ink is a dark gold (at least 4.4:1
+   on every stop of the Radiant rules box's gradient, 5:1 or more where the text sits) over a gold
+   highlighter band; on a dark panel (the inspect overlays) it is the bright --radiant gold. */
+:root {
+  --mark-ink: #6b4200;
+  --mark-line: #c98a00;
+  --mark-band: rgb(255 210 74 / 0.5);
+  --mark-ink-on-dark: var(--radiant, #ffd24a);
+}
+
+.cf-mark {
+  color: var(--mark-ink);
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-color: var(--mark-line);
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.14em;
+  background: linear-gradient(transparent 58%, var(--mark-band) 58%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.cf-mark .cf-term {
+  color: inherit;
+}
+
+/* R277: a printed Radiant unit's attack and health that the Radiant face raised. */
+.cf .cf-stats [data-grew="true"] .cf-num {
+  color: var(--foil-gold);
+  text-decoration: underline;
+  text-decoration-thickness: 0.35cqh;
+  text-underline-offset: 0.5cqh;
+}
+
+/* R279: a name in the text that points at another card. A dotted underline marks it everywhere;
+   where it is a control it takes focus and shows a ring, and its tooltip holds the named face. */
+.cf-ref {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.16em;
+}
+
+/* A face takes no pointer events (`.cf`), so a reference that is a control takes them back. */
+.cf-ref[tabindex] {
+  pointer-events: auto;
+  cursor: help;
+  border-radius: 0.2em;
+}
+
+.cf-ref[tabindex]:focus-visible {
+  outline: 2px solid var(--selected, #f0c04a);
+  outline-offset: 1px;
+}
+
+.cf-ref[data-ref-open="true"] {
+  background: rgb(255 210 74 / 0.35);
+}
+
+.cf-ref-tooltip {
+  z-index: 1000;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.55));
+}
+
+.cf-ref-tooltip > .cf {
+  width: 100%;
+  height: 100%;
+}
+
+/* R280: what a formula comes to now, in braces after it. */
+.cf-value {
+  font-weight: 800;
+  white-space: nowrap;
+  color: #1d4f8a;
 }
 
 /* useFitText could not fit it at its floor (or even at FIT_MIN): clamp with an ellipsis rather than

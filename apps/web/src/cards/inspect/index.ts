@@ -14,6 +14,7 @@ export type {
 export { closeInspect } from "./store.ts";
 export { CardDetail } from "./CardDetail.tsx";
 export { CardListPreview, CardListSheet } from "./CardList.tsx";
+export { References, namedCards } from "./References.tsx";
 export type { CardListEntry, CardListProps } from "./CardList.tsx";
 export type { CardDetailProps } from "./CardDetail.tsx";
 export { placePreview } from "./placement.ts";
@@ -37,6 +38,7 @@ export {
   INSPECT_GLOSSARY,
   INSPECT_HOVER,
   INSPECT_PRINTED,
+  INSPECT_REFS,
   INSPECT_LIST_BACK,
   INSPECT_LIST_CARD,
   INSPECT_LIST_COUNT,

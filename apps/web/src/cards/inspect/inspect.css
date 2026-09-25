@@ -90,11 +90,37 @@
   white-space: pre-line;
 }
 
-.inspect-printed-text--radiant {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 210, 74, 0.35);
-  color: var(--radiant, #ffd24a);
+/* ---- References (R279): the cards a hovered face names, beside it ---------------------------- */
+
+.inspect-refs {
+  flex: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(11, 13, 19, 0.94);
+  border: 1px solid var(--line-bright, #454d66);
+  border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  color: var(--text, #e8eaf2);
+}
+
+.inspect-refs-label {
+  margin: 0 0 6px;
+  color: var(--text-dim, #9aa1b8);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inspect-refs-faces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inspect-refs-face {
+  flex: none;
 }
 
 /* ---- Glossary -------------------------------------------------------------------------------- */
@@ -358,14 +384,29 @@
   color: var(--radiant, #ffd24a);
 }
 
-/* What the radiant cell adds or restates, gold as under the face's gold rule. */
-.inspect-rules-changed {
-  color: #ffe08a;
-}
-
 .inspect-rules .cf-term {
   color: #fff;
   font-weight: 750;
+}
+
+/* R277 on a dark panel: the same gold, bold, underlined mark as on the face, in the bright gold
+   (13:1 on these panels) over a fainter band. */
+.inspect-rules .cf-mark,
+.inspect-printed .cf-mark,
+.inspect-refs .cf-mark {
+  color: var(--mark-ink-on-dark);
+  text-decoration-color: var(--mark-ink-on-dark);
+  background: linear-gradient(transparent 60%, rgb(255 210 74 / 0.22) 60%);
+}
+
+.inspect-rules .cf-mark .cf-term,
+.inspect-printed .cf-mark .cf-term {
+  color: inherit;
+}
+
+.inspect-rules .cf-value,
+.inspect-printed .cf-value {
+  color: #8cc4ff;
 }
 
 .inspect-detail .inspect-glossary {

@@ -1,7 +1,9 @@
 // The enlarged card a resting mouse or pen pointer opens (B22): the live face at
 // PREVIEW_HEIGHT_PX with its glossary beside it, fixed beside the anchor card. It never takes
 // pointer events and is hidden from assistive tech, so it can never cover what a click aims at.
-// A face in play whose printed text differs (SPEC §10.10) has that text above its glossary.
+// A face in play whose printed text differs (SPEC §10.10) has that text above its glossary, and a
+// face whose text names other cards has their faces there too (References.tsx, R279), since a
+// reference inside a preview that takes no pointer events cannot be hovered itself.
 
 import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
@@ -19,6 +21,8 @@ import {
 import { Glossary } from "./Glossary.tsx";
 import { placePreview, type PreviewPrefer, type Rect } from "./placement.ts";
 import { Printed } from "./Printed.tsx";
+import { namedCards, References } from "./References.tsx";
+import { useDefResolver } from "../refContext.tsx";
 import { OVERLAY_ROOT_PROPS } from "./store.ts";
 import { INSPECT_FACE, INSPECT_HOVER } from "./testids.ts";
 import "./inspect.css";
@@ -40,7 +44,10 @@ function estimatedSize(withGlossary: boolean): { width: number; height: number }
 export function HoverPreview({ face, anchor, prefer = "beside" }: HoverPreviewProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
   const entries = glossaryFor(face);
-  const placed = placePreview(anchor, viewportSize(), estimatedSize(entries.length > 0 || face.printed !== null), prefer);
+  const resolve = useDefResolver();
+  const named = resolve === null ? 0 : namedCards(face, resolve).length;
+  const side = entries.length > 0 || face.printed !== null || named > 0;
+  const placed = placePreview(anchor, viewportSize(), estimatedSize(side), prefer);
 
   // Once laid out, place it again by its real size. jsdom has no layout and keeps the estimate.
   useLayoutEffect(() => {
@@ -68,11 +75,12 @@ export function HoverPreview({ face, anchor, prefer = "beside" }: HoverPreviewPr
       <div className="inspect-face" data-testid={INSPECT_FACE} style={{ height: PREVIEW_HEIGHT_PX }}>
         <CardFace face={face} layout="full" />
       </div>
-      {face.printed === null ? (
+      {face.printed === null && named === 0 ? (
         <Glossary entries={entries} />
       ) : (
         <div className="inspect-side">
           <Printed face={face} />
+          <References face={face} />
           <Glossary entries={entries} />
         </div>
       )}

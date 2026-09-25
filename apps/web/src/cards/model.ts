@@ -13,6 +13,11 @@
 // Nothing here is a rule (CLAUDE.md rule 7). The tones compare two numbers the view and the catalog
 // already carry — the live cost against the printed price, the live stats against the printed
 // stats — so a buffed unit reads green and a damaged one red, the way Hearthstone colours them.
+//
+// Three marks ride on the text (SPEC §10.10). A Radiant face prints its whole catalog text with the
+// stretches its base face does not have marked (`text.marks`, radiantDiff.ts, R277); the names its
+// `refs` link are references (refs.ts, R279), which the renderer finds in the text; and in play the
+// numbers the view's `preview` carries are printed after their formulas (`values`, R280).
 
 import {
   keywordKey,
@@ -21,6 +26,7 @@ import {
   type CardType,
   type Keyword,
   type Rarity,
+  type PreviewValue,
   type SetName,
   type Tag,
 } from "@jackioh/shared";
@@ -33,7 +39,7 @@ import {
   powerText,
   type RolledPower,
 } from "./inPlay.ts";
-import { radiantText } from "./radiantText.ts";
+import { radiantMarks, type TextRange } from "./radiantDiff.ts";
 
 export type FaceLayout = "full" | "compact" | "minion";
 export type StatTone = "base" | "buffed" | "reduced" | "damaged";
@@ -53,7 +59,24 @@ export type FaceCost = {
    */
   alt: string | null;
 };
-export type FaceStats = { attack: number; health: number; maxHealth: number; attackTone: StatTone; healthTone: StatTone };
+export type FaceStats = {
+  attack: number;
+  health: number;
+  maxHealth: number;
+  attackTone: StatTone;
+  healthTone: StatTone;
+  /**
+   * R277: on a printed Radiant face (no live numbers), which stats the Radiant face raised over the
+   * base face's, so the face can mark them as it marks its text. Absent elsewhere.
+   */
+  grew?: { attack: boolean; health: boolean };
+};
+/**
+ * What the rules box prints: the whole text, and on a Radiant face the stretches of it the base
+ * face's text does not have (R277). `marks` is empty on a base face and wherever play prints
+ * something else (a Vanilla unit, "???", a Heroic Power's power on its base face).
+ */
+export type FaceText = { full: string; marks: readonly TextRange[] };
 export type FaceModel = {
   defId: string;
   /** False when no catalog def was available (the `unknownCard` fallback). */
@@ -69,14 +92,22 @@ export type FaceModel = {
   /** Units only: live when `live` was given, else the printed face; null for non-units and unknown stats. */
   stats: FaceStats | null;
   /**
-   * What the rules box prints. On a base face, `base` is the base text and `radiant` is null. On a
-   * radiant face they are radiantText.ts's reading of the two cells by SPEC §8's rule: `base` is
-   * the radiant form's keyword line and the base clauses it keeps, `radiant` what the cell adds or
-   * restates (printed under a gold rule), or null when it changes nothing else. A fused definition
-   * joins its ingredients' texts line by line (R102), and each line is read against its own. In
-   * play it is what the card in play says (inPlay.ts), which may differ from the printed text.
+   * What the rules box prints: the face's catalog text whole, with a Radiant face's changes marked
+   * (R277). A fused definition's text is its ingredients' texts line by line (R102), each Radiant
+   * line marked against its own base line. In play it is what the card in play says (inPlay.ts),
+   * which may differ from the printed text.
    */
-  text: { base: string; radiant: string | null };
+  text: FaceText;
+  /**
+   * R279: the cards and tokens this card's text names (`CardDef.refs`), which the renderer links
+   * where their names stand in `text.full`. Empty where the text in play names none ("???", Vanilla).
+   */
+  refs: readonly string[];
+  /**
+   * R280: in play, what the card's formula comes to now (`CardView.preview`), each value printed in
+   * braces after its label. Always empty in the collection, and wherever play prints other words.
+   */
+  values: readonly PreviewValue[];
   /** Live keywords when `live` was given, else the printed face's keywords. */
   keywords: readonly Keyword[];
   /** A face in a game (`FaceSource.inPlay` given) rather than the collection's. */
@@ -94,7 +125,7 @@ export type FaceModel = {
    * Power's rolled power, a Vanilla unit — so the inspect overlays can show both. Null when the two
    * agree, outside play, and for a card whose text play keeps a mystery ("???").
    */
-  printed: { base: string; radiant: string | null } | null;
+  printed: FaceText | null;
 };
 /**
  * What a game adds to a face (R243, SPEC §10.10); its presence is what makes a face one in play.
@@ -107,6 +138,8 @@ export type InPlay = {
   vanilla?: boolean;
   /** R43, R243: the power a #98 Heroic Power rolled, with its X. */
   power?: RolledPower;
+  /** R280: what the card's formula comes to now (`CardView.preview`). */
+  preview?: readonly PreviewValue[];
 };
 export type FaceSource = {
   defId: string;
@@ -138,6 +171,8 @@ export function faceModel(source: FaceSource): FaceModel {
   const printedText = textOf(def, source.radiant);
   const text = inPlay === undefined ? printedText : textInPlay(def, source.radiant, printedText, inPlay);
   const keywords = source.live?.keywords ?? printed?.keywords ?? [];
+  // The values belong to the printed words: a formula play does not print has no value to show.
+  const printsItsText = text.full === printedText.full;
 
   return {
     defId: source.defId,
@@ -150,8 +185,11 @@ export function faceModel(source: FaceSource): FaceModel {
     set: def?.set ?? null,
     radiant: source.radiant,
     cost: costOf(def, source.liveCost, inPlay?.power),
-    stats: statsOf(type, def !== undefined, printed, source.live ?? handLive(inPlay?.handStats, printed)),
+    stats: statsOf(type, def !== undefined, printed, source.live ?? handLive(inPlay?.handStats, printed), grewOf(def, source)),
     text,
+    // The renderer links only the names that stand in the text, so play's own words link what they name.
+    refs: def?.refs ?? [],
+    values: printsItsText ? (inPlay?.preview ?? []) : [],
     keywords,
     inPlay: inPlay !== undefined,
     vanilla,
@@ -184,8 +222,19 @@ function gainedKeywords(live: readonly Keyword[], printed: readonly Keyword[]): 
   return gained;
 }
 
-function sameText(a: FaceModel["text"], b: FaceModel["text"]): boolean {
-  return a.base === b.base && a.radiant === b.radiant;
+function sameText(a: FaceText, b: FaceText): boolean {
+  return a.full === b.full;
+}
+
+/** R277: which stats a printed Radiant face raised over its base face's; none in play or on a base face. */
+function grewOf(def: CardDef | undefined, source: FaceSource): FaceStats["grew"] {
+  if (def === undefined || !source.radiant || source.live !== undefined || source.inPlay?.handStats !== undefined) {
+    return undefined;
+  }
+  return {
+    attack: (def.radiant.attack ?? 0) > (def.base.attack ?? 0),
+    health: (def.radiant.health ?? 0) > (def.base.health ?? 0),
+  };
 }
 
 /** inPlay.ts: a card with the Call to Chaos tag keeps its text a mystery in play. */
@@ -197,19 +246,18 @@ function concealed(def: CardDef | undefined): boolean {
  * What the rules box prints in play (inPlay.ts). A Vanilla unit's text is gone; a Call to Chaos is
  * "???"; a #98 Heroic Power is the power it rolled. Anything else prints its printed text.
  */
-function textInPlay(
-  def: CardDef | undefined,
-  radiant: boolean,
-  printedText: FaceModel["text"],
-  inPlay: InPlay,
-): FaceModel["text"] {
-  if (inPlay.vanilla === true) return { base: VANILLA_TEXT, radiant: null };
+function textInPlay(def: CardDef | undefined, radiant: boolean, printedText: FaceText, inPlay: InPlay): FaceText {
+  if (inPlay.vanilla === true) return { full: VANILLA_TEXT, marks: [] };
   if (def === undefined) return printedText;
-  if (concealed(def)) return { base: CONCEALED_TEXT, radiant: null };
+  if (concealed(def)) return { full: CONCEALED_TEXT, marks: [] };
   if (inPlay.power !== undefined && def.id === HEROIC_POWER_ID) {
     const face = radiant ? def.radiant : def.base;
     const words = powerText(inPlay.power, radiant, face.keywords.map(keywordKey).join(", "));
-    if (words !== null) return { base: words, radiant: null };
+    if (words !== null) {
+      // R277: a Radiant power is marked against the same power's base words.
+      const baseWords = radiant ? powerText(inPlay.power, false, def.base.keywords.map(keywordKey).join(", ")) : null;
+      return { full: words, marks: baseWords === null ? [] : radiantMarks(baseWords, words) };
+    }
   }
   return printedText;
 }
@@ -279,6 +327,7 @@ function statsOf(
   known: boolean,
   printed: PrintedFace | undefined,
   live: FaceSource["live"],
+  grew: FaceStats["grew"],
 ): FaceStats | null {
   if (live !== undefined) {
     // A unit nobody can name has no printed face to compare against, so nothing is coloured.
@@ -298,33 +347,16 @@ function statsOf(
   const attack = printed?.attack;
   const health = printed?.health;
   if (attack === undefined || health === undefined) return null;
-  return { attack, health, maxHealth: health, attackTone: "base", healthTone: "base" };
+  return { attack, health, maxHealth: health, attackTone: "base", healthTone: "base", ...(grew === undefined ? {} : { grew }) };
 }
 
-/** R102: a fused definition's text is its ingredients' texts, one per line, in ingredient order. */
-const FUSED_LINE_BREAK = "\n";
-
 /**
- * A base face prints its text. A radiant face prints radiantText.ts's reading of the two cells:
- * the radiant keyword line and the base clauses the cell keeps, then what the cell adds or restates.
- * A fused definition's two faces are its ingredients' texts joined line for line (R102), so each
- * base line is read against the radiant line of the same ingredient, and the kept and the changed
- * parts are each printed a line per ingredient.
+ * A base face prints its catalog text. A Radiant face prints its catalog text whole, the Radiant
+ * cell written out (R277), with what the base face's text does not have marked; a fused definition's
+ * lines are marked line by line against the base lines of the same ingredients (radiantDiff.ts).
  */
-function textOf(def: CardDef | undefined, radiant: boolean): FaceModel["text"] {
-  if (def === undefined) return { base: "", radiant: null };
-  if (!radiant) return { base: def.base.text, radiant: null };
-  const bases = def.base.text.split(FUSED_LINE_BREAK);
-  const cells = def.radiant.text.split(FUSED_LINE_BREAK);
-  if (bases.length > 1 && bases.length === cells.length) {
-    const reads = bases.map((base, at) => radiantText(base, cells[at] ?? "", def.radiant.keywords));
-    const changed = reads.flatMap((read) => (read.changed === null ? [] : [read.changed]));
-    // An ingredient whose cell restated all it printed (Bigot's Cry) keeps no line of its own.
-    return {
-      base: reads.flatMap((read) => (read.kept === "" ? [] : [read.kept])).join(FUSED_LINE_BREAK),
-      radiant: changed.length === 0 ? null : changed.join(FUSED_LINE_BREAK),
-    };
-  }
-  const read = radiantText(def.base.text, def.radiant.text, def.radiant.keywords);
-  return { base: read.kept, radiant: read.changed };
+function textOf(def: CardDef | undefined, radiant: boolean): FaceText {
+  if (def === undefined) return { full: "", marks: [] };
+  if (!radiant) return { full: def.base.text, marks: [] };
+  return { full: def.radiant.text, marks: radiantMarks(def.base.text, def.radiant.text) };
 }

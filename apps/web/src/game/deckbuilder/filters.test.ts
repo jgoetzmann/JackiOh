@@ -10,6 +10,8 @@ import type { CardCost, CardDef, CardFace, CardType, Rarity, Tag } from "@jackio
 import type { CatalogSnapshot, Collection } from "@jackioh/validator";
 import { describe, expect, it } from "vitest";
 
+import { CATALOG as CORE_CATALOG } from "@jackioh/cards";
+
 import {
   COST_BUCKETS,
   CURVE_TOP,
@@ -177,7 +179,7 @@ describe("the filter vocabulary (B31, B34)", () => {
 
   it("B31 the type, tag and rarity chips cover the deckable vocabulary and never Token", () => {
     expect([...FILTER_TYPES]).toEqual(["Unit", "Spell", "Field Spell", "Trap", "Field Trap"]);
-    expect([...FILTER_TAGS]).toEqual(["Human", "Felinor", "KY", "CN", "Fruit", "Call to Chaos", "Quickdraw"]);
+    expect([...FILTER_TAGS]).toEqual(["Human", "Felinor", "KY", "CN", "Fruit", "Call to Chaos", "Quickdraw", "Jlockeed"]);
     expect([...FILTER_RARITIES]).toEqual(["Common", "Rare", "Epic", "Legendary", "Mythic"]);
     expect(FILTER_TAGS).not.toContain("Token");
     expect(FILTER_RARITIES).not.toContain("Token");
@@ -551,5 +553,20 @@ describe("deckListOrder (B35)", () => {
 
   it("B35 an empty deck has no tiles", () => {
     expect(deckListOrder([], CATALOG)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R278: the Jlockeed tag
+// ---------------------------------------------------------------------------------------------
+
+describe("the Jlockeed tag (R278)", () => {
+  const REAL: CatalogSnapshot = { version: "core-test", cards: CORE_CATALOG };
+
+  it("R278 offers a Jlockeed chip, and filtering on it keeps #13 and #14 of the real catalog and nothing else", () => {
+    expect(FILTER_TAGS).toContain("Jlockeed");
+    expect(filterTagId("Jlockeed")).toBe("db-filter-tag-jlockeed");
+    const kept = visiblePool(REAL, null, { ...DEFAULT_FILTER, ownedOnly: false, tags: new Set<Tag>(["Jlockeed"]) }, DEFAULT_SORT);
+    expect([...kept].sort()).toEqual(["core-013", "core-014"]);
   });
 });

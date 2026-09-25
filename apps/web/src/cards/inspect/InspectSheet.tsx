@@ -1,6 +1,8 @@
 // The bottom sheet a touch long-press opens (B24, B25): the live face, its glossary and Close, over
 // a scrim. Focus moves to Close on open and back on close; Escape, the scrim and Close all close it.
-// A face in play whose printed text differs (SPEC §10.10) has that text beside it as well.
+// A face in play whose printed text differs (SPEC §10.10) has that text beside it as well. A touch
+// sheet is where a reference in the text is a control (R279): tapping a name shows the card it
+// names, and the names are listed with their faces under the glossary too.
 
 import { useRef } from "react";
 import type { ReactElement } from "react";
@@ -10,6 +12,8 @@ import type { FaceModel } from "../model.ts";
 import { glossaryFor } from "../rules.ts";
 import { Glossary } from "./Glossary.tsx";
 import { Printed } from "./Printed.tsx";
+import { References } from "./References.tsx";
+import { RefsInteractive } from "../refContext.tsx";
 import { OVERLAY_ROOT_PROPS, useModalOverlay } from "./store.ts";
 import { INSPECT_CLOSE, INSPECT_FACE, INSPECT_SCRIM, INSPECT_SHEET } from "./testids.ts";
 import "./inspect.css";
@@ -32,10 +36,13 @@ export function InspectSheet({ face, onClose }: InspectSheetProps): ReactElement
       >
         <span className="inspect-grip" aria-hidden="true" />
         <div className="inspect-sheet-body">
-          <div className="inspect-face inspect-face--sheet" data-testid={INSPECT_FACE}>
-            <CardFace face={face} layout="full" />
-          </div>
-          <Printed face={face} />
+          <RefsInteractive>
+            <div className="inspect-face inspect-face--sheet" data-testid={INSPECT_FACE}>
+              <CardFace face={face} layout="full" />
+            </div>
+            <Printed face={face} />
+          </RefsInteractive>
+          <References face={face} />
           <Glossary entries={glossaryFor(face)} />
         </div>
         <button

@@ -234,7 +234,7 @@ describe("R43 a Heroic Power in play prints the one power it rolled", () => {
   it("in the collection: the whole list of seven, base and radiant", () => {
     render(<CardDetail def={def("core-098")} onClose={() => {}} />);
     expect(text(screen.getByTestId(INSPECT_FACE_BASE), ".card-text")).toContain("gain one of 7 random powers");
-    expect(text(screen.getByTestId(INSPECT_FACE_RADIANT), ".card-text")).toContain("Powers become");
+    expect(text(screen.getByTestId(INSPECT_FACE_RADIANT), ".card-text")).toContain("Recruit a permanent and make it Radiant");
   });
 });
 

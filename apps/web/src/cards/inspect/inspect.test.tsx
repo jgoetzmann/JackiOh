@@ -1104,8 +1104,8 @@ describe("events inside an overlay stay inside it (B25)", () => {
 
 describe("the glossary (B26)", () => {
   /**
-   * A face built to make the order visible. Base text: Death, then Cry. Radiant clause: Lifesteal
-   * (new) and Cry (already listed). Keywords: Taunt (new), Lifesteal (already listed), Rush (new).
+   * A face built to make the order visible. Its text: Death, then Cry, then Lifesteal and Cry again
+   * (already listed). Keywords: Taunt (new), Lifesteal (already listed), Rush (new).
    */
   const ORDERED_FACE: FaceModel = {
     defId: "glossary-order-probe",
@@ -1119,7 +1119,9 @@ describe("the glossary (B26)", () => {
     radiant: true,
     cost: { text: "1", value: "1", tone: "base", alt: null },
     stats: { attack: 1, health: 1, maxHealth: 1, attackTone: "base", healthTone: "base" },
-    text: { base: "Death: deal 2. Cry: draw 1", radiant: "Lifesteal. Cry: again" },
+    text: { full: "Death: deal 2. Cry: draw 1. Lifesteal. Cry: again", marks: [] },
+    refs: [],
+    values: [],
     keywords: [{ kind: "Taunt" }, { kind: "Lifesteal" }, { kind: "Rush" }],
     inPlay: false,
     vanilla: false,
@@ -1133,11 +1135,11 @@ describe("the glossary (B26)", () => {
     defId: "glossary-empty-probe",
     name: "Glossary Empty Probe",
     radiant: false,
-    text: { base: "", radiant: null },
+    text: { full: "", marks: [] },
     keywords: [],
   };
 
-  it("B26 lists base-text terms, then radiant-clause terms, then keywords not yet listed, each with its label and rule", () => {
+  it("B26 lists the text's terms in order, then keywords not yet listed, each with its label and rule", () => {
     expect(glossaryFor(ORDERED_FACE).map((entry) => entry.id), "glossaryFor agrees with the order B26 states").toEqual(ORDER);
 
     render(<Trigger id="a" subject={{ key: "b26-order", face: ORDERED_FACE }} />);

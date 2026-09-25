@@ -75,14 +75,13 @@ export function termsIn(text: string): GlossaryTermId[] {
   return seen;
 }
 
-/** termsIn(base), then termsIn(radiant ?? ""), then face.keywords' kinds; distinct; mapped to entries. */
+/** termsIn(the face's text), then face.keywords' kinds; distinct; mapped to entries. */
 export function glossaryFor(face: FaceModel): GlossaryEntry[] {
   const ids: GlossaryTermId[] = [];
   const add = (id: GlossaryTermId): void => {
     if (!ids.includes(id)) ids.push(id);
   };
-  for (const id of termsIn(face.text.base)) add(id);
-  for (const id of termsIn(face.text.radiant ?? "")) add(id);
+  for (const id of termsIn(face.text.full)) add(id);
   for (const keyword of face.keywords) add(keyword.kind);
   return ids.map((id) => GLOSSARY[id]);
 }
