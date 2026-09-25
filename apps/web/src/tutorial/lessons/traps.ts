@@ -9,43 +9,46 @@ export const lesson: TutorialLesson = {
   title: "The backrow",
   summary: "Set traps face-down, spring them on the AI, and watch out for its own.",
   mechanics: ["The backrow", "Traps", "Field Spells", "Quickdraw", "Tokens"],
-  seed: "tutorial-traps",
+  // This seed deals Bear Honeypot and Going Long in the opening hand, Rush Token Farm as the first
+  // draw and Tempo Timmy on turn 4, and the AI's Sheepish in its first draw: the AI sets it on its
+  // third turn, just before Tempo Timmy arrives to test it. Scanned with scripts/lesson-deal.ts.
+  seed: "tutorial-traps-2225",
   humanSeat: "p1",
   humanDeck: [
     "core-084", // Going Long (Quickdraw)
-    "core-041", // Sheepish
     "core-060", // Bear Honeypot
-    "core-036", // Magic Jammed
+    "core-041", // Sheepish
     "core-058", // Rush Token Farm
     "core-006", // Mana Well
-    "core-008", // Mr. Vanilla
     "core-015", // Me and Mr Token
     "core-011", // Tempo Timmy
-    "core-012", // Duplicating Felinors
-    "core-037", // Gravedigger
+    "core-003", // Right-house defender
     "core-020", // Pointmaster
-    "core-013", // Jlockeed Shredder-10
+    "core-068", // Twisted Sorcerer
+    "core-032", // Prem Panther
+    "core-045", // Deft Duelist
+    "core-056", // Jilliax
+    "core-002", // Bigot
     "core-019", // Midrange Menace
+    "core-013", // Jlockeed Shredder-10
     "core-025", // 4-mana 7/7
-    "core-054", // Straaza
     "core-044", // True Strike
     "core-016", // Hit Job
-    "core-068", // Twisted Sorcerer
-    "core-003", // Right-house defender
+    "core-037", // Gravedigger
   ],
   aiDeck: [
-    "core-060", // Bear Honeypot
-    "core-008", // Mr. Vanilla
+    "core-041", // Sheepish
+    "core-005", // Stockpile
     "core-004", // Gary the Gambler
-    "core-012", // Duplicating Felinors
-    "core-037", // Gravedigger
-    "core-003", // Right-house defender
+    "core-008", // Mr. Vanilla
     "core-030", // Archivist
     "core-077", // Professor Curvature
-    "core-011", // Tempo Timmy
-    "core-020", // Pointmaster
-    "core-005", // Stockpile
-    "core-044", // True Strike
+    "core-037", // Gravedigger
+    "core-061", // Prejudiced Postdoc
+    "core-012", // Duplicating Felinors
+    "core-045", // Deft Duelist
+    "core-032", // Prem Panther
+    "core-006", // Mana Well
   ],
-  retryTip: "A face-down card could be a trap. Test it with a cheap card before you play your best one.",
+  retryTip: "A face-down card could be a trap. Test it with a cheap unit before you play your best one.",
 };
