@@ -78,8 +78,14 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * so spec 01, which plays whatever the client offers, plays it on p2's first turn (nonce n6), and
  * every instance created after setup takes an id one higher. A new game, not a relabeled one: 51
  * actions where there were 50, still won by p1 by hero death.
+ *
+ * The concurrent mulligan (R265) moved it once more, under the exception above: the log is the same
+ * 51 actions and folds without a refusal. Both mulligan prompts now open in `beginGame`, which does
+ * not run the resolution loop, where p2's used to open inside p1's answer and be dispatched there, so
+ * one event fewer takes a number: a fold before and after differs in `nextSeq` and the two frontier
+ * ids it numbers, 1 lower, and nowhere else.
  */
-const EXPECTED_HASH = "0349d08f";
+const EXPECTED_HASH = "5a9932ce";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

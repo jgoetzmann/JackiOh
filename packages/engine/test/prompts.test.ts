@@ -39,6 +39,7 @@ import {
 } from "../src/prompts";
 import { beginGame, legalActions, reduce } from "../src/reduce";
 import { makeContext, type EngineSink } from "../src/resolve";
+import { mulliganPromptFor } from "../src/setup";
 import type { CardScripts, Effect, EffectContext, Script } from "../src/script";
 import { registerScripts, registeredScripts } from "../src/scripts";
 import {
@@ -491,7 +492,7 @@ describe("prompts (§10.6, M3-T3)", () => {
     expect(promptAnswers(upToTwo).length).toBeLessThanOrEqual(MAX_PROMPT_ANSWERS);
 
     // §2.1: a mulligan has its own action, so it is not enumerated as an `answer`.
-    const mulligan = must(beginGame(newGame("enumeration-mulligan")).state.pending, "the mulligan prompt");
+    const mulligan = must(mulliganPromptFor(beginGame(newGame("enumeration-mulligan")).state, "p1"), "the mulligan prompt");
     expect(mulligan.kind).toBe("mulligan");
     expect(promptAnswers(mulligan)).toEqual([]);
   });
@@ -753,7 +754,7 @@ describe("prompts (§10.6, M3-T3)", () => {
     }
     // Every kind the effects library can open, plus the mulligan §2.1 opens for itself.
     expect([...kinds].sort()).toEqual(["discover", "hand", "mode", "target"]);
-    expect(must(beginGame(newGame("kind-mulligan")).state.pending, "the mulligan").kind).toBe("mulligan");
+    expect(must(mulliganPromptFor(beginGame(newGame("kind-mulligan")).state, "p1"), "the mulligan").kind).toBe("mulligan");
 
     // R81: "No Core card opens an `x`, `embiggen`, `zone`, `tribute` or `direction` prompt, since
     // all five are play choices." Nothing in the effects library can, so nothing built from it can.

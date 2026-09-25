@@ -1,8 +1,9 @@
 import type { Action, ActionBody } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
 import { DECK_SIZE } from "../src/config";
-import { beginGame, legalActions, reduce } from "../src/reduce";
+import { beginGame, legalActions, reduce, seatToAct } from "../src/reduce";
 import { createRng } from "../src/rng";
+import { mulliganOwed } from "../src/setup";
 import { cloneState, newInstance, type GameState } from "../src/state";
 import { vanillaDeck } from "./fixtures/catalog";
 import { newGame } from "./fixtures/harness";
@@ -40,9 +41,10 @@ describe("reduce (M1-T3)", () => {
     expect(answered.error).toBeUndefined();
   });
 
-  it("refuses anything but an answer while a prompt is open", () => {
+  it("refuses anything but a mulligan while the mulligans are open, from either seat (R265)", () => {
     const state = beginGame(newGame("pending")).state;
-    expect(state.pending).not.toBeNull();
+    expect(state.pending).toBeNull();
+    expect(mulliganOwed(state)).toEqual(["p1", "p2"]);
 
     const played = reduce(state, {
       type: "play",
@@ -50,10 +52,18 @@ describe("reduce (M1-T3)", () => {
       playerId: "p1",
       nonce: nonce(),
     });
-    expect(played.error).toMatch(/a prompt is open/);
+    expect(played.error).toMatch(/the mulligan is open/);
+    expect(reduce(state, { type: "endTurn", playerId: "p1", nonce: nonce() }).error).toMatch(/the mulligan is open/);
+    expect(reduce(state, { type: "offerDraw", playerId: "p2", nonce: nonce() }).error).toMatch(/the mulligan is open/);
 
-    const wrongPlayer = reduce(state, { type: "mulligan", keep: [], playerId: "p2", nonce: nonce() });
-    expect(wrongPlayer.error).toMatch(/belongs to the other player/);
+    // Either seat answers its own first; a second answer from the same seat is refused.
+    const p2First = reduce(state, { type: "mulligan", keep: [], playerId: "p2", nonce: nonce() });
+    expect(p2First.error).toBeUndefined();
+    expect(mulliganOwed(p2First.state)).toEqual(["p1"]);
+    const again = reduce(p2First.state, { type: "mulligan", keep: [], playerId: "p2", nonce: nonce() });
+    expect(again.error).toMatch(/already answered/);
+    const stranger = reduce(state, { type: "mulligan", keep: ["nope"], playerId: "p1", nonce: nonce() });
+    expect(stranger.error).toMatch(/not in your hand/);
   });
 
   it("dedupes a repeated nonce: same state, no duplicate events", () => {
@@ -118,7 +128,7 @@ describe("reduce (M1-T3)", () => {
       let state = playing(`walk-${game}`);
 
       while (state.result === null && states < 200) {
-        const player = state.pending?.playerId ?? state.active;
+        const player = seatToAct(state);
         const actions = legalActions(state, player);
         expect(actions.length).toBeGreaterThan(0);
         states += 1;
@@ -143,12 +153,20 @@ describe("reduce (M1-T3)", () => {
     expect(probes).toBeGreaterThan(200);
   }, 30_000);
 
-  it("R211 offers only concede to a player with an open prompt that is not theirs", () => {
-    const state = beginGame(newGame("prompt-actions")).state;
-    expect(legalActions(state, "p2")).toEqual([{ type: "concede" }]);
-    expect(legalActions(state, "p1").every((a) => a.type === "mulligan" || a.type === "concede")).toBe(true);
-    // And `reduce` agrees: a concede is accepted from the seat that holds no prompt.
-    expect(reduce(state, { type: "concede", playerId: "p2", nonce: "r211-concede" }).error).toBeUndefined();
+  it("R211 offers only concede to a player with nothing to answer", () => {
+    const begun = beginGame(newGame("prompt-actions")).state;
+    // R265: both seats owe a mulligan at once, so both are offered theirs and concede.
+    for (const player of ["p1", "p2"] as const) {
+      const legal = legalActions(begun, player);
+      expect(legal.every((a) => a.type === "mulligan" || a.type === "concede")).toBe(true);
+      expect(legal.filter((a) => a.type === "mulligan")).toHaveLength(2 ** begun.players[player].hand.length);
+    }
+    // Once p1 has answered, p1 has nothing left to answer and is offered concede alone.
+    const state = reduce(begun, { type: "mulligan", keep: [], playerId: "p1", nonce: "r211-m" }).state;
+    expect(legalActions(state, "p1")).toEqual([{ type: "concede" }]);
+    expect(legalActions(state, "p2").every((a) => a.type === "mulligan" || a.type === "concede")).toBe(true);
+    // And `reduce` agrees: a concede is accepted from the seat that owes nothing.
+    expect(reduce(state, { type: "concede", playerId: "p1", nonce: "r211-concede" }).error).toBeUndefined();
   });
 
   it("offers one play per open zone for a unit", () => {

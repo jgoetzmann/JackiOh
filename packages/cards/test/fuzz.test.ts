@@ -48,6 +48,7 @@ import {
   reduce,
   subsystems,
   type GameState,
+  seatToAct,
 } from "@jackioh/engine";
 import { CATALOG, registerAll } from "../src/index";
 import { createInvariantMonitor } from "./_invariants";
@@ -229,7 +230,7 @@ function playGame(seed: number): GameRun {
     }
 
     // With a prompt open only its holder may act (§9.3); otherwise it is the active player's turn.
-    const player: PlayerId = state.pending?.playerId ?? state.active;
+    const player: PlayerId = seatToAct(state);
     const chosen: ActionBody | null = subsystems.chooseAction(state, player, policy);
     if (chosen === null) {
       throw new FuzzFailure(

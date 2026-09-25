@@ -678,10 +678,23 @@ export function offerDraw(sink: EngineSink, player: PlayerId): void {
  * R36: whether `player` has an offer to answer — the active opponent offered this turn and it has
  * not been answered yet. `legalActions` and the reducer both ask this, so a declined offer is gone
  * from both at once.
+ *
+ * R269: an offer lives for the rest of the turn it was made on. Nothing clears it when that turn
+ * ends: the turn number moves on, so the offer simply stops standing — it lapses, and a lapsed
+ * offer is not a declined one, so it blocks nothing (R36's block is a decline's).
  */
 export function hasStandingDrawOffer(state: GameState, player: PlayerId): boolean {
   const offering = opponentOf(player);
   return state.active === offering && state.players[offering].drawOffer.offeredTurn === state.turn;
+}
+
+/**
+ * R269: the player whose draw offer stands right now, or null. `viewFor` shows it to both seats —
+ * the offer was a public action (`drawOffered`) — so a client can tell the offerer it is waiting
+ * and the other seat that it has an offer to answer, and a reconnect shows the same.
+ */
+export function standingDrawOffer(state: GameState): PlayerId | null {
+  return hasStandingDrawOffer(state, opponentOf(state.active)) ? state.active : null;
 }
 
 export function answerDraw(sink: EngineSink, player: PlayerId, accept: boolean): void {
@@ -698,13 +711,4 @@ export function answerDraw(sink: EngineSink, player: PlayerId, accept: boolean):
   // R36: the next DRAW_OFFER_BLOCK_TURNS turns of theirs are blocked, counting from the next one.
   const side = sink.state.players[offering];
   side.drawOffer.blockedUntil = side.turnsStarted + DRAW_OFFER_BLOCK_TURNS + 1;
-}
-
-export function pendingDrawOffer(sink: EngineSink): PlayerId | null {
-  for (const player of PLAYER_IDS) {
-    if (sink.state.players[player].drawOffer.offeredTurn === sink.state.turn && sink.state.active === player) {
-      return player;
-    }
-  }
-  return null;
 }

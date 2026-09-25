@@ -28,6 +28,7 @@ import {
   type EngineSink,
   type GameState,
   type Handicap,
+  mulliganPromptFor,
 } from "@jackioh/engine";
 import { CATALOG } from "../src/index";
 import { base, def, radiant } from "../src/scripts/t-coin";
@@ -58,7 +59,7 @@ function throughMulligans(decks: [string[], string[]], handicaps?: Partial<Recor
   const log: Action[] = [];
   const events: GameEvent[] = [];
   for (const player of ["p1", "p2"] as const) {
-    const pending = state.pending;
+    const pending = mulliganPromptFor(state, player);
     expect(pending?.kind, `${player}'s mulligan is open`).toBe("mulligan");
     expect(pending?.playerId).toBe(player);
     const action: Action = {
@@ -206,7 +207,7 @@ describe("T-coin The Coin — R244: the seat going second is dealt it after the 
     const created = createGame({ seed: SEED, decks: [DECK_A, DECK_B] });
     let state = beginGame(created).state;
     for (const player of ["p1", "p2"] as const) {
-      const options = state.pending?.options ?? [];
+      const options = mulliganPromptFor(state, player)?.options ?? [];
       expect(options).toHaveLength(state.players[player].hand.length);
       expect(coinsIn(state.players.p2.hand), `no Coin while ${player}'s mulligan is open`).toBe(0);
       const result = reduce(state, {

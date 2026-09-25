@@ -18,7 +18,7 @@ import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { DECK_SIZE } from "../src/config";
 import { chooseMode, damage, draw } from "../src/effects";
 import { scheduleDelayed } from "../src/modifiers";
-import { beginGame, reduce } from "../src/reduce";
+import { beginGame, reduce, seatToAct } from "../src/reduce";
 import { fold, hashState } from "../src/replay";
 import { createRng } from "../src/rng";
 import type { CardScripts, Script } from "../src/script";
@@ -274,7 +274,7 @@ function playScriptedGame(seed: string): Walk & { log: Action[] } {
 
   for (let step = 0; state.result === null; step += 1) {
     if (step > STEP_CAP) throw new Error(`scripted game ${seed} did not finish`);
-    const player: PlayerId = state.pending?.playerId ?? state.active;
+    const player: PlayerId = seatToAct(state);
     const chosen = chooseAction(state, player, policy);
     if (chosen === null) throw new Error(`no legal action for ${player} in game ${seed}`);
 

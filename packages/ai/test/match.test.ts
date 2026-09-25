@@ -19,6 +19,7 @@ import {
   reduce,
   subsystems,
   type GameState,
+  seatToAct,
 } from "@jackioh/engine";
 import {
   AI_GATE_BUDGET,
@@ -262,7 +263,7 @@ describe("the baselines (B27)", () => {
     const states = randomPolicyStates("match-greedy-real", 7, 500).filter((state) => state.result === null);
     expect(states.length).toBeGreaterThan(5);
     states.forEach((state, at) => {
-      const seat = state.pending?.playerId ?? state.active;
+      const seat = seatToAct(state);
       const chosen = greedyAction(state, seat, createRng(`match-greedy-real:${at}`));
       expect(chosen, `state ${at}`).not.toBeNull();
       const action = chosen as ActionBody;

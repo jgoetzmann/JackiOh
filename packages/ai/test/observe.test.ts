@@ -25,6 +25,7 @@ import {
   viewFor,
   type CardInstance,
   type GameState,
+  seatToAct,
 } from "@jackioh/engine";
 import {
   AI_DETERMINIZE,
@@ -367,11 +368,11 @@ describe("decide cannot see hidden cards (B11)", () => {
 
   it("R185 B11: decide gives deep-equal decisions for random mutations of real states", { timeout: 180_000 }, () => {
     const candidates = REAL_STATES.filter(
-      (state) => state.result === null && (state.pending?.playerId ?? state.active) === state.active,
+      (state) => state.result === null && seatToAct(state) === state.active,
     ).slice(0, 4);
     expect(candidates.length).toBeGreaterThan(0);
     candidates.forEach((state, at) => {
-      const seat = state.pending?.playerId ?? state.active;
+      const seat = seatToAct(state);
       const mutated = mutateHidden(state, seat, at + 1);
       const rngSeed = `observe-b11-real-${at}`;
       const original = decide(state, seat, { rng: createRng(rngSeed) });

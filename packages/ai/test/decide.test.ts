@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ActionBody, PlayerId } from "@jackioh/shared";
-import { createRng, defOf, legalActions, queryCost, subsystems, type GameState } from "@jackioh/engine";
+import { createRng, defOf, legalActions, queryCost, seatToAct, subsystems, type GameState } from "@jackioh/engine";
 import {
   AI_GATE_BUDGET,
   AI_MULLIGAN,
@@ -323,7 +323,7 @@ describe("draw offers (B21)", () => {
       let offers = 0;
 
       for (let n = 0; state.result === null && n < 300; n += 1) {
-        const actor: PlayerId = aiToAct(state, AI) ? AI : (state.pending?.playerId ?? state.active);
+        const actor: PlayerId = aiToAct(state, AI) ? AI : seatToAct(state);
         let body: ActionBody | null;
         if (actor === AI) {
           const decision = decide(state, AI, { rng: aiRng, budget: AI_GATE_BUDGET });
