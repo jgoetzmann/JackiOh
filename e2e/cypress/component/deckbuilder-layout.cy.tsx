@@ -214,7 +214,7 @@ describe("B39 the deck builder fits /decks at 390x844 and 1280x720", () => {
           if (text.getAttribute("data-clamped") === "true") {
             const def = CATALOG[id];
             const face = def === undefined ? null : faceModel({ defId: id, def, radiant: false }).text;
-            const printed = face === null ? 0 : face.base.length + (face.radiant?.length ?? 0);
+            const printed = face === null ? 0 : face.full.length;
             expect(printed, `${id} clamps only past 260 characters`).to.be.greaterThan(TEXT_TIER_MAX.xl);
           }
         }
