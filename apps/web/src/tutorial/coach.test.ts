@@ -111,7 +111,7 @@ describe("R292 the coach", () => {
     // End turn is done once the turn has passed.
     state = coachObserve(script, state, ctx(aiTurnView(4), [], [], true));
     expect(state.outcomes["end"]).toBe("done");
-    expect(state.finished).toBe(true);
+    expect(state.index).toBe(script.steps.length);
   });
 
   it("R292 completes an attack step on the attack the engine reports, and retires it when its turn ends without one", () => {
@@ -213,9 +213,11 @@ describe("R292 the coach", () => {
     const skipped = coachSkip(script, waiting, ctx(aiTurnView(2), [], [], true));
     expect(skipped.outcomes).toEqual({ play: "skipped" });
     expect(activeStep(script, skipped)?.id).toBe("next");
-    // Skipping the last step finishes the script.
+    // Skipping the last step takes the coach through the script; only the game's end finishes it,
+    // so its tips still come until then.
     const done = coachSkip(script, skipped, ctx(aiTurnView(2), [], [], true));
-    expect(done.finished).toBe(true);
+    expect(done.index).toBe(script.steps.length);
+    expect(done.finished).toBe(false);
     expect(coachDisplay(script, done, ctx(aiTurnView(2))).mode).toBe("finished");
   });
 
@@ -307,6 +309,29 @@ describe("R292 the coach", () => {
     state = coachObserve(script, state, ctx(myTurn(3, []), [{ type: "endTurn" }], [coin]));
     expect(state.tipQueue).toEqual([]);
     expect(activeStep(script, state)?.id).toBe("end");
+  });
+
+  it("R292 still shows tips once the script's steps are through, until the game ends", () => {
+    const coin: GameEvent = { type: "cardPlayed", player: "p2", instanceId: "x", defId: "core-t-coin", costPaid: 0 };
+    const script: LessonScript = {
+      lessonId: "t",
+      steps: [info({ id: "only", title: "Only", text: "The only step.", final: true })],
+      tips: [
+        tip({
+          id: "coin",
+          title: "The Coin",
+          text: "The AI played The Coin.",
+          when: (c) => c.fresh.some((event) => event.type === "cardPlayed" && event.defId === "core-t-coin"),
+        }),
+      ],
+    };
+    let state = coachObserve(script, COACH_START, ctx(myTurn(3)));
+    state = coachAck(script, state, ctx(myTurn(3)));
+    expect(state.index).toBe(1);
+    state = coachObserve(script, state, ctx(aiTurnView(4), [], [coin], true));
+    expect(coachDisplay(script, state, ctx(aiTurnView(4), [], [coin], true)).mode).toBe("tip");
+    state = coachAck(script, state, ctx(aiTurnView(4)));
+    expect(coachDisplay(script, state, ctx(aiTurnView(4))).mode).toBe("finished");
   });
 
   it("R292 reads a lesson predicate that throws as 'no' rather than stopping the game", () => {

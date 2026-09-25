@@ -24,7 +24,8 @@
 // Nothing can strand the player. "Skip step" (`coachSkip`) always moves on, and a step that has
 // been current through `TUTORIAL_STEP_TURNS_MAX` of the player's own turn starts expires by itself
 // (a `final` step, the lesson's last, never expires: it ends with the game). When the game is over
-// the coach is finished, whatever step it was on.
+// the coach is finished, whatever step it was on. A script whose steps are all through is not: its
+// tips still come until the game ends.
 
 import type { ActionBody, GameEvent, PlayerView, Row } from "@jackioh/shared";
 
@@ -142,7 +143,7 @@ export type CoachState = {
   tipQueue: readonly string[];
   /** The last view's `turn`, to count the player's own turn starts. */
   lastTurn: number | null;
-  /** The game is over, or the script is through. */
+  /** The game is over. (A script that is through still shows its tips until then.) */
   finished: boolean;
 };
 
@@ -200,7 +201,8 @@ function settleSteps(script: LessonScript, start: CoachState, ctx: CoachCtx): Co
   // Each pass either stops or retires one step, so this ends within steps.length passes.
   for (;;) {
     const step = script.steps[state.index];
-    if (step === undefined) return { ...state, finished: true, since: null };
+    // Through the script: tips still come until the game ends, which is what finishes the coach.
+    if (step === undefined) return state.since === null ? state : { ...state, since: null };
     if (state.currentFrom === null) state = { ...state, currentFrom: ctx.view.turn };
 
     const isMoot = (since: PlayerView | null): boolean =>
