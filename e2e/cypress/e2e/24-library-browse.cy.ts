@@ -17,6 +17,8 @@
 //     label or testid in the HUD or the coach's bubble says "skip" — Exit tutorial is still in the
 //     HUD, and the human's library opens its list there too.
 //
+// Screenshots (the evidence folder): the first seat's preview and dialog, at 1280x720.
+//
 // House rules (BUILD M8): seeds come from `seedFor`, there is no fixed `cy.wait(ms)` (every wait is
 // `cy.settled()` or a retried assertion), and every selector comes from support/testids.ts.
 //
@@ -106,7 +108,7 @@ function listedNames(): Cypress.Chainable<string[]> {
 }
 
 /** The seat the board draws as "you": the seat whose view the hotseat is showing. */
-const YOUR_SEAT = '[data-side="you"]';
+const YOUR_SEAT = '[data-side="you"][data-player]';
 
 function shownSeat(): Cypress.Chainable<Seat> {
   return cy
@@ -119,7 +121,7 @@ function shownSeat(): Cypress.Chainable<Seat> {
 }
 
 /** The shown seat's library, looked through on hover and in the dialog, against the true state. */
-function expectOwnLibraryBrowsable(): void {
+function expectOwnLibraryBrowsable(shot?: string): void {
   shownSeat().then((seat) => {
     cy.get(ts(libraryCountId("you")))
       .invoke("text")
@@ -129,14 +131,13 @@ function expectOwnLibraryBrowsable(): void {
         const pile = ts(libraryId("you"));
 
         // A resting mouse: the title, the size and "Order hidden", click-through.
-        cy.get(`${pile}${BROWSABLE}`)
-          .should("have.attr", "role", "button")
-          .and("have.attr", "aria-label")
-          .and("match", ORDER_HIDDEN);
+        cy.get(`${pile}${BROWSABLE}`).should("have.attr", "role", "button");
+        cy.get(pile).invoke("attr", "aria-label").should("match", ORDER_HIDDEN);
         cy.get(pile).trigger("pointerover", { pointerType: "mouse" });
         cy.get(ts(INSPECT_LIST_HOVER)).should("be.visible").and("have.css", "pointer-events", "none");
         cy.get(ts(INSPECT_LIST_HOVER)).should("contain.text", "Your library").invoke("text").should("match", ORDER_HIDDEN);
         cy.get(`${ts(INSPECT_LIST_HOVER)} ${ts(INSPECT_LIST_COUNT)}`).should("have.attr", "data-count", String(count));
+        if (shot !== undefined) cy.screenshot(`${shot}-preview`, { capture: "viewport" });
         cy.get(pile).trigger("pointerout", { pointerType: "mouse" });
         cy.get(ts(INSPECT_LIST_HOVER)).should("not.exist");
 
@@ -151,6 +152,7 @@ function expectOwnLibraryBrowsable(): void {
             expect(tally(listed), `${seat}'s library, card for card`).to.deep.eq(tally(truth));
           });
         });
+        if (shot !== undefined) cy.screenshot(`${shot}-dialog`, { capture: "viewport" });
         // A count above one is printed on the face.
         cy.get(`${ts(INSPECT_LIST_SHEET)} ${ts(INSPECT_LIST_CARD)}`).each(($tile) => {
           const tileCount = Number($tile.attr("data-count") ?? "1");
@@ -172,7 +174,9 @@ function expectOwnLibraryBrowsable(): void {
 /** The opponent's library is a count: not a button, and nothing opens on it. */
 function expectOpponentLibraryClosed(): void {
   const pile = ts(libraryId("opponent"));
-  cy.get(pile).should("not.have.attr", "data-browsable").and("not.have.attr", "role");
+  // One attribute per `should`: a negated `have.attr` leaves no subject for a second one.
+  cy.get(pile).should("not.have.attr", "data-browsable");
+  cy.get(pile).should("not.have.attr", "role");
   cy.get(ts(libraryCountId("opponent"))).invoke("text").then((text) => expect(Number(text)).to.be.greaterThan(0));
   cy.get(pile).trigger("pointerover", { pointerType: "mouse" });
   cy.get(pile).click();
@@ -214,12 +218,15 @@ function untilMyTurn(budget: number): void {
 describe("24 — your library, without its order (R310–R313)", () => {
   it("R310 R313 hotseat: your library opens its cards with counts and 'order hidden'; the opponent's is a count; the other seat's opens after the hand-over", () => {
     cy.seedGame({ seed: SEED, a: DECK_A, b: DECK_B });
-    expectOwnLibraryBrowsable();
+    // The mulligans leave the device with whoever answered last; hand it to the seat on turn.
+    cy.handOver();
+    // Screenshots (the evidence folder): the preview and the dialog, at the default viewport.
+    expectOwnLibraryBrowsable("24-library");
     expectOpponentLibraryClosed();
 
     shownSeat().then((first) => {
       cy.endTurn();
-      cy.get(`${ts(BOARD)} ${YOUR_SEAT}`).should("have.attr", "data-player").and("not.eq", first);
+      cy.get(`${ts(BOARD)} ${YOUR_SEAT}`).invoke("attr", "data-player").should("not.eq", first);
       expectOwnLibraryBrowsable();
       expectOpponentLibraryClosed();
     });
