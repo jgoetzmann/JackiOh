@@ -21,9 +21,10 @@ export type ReplayHashPayload = {
   log: unknown[];
   state: unknown;
   /**
-   * Spec 13 (R180, R187): a practice game's handicaps, exactly as its `createGame` took them. The
-   * fold needs them to accept the AI seat's 25- or 30-card deck and to replay its extra mana,
-   * opening card and draws. Absent for every hotseat spec, whose payload is unchanged.
+   * R180: the game's handicaps, exactly as its `createGame` took them. Spec 13's practice game (R187)
+   * needs them to accept the AI seat's 25- or 30-card deck and to replay its extra mana, opening
+   * card and draws; spec 25's hotseat games carry a fixture's (`window.__jackioh.handicaps`, a 4- or
+   * 60-card library, a bigger opening hand). Absent for every other spec, whose payload is unchanged.
    */
   handicaps?: Partial<Record<"p1" | "p2", unknown>>;
 };

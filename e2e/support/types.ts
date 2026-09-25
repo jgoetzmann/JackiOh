@@ -116,11 +116,30 @@ export type JackiOhDevHandle = {
   log?: Action[];
   /** ASSUMPTION A2: the two deck lists the route resolved, seat order [p1, p2]. */
   decks?: [string[], string[]];
+  /**
+   * R180: the handicaps the hotseat game was created with, `{}` for none (a fixture's `handicap`,
+   * injected by `seedGame`). `cy.replayCheck` folds the log with them.
+   */
+  handicaps?: Partial<Record<PlayerId, FixtureHandicap>>;
   /** Present in networked mode (apps/web/src/game/net.ts) when the route is not hotseat. */
   seat?: PlayerId;
 };
 
-/** A scenario deck under e2e/fixtures/decks. Shape is ASSUMPTION A1. */
+/**
+ * R180: one seat's handicap, as `Handicap` in packages/engine/src/config.ts spells it (a structural
+ * copy: support/ does not import packages/*). Every field is a non-negative integer, `deckSize` is
+ * 1..LIBRARY_CAP (R184), and `heroHealth` is optional (R290).
+ */
+export type FixtureHandicap = {
+  deckSize: number;
+  manaBonus: number;
+  manaCap: number;
+  extraOpeningCards: number;
+  extraDrawsPerTurn: number;
+  heroHealth?: number;
+};
+
+/** A scenario deck under e2e/fixtures/decks. Shape is ASSUMPTION A1 (and A9). */
 export type FixtureDeck = {
   /** The id passed as `a=` / `b=` on the hotseat route. Equals the filename without `.json`. */
   id: string;
@@ -128,14 +147,25 @@ export type FixtureDeck = {
   spec: string;
   /** Why these cards: what the spec needs out of the deck. */
   description: string;
-  /** Exactly DECK_SIZE (20) distinct non-Token catalog ids; `validateDeck` throws otherwise. */
+  /**
+   * Exactly DECK_SIZE (20) distinct non-Token catalog ids, or exactly `handicap.deckSize` when the
+   * fixture carries a handicap (R184); `validateDeck` throws otherwise.
+   */
   cards: string[];
+  /**
+   * The seat's handicap (R180), for a scenario SPEC's own resources cannot reach in a few turns:
+   * spec 25's 4-card library that fatigues on turn 3, 9-card opening hand, 60-card library.
+   * `seedGame` gives fixture A's to p1 and fixture B's to p2. Absent for every other fixture.
+   */
+  handicap?: FixtureHandicap;
 };
 
 /** What `seedGame` injects for the client to resolve `a=` / `b=` (ASSUMPTION A1). */
 export type E2EDeckInjection = {
   decks: Record<string, string[]>;
   seed: string;
+  /** R180: each seat's handicap, from the fixtures that carry one; absent when neither does. */
+  handicaps?: Partial<Record<PlayerId, FixtureHandicap>>;
 };
 
 /** How a prompt is answered. `answerPrompt` resolves these against the modal, then the board. */

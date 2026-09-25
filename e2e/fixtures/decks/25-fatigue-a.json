@@ -1,0 +1,18 @@
+{
+  "id": "25-fatigue-a",
+  "spec": "25-overflow-animations.cy.ts",
+  "description": "Player 1's four-card library for R315's fatigue. The handicap is a human's in everything but deckSize (R180, R184: a 4-card deck is legal only for a seat whose handicap says 4), so the three opening cards and the turn-1 draw empty the library, whatever the seed, and the next draw is the Nth draw from an empty library (SPEC 2.4): player-turn 3's draw is fatigue 1, taken on seat 2's device because seat 2's end-turn started the turn. #5 Stockpile (1 mana, draw 2) is the card that makes seat 1 fatigue on its own device: two draws, fatigue 2 then fatigue 3, one play. It also keeps turn 1 from ending by itself (R82: a playable 1-cost card is a legal action). The other three cost 3, 4 and 6, so on 1 or 2 mana nothing but Stockpile can be played and nothing else can resolve: #17 Flood, #25 4-mana 7/7 and #29 GIGA Glowy Jelly Bean have no Cast-on-draw, no Quickdraw and no hand trigger. Seat 2 plays 08-do-nothing-b and holds The Coin, a 0-cost play, so its turn 2 never ends by itself either.",
+  "cards": [
+    "core-005",
+    "core-017",
+    "core-025",
+    "core-029"
+  ],
+  "handicap": {
+    "deckSize": 4,
+    "manaBonus": 0,
+    "manaCap": 4,
+    "extraOpeningCards": 0,
+    "extraDrawsPerTurn": 0
+  }
+}

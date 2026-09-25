@@ -106,10 +106,15 @@ export function deckSource(id: string): DeckSource | undefined {
   return DEV_DECKS.find((source) => source.id === id);
 }
 
-/** A readable message for a list that `validateDeck` would refuse, or `null` when it would not. */
-function refusal(deck: readonly string[], catalog: CardDefs, id: string): string | null {
-  if (deck.length !== DECK_SIZE) {
-    return `deck "${id}" holds ${deck.length} cards; a deck is exactly ${DECK_SIZE} (§2.6 L2)`;
+/**
+ * A readable message for a list that `validateDeck` would refuse, or `null` when it would not.
+ * `size` is the seat's deck size: §2.6's DECK_SIZE, or a handicap's `deckSize` (R184).
+ */
+function refusal(deck: readonly string[], catalog: CardDefs, id: string, size: number): string | null {
+  if (deck.length !== size) {
+    return size === DECK_SIZE
+      ? `deck "${id}" holds ${deck.length} cards; a deck is exactly ${DECK_SIZE} (§2.6 L2)`
+      : `deck "${id}" holds ${deck.length} cards; its seat's handicap wants exactly ${size} (R184)`;
   }
   if (new Set(deck).size !== deck.length) {
     return `deck "${id}" repeats a card id; at most ${MAX_COPIES} copy of each (§2.6 L3)`;
@@ -130,6 +135,10 @@ function refusal(deck: readonly string[], catalog: CardDefs, id: string): string
  * over and they take precedence over the registry. They are external input, so they are checked
  * against the catalog like anything else.
  *
+ * `size` is how many cards the seat's deck must hold: DECK_SIZE, unless the E2E injection gave the
+ * seat a handicap, whose `deckSize` rules instead (R184). The dev decks are always DECK_SIZE long, so
+ * a handicapped seat plays an injected deck of its own size or none.
+ *
  * Never throws and never invents a card id: an unknown deck id, an empty catalog or a catalog too
  * small to fill a deck all come back as `{ error }` for the route to print.
  */
@@ -137,11 +146,12 @@ export function resolveDeck(
   id: string,
   catalog: CardDefs,
   overrides?: Readonly<Record<string, readonly string[]>>,
+  size: number = DECK_SIZE,
 ): ResolvedDeck {
   const injected = overrides?.[id];
   if (injected !== undefined) {
     const deck = [...injected];
-    const bad = refusal(deck, catalog, id);
+    const bad = refusal(deck, catalog, id, size);
     return bad === null ? { deck } : { error: bad };
   }
 
@@ -168,20 +178,24 @@ export function resolveDeck(
   }
 
   const deck = source.resolve(catalog);
-  const bad = refusal(deck, catalog, id);
+  const bad = refusal(deck, catalog, id, size);
   return bad === null ? { deck } : { error: bad };
 }
 
-/** Both seats at once: `[p1, p2]`, or the first error either side produced. */
+/**
+ * Both seats at once: `[p1, p2]`, or the first error either side produced. `sizes` is each seat's
+ * deck size in the same order (see `resolveDeck`), DECK_SIZE for both when omitted.
+ */
 export function resolveDecks(
   a: string,
   b: string,
   catalog: CardDefs,
   overrides?: Readonly<Record<string, readonly string[]>>,
+  sizes: readonly [number, number] = [DECK_SIZE, DECK_SIZE],
 ): { decks: [string[], string[]] } | { error: string } {
-  const first = resolveDeck(a, catalog, overrides);
+  const first = resolveDeck(a, catalog, overrides, sizes[0]);
   if ("error" in first) return { error: first.error };
-  const second = resolveDeck(b, catalog, overrides);
+  const second = resolveDeck(b, catalog, overrides, sizes[1]);
   if ("error" in second) return { error: second.error };
   return { decks: [first.deck, second.deck] };
 }

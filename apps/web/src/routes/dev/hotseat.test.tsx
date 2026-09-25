@@ -24,7 +24,14 @@ import { testid } from "../../game/contract.ts";
 import { setEnginePort } from "../../game/engine.ts";
 import type { CreateGameArgs, EnginePort, EngineState } from "../../game/engine.ts";
 import { baseView, emptySide } from "../../test/fixtures.ts";
-import { DEFAULT_SEED, E2E_DECKS_KEY, HotseatRoute, readInjectedDecks, readParams } from "./hotseat.tsx";
+import {
+  DEFAULT_SEED,
+  E2E_DECKS_KEY,
+  HotseatRoute,
+  readInjectedDecks,
+  readInjectedHandicaps,
+  readParams,
+} from "./hotseat.tsx";
 
 /* ------------------------------------------------------------------------------------------- *
  * a fake engine and a fake catalog
@@ -197,6 +204,56 @@ describe("readInjectedDecks (ASSUMPTION A1: cy.seedGame's fixture decks)", () =>
   });
 });
 
+/** A handicap shaped like the engine's (R180): spec 25's 4-card fatigue library. */
+const FOUR_CARDS = { deckSize: 4, manaBonus: 0, manaCap: 4, extraOpeningCards: 0, extraDrawsPerTurn: 0 };
+
+describe("readInjectedHandicaps (R180: a fixture deck's handicap, spec 25)", () => {
+  it("reads each seat's handicap off the window handle, then off the localStorage copy", () => {
+    window.__jackiohE2E = { decks: {}, handicaps: { p1: FOUR_CARDS } };
+    expect(readInjectedHandicaps()).toEqual({ p1: FOUR_CARDS });
+
+    delete window.__jackiohE2E;
+    const tutorial = { ...FOUR_CARDS, deckSize: 12, manaCap: 3, heroHealth: 20 };
+    window.localStorage.setItem(E2E_DECKS_KEY, JSON.stringify({ decks: {}, handicaps: { p2: tutorial } }));
+    expect(readInjectedHandicaps()).toEqual({ p2: tutorial });
+  });
+
+  it("is undefined with no injection, no handicaps, or none shaped like one", () => {
+    expect(readInjectedHandicaps()).toBeUndefined();
+    window.__jackiohE2E = { decks: { fixture: ["core-001"] } };
+    expect(readInjectedHandicaps()).toBeUndefined();
+    window.__jackiohE2E = { decks: {}, handicaps: "p1" } as never;
+    expect(readInjectedHandicaps()).toBeUndefined();
+    window.__jackiohE2E = { decks: {}, handicaps: { p1: null, p2: [] } };
+    expect(readInjectedHandicaps()).toBeUndefined();
+  });
+
+  it("drops a seat whose handicap is malformed and keeps the other, with only the handicap's own fields", () => {
+    window.__jackiohE2E = {
+      decks: {},
+      handicaps: {
+        // A field missing, a field that is not a number, a heroHealth that is not a number.
+        p1: { deckSize: 4, manaBonus: 0, manaCap: 4, extraOpeningCards: 0 },
+        p2: { ...FOUR_CARDS, deckSize: "60", heroHealth: 20 },
+        p3: FOUR_CARDS,
+      },
+    } as never;
+    expect(readInjectedHandicaps()).toBeUndefined();
+
+    window.__jackiohE2E = {
+      decks: {},
+      handicaps: { p1: { ...FOUR_CARDS, heroHealth: "20" }, p2: { ...FOUR_CARDS, stray: true, deckSize: 60 } },
+    } as never;
+    expect(readInjectedHandicaps()).toEqual({ p2: { ...FOUR_CARDS, deckSize: 60 } });
+  });
+
+  it("leaves the numbers to the engine: a shape with an illegal value is passed on for createGame to refuse", () => {
+    // R184 is `validateHandicap`'s: the route would only be a second copy of the rule.
+    window.__jackiohE2E = { decks: {}, handicaps: { p1: { ...FOUR_CARDS, deckSize: 61, manaBonus: -1 } } };
+    expect(readInjectedHandicaps()).toEqual({ p1: { ...FOUR_CARDS, deckSize: 61, manaBonus: -1 } });
+  });
+});
+
 /* ------------------------------------------------------------------------------------------- *
  * starting the game
  * ------------------------------------------------------------------------------------------- */
@@ -235,6 +292,59 @@ describe("the route starts one game from the URL", () => {
     await mount("?seed=42&a=fixture&b=fixture");
 
     expect(fake.createGameArgs[0]?.decks[0]?.[19]).toBe("core-020");
+  });
+
+  it("R180 hands the injected handicaps to createGame and to the dev handle, and sizes the deck by them", async () => {
+    const tiny = ["core-001", "core-002", "core-003", "core-004"];
+    window.__jackiohE2E = { decks: { tiny }, handicaps: { p1: FOUR_CARDS } };
+    const fake = makeEngine();
+    setEnginePort(fake.port);
+    await mount("?seed=42&a=tiny&b=first20");
+
+    expect(fake.createGameArgs).toHaveLength(1);
+    expect(fake.createGameArgs[0]?.handicaps).toEqual({ p1: FOUR_CARDS });
+    expect(fake.createGameArgs[0]?.decks[0]).toEqual(tiny);
+    expect(window.__jackioh?.handicaps, "the replay fold needs them (cy.replayCheck)").toEqual({ p1: FOUR_CARDS });
+    expect(screen.getByTestId(testid.board)).toBeInTheDocument();
+  });
+
+  it("creates the game exactly as before when nothing injects a handicap", async () => {
+    const fake = makeEngine();
+    setEnginePort(fake.port);
+    await mount();
+
+    expect("handicaps" in (fake.createGameArgs[0] ?? {})).toBe(false);
+    expect(window.__jackioh?.handicaps).toEqual({});
+  });
+
+  it("refuses a deck its seat's handicap does not size, before the engine is asked", async () => {
+    // The 4-card deck is on p2 now, whose seat has no handicap: §2.6's 20 rules there.
+    window.__jackiohE2E = { decks: { tiny: ["core-001", "core-002", "core-003", "core-004"] }, handicaps: { p1: FOUR_CARDS } };
+    const fake = makeEngine();
+    setEnginePort(fake.port);
+    await mount("?seed=42&a=first20&b=tiny");
+
+    expect(screen.queryByTestId(testid.board)).toBeNull();
+    expect(fake.createGameArgs).toHaveLength(0);
+    // p1's handicap wants 4 cards, and first20 holds 20: that is the first refusal the route prints.
+    expect(screen.getByText(/its seat's handicap wants exactly 4 \(R184\)/)).toBeInTheDocument();
+  });
+
+  it("renders the engine's refusal of an illegal handicap instead of a game", async () => {
+    window.__jackiohE2E = { decks: {}, handicaps: { p1: { ...FOUR_CARDS, deckSize: 20, manaBonus: -1 } } };
+    const fake = makeEngine();
+    const createGame = fake.port.createGame;
+    fake.port.createGame = (args) => {
+      if ((args.handicaps?.p1?.manaBonus ?? 0) < 0) {
+        throw new Error("p1: handicap manaBonus must be a non-negative integer (R180), got -1");
+      }
+      return createGame(args);
+    };
+    setEnginePort(fake.port);
+    await mount();
+
+    expect(screen.queryByTestId(testid.board)).toBeNull();
+    expect(screen.getByText(/handicap manaBonus must be a non-negative integer/)).toBeInTheDocument();
   });
 
   it("renders the engine's own refusal instead of a game when a deck id is unknown", async () => {
@@ -445,9 +555,10 @@ describe("window.__jackioh in a production build", () => {
     // The game still runs — the route is not disabled, only the dev handle is withheld.
     expect(screen.getByTestId(testid.board)).toBeInTheDocument();
     expect(window.__jackioh).toBeUndefined();
-    // And the E2E deck injection is withheld with it.
-    window.__jackiohE2E = { decks: { fixture: ["core-001"] } };
+    // And the E2E deck injection is withheld with it, handicaps included (R180: never outside dev).
+    window.__jackiohE2E = { decks: { fixture: ["core-001"] }, handicaps: { p1: FOUR_CARDS } };
     expect(route.readInjectedDecks()).toBeUndefined();
+    expect(route.readInjectedHandicaps()).toBeUndefined();
 
     engine.setEnginePort(null);
   });

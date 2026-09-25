@@ -53,6 +53,23 @@ export default defineConfig({
     },
     setupNodeEvents(on, config) {
       registerTasks(on, config);
+      // E2E_WINDOW_SIZE=W,H launches the browser at that window size. Headless Chrome's default
+      // window crops a `capture: "viewport"` shot taller than about 633 px, so a run that must show a
+      // whole 1280x720 or 390x844 screen (spec 25's `--expose shots=1`) passes a larger one. Unset,
+      // the browser launches exactly as before.
+      const windowSize = /^(\d+),(\d+)$/.exec(process.env.E2E_WINDOW_SIZE ?? "");
+      if (windowSize !== null) {
+        const [, width, height] = windowSize;
+        on("before:browser:launch", (browser, launchOptions) => {
+          if (browser.family === "chromium" && browser.name !== "electron") {
+            launchOptions.args.push(`--window-size=${String(width)},${String(height)}`);
+          } else if (browser.name === "electron") {
+            launchOptions.preferences.width = Number(width);
+            launchOptions.preferences.height = Number(height);
+          }
+          return launchOptions;
+        });
+      }
       return config;
     },
   },
