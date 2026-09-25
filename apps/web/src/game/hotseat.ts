@@ -105,20 +105,22 @@ export function createHotseat(options: HotseatOptions): HotseatSession {
    *    seat still owing one sees its own prompt, and a seat that has answered sees the other's as
    *    pending, so the device goes to whichever seat has not answered yet, in either order;
    *  - a draw offer the seat holding the device has just made (§2.5, R36): the other seat answers
-   *    it, and its answer hands the device back to the player whose turn it is (`dispatch`).
+   *    it, and its answer hands the device back to the player whose turn it is (`dispatch`). Only
+   *    the offer itself hands the device over: if the players pass it back unanswered with the seat
+   *    switch, the offerer's next moves keep it, and the offer lapses with the turn (R269).
    *
    * Whose question it is comes from the VIEW, never from the state: `view().pending` is either
    * `{ forYou: true, … }` or `{ forYou: false, pendingFor }` and `view().drawOffer` names the
    * offerer (SPEC §10.8), and `EngineState` is opaque to this file.
    */
-  function followQuestion(): void {
+  function followQuestion(offered = false): void {
     const view = engine.viewFor(state, seat);
     const pending = view.pending;
     if (pending !== null) {
       if (!pending.forYou && pending.pendingFor !== seat) seat = pending.pendingFor;
       return;
     }
-    if (view.result === null && view.drawOffer?.by === seat) seat = opponentOf(seat);
+    if (offered && view.result === null && view.drawOffer?.by === seat) seat = opponentOf(seat);
   }
 
   // The opening mulligans (§2.1, R9, R265) are open for both seats; p1 holds the device and answers
@@ -166,7 +168,7 @@ export function createHotseat(options: HotseatOptions): HotseatSession {
       // The answer to a draw offer goes back to the player whose turn it is — the offerer — with
       // "declined" (or the drawn game) on its own screen.
       if (body.type === "answerDraw") seat = engine.viewFor(state, seat).active;
-      followQuestion();
+      followQuestion(body.type === "offerDraw");
       notify();
       return { events: result.events };
     },

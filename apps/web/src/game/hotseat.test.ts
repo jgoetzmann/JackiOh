@@ -416,6 +416,11 @@ describe("a draw offer hands the device over (§2.5, R36)", () => {
     expect(live.seat).toBe("p2");
     live.setSeat("p1");
     expect(live.seat).toBe("p1");
+    // Only the offer hands the device over: the offerer plays on with the offer still standing,
+    // and the device stays put until the players pass it themselves (R269: it lapses with the turn).
+    fake.nextEffect = () => undefined;
+    live.dispatch({ type: "switchPosition", instanceId: "u1" });
+    expect(live.seat, "a later move by the offerer keeps the device").toBe("p1");
   });
 
   it("a prompt outranks an offer: the device goes to the seat the prompt waits on", () => {

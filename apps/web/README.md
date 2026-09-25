@@ -154,10 +154,11 @@ animation table's `drawOffered` and `drawAnswered` rows play on), inside an alwa
   the offerer hears `cancel` on a decline, and an acceptance is sounded by the `gameOver` that
   follows.
 - Hotseat: an offer from the seat holding the device hands it to the other seat to answer, and the
-  answer hands it back to the player whose turn it is (`hotseat.ts`). Practice hides the Offer draw
+  answer hands it back to the player whose turn it is (`hotseat.ts`). Only the offer moves it: if
+  the players pass the device back unanswered with the seat switch, the offerer plays on and the
+  offer lapses with the turn (R269). Practice hides the Offer draw
   control (SPEC §9.9, R188); an offer made anyway is declined at once and reads as declined.
 
-## Commands
 ## Commands
 
 ```
