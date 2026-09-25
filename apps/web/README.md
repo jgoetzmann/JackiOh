@@ -131,7 +131,7 @@ src/practice/
   decks.ts            random, the three named practice decks (hand-built lists), saved decks
   DeckPreview.tsx     the chosen deck's name, identity, mana curve and cards, before Start
   ModifierList.tsx    every live R169 modifier in full, one tap from the HUD
-routes/practice.tsx   the route: setup, HUD, and Game.tsx unchanged inside the worker's catalog
+routes/practice.tsx   the route: the tutorial path, setup, HUD, and Game.tsx unchanged inside the worker's catalog
 ```
 
 - The page holds snapshots, never a state: `{ view, legal, aiToAct, error }`, where `view` is
@@ -158,6 +158,42 @@ routes/practice.tsx   the route: setup, HUD, and Game.tsx unchanged inside the w
   as the media query does.
 - A game in progress asks before a reload or a closed tab ends it (`beforeunload`), and the HUD's
   Menu leaves for the landing page, asking first while the game is on.
+
+## The tutorial
+
+The practice lobby opens with the tutorial (SPEC §9.10, R290–R294): four lessons on a path, each
+a practice game with two fixed decks, a fixed seed and seat, and the tutorial handicap on the AI
+seat (`AI_TUTORIAL`, the tier below Easy). A lesson is a practice config whose `lesson` names it
+(`tutorial/start.ts`), so the same worker, controller and board play it; the worker reads the
+decks from `tutorial/lessons/<id>.ts` and nothing else the page sends changes them (R291).
+
+```
+src/tutorial/
+  lessons.ts lessons/*.ts   each lesson as data: title, mechanics, seed, seat, both decks, retry tip
+  scripts/*.ts              each lesson's coach script: steps in order and reactive tips (page only)
+  coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, skip, display (R292)
+  steps.ts targets.ts       reads of the view and legal actions, step factories, anchors → board testids
+  tracker.ts                feeds every controller snapshot to the coach and holds the AI for `holdAi`
+  Coach.tsx layout.ts       the bubble and the ring, placed clear of what they point at, phone docking
+  TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done)
+  TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (Skip step, Exit tutorial) and its result dialog
+  progress.ts               completed lessons in localStorage `jackioh.tutorial.v1`, try/catch (R294)
+  harness.ts                test support only: a lesson played through the real core by a policy (R293)
+  config.ts testids.ts devHandle.ts   the numbers, the testids (mirrored in e2e), `window.__jackiohTutorial`
+```
+
+- The coach reads the snapshot the page already holds (`view`, `legal`, `aiToAct`) and nothing
+  else, and never sends an action (rule 7). A step points at a board element by its testid and
+  completes when the view shows it done; "Skip step" always moves on, and a step expires after
+  `TUTORIAL_STEP_TURNS_MAX` of the player's own turns, so nothing strands a lesson.
+- The bubble adopts a new step only once the board has caught up (no `data-animating`), so it never
+  points at a card the board has not drawn; a step or tip with `holdAi` holds the AI through
+  `setHold("coach", …)`.
+- `?lesson=<id>` starts a lesson at once (`&pace=fast` works as for practice); `?seed=` and
+  `?seat=` never override a lesson's own. `window.__jackiohTutorial` (dev builds only) exposes the
+  coach's display and the action its current step asks for, which spec 22 performs through the UI.
+- `pnpm --dir apps/web exec tsx scripts/lesson-deal.ts <lessonId> [seed | --scan …]` prints a
+  lesson's deal, which is how a lesson's seed is picked.
 
 ## Regenerating the voice lines
 
