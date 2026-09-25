@@ -24,14 +24,29 @@
 // prompt.css turns a play's board picks into a slim bar on a phone while drag to play is on
 // (polish task 7), because their answers already glow on the board.
 //
+// The mulligan is both seats' at once (R265): each answers its own, in either order, and an answer
+// is sealed until the other is in. So the mulligan picker says whether the opponent has answered
+// yet (`mulligan-opponent-status`, from `view.mulligan`), its confirm reads "Ready", and once the
+// viewer has answered the picker gives way to `mulligan-waiting`: the hand, with the cards going
+// back marked from the view's own `kept`, until the opponent is ready too and the game begins.
+//
 // No rule is applied here either. `min` and `max` gate the confirm button, and both came from the
 // engine — from `PendingView` on route 1 and from the candidate `play`s on route 2. The options
 // likewise: a prompt's options are the engine's, and a play's choices are read off the
 // `legalActions` array by `actions.ts`.
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 
-import type { ActionBody, CardView, PendingView, PlayerId, PlayerView, PromptKind, Selection } from "@jackioh/shared";
+import type {
+  ActionBody,
+  CardView,
+  MulliganView,
+  PendingView,
+  PlayerId,
+  PlayerView,
+  PromptKind,
+  Selection,
+} from "@jackioh/shared";
 
 import {
   IDLE,
@@ -50,7 +65,7 @@ import {
 import { CardBack, CardFace, faceModel, useInspectTrigger } from "../cards/index.ts";
 import { MatchCardsProvider, useCardInfo, useFieldPower } from "./catalog.ts";
 import { liveFace } from "./faces.ts";
-import { sideOf } from "./contract.ts";
+import { sideOf, testid } from "./contract.ts";
 import { modeText } from "./modeText.ts";
 import "./prompt.css";
 
@@ -515,6 +530,8 @@ function PromptModal(props: {
   picker: Picker;
   /** Which route opened it: an engine prompt (`view.pending`) or a play still being built (R81). */
   source: "engine" | "play";
+  /** A line under the count: the mulligan's word on whether the opponent has answered (R265). */
+  status?: ReactNode;
   boardTestids: readonly string[];
   onAction: (body: ActionBody) => void;
   onInteraction?: (next: Interaction) => void;
@@ -719,6 +736,7 @@ function PromptModal(props: {
         <p className="prompt-count">
           Choose {range} — {selected.length} chosen
         </p>
+        {props.status}
         {body()}
         {picker.chrome === "target" && props.boardTestids.length > 0 ? (
           <p className="prompt-board-note">Highlighted on the board as well.</p>
@@ -732,7 +750,8 @@ function PromptModal(props: {
               if (inRange) send(selected);
             }}
           >
-            Confirm
+            {/* R265: the mulligan's answer is sealed until both seats have given theirs. */}
+            {picker.chrome === "mulligan" ? "Ready" : "Confirm"}
           </button>
           {props.onCancel === undefined ? null : (
             <button type="button" data-testid="prompt-cancel" onClick={props.onCancel}>
@@ -769,6 +788,89 @@ function Waiting(props: { pendingFor: PlayerId }) {
   );
 }
 
+/**
+ * R265, R266: in the mulligan picker, whether the opponent has answered its own mulligan. That it
+ * has is all the view says — never what it kept (§9.1).
+ */
+function OpponentMulliganStatus(props: { mulligan: MulliganView }) {
+  const ready = props.mulligan.opponentReady;
+  return (
+    <p
+      className="prompt-sub mulligan-status"
+      data-testid={testid.mulliganOpponentStatus}
+      data-ready={ready ? "true" : "false"}
+      role="status"
+    >
+      {ready ? <span data-testid={testid.mulliganOpponentReady}>Opponent is ready</span> : "Opponent is choosing…"}
+    </p>
+  );
+}
+
+/** A hand card on the waiting panel: its face, and the stamp saying whether it stays or goes back. */
+function WaitingCard(props: { card: CardView; keep: boolean }) {
+  const info = useCardInfo(props.card.defId, props.card.radiant);
+  const fieldPower = useFieldPower(props.card.instanceId);
+  const face = liveFace(info, props.card, fieldPower === undefined ? {} : { fieldPower });
+  const verdict = props.keep ? "keep" : "redraw";
+  return (
+    <span
+      className="prompt-card"
+      data-testid={`mulligan-waiting-card-${props.card.instanceId}`}
+      data-verdict={verdict}
+      aria-label={`${info.name}: ${props.keep ? "kept" : "going back"}`}
+      role="img"
+    >
+      <span className="cf-option">
+        <CardFace face={face} layout="full" />
+      </span>
+      <span className="prompt-card-verdict" aria-hidden="true">
+        {props.keep ? "Keep" : "Redraw"}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * R265, R266: the viewer has answered its mulligan and the opponent has not. The answer is sealed —
+ * the hand changes only once both are in — so the panel shows the hand as it is, each card stamped
+ * with what will happen to it (`kept` is the view's own record of the answer).
+ */
+function MulliganWaiting(props: { view: PlayerView; mulligan: MulliganView }) {
+  const hand = Array.isArray(props.view.you.hand) ? props.view.you.hand : [];
+  const kept = new Set(props.mulligan.kept ?? hand.map((card) => card.instanceId));
+  const back = hand.filter((card) => !kept.has(card.instanceId)).length;
+  const titleId = useId();
+  return (
+    <div className="prompt-scrim" data-testid="prompt-scrim">
+      <div
+        className="prompt prompt-mulligan-waiting"
+        data-testid={testid.mulliganWaiting}
+        data-returning={back}
+        // A labelled region, not a modal dialog: there is nothing in it to answer, and a modal
+        // would hold a screen reader inside static text while Concede stays live on the board.
+        role="region"
+        aria-labelledby={titleId}
+      >
+        <p className="prompt-title" id={titleId}>
+          Waiting for your opponent…
+        </p>
+        <p className="prompt-sub" role="status">
+          {back === 0
+            ? "You're ready and keeping your whole hand."
+            : `You're ready. ${String(back)} ${back === 1 ? "card goes" : "cards go"} back and ${back === 1 ? "is" : "are"} redrawn once your opponent is ready too.`}
+        </p>
+        <MatchCardsProvider view={props.view}>
+          <div className="prompt-cards">
+            {hand.map((card) => (
+              <WaitingCard key={card.instanceId} card={card} keep={kept.has(card.instanceId)} />
+            ))}
+          </div>
+        </MatchCardsProvider>
+      </div>
+    </div>
+  );
+}
+
 function needKey(need: PlayNeed): string {
   return `${need.kind}:${need.min}:${need.max}`;
 }
@@ -777,7 +879,13 @@ export default function Prompt(props: PromptProps) {
   const interaction = props.interaction ?? IDLE;
   const boardTestids = [...highlightFor(props.view, props.legal ?? [], interaction).legal].sort();
   const pending = props.view.pending;
+  const mulligan = props.view.mulligan;
 
+  // R265: the viewer's own answer is in and the opponent's is not; that is not "a choice is open
+  // somewhere", it is the viewer's hand waiting to be dealt.
+  if (mulligan?.youReady === true && (pending === null || !pending.forYou)) {
+    return <MulliganWaiting view={props.view} mulligan={mulligan} />;
+  }
   if (pending !== null && !pending.forYou) return <Waiting pendingFor={pending.pendingFor} />;
 
   // R243: an option naming a match-made card (a crafted card in a hand pick) reads its definition
@@ -789,6 +897,9 @@ export default function Prompt(props: PromptProps) {
           key={pending.choiceId}
           source="engine"
           picker={pickerForPending(pending, props.view, props.legal ?? [])}
+          {...(pending.kind === "mulligan" && mulligan !== undefined
+            ? { status: <OpponentMulliganStatus mulligan={mulligan} /> }
+            : {})}
           boardTestids={boardTestids}
           onAction={props.onAction}
           {...(props.onInteraction === undefined ? {} : { onInteraction: props.onInteraction })}

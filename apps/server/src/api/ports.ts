@@ -49,6 +49,8 @@ export type ServerConfig = {
   turnClockSeconds: number;
   /** R79: a prompt held by the non-active player runs its own clock. */
   promptClockSeconds: number;
+  /** R268: the one clock both seats' open mulligans (R265) run on together. */
+  mulliganClockSeconds: number;
   /** R79: grace before a disconnect becomes a loss. */
   disconnectGraceSeconds: number;
   /** R79: the hard wall-clock ceiling, which ends the match in a draw. */

@@ -48,7 +48,7 @@ export function resultReason(outcome: ResultOutcome, reason: GameOverReason): st
     case "concede":
       return outcome === "win" ? "Your opponent conceded." : "You conceded.";
     case "draw-accepted":
-      return "A draw was agreed.";
+      return "Game drawn by agreement.";
     case "turn-cap":
       return "The turn limit was reached.";
     case "disconnect":

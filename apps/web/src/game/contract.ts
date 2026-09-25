@@ -43,6 +43,26 @@ export const testid = {
   seatSwitch: "seat-switch",
   result: "result-overlay",
   banner: "turn-banner",
+  /** "Concede this game?" (ConfirmConcede.tsx): the dialog the `concede` control opens. */
+  concedeDialog: "concede-dialog",
+  /** In that dialog: the only thing that sends `{ type: "concede" }`. */
+  concedeConfirm: "concede-confirm",
+  /** In that dialog: close it and carry on (also Escape and a click outside). */
+  concedeCancel: "concede-cancel",
+  /** The offerer's line while its draw offer stands: "Draw offered — waiting for reply". */
+  drawOfferStatus: "draw-offer-status",
+  /** The other seat's notice while an offer stands: "Your opponent offers a draw", with the two answers. */
+  drawOffer: "draw-offer",
+  drawAccept: "draw-accept",
+  drawDecline: "draw-decline",
+  /** What became of the last offer (declined, accepted, expired); `data-outcome` says which. */
+  drawOutcome: "draw-outcome",
+  /** In the mulligan picker: `data-ready="true|false"`, whether the opponent has answered its own. */
+  mulliganOpponentStatus: "mulligan-opponent-status",
+  /** Inside that status, only once the opponent has answered: "Opponent is ready". */
+  mulliganOpponentReady: "mulligan-opponent-ready",
+  /** After the viewer's own answer, until both are in: the hand with the cards going back marked. */
+  mulliganWaiting: "mulligan-waiting",
 } as const;
 
 export function sideOf(view: PlayerView, player: PlayerId): Side {

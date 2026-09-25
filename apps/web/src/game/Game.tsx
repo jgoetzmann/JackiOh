@@ -11,7 +11,10 @@
 //  - `shown` — that held-back view.
 //
 // Everything else is `props.view` and `props.legal`. `onAction` goes straight out to the caller,
-// which is the only thing that talks to the engine (CLAUDE.md rule 7).
+// which is the only thing that talks to the engine (CLAUDE.md rule 7). Two pieces of chrome sit
+// beside the board and hold no rule either: the Concede control asks "Concede this game?" before it
+// sends anything (ConfirmConcede.tsx; `concedeFor` is the seat that asked), and the draw offer's
+// notices, with the answering seat's Accept and Decline, come from the view (DrawOffer.tsx).
 //
 // `legal` belongs to `props.view`, so it only reaches the board once the board SHOWS that view.
 // While the runner holds it back (the AI's last attack still playing out, say), the board draws the
@@ -30,9 +33,11 @@ import {
   type ReactNode,
 } from "react";
 
-import type { ActionBody, PlayerView } from "@jackioh/shared";
+import type { ActionBody, PlayerId, PlayerView } from "@jackioh/shared";
 
 import Board from "./Board.tsx";
+import ConfirmConcede from "./ConfirmConcede.tsx";
+import DrawOfferNotice from "./DrawOffer.tsx";
 import Prompt from "./Prompt.tsx";
 import DragLayer from "./drag/DragLayer.tsx";
 import { IDLE, highlightFor, onClickTarget, onControl, type Interaction } from "./actions.ts";
@@ -80,6 +85,12 @@ const NOTHING_LEGAL: readonly ActionBody[] = [];
 
 export default function Game({ view, legal: offered, onAction, error, resultActions, resultForm = "panel" }: GameProps): ReactElement {
   const [interaction, setInteraction] = useState<Interaction>(IDLE);
+  const root = useRef<HTMLDivElement>(null);
+  /**
+   * The seat whose Concede control asked "Concede this game?". The question is that seat's alone: a
+   * hotseat hand-over, or a game that ends while it is open, closes it without a word.
+   */
+  const [concedeFor, setConcedeFor] = useState<PlayerId | null>(null);
 
   // The view the DOM is showing: the newest one once the queue has settled, an older one while
   // an event is still animating over it (BUILD M5-T4).
@@ -233,10 +244,36 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
     (control: BoardControl) => {
       const body = onControl(legal, control);
       // No matching legal action means the control was greyed out; a click on it does nothing.
-      if (body !== undefined) dispatch(body);
+      if (body === undefined) return;
+      // A concede cannot be taken back, so the control only asks; the dialog's Concede sends it.
+      if (body.type === "concede") {
+        setConcedeFor(view.viewer);
+        return;
+      }
+      dispatch(body);
     },
-    [legal, dispatch],
+    [legal, dispatch, view.viewer],
   );
+
+  // A hand-over or the game's end drops the question for good (React's "adjust state while
+  // rendering" pattern: no effect, so the dialog never shows for one frame on the wrong seat).
+  if (concedeFor !== null && (concedeFor !== view.viewer || view.result !== null)) setConcedeFor(null);
+  const concedeOpen = concedeFor !== null && concedeFor === view.viewer && view.result === null;
+  /** Back to the control that opened the dialog, as a dialog should leave the focus (WAI-ARIA APG). */
+  const refocusConcede = useCallback(() => {
+    root.current?.querySelector<HTMLElement>(`[data-testid="${testid.concede}"]`)?.focus({ preventScroll: true });
+  }, []);
+  const cancelConcede = useCallback(() => {
+    setConcedeFor(null);
+    refocusConcede();
+  }, [refocusConcede]);
+  const confirmConcede = useCallback(() => {
+    setConcedeFor(null);
+    refocusConcede();
+    // Sent as the intent it is, not looked up in `legal`: the board may be mid-animation, which
+    // offers no moves for a moment, and the engine rules on a concede like any other action.
+    dispatch({ type: "concede" });
+  }, [dispatch, refocusConcede]);
 
   const highlight = useMemo(() => highlightFor(shown, legal, interaction), [shown, legal, interaction]);
   const animated = useMemo(() => burst.map((entry) => ({ frames: entry.frames, events: entry.events })), [burst]);
@@ -244,23 +281,14 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
   const lastTurnEvent = [...shown.events].reverse().find((e) => e.type === "turnStarted" || e.type === "turnAutoEnded");
   const banner = bannerText(shown, lastTurnEvent?.type);
 
-  // BUILD M5-T4 `drawOffered` / `drawAnswered`: a toast on the seat that owes the answer. It can
-  // only be driven off the event stream, because `SideView` carries no draw-offer state — see the
-  // finding in apps/web/README.md. A reload therefore loses the toast (spec 05).
-  const drawEvent = [...shown.events].reverse().find((e) => e.type === "drawOffered" || e.type === "drawAnswered");
-  const drawToast =
-    drawEvent === undefined
-      ? null
-      : drawEvent.type === "drawAnswered"
-        ? drawEvent.accept
-          ? "Draw accepted"
-          : "Draw declined"
-        : drawEvent.player === shown.viewer
-          ? null // The offerer sees nothing; the toast belongs to the seat that must answer.
-          : "Your opponent offers a draw";
-
   return (
-    <div className="game" data-testid="game" data-viewer={shown.viewer} data-speaking={speaking ? "true" : undefined}>
+    <div
+      className="game"
+      ref={root}
+      data-testid="game"
+      data-viewer={shown.viewer}
+      data-speaking={speaking ? "true" : undefined}
+    >
       {inFlight === null ? null : (
         <span data-testid="animation-queue" data-animating={inFlight.type} hidden aria-hidden="true" />
       )}
@@ -281,16 +309,15 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
         </div>
       ) : null}
 
-      {drawToast !== null ? (
-        <div
-          className="draw-toast"
-          data-testid={animTestid.drawToast}
-          data-animating={animating.get(animTestid.drawToast)}
-          role="status"
-        >
-          {drawToast}
-        </div>
-      ) : null}
+      {/* BUILD M5-T4 `drawOffered` / `drawAnswered` play on this notice's `draw-toast`. It reads the
+          newest view: an offer moves nothing on the board, and its answers take `legal` as the
+          board does, so they are live only once the board has caught up (DrawOffer.tsx). */}
+      <DrawOfferNotice
+        view={view}
+        legal={legal}
+        animating={animating.get(animTestid.drawToast)}
+        onAction={dispatch}
+      />
 
       <Board
         view={shown}
@@ -325,6 +352,8 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
           animating={animating.get(testid.result)}
         />
       ) : null}
+
+      {concedeOpen ? <ConfirmConcede onConfirm={confirmConcede} onCancel={cancelConcede} /> : null}
     </div>
   );
 }

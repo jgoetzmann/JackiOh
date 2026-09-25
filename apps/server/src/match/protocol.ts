@@ -370,6 +370,15 @@ function parseActionBody(raw: Record<string, unknown>): ActionBody | MalformedMe
 
 /** The longest nonce the server will hold in its dedupe map (§9.8: nothing unbounded). */
 export const MAX_NONCE_LENGTH = 128;
+
+/**
+ * SPEC §11 R270: the prefix of every nonce the server mints for its own actions (a clock's
+ * `timeout`, `disconnectExpired`, `ceilingReached`; `actor.ts`). A client may not send one: the
+ * actor answers a known nonce with its stored ack and applies nothing, so a client that sent the
+ * nonce its clock was about to mint would swallow that expiry and stall its own turn, or the
+ * other seat's mulligan, until the ceiling.
+ */
+export const SERVER_NONCE_PREFIX = "srv-";
 /** A frame larger than this is rejected before it is parsed (§9.8). */
 export const MAX_FRAME_BYTES = 64 * 1024;
 
@@ -421,6 +430,9 @@ export function parseClientMessage(text: string): ClientMessage | MalformedMessa
         return malformed(`every action carries a client nonce (SPEC §9.3)`);
       }
       if (nonce.length > MAX_NONCE_LENGTH) return malformed("that nonce is too long");
+      if (nonce.startsWith(SERVER_NONCE_PREFIX)) {
+        return malformed(`a nonce starting "${SERVER_NONCE_PREFIX}" is the server's own (R270)`);
+      }
       const body = parseActionBody(raw);
       if (body.type === "malformed") return body;
       return { type: "action", nonce, body };

@@ -229,8 +229,12 @@ describe("B34 the core answers with the human's view and nothing else", () => {
     const human: PlayerId = "p1";
     const d = driver();
     const started = snapshotOf(d.send({ type: "start", config: config({ seed: "b34-idle-step", humanSeat: human }) }));
-    // p1 answers the first mulligan (§2.1), so the AI owes nothing yet.
-    expect(started.aiToAct).toBe(false);
+    // R265: both mulligans open at once. Once the AI has answered its own, it owes nothing while the
+    // human is still choosing.
+    expect(started.aiToAct).toBe(true);
+    const answered = snapshotOf(d.send({ type: "aiStep" }));
+    expect(answered.aiToAct).toBe(false);
+    expect(answered.view.mulligan).toEqual({ youReady: false, opponentReady: true });
     const before = debugOf(d);
 
     const response = d.send({ type: "aiStep" });
@@ -391,7 +395,7 @@ describe("the named practice decks are real decks, and the setup can preview the
 // ---------------------------------------------------------------------------------------------
 
 describe("B35 a human action is either refused with the engine's reason or logged as h<n>", () => {
-  it("B35 an action during the other seat's mulligan is refused with the engine's reason; hash and log are unchanged", () => {
+  it("B35 an action other than a mulligan while the mulligans are open is refused with the engine's reason; hash and log are unchanged", () => {
     const d = driver();
     const started = snapshotOf(d.send({ type: "start", config: config({ seed: "b35-refused", humanSeat: "p2" }) }));
     expect(started.error).toBeNull();
@@ -399,7 +403,7 @@ describe("B35 a human action is either refused with the engine's reason or logge
 
     const action: ActionBody = { type: "endTurn" };
     const reason = engineRefusal(stateOf(before), action, "p2");
-    expect(reason, "the engine refuses an endTurn while a prompt is open").toEqual(expect.any(String));
+    expect(reason, "the engine refuses an endTurn while the mulligans are open").toEqual(expect.any(String));
 
     const refused = snapshotOf(d.send({ type: "act", action }));
     expect(refused.error).toBe(reason);
@@ -408,11 +412,19 @@ describe("B35 a human action is either refused with the engine's reason or logge
     expect(after.log).toEqual(before.log);
   });
 
-  it("B35 answering the AI's mulligan for it is refused with the engine's reason", () => {
+  it("B35 a second mulligan answer is refused with the engine's reason: the human answers its own seat once, never the AI's", () => {
     const d = driver();
     const started = snapshotOf(d.send({ type: "start", config: config({ seed: "b35-not-yours", humanSeat: "p2" }) }));
-    // p1 — the AI — holds the first mulligan (§2.1); the human sees it only as pending elsewhere.
-    expect(started.view.pending).toEqual({ forYou: false, pendingFor: "p1" });
+    // R265: the human's own mulligan is open at once, whichever seat it holds.
+    const keep = keepAll(started);
+    expect(keep, "the human sees its own mulligan from the start").not.toBeNull();
+    if (keep === null) return;
+    const sealed = snapshotOf(d.send({ type: "act", action: keep }));
+    expect(sealed.error).toBeNull();
+    // R266: the answer is sealed, and the AI's mulligan is still open — as a prompt pending elsewhere.
+    expect(sealed.view.pending).toEqual({ forYou: false, pendingFor: "p1" });
+    expect(sealed.view.mulligan).toEqual(expect.objectContaining({ youReady: true, opponentReady: false }));
+    expect(sealed.legal).toEqual([{ type: "concede" }]);
     const before = debugOf(d);
 
     const action: ActionBody = { type: "mulligan", keep: [] };
@@ -431,7 +443,7 @@ describe("B35 a human action is either refused with the engine's reason or logge
     const before = debugOf(d);
 
     const first: ActionBody = { type: "endTurn" };
-    const second: ActionBody = { type: "mulligan", keep: [] };
+    const second: ActionBody = { type: "mulligan", keep: ["no-such-card"] };
     const firstReason = engineRefusal(stateOf(before), first, "p2");
     const secondReason = engineRefusal(stateOf(before), second, "p2");
     expect(firstReason).toEqual(expect.any(String));
@@ -500,12 +512,12 @@ describe("B35 a human action is either refused with the engine's reason or logge
     const d = driver();
     const started = snapshotOf(d.send({ type: "start", config: config({ seed: "b35-accepted", humanSeat: human }) }));
 
-    // First a refusal, so there is an error to clear: p1 must answer its mulligan before anything.
+    // First a refusal, so there is an error to clear: the mulligans come before anything (R265).
     expect(snapshotOf(d.send({ type: "act", action: { type: "endTurn" } })).error).toEqual(expect.any(String));
     const before = debugOf(d);
 
     const keep = keepAll(started);
-    expect(keep, "p1 holds the first mulligan (§2.1)").not.toBeNull();
+    expect(keep, "the human's own mulligan is open from the start (R265)").not.toBeNull();
     if (keep === null) return;
     const accepted = snapshotOf(d.send({ type: "act", action: keep }));
     expect(accepted.error).toBeNull();
@@ -527,7 +539,7 @@ describe("B35 a human action is either refused with the engine's reason or logge
         );
       }
       const keep = keepAll(started);
-      if (keep === null) throw new Error("p1 holds the first mulligan");
+      if (keep === null) throw new Error("the human's own mulligan is open from the start (R265)");
       expect(snapshotOf(d.send({ type: "act", action: keep })).error).toBeNull();
       return debugOf(d);
     };
@@ -536,6 +548,110 @@ describe("B35 a human action is either refused with the engine's reason or logge
     const refusedFirst = run(true);
     expect(refusedFirst.log).toEqual(plain.log);
     expect(refusedFirst.hash).toBe(plain.hash);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R265: both mulligans are open at once, and either seat answers first
+// ---------------------------------------------------------------------------------------------
+
+/** The human's hand as its own view lists it, by instance id. */
+function handOf(snapshot: PracticeSnapshot): string[] {
+  const hand = snapshot.view.you.hand;
+  return Array.isArray(hand) ? hand.map((card) => card.instanceId) : [];
+}
+
+describe("R265 the practice mulligan: the AI answers its own at once, and the human answers before or after it", () => {
+  for (const human of ["p1", "p2"] as const) {
+    it(`R265 seated ${human}: the AI answers first without waiting, the human's picker stays open, and the human's answer starts the game`, { timeout: 60_000 }, () => {
+      const ai = opponentOf(human);
+      const d = driver();
+      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-ai-first-${human}`, humanSeat: human }) }));
+      expect(started.aiToAct, "the AI owes its mulligan from the start").toBe(true);
+      expect(started.view.mulligan).toEqual({ youReady: false, opponentReady: false });
+      const keep = keepAll(started);
+      expect(keep, "and so does the human").not.toBeNull();
+      if (keep === null) return;
+      const choiceId = started.view.pending?.forYou === true ? started.view.pending.choiceId : null;
+
+      const aiAnswered = snapshotOf(d.send({ type: "aiStep" }));
+      expect(debugOf(d).log.at(-1)).toEqual(expect.objectContaining({ type: "mulligan", playerId: ai, nonce: "a0" }));
+      expect(aiAnswered.aiToAct, "the AI owes nothing more until the human answers").toBe(false);
+      expect(aiAnswered.view.mulligan).toEqual({ youReady: false, opponentReady: true });
+      expect(aiAnswered.view.pending, "the human's own picker, unchanged").toEqual(
+        expect.objectContaining({ forYou: true, kind: "mulligan", choiceId }),
+      );
+      // R266: the AI's answer is sealed; nothing is dealt until both are in.
+      expect(handOf(aiAnswered)).toEqual(handOf(started));
+      expect(aiAnswered.view.opponent.hand).toEqual(started.view.opponent.hand);
+
+      const begun = snapshotOf(d.send({ type: "act", action: keep }));
+      expect(begun.error).toBeNull();
+      expect(begun.view.mulligan).toBeUndefined();
+      expect(begun.view.turn).toBe(1);
+      expect(begun.view.phase).toBe("main");
+      expect(begun.view.active).toBe("p1");
+      expect(begun.aiToAct, "turn 1 is p1's").toBe(ai === "p1");
+    });
+
+    it(`R265 seated ${human}: the human answers first and waits with its answer sealed, and the AI's answer starts the game`, { timeout: 60_000 }, () => {
+      const ai = opponentOf(human);
+      const d = driver();
+      const started = snapshotOf(d.send({ type: "start", config: config({ seed: `r265-human-first-${human}`, humanSeat: human }) }));
+      const hand = handOf(started);
+      const kept = hand.slice(1);
+      const sealed = snapshotOf(d.send({ type: "act", action: { type: "mulligan", keep: kept } }));
+      expect(sealed.error).toBeNull();
+      expect(sealed.view.mulligan).toEqual({ youReady: true, opponentReady: false, kept });
+      expect(sealed.view.pending).toEqual({ forYou: false, pendingFor: ai });
+      expect(sealed.legal, "a seat that has answered can only concede").toEqual([{ type: "concede" }]);
+      expect(sealed.aiToAct, "the AI still owes its own").toBe(true);
+      expect(handOf(sealed), "R266: the hand is dealt only once both are in").toEqual(hand);
+
+      const begun = snapshotOf(d.send({ type: "aiStep" }));
+      expect(debugOf(d).log.at(-1)).toEqual(expect.objectContaining({ type: "mulligan", playerId: ai }));
+      expect(begun.view.mulligan).toBeUndefined();
+      expect(begun.view.turn).toBe(1);
+      expect(handOf(begun)).not.toContain(hand[0]);
+      for (const id of kept) expect(handOf(begun)).toContain(id);
+    });
+  }
+
+  it("R265 R187 either order deals the same game, and each order's log folds to its own hash", { timeout: 60_000 }, () => {
+    const human: PlayerId = "p2";
+    const seed = "r265-either-order";
+    const run = (humanFirst: boolean): { begun: PracticeSnapshot; debug: PracticeDebug } => {
+      const d = driver();
+      const started = snapshotOf(d.send({ type: "start", config: config({ seed, humanSeat: human }) }));
+      const keep = keepAll(started);
+      if (keep === null) throw new Error("the human's mulligan is open from the start");
+      let begun: PracticeSnapshot;
+      if (humanFirst) {
+        d.send({ type: "act", action: keep });
+        begun = snapshotOf(d.send({ type: "aiStep" }));
+      } else {
+        d.send({ type: "aiStep" });
+        begun = snapshotOf(d.send({ type: "act", action: keep }));
+      }
+      return { begun, debug: debugOf(d) };
+    };
+
+    const aiFirst = run(false);
+    const humanFirst = run(true);
+    expect(aiFirst.debug.log.map((action) => action.playerId)).toEqual(["p1", "p2"]);
+    expect(humanFirst.debug.log.map((action) => action.playerId)).toEqual(["p2", "p1"]);
+    // The AI chose the same answer, and the seats resolved in seat order either way.
+    expect(humanFirst.debug.log.find((action) => action.playerId === "p1")).toEqual(
+      aiFirst.debug.log.find((action) => action.playerId === "p1"),
+    );
+    expect(humanFirst.begun.view.you).toEqual(aiFirst.begun.view.you);
+    expect(humanFirst.begun.view.opponent).toEqual(aiFirst.begun.view.opponent);
+
+    for (const { debug } of [aiFirst, humanFirst]) {
+      const replayed = fold({ seed: debug.seed, decks: debug.decks, log: debug.log, handicaps: debug.handicaps });
+      expect(replayed.errors).toEqual([]);
+      expect(hashState(replayed.state)).toBe(debug.hash);
+    }
   });
 });
 
@@ -594,7 +710,7 @@ describe("R187 B38 a practice game folds from (seed, decks, handicaps, log) to i
       d.send({ type: "start", config: config({ seed: "b38-no-handicaps", difficulty: "hard", humanSeat: human }) }),
     );
     const keep = keepAll(started);
-    if (keep === null) throw new Error("p1 holds the first mulligan");
+    if (keep === null) throw new Error("the human's own mulligan is open from the start (R265)");
     let last = snapshotOf(d.send({ type: "act", action: keep }));
     for (let n = 0; n < 4 && last.aiToAct; n += 1) last = snapshotOf(d.send({ type: "aiStep" }));
 

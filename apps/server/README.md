@@ -181,7 +181,8 @@ Properties the actor holds, each with a test named after it:
 ### Clocks (R79)
 
 All of R79's values come from `src/config.ts` and are stated nowhere else: turn clock 75 s, prompt
-clock 30 s, disconnect grace 60 s, match ceiling 60 minutes, Elo K = 32 from 1000.
+clock 30 s, disconnect grace 60 s, match ceiling 60 minutes, Elo K = 32 from 1000. R268's mulligan
+clock, 45 s (`MULLIGAN_CLOCK_SECONDS`), lives beside them.
 
 The clock lives here, never in the engine: time reaches the engine only as action data (§9.3), so
 an expiry becomes an ordinary server-only action — `timeout`, `disconnectExpired` or
@@ -191,12 +192,48 @@ an expiry becomes an ordinary server-only action — `timeout`, `disconnectExpir
 - The turn clock belongs to the active player. A prompt held by the **non-active** player (a trap
   firing on your turn) pauses it and runs its own prompt clock; on expiry `timeout` answers only
   that prompt. A prompt held by the active player does not pause their clock.
+- The mulligan clock (R268) runs while both mulligans are open (R265): the snapshot's
+  `mulliganOwed` is non-empty and no prompt is pending. It is **one** deadline for both seats, armed
+  the first time the window is seen and never re-armed or extended when one seat answers, so the
+  seat that answers second gets no more time than the first. Setup is nobody's turn, so no turn
+  clock runs under it. It is reported as `promptDeadline` (the stored `MatchClocks` keeps its
+  shape) and as both seats' `clockMs`. On expiry the actor sends one `timeout` for **each** seat
+  still owing at that moment, in seat order, each its own log row; the engine answers that seat's
+  mulligan by keeping its whole hand and ends no turn. Once both are in, the ordinary turn clock
+  starts from full for turn 1. A card that asks a question during setup (a cast-on-draw card in the
+  deal or in a replacement draw) is a real `pending` prompt and is timed by R79 as above. A rebuilt
+  actor arms a fresh window (R268), as the turn clock restarts from full.
+- Once one seat has answered, each seat gets the `prompt` frame that fits it: a seat that owes its
+  mulligan its own prompt (`forYou: true`, its choiceId), a seat that has answered only that the
+  other still owes one. None is pushed as the window opens with the match; the client reads both
+  mulligans off `view.pending` and the deadline off the `clock` frame.
+- Every nonce the actor mints for a clock's action starts `srv-`, and a client frame whose nonce
+  does is refused as malformed (R270): the actor answers a known nonce with its stored ack, so a
+  client that sent the next expiry's nonce first would swallow it. What a seat kept is sealed (R266) and travels in no frame but its own view.
 - Disconnect grace runs per player and is stored on the match, so both clients can show the
   countdown. The turn clock keeps running while a player is away.
 - Reaching the ceiling is a draw. A reaper resolves anything past it.
 - Every terminal reason — hero death, draw accepted, turn cap, concede, disconnect, ceiling —
   writes exactly one `results` row, applies the Elo update once and clears both players' in-match
   state. Writing it twice is a no-op.
+
+### Draw offers and concede (R36, R269)
+
+A draw offer is an engine rule end to end, and the server does not restate any of it: only the
+active player offers, in their main phase, `DRAW_OFFERS_PER_TURN` times a turn; a declined offer
+blocks that player for `DRAW_OFFER_BLOCK_TURNS` of their turns; an unanswered offer lapses when the
+offerer's turn ends and blocks nothing (R269). Those two constants are in
+`packages/engine/src/config.ts`, not here, because hotseat and practice play the same rule with no
+server at all. So the rate limit on repeated offers **is** R36's: the actor relays `offerDraw` and
+`answerDraw` like any other action, and a refused one comes back as the reducer's own sentence
+(§9.8's action flood limit still applies on top, as it does to every frame). The standing offer is
+on both seats' views as `drawOffer: { by }`, so it survives a reconnect.
+
+An accepted offer ends the match `{ winner: "draw", reason: "draw-accepted" }` and a concede
+`{ winner: <the other seat>, reason: "concede" }` — a concede is open to both seats at all times,
+the mulligan window included. Both go through the one results path (`api/results.ts`,
+`createRecordResult`): one `results` row, Elo scored 0.5 each for a draw and 1/0 for a concede,
+both in-match flags cleared, once.
 
 ## Tests
 
@@ -215,7 +252,8 @@ There is no test database and no network in the suite. The doubles in `test/fake
   seam.
 - `engine.ts` — a scripted `EnginePort` with the same contract the real engine has where the server
   relies on it. Cards `test-prompt-self`, `test-prompt-enemy` and `test-lethal` reach the
-  situations R79 cares about without the real catalog.
+  situations R79 cares about without the real catalog, and `createFakeEngine({ mulligan: true })`
+  opens on the concurrent mulligan (R265) for the tests about the mulligan clock.
 - `deps.ts` — `createManualTimers()` (an `advance(ms)` that fires exactly the due callbacks; used
   instead of `vi.useFakeTimers()` because every deadline already goes through the `Timers` port),
   a scripted auth provider, a small catalog and a `ServerDeps` builder.

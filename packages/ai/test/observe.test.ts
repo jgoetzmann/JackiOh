@@ -21,10 +21,16 @@ import {
   createRng,
   defOf,
   hashState,
+  effects,
+  newInstance,
   query,
+  registerScripts,
+  registeredScripts,
+  seatToAct,
   viewFor,
   type CardInstance,
   type GameState,
+  type Script,
 } from "@jackioh/engine";
 import {
   AI_DETERMINIZE,
@@ -36,6 +42,7 @@ import {
 } from "../src/index";
 import {
   AI,
+  act,
   cardById,
   clone,
   corePool,
@@ -248,6 +255,63 @@ describe("redact (B9)", () => {
     expect(redact(state, "p2").pending?.options).toEqual(state.pending?.options);
   });
 
+  it("R266 B9: while both mulligans are open, the opponent's sealed answer and its options reach the seat as nothing", () => {
+    const dealt = dealtGame("observe-their-mulligan");
+    const keptAll = act(dealt, "p2", { type: "mulligan", keep: dealt.players.p2.hand.map((card) => card.id) });
+    const keptNone = act(dealt, "p2", { type: "mulligan", keep: [] });
+
+    // Whatever p2 kept, the seat's state is the same: only that p2 has answered (R265, R266).
+    expect(hashState(redact(keptNone, AI))).toBe(hashState(redact(keptAll, AI)));
+    const pub = redact(keptAll, AI);
+    expect(pub.mulligan?.p2.keep).toEqual([]);
+    expect(pub.mulligan?.p2.prompt.options).toEqual([]);
+    // The seat's own mulligan keeps its options, and it answers it without waiting.
+    expect(pub.mulligan?.p1.prompt.options).toEqual(keptAll.mulligan?.p1.prompt.options);
+    expect(decide(keptAll, AI, { rng: createRng("observe-their-mulligan") })?.reason).toBe("mulligan");
+  });
+
+  it("R266 B9: a sealed answer owed behind the seat's own paused resolution reaches it as keeping everything", () => {
+    // A cast-on-draw Spell that asks its caster (no Core one asks, so a fixture): p1's replacement
+    // draw casts it, and p2's sealed answer waits in setup's owed item until p1 answers (R224, R265).
+    const asking = "ai-r266-cod-asks";
+    const script: Script = {
+      staticFlags: { castOnDraw: true },
+      cry: () => [effects.chooseMode({ options: ["ok"], step: "ok", prompt: "the cast's question" })],
+      resume: { ok: () => [] },
+    };
+    registerScripts({ ...registeredScripts(), [asking]: { base: script, radiant: script } });
+    const paused = (p2Keeps: "all" | "none"): GameState => {
+      const dealt = dealtGame("observe-owed-mulligan");
+      dealt.transientDefs[asking] = {
+        id: asking,
+        index: asking,
+        name: asking,
+        set: "Core",
+        type: "Spell",
+        tags: [],
+        rarity: "Common",
+        token: false,
+        cost: 0,
+        base: { keywords: [], text: asking },
+        radiant: { keywords: [], text: asking },
+      };
+      dealt.players.p1.library.unshift(newInstance(dealt, asking, "p1", { z: "library", player: "p1" }));
+      const keep = p2Keeps === "all" ? dealt.players.p2.hand.map((card) => card.id) : [];
+      const sealed = act(dealt, "p2", { type: "mulligan", keep });
+      return act(sealed, "p1", { type: "mulligan", keep: sealed.players.p1.hand.slice(1).map((card) => card.id) });
+    };
+    const keptAll = paused("all");
+    const keptNone = paused("none");
+    expect(keptAll.pending?.playerId).toBe(AI);
+    expect(keptAll.work.length).toBeGreaterThan(0);
+
+    // The seat is asked now, and what it may know is the same whatever p2 kept.
+    expect(hashState(redact(keptNone, AI))).toBe(hashState(redact(keptAll, AI)));
+    expect(decide(keptNone, AI, { rng: createRng("observe-owed") })?.action).toEqual(
+      decide(keptAll, AI, { rng: createRng("observe-owed") })?.action,
+    );
+  });
+
   it("R185 B9: a card in the seat's own library that was minted for the opponent's deck (R73) is hidden too", () => {
     const state = clone(beginGame(createGame({ seed: "observe-r73", decks: randomDecks("observe-r73") })).state);
     // #87's library swap, reduced to its effect on two cards: they now sit in p1's library.
@@ -367,11 +431,11 @@ describe("decide cannot see hidden cards (B11)", () => {
 
   it("R185 B11: decide gives deep-equal decisions for random mutations of real states", { timeout: 180_000 }, () => {
     const candidates = REAL_STATES.filter(
-      (state) => state.result === null && (state.pending?.playerId ?? state.active) === state.active,
+      (state) => state.result === null && seatToAct(state) === state.active,
     ).slice(0, 4);
     expect(candidates.length).toBeGreaterThan(0);
     candidates.forEach((state, at) => {
-      const seat = state.pending?.playerId ?? state.active;
+      const seat = seatToAct(state);
       const mutated = mutateHidden(state, seat, at + 1);
       const rngSeed = `observe-b11-real-${at}`;
       const original = decide(state, seat, { rng: createRng(rngSeed) });

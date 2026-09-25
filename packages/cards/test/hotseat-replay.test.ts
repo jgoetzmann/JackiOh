@@ -79,11 +79,18 @@ const RECORDED = fileURLToPath(new URL("../../../e2e/artifacts/01-hotseat-full-g
  * every instance created after setup takes an id one higher. A new game, not a relabeled one: 51
  * actions where there were 50, still won by p1 by hero death.
  *
+ * The concurrent mulligan (R265) moved it once more, under the exception above: the log is the same
+ * 51 actions and folds without a refusal. Both mulligan prompts now open in `beginGame`, which does
+ * not run the resolution loop, where p2's used to open inside p1's answer and be dispatched there, so
+ * one event fewer takes a number: a fold before and after differs in `nextSeq` and the two frontier
+ * ids it numbers, 1 lower, and nowhere else.
+ *
  * The Radiant pass (R275, R276) re-recorded it the same way: its decks hold cards whose Radiant faces
  * were raised (#8, #25, #73, #81, the Rush and Felinor Tokens), and a Radiant Saintess's Death now
  * reaches the hand, so the same seed plays a different game. 38 actions, still won by p1 by hero death.
+ * Spec 01 records the same log under the concurrent mulligan, which folds to the hash below.
  */
-const EXPECTED_HASH = "0151f410";
+const EXPECTED_HASH = "cc583237";
 
 /** What the recorded game ends in — a second anchor, so the hash is not the only witness. */
 const EXPECTED_RESULT = { winner: "p1", reason: "hero-death" } as const;

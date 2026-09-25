@@ -175,6 +175,13 @@ export type PendingChoice = {
   resume: Resume;
 };
 
+/**
+ * §2.1 step 3, R265: one seat's mulligan while the mulligans are open. `prompt` is the seat's own
+ * prompt, whose options are its opening hand; `keep` is its sealed answer — the ids it keeps — and
+ * null until it answers. Nothing reads an answer before both seats have given one (R266).
+ */
+export type MulliganSeat = { prompt: PendingChoice; keep: string[] | null };
+
 export type QueuedTrigger = {
   id: string;
   seq: number;
@@ -285,8 +292,15 @@ export type GameState = {
   transientDefs: Record<string, CardDef>;
   /** Zones a dying Reborn unit holds until it returns (R64). */
   reserved: { player: PlayerId; row: Row; lane: number }[];
-  /** Players who have answered their mulligan (§2.1). */
+  /** Players whose mulligan has resolved, in seat order (§2.1, R265). */
   mulliganed: PlayerId[];
+  /**
+   * §2.1 step 3, R265: both seats' mulligans, open at once. Present only while they are open — the
+   * opening deal done, `pending` null, phase `mulligan` — and gone the moment the second answer
+   * resolves them, so a state past its mulligan hashes as it did before this field existed.
+   * `pending` stays the one prompt §10.1 allows; the two mulligans are the one sealed-bid step.
+   */
+  mulligan?: Record<PlayerId, MulliganSeat>;
   result: null | { winner: PlayerId | "draw"; reason: GameOverReason };
   /** Next instance/choice/trigger id, so ids are deterministic under replay. */
   nextId: number;

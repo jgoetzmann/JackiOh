@@ -3,7 +3,7 @@
 import type { Action, ActionBody, GameEvent, PlayerId, Row } from "@jackioh/shared";
 import { registerCatalog } from "../../src/catalog";
 import { AI_END_TURN_PROBABILITY, DECK_SIZE } from "../../src/config";
-import { beginGame, legalActions, reduce } from "../../src/reduce";
+import { beginGame, legalActions, reduce, seatToAct } from "../../src/reduce";
 import { createRng } from "../../src/rng";
 import type { EngineSink } from "../../src/resolve";
 import { registerScripts } from "../../src/scripts";
@@ -80,7 +80,7 @@ export function playRandomGame(seed: string, deckPair?: [string[], string[]]): {
 
   for (let step = 0; state.result === null; step += 1) {
     if (step > 4000) throw new Error(`game ${seed} did not finish`);
-    const player = state.pending?.playerId ?? state.active;
+    const player = seatToAct(state);
     const actions = legalActions(state, player).filter(
       (action) => action.type !== "concede" && action.type !== "offerDraw" && action.type !== "answerDraw",
     );

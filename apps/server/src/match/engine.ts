@@ -54,6 +54,12 @@ export type MatchSnapshot = {
   active: PlayerId;
   /** Who owes the open prompt an answer, or null (§10.6). */
   pendingFor: PlayerId | null;
+  /**
+   * R265: while both mulligans are open (phase `mulligan`, `pendingFor` null), the seats that still
+   * owe theirs, in seat order; empty otherwise. Public (R266: that a seat is ready is public, what
+   * it kept is not), and the mulligan clock (R268) and its expiry read nothing else.
+   */
+  mulliganOwed: PlayerId[];
   phase: "setup" | "mulligan" | "start" | "main" | "end" | "over";
   result: { winner: PlayerId | "draw"; reason: GameOverReason } | null;
 };
@@ -87,6 +93,7 @@ export const REQUIRED_ENGINE_EXPORTS = [
   "viewFor",
   "fold",
   "hashState",
+  "mulliganOwed",
   "createRng",
 ] as const;
 

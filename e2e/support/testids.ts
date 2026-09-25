@@ -222,6 +222,51 @@ export const PROMPT_MODAL = "prompt-modal";
 export const PROMPT_SCRIM = "prompt-scrim";
 
 // ---------------------------------------------------------------------------------------------
+// A16: the concurrent mulligan (§2.1, R265, R266), Concede's confirmation and the draw offer's
+// notices (§2.5, R36, R269). These mirror, name for name, `testid` in
+// `apps/web/src/game/contract.ts` (and `mulligan-waiting-card-<id>` in `Prompt.tsx`, the clock
+// lines in `Clock.tsx`). Keep the files identical.
+// ---------------------------------------------------------------------------------------------
+
+/** "Concede this game?" (role `alertdialog`): what the `concede` control opens. */
+export const CONCEDE_DIALOG = "concede-dialog";
+/** In that dialog: the only thing that sends `{ type: "concede" }`. */
+export const CONCEDE_CONFIRM = "concede-confirm";
+/** In that dialog: "Keep playing", focused on open; Escape and a click outside mean the same. */
+export const CONCEDE_CANCEL = "concede-cancel";
+
+/** The offerer's line while its offer stands: "Draw offered — waiting for reply". */
+export const DRAW_OFFER_STATUS = "draw-offer-status";
+/** The other seat's notice while the offer stands: "Your opponent offers a draw". */
+export const DRAW_OFFER = "draw-offer";
+/** In that notice: enabled only when `legal` lists the matching `answerDraw`. */
+export const DRAW_ACCEPT = "draw-accept";
+export const DRAW_DECLINE = "draw-decline";
+/** What became of the last offer; `data-outcome` is `declined`, `accepted` or `expired`. */
+export const DRAW_OUTCOME = "draw-outcome";
+
+/** In the mulligan picker: `data-ready="true|false"`, whether the opponent has answered its own. */
+export const MULLIGAN_OPPONENT_STATUS = "mulligan-opponent-status";
+/** Inside that status, only once the opponent has answered: "Opponent is ready". */
+export const MULLIGAN_OPPONENT_READY = "mulligan-opponent-ready";
+/**
+ * After the viewer's own answer, until both are in: "Waiting for your opponent…", with
+ * `data-returning="<n>"`. It carries no `data-prompt-kind`: the viewer's question is answered.
+ */
+export const MULLIGAN_WAITING = "mulligan-waiting";
+
+/** One hand card on the waiting panel, `data-verdict="keep|redraw"`. */
+export function mulliganWaitingCardId(instanceId: string): string {
+  return `mulligan-waiting-card-${instanceId}`;
+}
+
+/** A networked match's clock lines (`Clock.tsx`): each carries `data-kind` and `data-remaining-ms`. */
+export const CLOCK_YOU = "clock-you";
+export const CLOCK_OPPONENT = "clock-opponent";
+export const PROMPT_CLOCK = "prompt-clock";
+export const TURN_CLOCK = "turn-clock";
+
+// ---------------------------------------------------------------------------------------------
 // A11: the deck workshop (`/decks`, SPEC §9.4, R250–R256). BUILD names no testid for this screen,
 // so these mirror, name for name, `apps/web/src/game/deckbuilder/testids.ts`, which is the screen's
 // own vocabulary. Keep the two files identical: that file says so too.

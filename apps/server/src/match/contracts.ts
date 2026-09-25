@@ -49,6 +49,11 @@ export type ClockView = {
   active: PlayerId;
   /** Who owes the open prompt an answer, or null. */
   pendingFor: PlayerId | null;
+  /**
+   * R265: the seats that still owe their mulligan while both are open, in seat order; empty outside
+   * that window. Non-empty with no `pendingFor` is the window the mulligan clock runs over (R268).
+   */
+  mulliganOwed: readonly PlayerId[];
   over: boolean;
 };
 
@@ -57,6 +62,11 @@ export type ClockExpiry =
   | { kind: "turn"; player: PlayerId }
   /** R79: a prompt held by the non-active player ran out; `timeout` answers only that prompt. */
   | { kind: "prompt"; player: PlayerId }
+  /**
+   * R268: the one mulligan clock ran out. It names no player because it belongs to both: the actor
+   * times out every seat still owing its mulligan at that moment, each with its own `timeout`.
+   */
+  | { kind: "mulligan" }
   /** §9.5: grace expired; `disconnectExpired` makes it a loss for that player. */
   | { kind: "grace"; player: PlayerId }
   /** R79: the hard wall-clock ceiling; `ceilingReached` ends the match in a draw. */

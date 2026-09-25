@@ -53,14 +53,15 @@ function faceUpBackrowIds(view: PlayerView): string[] {
 
 /**
  * `Game` renders the banner unconditionally, but the prompt modal, the draw toast and the result
- * overlay each wait on something: an open prompt, a draw event in the window, and a result. All
- * three are in the view at once here — they are chrome, they do not exclude each other, and a
- * single tree lets one render prove every row.
+ * overlay each wait on something: an open prompt, a standing draw offer (R269's `drawOffer`), and a
+ * result. All three are in the view at once here — they are chrome, a single tree lets one render
+ * prove every row — though the engine never sends an offer with a result (R216).
  */
 function chromeView(): PlayerView {
   return fullBoardView({
     pending: pendingFor("target", [{ key: "hero:p2", label: "Opponent hero", player: "p2" }]),
     // The toast belongs to the seat that must ANSWER, so the offer is the opponent's (Game.tsx).
+    drawOffer: { by: "p2" },
     events: [{ type: "drawOffered", player: "p2" }],
     result: { winner: "p1", reason: "concede" },
   });

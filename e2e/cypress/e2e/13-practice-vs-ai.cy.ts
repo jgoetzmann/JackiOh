@@ -4,12 +4,15 @@
 //
 //   * an anonymous `/practice` shows the setup screen;
 //   * an Easy game with the human seated p2 shows `practice-thinking` while the AI mulligans and
-//     then plays, and the AI's first turn changes the opponent's side of the board (mana, hand or
-//     units) between the human's mulligan and the human's first turn;
+//     then plays — the AI answers its own mulligan at once, while the human's picker is still open
+//     (R265), and that picker says so ("Opponent is ready") — and the AI's first turn changes the
+//     opponent's side of the board (mana, hand or units) between the human's mulligan and the
+//     human's first turn;
 //   * a few human turns end through the UI with no `action-error`;
 //   * the game the browser played folds in Node, with the handicaps the page reports, to the
 //     browser's own hash (`cy.task("replayHash")`, R187);
-//   * conceding shows the result overlay with "Loss", and the practice result dialog with "Defeat";
+//   * conceding — `concede`, then Concede in the "Concede this game?" dialog it opens — shows the
+//     result overlay with "Loss", and the practice result dialog with "Defeat";
 //   * a Hard game with the human seated p2 shows `mana-opponent` at `data-max="2"` on the AI's
 //     first turn (§9.9's `min(turns + 1, 7)`, R181), and its log, with the Hard handicap the page
 //     reports, folds in Node to the browser's own hash (Easy stores no handicap, R180, so this is
@@ -35,9 +38,10 @@ import {
   ACTION_ERROR,
   ANIMATING,
   BOARD,
-  CONCEDE,
   END_TURN,
   GAME,
+  MULLIGAN_OPPONENT_READY,
+  MULLIGAN_OPPONENT_STATUS,
   PRACTICE_DECK,
   PRACTICE_ERROR,
   PRACTICE_HUD,
@@ -109,6 +113,8 @@ type Sample = {
   opponentHand: string | null;
   opponentUnits: number;
   prompt: string | null;
+  /** R265: the human's mulligan picker's word on the AI's own mulligan, `data-ready`; null without a picker. */
+  opponentReady: string | null;
 };
 
 type Recorder = { samples: Sample[]; sockets: number };
@@ -139,6 +145,7 @@ function sampleOf(doc: Document): Sample {
     opponentHand: doc.querySelector(ts(handCountId("opponent")))?.textContent?.trim() ?? null,
     opponentUnits: opponentUnitCount(doc),
     prompt: doc.querySelector(PROMPT)?.getAttribute("data-prompt-kind") ?? null,
+    opponentReady: doc.querySelector(ts(MULLIGAN_OPPONENT_STATUS))?.getAttribute("data-ready") ?? null,
   };
 }
 
@@ -386,13 +393,22 @@ describe("13 — practice against the AI, with no account and no server (§9.9, 
     cy.get(ts(GAME)).should("have.attr", "data-viewer", "p2");
     cy.get(ts(PRACTICE_SETUP)).should("not.exist");
 
-    // p1 — the AI — answers the first mulligan (§2.1), so the human's prompt comes second.
+    // R265: both mulligans open with the deal, so the human's picker is up at once, and the AI
+    // answers its own without waiting for the human's (practice/controller.ts): the picker, still
+    // open, turns to "Opponent is ready" while the human has not pressed anything.
     cy.get(promptOf("mulligan"), { timeout: BOOT_TIMEOUT }).should("be.visible");
+    cy.get(promptOf("mulligan"))
+      .find(ts(MULLIGAN_OPPONENT_READY), { timeout: timeouts.view })
+      .should("be.visible");
     recorder().then((recorded) => {
       const firstPrompt = recorded.samples.findIndex((sample) => sample.prompt === "mulligan");
       expect(firstPrompt, "the human's mulligan was drawn").to.be.greaterThan(-1);
+      const aiReady = recorded.samples.findIndex(
+        (sample) => sample.prompt === "mulligan" && sample.opponentReady === "true",
+      );
+      expect(aiReady, "the AI answered its mulligan while the human's picker was open (R265)").to.be.greaterThan(-1);
       expect(
-        recorded.samples.slice(0, firstPrompt).some((sample) => sample.thinking),
+        recorded.samples.slice(0, aiReady).some((sample) => sample.thinking),
         "practice-thinking showed while the AI mulliganed",
       ).to.eq(true);
     });
@@ -419,10 +435,10 @@ describe("13 — practice against the AI, with no account and no server (§9.9, 
       ).to.eq(true);
     });
 
-    // Concede on the human's own turn: the overlay is viewer-relative (§10.8), so it says Loss.
+    // Concede on the human's own turn: the overlay is viewer-relative (§10.8), so it says Loss. The
+    // control only asks ("Concede this game?"); `cy.concede` confirms in the dialog it opens.
     reachHumanTurn();
-    cy.get(ts(CONCEDE)).should("not.be.disabled").click();
-    cy.settled();
+    cy.concede();
     cy.get(ts(RESULT_OVERLAY), { timeout: timeouts.view }).should("be.visible").and("contain.text", "Loss");
     // The practice route's own end screen says the same thing, and offers the next game.
     cy.get(ts(PRACTICE_RESULT), { timeout: timeouts.view })

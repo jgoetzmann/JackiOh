@@ -22,13 +22,14 @@
 //   activatePower    → `subsystems/heroPower.activatePower`, listed by `whyCannotActivate` (R43)
 //   answer           → `prompts.answerPrompt`, which hands a prompt the play pipeline opened itself
 //                      to that pipeline's answerer (R122)
-//   mulligan, draws, concede, endTurn, the turn cap → `setup.ts` and `turn.ts` (§2.1, §2.2, §2.5)
+//   mulligan         → `setup.answerMulligan`, refused by `setup.whyMulliganRefused` (§2.1, R265)
+//   draws, concede, endTurn, the turn cap → `turn.ts` (§2.2, §2.5, R36)
 //
 // After the action the resolution loop of §10.3 runs (`triggers.settle`): it dispatches the events
 // the action emitted, drains whatever a prompt left owed in `state.work`, runs the state check and
 // pops the trigger queue until nothing is left or a prompt stops it.
 
-import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
+import type { Action, ActionBody, ActionType, GameEvent, PlayerId } from "@jackioh/shared";
 import { NON_ACTIVE_ACTION_TYPES, PROMPT_OPEN_ACTION_TYPES, opponentOf } from "@jackioh/shared";
 import { attackTargets, declareAttack, hasExertion, switchPosition, type AttackTarget } from "./combat";
 import { NONCE_HISTORY, TIMEOUT_ANSWER_CAP, TURN_CAP_PLAYER_TURNS } from "./config";
@@ -38,7 +39,7 @@ import { playActionsFor } from "./playChoices";
 import { answerPrompt, promptAnswers } from "./prompts";
 import { createRng, type Rng } from "./rng";
 import type { EngineSink } from "./resolve";
-import { answerMulligan, beginSetup } from "./setup";
+import { answerMulligan, beginSetup, mulliganOwed, mulliganPromptFor, whyMulliganRefused } from "./setup";
 import { flagsOf } from "./scripts";
 import { cloneState, findInstance, type CardInstance, type GameState } from "./state";
 import { playOutTurn } from "./subsystems/aiPolicy";
@@ -51,6 +52,27 @@ import { activeUnitsOf } from "./zones";
 export type ReduceResult = { state: GameState; events: GameEvent[]; error?: string };
 
 const MAX_MULLIGAN_SUBSETS = 256;
+
+/**
+ * R265: what may be sent while the mulligans are open — a seat's own mulligan, and the actions that
+ * end a game or answer for a seat whose clock ran out (R79, R268), exactly as while a prompt is open.
+ */
+const MULLIGAN_OPEN_ACTION_TYPES: readonly ActionType[] = [
+  "mulligan",
+  "concede",
+  "timeout",
+  "disconnectExpired",
+  "ceilingReached",
+];
+
+/**
+ * The seat the game waits on first: the holder of the open prompt, else the first seat in seat order
+ * that still owes its mulligan (R265), else the active player. A harness that plays both seats asks
+ * this; a live table asks each seat's own `legalActions`, since both may owe a mulligan at once.
+ */
+export function seatToAct(state: GameState): PlayerId {
+  return state.pending?.playerId ?? mulliganOwed(state)[0] ?? state.active;
+}
 
 /** §4.2: a target names an enemy unit by instance id, or an enemy hero as `hero-<player>`. */
 export function attackTargetId(target: AttackTarget): string {
@@ -108,10 +130,9 @@ function applyAction(sink: EngineSink, action: Action): string | null {
 
   switch (action.type) {
     case "mulligan": {
-      if (state.pending === null || state.pending.kind !== "mulligan") return "no mulligan is open";
-      if (state.pending.playerId !== action.playerId) return "that mulligan is not yours";
-      const hand = new Set(state.players[action.playerId].hand.map((c) => c.id));
-      for (const id of action.keep) if (!hand.has(id)) return `${id} is not in your hand`;
+      // R265: each seat answers its own mulligan, in either order; the answer is sealed (R266).
+      const refused = whyMulliganRefused(state, action.playerId, action.keep);
+      if (refused !== null) return refused;
       answerMulligan(sink, action.playerId, action.keep);
       return null;
     }
@@ -180,6 +201,16 @@ function timeout(sink: EngineSink, action: Extract<Action, { type: "timeout" }>)
   const turn = sink.state.turn;
   const turnClock = who === sink.state.active;
 
+  // R268: while the mulligans are open (R265) the clock that ran out is the mulligan's, and it
+  // answers only this seat's own mulligan, by keeping the whole hand: Hearthstone confirms the hand
+  // as it stands when its mulligan timer runs out, and nothing is marked to return until the player
+  // marks it. It draws nothing from the rng, and it never answers the other seat's.
+  if (sink.state.pending === null && sink.state.mulligan !== undefined) {
+    const prompt = mulliganPromptFor(sink.state, who);
+    if (prompt !== null) answerMulligan(sink, who, prompt.options.map((option) => option.key));
+    return null;
+  }
+
   for (let step = 0; step < TIMEOUT_ANSWER_CAP; step += 1) {
     const state = sink.state;
     if (state.result !== null || state.turn !== turn) return null;
@@ -221,7 +252,7 @@ function answerForLockedOut(sink: EngineSink): void {
     const state = sink.state;
     const pending = state.pending;
     if (state.result !== null || pending === null) return;
-    if (!state.players[pending.playerId].aiTurn || pending.kind === "mulligan") return;
+    if (!state.players[pending.playerId].aiTurn) return;
     if (playOutTurn(sink, pending.playerId).actions.length === 0) return;
   }
 }
@@ -269,9 +300,17 @@ export function reduce(state: GameState, action: Action, rng?: Rng): ReduceResul
     }
   }
 
+  // R265: while the mulligans are open both seats owe one, so neither is "not on turn" — setup is no
+  // player's turn (§2.1) — and nothing but a mulligan and the actions that end a game moves.
+  const mulliganOpen = state.pending === null && state.mulligan !== undefined;
+  if (mulliganOpen && !MULLIGAN_OPEN_ACTION_TYPES.includes(action.type)) {
+    return { state, events: [], error: "the mulligan is open: answer it first" };
+  }
+
   const nonActive = action.playerId !== state.active;
   if (
     nonActive &&
+    !mulliganOpen &&
     !NON_ACTIVE_ACTION_TYPES.includes(action.type as (typeof NON_ACTIVE_ACTION_TYPES)[number]) &&
     state.pending?.playerId !== action.playerId
   ) {
@@ -296,7 +335,7 @@ export function reduce(state: GameState, action: Action, rng?: Rng): ReduceResul
   return { state: next, events };
 }
 
-/** Start the game: shuffle, deal and open the first mulligan (§2.1). */
+/** Start the game: shuffle, deal and open both mulligans (§2.1, R265). */
 export function beginGame(state: GameState, rng?: Rng): ReduceResult {
   const next = cloneState(state);
   const events: GameEvent[] = [];
@@ -336,16 +375,22 @@ export function legalActions(state: GameState, player: PlayerId): ActionBody[] {
     // takes it (R84), so what the policy draws from is still that prompt's answers alone.
     const concede: ActionBody = { type: "concede" };
     if (pending.playerId !== player) return [concede];
-    if (pending.kind === "mulligan") {
-      return [
-        ...mulliganSubsets(pending.options.map((option) => option.key)).map((keep) => ({
-          type: "mulligan" as const,
-          keep,
-        })),
-        concede,
-      ];
-    }
     return [...promptAnswers(pending), concede];
+  }
+
+  if (state.mulligan !== undefined) {
+    // R265: both mulligans are open at once. A seat that still owes one is offered its answers and
+    // concede (R211); a seat that has answered waits for the other, with concede alone.
+    const concede: ActionBody = { type: "concede" };
+    const mulligan = mulliganPromptFor(state, player);
+    if (mulligan === null) return [concede];
+    return [
+      ...mulliganSubsets(mulligan.options.map((option) => option.key)).map((keep) => ({
+        type: "mulligan" as const,
+        keep,
+      })),
+      concede,
+    ];
   }
 
   const out: ActionBody[] = [];
