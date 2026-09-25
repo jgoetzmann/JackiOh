@@ -44,8 +44,14 @@ import { baseView } from "../fixtures.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const SETTINGS_CSS = join(here, "../../settings/settings.css");
 
-const DEFAULTS: Settings = { dragToPlay: true, confirmEndTurn: false, hoverPreviews: true, reduceMotion: false };
-const KEYS = ["confirmEndTurn", "dragToPlay", "hoverPreviews", "reduceMotion"];
+const DEFAULTS: Settings = {
+  dragToPlay: true,
+  confirmEndTurn: false,
+  autoEndTurn: true,
+  hoverPreviews: true,
+  reduceMotion: false,
+};
+const KEYS = ["autoEndTurn", "confirmEndTurn", "dragToPlay", "hoverPreviews", "reduceMotion"];
 
 afterEach(() => {
   cleanup();
@@ -191,7 +197,7 @@ describe("B19 the store falls back to the defaults", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("B20 writing, parsing and resetting", () => {
-  it("B20 writeSettings merges the patch, persists the four keys as JSON and returns the new snapshot", () => {
+  it("B20 writeSettings merges the patch, persists every key as JSON and returns the new snapshot", () => {
     const first = writeSettings({ dragToPlay: false });
 
     expect(first).toEqual({ ...DEFAULTS, dragToPlay: false });
@@ -617,11 +623,12 @@ describe("B24 the panel's sections, switches, reset and slots", () => {
   const SWITCHES: [SettingKey, string][] = [
     ["dragToPlay", "Drag to play"],
     ["confirmEndTurn", "Confirm end turn"],
+    ["autoEndTurn", "End turn automatically"],
     ["hoverPreviews", "Hover previews"],
     ["reduceMotion", "Reduce motion"],
   ];
 
-  it("B24 shows gameplay (drag, confirm, hover) and visuals (reduce motion), and no empty audio section", () => {
+  it("B24 shows gameplay (drag, confirm, auto end, hover) and visuals (reduce motion), and no empty audio section", () => {
     // Integration mounts tasks 1, 2 and 6's controls through SETTINGS_SLOTS (settings-wiring.test.tsx);
     // with no slots the panel is task 7's alone, and a section with nothing in it is not drawn.
     render(<SettingsPanel onClose={noop} slots={[]} />);
@@ -632,7 +639,7 @@ describe("B24 the panel's sections, switches, reset and slots", () => {
       expect(section.tagName).toBe("SECTION");
       expect(within(section).getByRole("heading", { level: 2 })).toBeInTheDocument();
     }
-    for (const key of ["dragToPlay", "confirmEndTurn", "hoverPreviews"] as const) {
+    for (const key of ["dragToPlay", "confirmEndTurn", "autoEndTurn", "hoverPreviews"] as const) {
       expect(gameplay.contains(switchFor(key)), key).toBe(true);
     }
     expect(visuals.contains(switchFor("reduceMotion"))).toBe(true);
@@ -657,6 +664,7 @@ describe("B24 the panel's sections, switches, reset and slots", () => {
 
     expect(switchFor("dragToPlay").checked).toBe(false);
     expect(switchFor("confirmEndTurn").checked).toBe(false);
+    expect(switchFor("autoEndTurn").checked).toBe(true);
     expect(switchFor("hoverPreviews").checked).toBe(true);
     expect(switchFor("reduceMotion").checked).toBe(true);
   });
@@ -757,5 +765,60 @@ describe("B24 the panel's sections, switches, reset and slots", () => {
     for (const [key] of SWITCHES) expect(dialog.contains(switchFor(key)), key).toBe(true);
     expect(switchFor("hoverPreviews").checked).toBe(false);
     expect(switchFor("dragToPlay").checked).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R345: "End turn automatically" is sent to the engine, which holds it
+// ---------------------------------------------------------------------------------------------
+
+describe("R345 the End turn automatically switch reaches the engine as setAutoEndTurn", () => {
+  function sentPreferences(onAction: ReturnType<typeof vi.fn>): unknown[] {
+    return onAction.mock.calls.map(([body]) => body).filter((body) => (body as { type: string }).type === "setAutoEndTurn");
+  }
+
+  it("R345 on, the rule's default, sends nothing while the view agrees", () => {
+    const onAction = vi.fn();
+    render(<Game view={baseView()} legal={[]} onAction={onAction} />);
+    expect(sentPreferences(onAction)).toEqual([]);
+  });
+
+  it("R345 off, it is sent once for the seat, and not again while the engine catches up", () => {
+    writeSettings({ autoEndTurn: false });
+    const onAction = vi.fn();
+    const { rerender } = render(<Game view={baseView()} legal={[]} onAction={onAction} />);
+    expect(sentPreferences(onAction)).toEqual([{ type: "setAutoEndTurn", enabled: false }]);
+
+    rerender(<Game view={baseView({ turn: 4 })} legal={[]} onAction={onAction} />);
+    rerender(<Game view={baseView({ turn: 4, autoEndTurn: false })} legal={[]} onAction={onAction} />);
+    expect(sentPreferences(onAction)).toHaveLength(1);
+  });
+
+  it("R345 flipping the switch back on sends it on, for the seat whose view is shown", () => {
+    writeSettings({ autoEndTurn: false });
+    const onAction = vi.fn();
+    render(<Game view={baseView({ autoEndTurn: false })} legal={[]} onAction={onAction} />);
+    expect(sentPreferences(onAction)).toEqual([]);
+
+    act(() => {
+      writeSettings({ autoEndTurn: true });
+    });
+    expect(sentPreferences(onAction)).toEqual([{ type: "setAutoEndTurn", enabled: true }]);
+  });
+
+  it("R345 a pinned board (a tutorial lesson) sends the pinned value whatever the switch says", () => {
+    writeSettings({ autoEndTurn: false });
+    const onAction = vi.fn();
+    render(<Game view={baseView({ autoEndTurn: false })} legal={[]} onAction={onAction} autoEndTurn />);
+    expect(sentPreferences(onAction)).toEqual([{ type: "setAutoEndTurn", enabled: true }]);
+  });
+
+  it("R345 a finished game is sent nothing", () => {
+    writeSettings({ autoEndTurn: false });
+    const onAction = vi.fn();
+    render(
+      <Game view={baseView({ result: { winner: "p1", reason: "hero-death" } })} legal={[]} onAction={onAction} />,
+    );
+    expect(sentPreferences(onAction)).toEqual([]);
   });
 });

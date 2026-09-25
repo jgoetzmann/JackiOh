@@ -294,6 +294,8 @@ export type Settings = {
   dragToPlay: boolean;        // default true
   /** Gameplay. Ask before ending the turn while a card is playable or a unit can attack. */
   confirmEndTurn: boolean;    // default false (must stay false: every e2e spec ends turns with one click)
+  /** Gameplay. R82's automatic turn end; off, the turn waits for End turn. Added later (R345). */
+  autoEndTurn: boolean;       // default true (R82's own default); Game.tsx sends it as setAutoEndTurn
   /** Gameplay. Hovering a hand card with a fine pointer lifts it; task 6's hover inspect reads it at integration. */
   hoverPreviews: boolean;     // default true
   /** Visuals. Force reduced motion on top of the OS preference. */
@@ -354,9 +356,9 @@ export { default as SettingsButton, type SettingsButtonProps } from "./SettingsB
 | `settings-panel` | `role="dialog" aria-modal="true" aria-label="Settings"`; focus moves to its first switch on open. Escape inside it closes it and calls `stopPropagation()`. Focus goes back to the gear on close |
 | `settings-close`, `settings-reset` | buttons |
 | `settings-section-gameplay` / `-visuals` / `-audio` | a `<section>` with an `<h2>`. A section with no controls (built-in or slot) is not rendered |
-| `setting-dragToPlay`, `setting-confirmEndTurn`, `setting-hoverPreviews`, `setting-reduceMotion` | `<input type="checkbox" role="switch">` labelled "Drag to play", "Confirm end turn", "Hover previews", "Reduce motion" |
+| `setting-dragToPlay`, `setting-confirmEndTurn`, `setting-autoEndTurn`, `setting-hoverPreviews`, `setting-reduceMotion` | `<input type="checkbox" role="switch">` labelled "Drag to play", "Confirm end turn", "End turn automatically", "Hover previews", "Reduce motion" |
 
-Built-in controls: gameplay = `dragToPlay`, `confirmEndTurn`, `hoverPreviews`; visuals =
+Built-in controls: gameplay = `dragToPlay`, `confirmEndTurn`, `autoEndTurn` (added later, R345), `hoverPreviews`; visuals =
 `reduceMotion`. Slot controls render after them in their section.
 
 ### S9. Drag: `apps/web/src/game/drag/` (slice 3)

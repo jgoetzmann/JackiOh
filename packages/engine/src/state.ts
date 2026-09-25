@@ -258,6 +258,12 @@ export type PlayerState = {
    * to it, so a game without handicaps hashes exactly as it did before this field existed.
    */
   handicap?: Handicap;
+  /**
+   * R345: `false` once this player has turned R82's automatic turn end off (`setAutoEndTurn`).
+   * Absent means on, and turning it back on deletes the field, so a game in which nobody touched
+   * the setting hashes exactly as it did before this field existed.
+   */
+  autoEndTurn?: false;
 };
 
 export type GameState = {
