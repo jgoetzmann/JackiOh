@@ -76,6 +76,12 @@ export const radiant: Script = {
 - **`def` always comes from `cardDef("core-NNN")`.** Never retype stats, cost, tags or rarity in a
   script file: `catalog.json` is the data and `test/catalog.test.ts` is what proves it against
   SPEC §8. A hand-written `def` is a second source of truth and will be rejected in review.
+- **The catalog entry is the printed card.** `radiant.text` is the Radiant face written out in full
+  (SPEC §8's cell read by its Conventions, R277), never shorthand, because the client prints it
+  whole and marks what differs from `base.text`; every Radiant face meets R275's standard
+  (`test/radiant-standard.test.ts`, `docs/radiant-audit.md`); and `refs` lists every card or token
+  the entry's texts name, by id (R279) — `test/references.test.ts` proves it against the texts both
+  ways, so a text that names a card must list it.
 - **`base` and `radiant` are both required**, even when they are the same object — a card whose
   Radiant face differs only in what the engine reads off the catalog or its config (its stats and
   keywords, or #38's Combo multiple, `QUICKSTRIKER_COMBO_MULTIPLE`) runs the same script on both
