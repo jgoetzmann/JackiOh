@@ -3,7 +3,7 @@
 // whole play and a play can ask — both draw loops resuming out of `state.work` across a prompt
 // (§9.3, §10.6, R113, R117, R122).
 
-import type { PlayerId } from "@jackioh/shared";
+import type { LibraryOverflowOutcome, PlayerId } from "@jackioh/shared";
 import { CAST_ON_DRAW_CHAIN_CAP, FATIGUE_DAMAGE, HAND_CAP, LIBRARY_CAP } from "./config";
 import { defByIndex } from "./catalog";
 import { dealDamage } from "./damage";
@@ -93,16 +93,47 @@ export function addToHand(sink: EngineSink, instance: CardInstance): "hand" | "b
   return "hand";
 }
 
-/** R80: a library holds at most LIBRARY_CAP cards, so copies stop being created at the cap. */
-export function shuffleIntoLibrary(sink: EngineSink, instance: CardInstance, existing: boolean): "library" | "dropped" {
+/**
+ * R80: a library holds at most LIBRARY_CAP cards, so copies stop being created at the cap, and an
+ * existing card goes to its owner's graveyard instead (a unit-token card ceases to exist, R11).
+ *
+ * R316: whichever it is, the refusal is reported by `libraryOverflow`, so the board can show the
+ * full library turning the card away. Nothing else reported a copy that was never made, and an
+ * existing unit-token card that ceased to exist here moved with no event at all (§10.3). `copyOf`
+ * names the card a new copy copies, when it copies one, so a view can keep a face-down trap's copy
+ * as secret as the trap.
+ */
+export function shuffleIntoLibrary(
+  sink: EngineSink,
+  instance: CardInstance,
+  existing: boolean,
+  copyOf?: string,
+): "library" | "dropped" {
   const side = sink.state.players[instance.owner];
   if (side.library.length >= LIBRARY_CAP) {
-    if (!existing) return "dropped";
+    const refused = (outcome: LibraryOverflowOutcome): void => {
+      sink.events.push({
+        type: "libraryOverflow",
+        player: instance.owner,
+        instanceId: instance.id,
+        defId: instance.defId,
+        outcome,
+        ...(instance.radiant ? { radiant: true as const } : {}),
+        // R316: a copy that was never made is judged by the card it copies, which may be face-down.
+        ...(outcome === "notCreated" && copyOf !== undefined ? { copyOf } : {}),
+      });
+    };
+    if (!existing) {
+      refused("notCreated");
+      return "dropped";
+    }
     if (isUnitToken(sink.state, instance)) {
       moveToZone(sink.state, instance, "exile");
+      refused("ceased");
       return "dropped";
     }
     moveToZone(sink.state, instance, "graveyard");
+    refused("graveyard");
     sink.events.push({
       type: "enteredGraveyard",
       instanceId: instance.id,
@@ -380,8 +411,11 @@ export function drawOne(sink: EngineSink, player: PlayerId, link?: ChainLink | n
       }
     }
     // No card is drawn, so no `drawn` event: the damage instance is what happened (§2.4, R3).
+    // R315: `fatigue` announces it first, so the board shows the empty library before the hit
+    // lands; it is a report and answers nothing, like R240's zero-damage one below.
     side.fatigueCount += 1;
     const amount = FATIGUE_DAMAGE(side.fatigueCount);
+    sink.events.push({ type: "fatigue", player, count: side.fatigueCount, amount });
     const dealt = dealDamage(sink, { source: null, target: { kind: "hero", player }, amount });
     // R240: a fatigue draw whose hit the hero's Armor takes whole (§4.4 step 2; step 3's cap only
     // clamps) still happened — the public count moved and the next one deals more (§10.3) — so it is

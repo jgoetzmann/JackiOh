@@ -329,6 +329,8 @@ The recipe sketches below are the designer's intent; builders tune them by ear w
 | drain | 600 | 0.6 | sine 300→120 Hz with a 6 Hz ±15 Hz vibrato; peak scales with amount like impact |
 | cancel | 260 | 0.5 | square 330→165 Hz → lowpass 1500 Hz |
 | entrance | 1400 | 0.6 | (integration) FM gong 98 Hz + sawtooth fifth 196/294 Hz → lowpass opening 600→3000 Hz, then 3 high glints; `mythic`: 6 faster glints under a 9 Hz tremolo |
+| fatigue | 650 | 0.45 | (R319) two hollow knocks 160 ms apart, each bandpass-noise (1040 then 800 Hz, Q 4) over a sine thump (173 then 133 Hz), then a triangle sigh 196→98 Hz |
+| refuse | 400 | 0.27 | (R319) a muffled square "no": 294 Hz then 220 Hz, 130 ms apart → lowpass 900 Hz, with a 90 Hz sine thud on the second note |
 
 ### `apps/web/src/audio/engine.ts` (slice 1)
 
@@ -468,7 +470,9 @@ export function cuesFor(event: GameEvent, ctx: CueContext): readonly SoundCue[];
 | enteredGraveyard | null | silent: the destroy, discard or resolve that sent it there already sounded |
 | exiled | poof | `poof` |
 | bounced | whoosh | `whoosh` |
-| burned | burn | `burn` |
+| burned | burn | `burn` (R319: the full hand's sound) |
+| fatigue | fatigue | `fatigue` (R319; the hit after it sounds its own `impact`) |
+| libraryOverflow | refuse | `refuse`, whatever the outcome or the card (R319, R203) |
 | discarded | draw | `draw` |
 | drawn | draw | `draw` |
 | addedToHand | draw | `draw` |
@@ -1154,6 +1158,15 @@ R205 stays unused.
 - **Performance.** Each SFX cue builds a handful of nodes, capped by `SFX_MAX_VOICES`. The noise
   buffer is built once per context, the lines and manifest (about 30 KB) ride in the `Game` chunk,
   and voice files are fetched on demand and preloaded per view.
+
+## Addendum 2026-09-25: the overflows' sounds (R319)
+
+The overflow animations (SPEC R315–R319) added two events, `fatigue` and `libraryOverflow`, and
+two effects for them, `fatigue` and `refuse`, which bring the table to 30 ids. A fatigue draw knocks
+twice on the empty library before its hit's `impact` lands; a card a full library turns away gets a
+dull two-note refusal; a card a full hand burns keeps the `burn` crackle. None of the three varies
+with the card, so a card behind the sentinel sounds like any other (R203), and none speaks, being no
+play, cast, death or trap (R204). Both new effects sit in B57's routine band.
 
 ## Integration note: sound by card, the speaking mark and the mute's place
 

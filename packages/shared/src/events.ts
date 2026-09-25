@@ -105,7 +105,45 @@ export type GameEvent =
   | { type: "enteredGraveyard"; instanceId: string; defId: string; owner: PlayerId }
   | { type: "exiled"; instanceId: string; defId: string; owner: PlayerId }
   | { type: "bounced"; instanceId: string; defId: string; owner: PlayerId }
+  /**
+   * §2.4, R4: a card drawn or added to a full hand, burned on its way in. It is the hand cap's only
+   * event, so it is what "hand full" means on the board (R317). An ordinary card's `enteredGraveyard`
+   * follows it; a unit-token card ceases to exist instead (R11) and has none.
+   */
   | { type: "burned"; instanceId: string; defId: string; owner: PlayerId }
+  /**
+   * §2.4, R3, R315: a draw from an empty library that fatigues. `count` is the owner's fatigue count
+   * after this draw (the Nth) and `amount` is the hit it deals before Armor (`FATIGUE_DAMAGE(count)`).
+   * The `damage` instance on the hero follows it, R240's zero-damage report when Armor takes the
+   * whole hit. A draw #75 Infinite Reserves replaces emits none. Public: it names no card.
+   */
+  | { type: "fatigue"; player: PlayerId; count: number; amount: number }
+  /**
+   * §2.4, R80, R316: a card refused by a full library. `outcome` says what became of it: a card the
+   * effect was creating is `notCreated` (it never existed, #33's and #90's copies), an existing card
+   * goes to its owner's `graveyard` (its `enteredGraveyard` follows), and an existing unit-token card
+   * has `ceased` to exist (R11). `player` owns the library. `instanceId` and `defId` follow R97.
+   */
+  | {
+      type: "libraryOverflow";
+      player: PlayerId;
+      instanceId: string;
+      defId: string;
+      outcome: LibraryOverflowOutcome;
+      /**
+       * R316: set when the refused card is Radiant (#33's Radiant face makes every copy Radiant, a
+       * Radiant CN-Virus copies Radiant), so the board shows the face it would have had. It is the
+       * card's, so a view that hides the card hides this too (R97).
+       */
+      radiant?: true;
+      /**
+       * R316: the card a `notCreated` copy was a copy of (#33 copies whatever its controller plays,
+       * a Trap set face-down included; #90.1 copies itself), so a view judges the copy that was never
+       * made by that card, and a face-down trap's copy does not name it (R97). Engine bookkeeping: a
+       * view never forwards it.
+       */
+      copyOf?: string;
+    }
   | { type: "discarded"; instanceId: string; defId: string; owner: PlayerId }
   | { type: "drawn"; player: PlayerId; instanceId: string; defId: string }
   | { type: "addedToHand"; player: PlayerId; instanceId: string; defId: string }
@@ -179,6 +217,9 @@ export type GameEvent =
 
 export type GameEventType = GameEvent["type"];
 
+/** R316: what became of a card R80's full library refused (`libraryOverflow.outcome`). */
+export type LibraryOverflowOutcome = "notCreated" | "graveyard" | "ceased";
+
 export type GameOverReason =
   | "hero-death"
   | "both-heroes-dead"
@@ -209,6 +250,8 @@ export const GAME_EVENT_TYPES = [
   "exiled",
   "bounced",
   "burned",
+  "fatigue",
+  "libraryOverflow",
   "discarded",
   "drawn",
   "addedToHand",

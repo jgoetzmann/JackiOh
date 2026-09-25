@@ -58,6 +58,10 @@ src/
                         effects speed): plan.ts picks the opponent's `cardPlayed` out of the redacted events,
                         per viewer, and a card the view hides (R97, R227) is a back with "Opponent set a card".
                         Click-through, never on `data-animating`; `data-showcase` holds practice's AI while it is up
+    OverflowNotices.tsx overflow.css   §2.4's overflows on the board's own elements (R318): "Fatigue N" and
+                        "Library full" (with the refused card) inside a library pile, "Hand full" (with the burned
+                        card) over a hand, a face or a back by R97. Read off the runner's entries like the damage
+                        pops, up from their entry's start until the board catches up; animations.css moves them
     faces.ts            the face in play of a card the view lists or names (the board, a prompt, the showcase,
                         a log line, a pile): as it stands where the view lists it, else its definition
     inspectable.css     the look of what can be looked into: a browsable pile and a log line that names a card

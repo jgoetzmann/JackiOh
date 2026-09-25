@@ -163,4 +163,15 @@ export const constants = {
   OPENING_DRAW: [3, 4] as const,
   ROOM_CODE_LENGTH: 6,
   DECKS_PER_LOADOUT: 3,
+  /** R80: a library holds at most this many cards (`LIBRARY_CAP`), so no handicap deck is larger. */
+  LIBRARY_CAP: 60,
 };
+
+/**
+ * R201: where the board keeps the viewer's effects settings, `{ speed, intensity, motion }`
+ * (`FX_SETTINGS_KEY` in apps/web/src/fx/constants.ts, read by `fx/settings.ts`). Speed divides every
+ * animation's duration and is clamped to 0.5..2, so 0.5 plays everything at half speed. Spec 25's
+ * screenshot pass writes it in `onBeforeLoad` so a notice is still up when the shot is taken.
+ * Spelled here, not imported, because `support/` type-checks without `apps/*`.
+ */
+export const FX_SETTINGS_KEY = "jackioh.fx.v1";

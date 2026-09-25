@@ -22,6 +22,8 @@ import {
   FX_CRACK_TAIL_MS,
   FX_DEATH_EMBER_AT,
   FX_DEATH_SMOKE_AT,
+  FX_FATIGUE_FLIGHT_FRACTION,
+  FX_FATIGUE_STREAK_AT,
   FX_FUSE_FLIGHT_FRACTION,
   FX_HANDOVER_BANNER_MS,
   FX_HEAL_SPLAT_AT,
@@ -33,6 +35,7 @@ import {
   FX_MAX_TAIL_MS,
   FX_MEMORY_LIMIT,
   FX_MIND_CONTROL_FLIGHT_FRACTION,
+  FX_OVERFLOW_FIZZLE_AT,
   FX_PROJECTILE_FLIGHT_FRACTION,
   FX_RADIANT_BURST_AT,
   FX_RAYS_TAIL_MS,
@@ -283,6 +286,12 @@ function samples(): Sample[] {
     { name: "a unit is exiled", events: [{ type: "exiled", instanceId: ENEMY_2, defId: "core-013", owner: "p2" }] },
     { name: "a unit is bounced", events: [{ type: "bounced", instanceId: MINE_3, defId: "core-017", owner: "p1" }] },
     { name: "a card is burned", events: [{ type: "burned", instanceId: "hidden", defId: "hidden", owner: "p2" }] },
+    { name: "a readable card is burned", events: [{ type: "burned", instanceId: "cB", defId: "core-041", owner: "p1" }] },
+    { name: "the viewer fatigues", events: [{ type: "fatigue", player: "p1", count: 1, amount: 1 }] },
+    { name: "the opponent fatigues", events: [{ type: "fatigue", player: "p2", count: 7, amount: 7 }] },
+    { name: "a full library refuses a copy", events: [{ type: "libraryOverflow", player: "p2", instanceId: "c80", defId: "token-cn-virus", outcome: "notCreated" }] },
+    { name: "a full library sends a card to the graveyard", events: [{ type: "libraryOverflow", player: "p1", instanceId: "c81", defId: "core-017", outcome: "graveyard" }] },
+    { name: "a full library ends a hidden token", events: [{ type: "libraryOverflow", player: "p2", instanceId: "hidden", defId: "hidden", outcome: "ceased" }] },
     { name: "a hand card is discarded", events: [{ type: "discarded", instanceId: HAND, defId: "core-002", owner: "p1" }] },
     { name: "a card is drawn", events: [{ type: "drawn", player: "p1", instanceId: "cY", defId: "core-055" }] },
     { name: "a card is added to hand", events: [{ type: "addedToHand", player: "p2", instanceId: "hidden", defId: "hidden" }] },
@@ -973,18 +982,67 @@ describe("B16 the recipe table, row by row", () => {
     });
   });
 
-  it("B16 burned: fire and embers over the owner's hand at 0.25 D", () => {
+  it("R318 burned: fire and embers over the owner's hand at 0.25 D, and embers at its graveyard at D", () => {
     forDs("burned", (D) => {
       const at = r(FX_BURN_AT * D);
       expectCues(plan([{ type: "burned", instanceId: "hidden", defId: "hidden", owner: "p2" }], D), [
         burst("fire", tid("hand-opponent"), "area", at),
         burst("ember", tid("hand-opponent"), "area", at),
+        burst("ember", tid("graveyard-opponent"), "point", D),
       ]);
       expectCues(plan([{ type: "burned", instanceId: "cX", defId: "core-041", owner: "p1" }], D), [
         burst("fire", tid("hand-you"), "area", at),
         burst("ember", tid("hand-you"), "area", at),
+        burst("ember", tid("graveyard-you"), "point", D),
       ]);
     });
+  });
+
+  it("R318 fatigue: dust and smoke out of the owner's library at 0, void wisps from it to the owner's hero, landing at 0.95 D", () => {
+    forDs("fatigue", (D) => {
+      for (const [player, side] of [["p1", "you"], ["p2", "opponent"]] as const) {
+        const leave = r(FX_FATIGUE_STREAK_AT * D);
+        const flight = r(FX_FATIGUE_FLIGHT_FRACTION * D);
+        const library = tid(`library-${side}`);
+        expectCues(plan([{ type: "fatigue", player, count: 2, amount: 2 }], D), [
+          burst("dust", library, "area", 0),
+          burst("smoke", library, "point", 0),
+          { kind: "projectile", preset: "void", from: library, to: heroT(side), delayMs: leave, flightMs: flight, density: 1 },
+          burst("void", heroT(side), "point", leave + flight),
+        ]);
+        expect(leave + flight).toBeLessThanOrEqual(D);
+      }
+    });
+  });
+
+  it("R318 libraryOverflow: a refusal ring on the owner's library, then a fizzle, or a card back to the graveyard", () => {
+    forDs("libraryOverflow", (D) => {
+      const fizzle = r(FX_OVERFLOW_FIZZLE_AT * D);
+      for (const outcome of ["notCreated", "ceased"] as const) {
+        expectCues(plan([{ type: "libraryOverflow", player: "p2", instanceId: "c80", defId: "token-cn-virus", outcome }], D), [
+          ring("fire", tid("library-opponent"), 0, D),
+          burst("smoke", tid("library-opponent"), "point", fizzle),
+        ]);
+      }
+      expectCues(plan([{ type: "libraryOverflow", player: "p1", instanceId: "c81", defId: "core-017", outcome: "graveyard" }], D), [
+        ring("fire", tid("library-you"), 0, D),
+        ghost(tid("library-you"), tid("graveyard-you"), D),
+        burst("ember", tid("graveyard-you"), "point", D),
+      ]);
+    });
+  });
+
+  it("R318 the overflow recipes plan the same cues for a hidden card as for a readable one (R202)", () => {
+    const readable = plan([{ type: "libraryOverflow", player: "p2", instanceId: "c80", defId: "core-090", outcome: "ceased" }], 500, {
+      env: envOf({ card: catalog(FACTS) }),
+    });
+    const hidden = plan([{ type: "libraryOverflow", player: "p2", instanceId: "hidden", defId: "hidden", outcome: "ceased" }], 500, {
+      env: envOf({ card: catalog(FACTS) }),
+    });
+    expect(hidden).toEqual(readable);
+    const burnedReadable = plan([{ type: "burned", instanceId: "cX", defId: "core-090", owner: "p2" }], 700);
+    const burnedHidden = plan([{ type: "burned", instanceId: "hidden", defId: "hidden", owner: "p2" }], 700);
+    expect(burnedHidden).toEqual(burnedReadable);
   });
 
   it("B16 radiantSet on a board card: a sheen, radiant rays and a gold burst at 0.4 D", () => {
@@ -1765,6 +1823,25 @@ describe("R200 planLethal: the killing blow a drained game over never drew", () 
     expect(planLethal(hit, fullBoardView(), envOf())).toEqual({ cues: [], leadMs: 0 });
     const otherSeat = fullBoardView({ viewer: "p2", result: { winner: "p1", reason: "hero-death" }, phase: "over" });
     expect(planLethal(hit, otherSeat, envOf())).toEqual({ cues: [], leadMs: 0 });
+  });
+
+  it("R318 a lethal fatigue hit is replayed with the empty library it came out of, inside the same lead", () => {
+    const entries = entriesOf([{ type: "fatigue", player: "p1", count: 7, amount: 7 }, dmg(null, "hero-p1", 7, false)], 600);
+    expect(entries.map((entry) => entry.type)).toEqual(["fatigue", "damage"]);
+    const lethal = planLethal(entries, finished("p2"), envOf());
+    expect(lethal.leadMs).toBe(FX_LETHAL_LEAD_MAX_MS);
+    const empty = r(FX_LETHAL_LEAD_MAX_MS / 2);
+    // The library's dust at 0, the streak landing inside the first half, the hit's splat after it.
+    expect(lethal.cues.some((cue) => cue.kind === "burst" && cue.preset === "dust" && cue.delayMs === 0)).toBe(true);
+    const streak = lethal.cues.find((cue) => cue.kind === "projectile");
+    expect(streak).toMatchObject({ preset: "void", from: tid("library-you"), to: heroT("you") });
+    if (streak?.kind === "projectile") expect(streak.delayMs + streak.flightMs).toBeLessThanOrEqual(empty);
+    const hit = lethal.cues.find((cue) => cue.kind === "splat");
+    expect(hit).toMatchObject({ tone: "damage", amount: 7, at: heroT("you"), delayMs: empty });
+    for (const cue of lethal.cues) expect(cue.delayMs).toBeLessThanOrEqual(FX_LETHAL_LEAD_MAX_MS);
+    // A fatigue of the winner's, or one that is not just before the hit, is not replayed.
+    const other = entriesOf([{ type: "fatigue", player: "p2", count: 1, amount: 1 }, dmg(null, "hero-p1", 7, false)], 600);
+    expect(planLethal(other, finished("p2"), envOf()).cues.some((cue) => cue.kind === "projectile")).toBe(false);
   });
 
   it("R200 delayCues moves every cue later by the lead and changes nothing else", () => {

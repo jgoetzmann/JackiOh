@@ -2,6 +2,11 @@
 // (SPEC §9.4 L2/L3/L6, DECK_SIZE = 20, MAX_COPIES = 1, no Token cards), run without a browser or
 // a built client so a bad fixture is caught before the suite ever starts.
 //
+// A fixture may carry a `handicap` (R180), the seat's resources when a scenario needs other than
+// SPEC's own (spec 25: a 4-card library, a 9-card opening hand, a 60-card library). It is checked as
+// the engine's `validateHandicap` checks one — five non-negative integers, 1 <= deckSize <=
+// LIBRARY_CAP (R184) and an optional positive heroHealth (R290) — and L2 is then its deckSize.
+//
 //   pnpm --dir e2e check:fixtures
 //
 // Fixtures named 09-illegal-*.json are exempt: spec 09 needs loadouts that break L1-L6 on
@@ -16,6 +21,33 @@ const decksDir = path.join(here, "..", "fixtures", "decks");
 const catalogPath = path.join(here, "..", "..", "packages", "cards", "catalog.json");
 
 const DECK_SIZE = 20;
+/** R80: a library holds at most this many cards, so no handicap deck is larger (R184). */
+const LIBRARY_CAP = 60;
+const HANDICAP_FIELDS = ["deckSize", "manaBonus", "manaCap", "extraOpeningCards", "extraDrawsPerTurn"];
+
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+
+/** The problems with a fixture's `handicap`, as `validateHandicap` would name them. */
+function handicapProblems(handicap, where) {
+  if (typeof handicap !== "object" || handicap === null || Array.isArray(handicap)) {
+    return [`${where}: "handicap" must be an object (R180)`];
+  }
+  const out = [];
+  for (const field of HANDICAP_FIELDS) {
+    if (!isCount(handicap[field])) out.push(`${where}: handicap.${field} must be a non-negative integer (R180)`);
+  }
+  if (isCount(handicap.deckSize) && (handicap.deckSize < 1 || handicap.deckSize > LIBRARY_CAP)) {
+    out.push(`${where}: handicap.deckSize must be between 1 and ${LIBRARY_CAP} (R184), got ${handicap.deckSize}`);
+  }
+  if (handicap.heroHealth !== undefined && !(isCount(handicap.heroHealth) && handicap.heroHealth >= 1)) {
+    out.push(`${where}: handicap.heroHealth must be a positive integer (R290)`);
+  }
+  const known = new Set([...HANDICAP_FIELDS, "heroHealth"]);
+  for (const key of Object.keys(handicap)) {
+    if (!known.has(key)) out.push(`${where}: handicap.${key} is not a handicap field (R180)`);
+  }
+  return out;
+}
 
 if (!existsSync(decksDir)) {
   console.error(`no fixture decks at ${decksDir}`);
@@ -61,8 +93,21 @@ for (const file of files) {
     continue;
   }
 
-  if (deck.cards.length !== DECK_SIZE) {
-    problems.push(`${where}: ${deck.cards.length} cards, DECK_SIZE is ${DECK_SIZE} (L2)`);
+  let size = DECK_SIZE;
+  let sized = true;
+  if (deck.handicap !== undefined) {
+    const wrong = handicapProblems(deck.handicap, where);
+    problems.push(...wrong);
+    // A handicap that is itself wrong names no deck size to hold the cards to.
+    if (wrong.length === 0) size = deck.handicap.deckSize;
+    else sized = false;
+  }
+  if (sized && deck.cards.length !== size) {
+    problems.push(
+      deck.handicap === undefined
+        ? `${where}: ${deck.cards.length} cards, DECK_SIZE is ${DECK_SIZE} (L2)`
+        : `${where}: ${deck.cards.length} cards, its handicap's deckSize is ${size} (R184)`,
+    );
   }
   const seen = new Set();
   for (const card of deck.cards) {

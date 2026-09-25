@@ -14,7 +14,7 @@ type Payload = {
   decks: [string[], string[]];
   log: unknown[];
   state: unknown;
-  /** Spec 13's practice handicaps (R180, R187), passed through to `fold` untouched. */
+  /** The game's handicaps (R180: spec 13's practice tiers, spec 25's fixtures), passed to `fold` untouched. */
   handicaps?: Partial<Record<"p1" | "p2", unknown>>;
 };
 

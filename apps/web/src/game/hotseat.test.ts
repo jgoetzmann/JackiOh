@@ -19,7 +19,7 @@ import type { Action, ActionBody, CardDef, CardDefs, GameEvent, PlayerId, Player
 import { DECK_SIZE, byIndex, printedCost, resolveDeck, resolveDecks } from "./decks.ts";
 import { fold } from "@jackioh/engine";
 
-import type { EnginePort, EngineState, ReduceResult } from "./engine.ts";
+import type { CreateGameArgs, EnginePort, EngineState, ReduceResult } from "./engine.ts";
 import { enginePort } from "./engine.real.ts";
 import { createHotseat } from "./hotseat.ts";
 import { baseView, emptySide } from "../test/fixtures.ts";
@@ -35,7 +35,7 @@ type FakeEngine = {
   port: EnginePort;
   /** Every port call, in order, for the "createGame then beginGame" assertion. */
   calls: string[];
-  createGameArgs: { seed: string; decks: [string[], string[]]; catalog?: CardDefs }[];
+  createGameArgs: CreateGameArgs[];
   /** Every action handed to `reduce`, accepted or rejected. */
   reduced: Action[];
   /** The player argument of every `viewFor` / `legalActions` call. */
@@ -77,6 +77,7 @@ function makeEngine(options: { pendingAfterBegin?: PlayerId | null; beginError?:
         seed: args.seed,
         decks: args.decks,
         ...(args.catalog === undefined ? {} : { catalog: args.catalog }),
+        ...(args.handicaps === undefined ? {} : { handicaps: args.handicaps }),
       });
       live = { turn: 0, active: "p1", pendingFor: null };
       return wrap(live);
@@ -181,6 +182,19 @@ describe("createHotseat", () => {
     const without = makeEngine();
     session(without);
     expect("catalog" in (without.createGameArgs[0] ?? {})).toBe(false);
+  });
+
+  it("R180 passes a seat's handicap to createGame untouched, and omits the key when there is none", () => {
+    // The E2E build of /dev/hotseat injects one from a fixture deck (spec 25): a 4-card library that
+    // fatigues on turn 3, a 60-card one that fills. The session carries it and decides nothing.
+    const handicaps = { p1: { deckSize: 2, manaBonus: 3, manaCap: 4, extraOpeningCards: 0, extraDrawsPerTurn: 0 } };
+    const withHandicap = makeEngine();
+    createHotseat({ seed: "42", decks: DECKS, engine: withHandicap.port, handicaps });
+    expect(withHandicap.createGameArgs[0]?.handicaps).toBe(handicaps);
+
+    const without = makeEngine();
+    session(without);
+    expect("handicaps" in (without.createGameArgs[0] ?? {})).toBe(false);
   });
 
   it("throws when beginGame refuses, so a game that cannot start is not a session", () => {
@@ -601,6 +615,29 @@ describe("with the real engine", () => {
     expectFolds(p2First, seed);
   });
 
+  it("R180 a handicapped game starts from its handicap, fatigues on it (R315), and folds with it", () => {
+    // Spec 25's first scenario, headless: seat 1 plays a 4-card library (its handicap's deckSize,
+    // R184), holds all four cards after its turn-1 draw, and its turn-3 draw is fatigue 1.
+    const seed = "hotseat-handicap-fatigue";
+    const handicaps = { p1: { deckSize: 4, manaBonus: 0, manaCap: 4, extraOpeningCards: 0, extraDrawsPerTurn: 0 } };
+    const short = decks[0].slice(0, 4);
+    const live = createHotseat({ seed, decks: [short, decks[1]], engine: port, catalog, handicaps });
+    live.dispatch(keepAll(live.view()));
+    live.dispatch(keepAll(live.view()));
+    live.setSeat("p1");
+    expect(live.view().you.libraryCount, "3 opening cards and the turn-1 draw empty a 4-card library").toBe(0);
+    live.dispatch({ type: "endTurn" });
+    live.setSeat("p2");
+    live.dispatch({ type: "endTurn" });
+
+    expect(live.view().events).toContainEqual({ type: "fatigue", player: "p1", count: 1, amount: 1 });
+    const replayed = fold({ seed, decks: [short, decks[1]], log: [...live.log()], handicaps });
+    expect(replayed.errors).toEqual([]);
+    expect(port.hashState(replayed.state as unknown as EngineState)).toBe(live.hash());
+    // Without its handicap the same deck is not a legal game at all (§2.6 L2): the handicap is load-bearing.
+    expect(() => createHotseat({ seed, decks: [short, decks[1]], engine: port, catalog })).toThrow(/20/);
+  });
+
   it("R36 a draw offer goes to the other seat to answer, and a decline hands the device back to the offerer", () => {
     const seed = "hotseat-draw-offer";
     const live = real(seed);
@@ -737,6 +774,29 @@ describe("resolveDeck", () => {
 
     const unknown = resolveDeck("spec01", catalog, { spec01: [...cards.slice(0, 19), "core-999"] });
     expect("error" in unknown && /not in the catalog/.test(unknown.error)).toBe(true);
+  });
+});
+
+describe("resolveDeck with a handicapped seat (R184)", () => {
+  it("wants the handicap's deck size from an injected deck, and says so when it is not met", () => {
+    const catalog = synthetic();
+    const cards = Object.keys(catalog).filter((id) => !id.startsWith("t-") && id !== "core-051-1");
+    expect(resolveDeck("tiny", catalog, { tiny: cards.slice(0, 4) }, 4)).toEqual({ deck: cards.slice(0, 4) });
+
+    const off = resolveDeck("tiny", catalog, { tiny: cards.slice(0, 5) }, 4);
+    expect("error" in off && /exactly 4 \(R184\)/.test(off.error)).toBe(true);
+    // A dev deck is DECK_SIZE long, so a seat whose handicap asks for another size cannot play one.
+    const dev = resolveDeck("first20", catalog, undefined, 4);
+    expect("error" in dev && /exactly 4/.test(dev.error)).toBe(true);
+  });
+
+  it("resolveDecks reads each seat's size in seat order", () => {
+    const catalog = synthetic();
+    const cards = Object.keys(catalog).filter((id) => !id.startsWith("t-") && id !== "core-051-1");
+    const both = resolveDecks("tiny", "first20", catalog, { tiny: cards.slice(0, 4) }, [4, DECK_SIZE]);
+    expect("decks" in both && both.decks[0]).toEqual(cards.slice(0, 4));
+    const swapped = resolveDecks("tiny", "first20", catalog, { tiny: cards.slice(0, 4) }, [DECK_SIZE, 4]);
+    expect("error" in swapped).toBe(true);
   });
 });
 

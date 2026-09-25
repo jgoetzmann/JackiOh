@@ -5,6 +5,7 @@
 // The driver is deterministic: a seed, two decks and a caller's policy. Nothing here decides a
 // rule; every action it sends comes from `legalActions`.
 
+import type { Handicap } from "@jackioh/engine/config";
 import type { Action, ActionBody, CardDefs, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
 import { resolveDeck } from "../../game/decks.ts";
@@ -36,10 +37,18 @@ export function devDeck(id: "first20" | "cheap20"): string[] {
   return resolved.deck;
 }
 
-/** A game after `beginGame`, with both mulligans answered by keeping every card. */
-export function realGame(seed: string, decks: [string[], string[]]): RealGame {
+/**
+ * A game after `beginGame`, with both mulligans answered by keeping every card. `handicaps` gives a
+ * seat resources other than SPEC's own (R180): a short deck that fatigues soon, extra draws that fill
+ * a hand, a deck at R80's cap. The engine validates them (R184) and throws on a bad one.
+ */
+export function realGame(
+  seed: string,
+  decks: [string[], string[]],
+  handicaps?: Partial<Record<PlayerId, Handicap>>,
+): RealGame {
   const p = realPort();
-  let state = p.beginGame(p.createGame({ seed, decks })).state;
+  let state = p.beginGame(p.createGame({ seed, decks, ...(handicaps === undefined ? {} : { handicaps }) })).state;
   let nonce = 0;
   const game: RealGame = {
     port: p,

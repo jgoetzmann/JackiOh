@@ -206,6 +206,47 @@ export function backrowRegionId(side: Side): string {
   return `backrow-${side}`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// A18: the three overflows' notices (§2.4, R315–R318, BUILD M5-T4's `fatigue`, `burned` and
+// `libraryOverflow` rows). Each mounts when its event's animation entry starts and stays until the
+// board shows the next view, like `.damage-pop`, so a spec asserts it with a retried `should` right
+// after the action and asserts it gone after `cy.settled()`. These are the board's own names
+// (`apps/web/src/game/Board.tsx` for the pile, `Hand.tsx` for the hand); keep the files identical.
+// None starts with `card-` or `hand-card-`, so `cy.fieldCardByName` and `cy.handCardByName` never
+// resolve to the card a notice shows.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A18: the notice on a library pile (inside `library-<side>`), `data-kind="fatigue"` ("Fatigue N",
+ * N the event's `count`, R315) or `data-kind="libraryFull"` ("Library full", R316), and
+ * `data-playing="true"` while its entry runs.
+ */
+export function pileNoticeId(side: Side): string {
+  return `pile-notice-${side}`;
+}
+
+/** A18: `pileNoticeId`'s `data-kind` values. */
+export type PileNoticeKind = "fatigue" | "libraryFull";
+
+/**
+ * A18: inside a "Library full" notice, the card the library turned away: `data-face="face"` with the
+ * card's name when the viewer reads the event, `"back"` for the sentinel, and `data-outcome`
+ * `notCreated`, `graveyard` or `ceased` (R316).
+ */
+export function overflowCardId(side: Side): string {
+  return `overflow-card-${side}`;
+}
+
+/** A18: the "Hand full" notice inside `hand-<side>`, `data-playing="true"` while its entry runs (R317). */
+export function burnNoticeId(side: Side): string {
+  return `burn-notice-${side}`;
+}
+
+/** A18: inside it, the burned card: `data-face="face"` with its name, or `"back"` for the sentinel. */
+export function burnCardId(side: Side): string {
+  return `burn-card-${side}`;
+}
+
 /** The whole app shell, carrying `data-viewer`. */
 export const GAME = "game";
 /** The board (BUILD M5-T4 puts `rotated` and `swapped` on it). */

@@ -14,14 +14,15 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { Action, ActionBody, CardDefs, PlayerId, PlayerView } from "@jackioh/shared";
+import type { Handicap } from "@jackioh/engine/config";
 
 import Game from "../../game/Game.tsx";
 import { CatalogContext, lookupFromDefs } from "../../game/catalog.ts";
 import { testid } from "../../game/contract.ts";
-import { DEFAULT_DECK_ID, DECK_IDS, resolveDecks } from "../../game/decks.ts";
+import { DECK_SIZE, DEFAULT_DECK_ID, DECK_IDS, resolveDecks } from "../../game/decks.ts";
 import { EngineUnavailableError, loadEnginePort } from "../../game/engine.ts";
 import type { EnginePort, EngineState } from "../../game/engine.ts";
-import { createHotseat, otherSeat } from "../../game/hotseat.ts";
+import { SEATS, createHotseat, otherSeat } from "../../game/hotseat.ts";
 import type { DispatchResult, HotseatSession } from "../../game/hotseat.ts";
 import { navigate, paths } from "../../net/navigate.ts";
 import { navTestid } from "../nav.tsx";
@@ -34,6 +35,9 @@ export const DEFAULT_SEED = "42";
 
 /** ASSUMPTION A1 in `e2e/support/commands.ts`: where `cy.seedGame` parks its fixture decks. */
 export const E2E_DECKS_KEY = "jackioh.e2e.decks";
+
+/** R180: each seat's handicap, as `createGame` takes them. Empty when the game is SPEC's own. */
+export type SeatHandicaps = Partial<Record<PlayerId, Handicap>>;
 
 // ---------------------------------------------------------------------------------------------
 // the dev handle (BUILD M5-T3, consumed by e2e/support/commands.ts)
@@ -50,6 +54,11 @@ export type HotseatDevHandle = {
   readonly log: readonly Action[];
   readonly decks: [string[], string[]];
   /**
+   * The handicaps the game was created with (R180), `{}` for none: with the seed, the decks and the
+   * log, what `replay.fold` needs to reach this game's hash (`cy.replayCheck` passes them on).
+   */
+  readonly handicaps: SeatHandicaps;
+  /**
    * Dispatch as a seat. A hotseat device can be handed to either player, so a `playerId` that is
    * not the seat holding it switches the seat first rather than forging an action for someone
    * else — `reduce` still refuses anything illegal (SPEC §9.3).
@@ -65,8 +74,11 @@ declare global {
   interface Window {
     /** BUILD M5-T3. */
     __jackioh?: HotseatDevHandle;
-    /** ASSUMPTION A1: fixture decks handed to the E2E build of this route. */
-    __jackiohE2E?: { seed?: string; decks?: Record<string, string[]> };
+    /**
+     * ASSUMPTION A1: fixture decks handed to the E2E build of this route, and each seat's handicap
+     * when a fixture carries one (R180; `readInjectedHandicaps`).
+     */
+    __jackiohE2E?: { seed?: string; decks?: Record<string, string[]>; handicaps?: Partial<Record<PlayerId, unknown>> };
   }
 }
 
@@ -91,23 +103,31 @@ export function readParams(search: string): HotseatParams {
 }
 
 /**
+ * The E2E injection as it arrived: `window.__jackiohE2E`, or the localStorage copy that survives a
+ * reload. Nothing at all in a production build. Unread and unchecked: the two readers below take
+ * what they can use out of it.
+ */
+function readInjection(): unknown {
+  if (!DEV_ONLY || typeof window === "undefined") return undefined;
+
+  const raw: unknown = window.__jackiohE2E;
+  if (raw !== undefined && raw !== null) return raw;
+  try {
+    const stored = window.localStorage.getItem(E2E_DECKS_KEY);
+    return stored === null ? undefined : JSON.parse(stored);
+  } catch {
+    // A private window, blocked site data, or malformed JSON: there is simply no injection.
+    return undefined;
+  }
+}
+
+/**
  * The E2E deck injection, from `window.__jackiohE2E` or the localStorage copy that survives a
  * reload. External, untrusted input: anything that is not a list of strings is dropped, and the
  * ids that remain are still checked against the catalog by `resolveDeck`.
  */
 export function readInjectedDecks(): Record<string, string[]> | undefined {
-  if (!DEV_ONLY || typeof window === "undefined") return undefined;
-
-  let raw: unknown = window.__jackiohE2E;
-  if (raw === undefined || raw === null) {
-    try {
-      const stored = window.localStorage.getItem(E2E_DECKS_KEY);
-      raw = stored === null ? undefined : JSON.parse(stored);
-    } catch {
-      // A private window, blocked site data, or malformed JSON: there is simply no injection.
-      raw = undefined;
-    }
-  }
+  const raw = readInjection();
   if (typeof raw !== "object" || raw === null) return undefined;
 
   const decks = (raw as { decks?: unknown }).decks;
@@ -122,6 +142,60 @@ export function readInjectedDecks(): Record<string, string[]> | undefined {
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
+/**
+ * One seat's injected handicap, if it has the SHAPE of one (R180): an object whose five fields are
+ * numbers, and whose `heroHealth` (R290) is a number when present. Only the shape is judged here:
+ * whether the numbers are legal (non-negative integers, a deck size a library can hold) is the
+ * engine's call (`validateHandicap`, R184), and `createGame`'s refusal reaches the screen as a bad
+ * deck's does. The copy carries those fields and nothing else, so no stray key reaches the engine.
+ */
+function handicapShape(raw: unknown): Handicap | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const { deckSize, manaBonus, manaCap, extraOpeningCards, extraDrawsPerTurn, heroHealth } = raw as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof deckSize !== "number" ||
+    typeof manaBonus !== "number" ||
+    typeof manaCap !== "number" ||
+    typeof extraOpeningCards !== "number" ||
+    typeof extraDrawsPerTurn !== "number"
+  ) {
+    return undefined;
+  }
+  if (heroHealth !== undefined && typeof heroHealth !== "number") return undefined;
+  return {
+    deckSize,
+    manaBonus,
+    manaCap,
+    extraOpeningCards,
+    extraDrawsPerTurn,
+    ...(heroHealth === undefined ? {} : { heroHealth }),
+  };
+}
+
+/**
+ * The E2E injection's per-seat handicaps (R180): `cy.seedGame` passes fixture A's `handicap` as
+ * p1's and fixture B's as p2's, which is the only way a browser reaches R315's fatigue or R80's full
+ * library in a few turns. Development builds only, like the deck injection it travels with, and
+ * external input like it: a seat whose handicap is not shaped like one is dropped, and `undefined`
+ * means no seat has one, so the game is created exactly as it was before handicaps could be injected.
+ */
+export function readInjectedHandicaps(): SeatHandicaps | undefined {
+  const raw = readInjection();
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const handicaps = (raw as { handicaps?: unknown }).handicaps;
+  if (typeof handicaps !== "object" || handicaps === null) return undefined;
+
+  const out: SeatHandicaps = {};
+  for (const seat of SEATS) {
+    const handicap = handicapShape((handicaps as Record<string, unknown>)[seat]);
+    if (handicap !== undefined) out[seat] = handicap;
+  }
+  return Object.keys(out).length === 0 ? undefined : out;
+}
+
 // ---------------------------------------------------------------------------------------------
 // startup
 // ---------------------------------------------------------------------------------------------
@@ -130,8 +204,17 @@ type Status =
   | { kind: "loading" }
   | { kind: "no-engine"; missing: readonly string[]; message: string }
   | { kind: "no-game"; message: string }
-  /** `decks` is kept for the dev handle: spec 01 replays them with the log (ASSUMPTION A2). */
-  | { kind: "ready"; session: HotseatSession; defs: CardDefs | null; decks: [string[], string[]] };
+  /**
+   * `decks` and `handicaps` are kept for the dev handle: spec 01 replays the decks with the log
+   * (ASSUMPTION A2), and a handicapped game (spec 25) needs its handicaps too.
+   */
+  | {
+      kind: "ready";
+      session: HotseatSession;
+      defs: CardDefs | null;
+      decks: [string[], string[]];
+      handicaps: SeatHandicaps;
+    };
 
 function catalogOf(port: EnginePort): CardDefs | null {
   if (port.catalog === undefined) return null;
@@ -145,7 +228,10 @@ function catalogOf(port: EnginePort): CardDefs | null {
 
 function startSession(port: EnginePort, params: HotseatParams): Status {
   const defs = catalogOf(port);
-  const resolved = resolveDecks(params.a, params.b, defs ?? {}, readInjectedDecks());
+  const handicaps = readInjectedHandicaps();
+  // R184: a handicapped seat's deck holds its handicap's size, so the readable pre-check agrees.
+  const sizes: [number, number] = [handicaps?.p1?.deckSize ?? DECK_SIZE, handicaps?.p2?.deckSize ?? DECK_SIZE];
+  const resolved = resolveDecks(params.a, params.b, defs ?? {}, readInjectedDecks(), sizes);
   if ("error" in resolved) return { kind: "no-game", message: resolved.error };
 
   try {
@@ -154,10 +240,12 @@ function startSession(port: EnginePort, params: HotseatParams): Status {
       decks: resolved.decks,
       engine: port,
       ...(defs === null ? {} : { catalog: defs }),
+      ...(handicaps === undefined ? {} : { handicaps }),
     });
-    return { kind: "ready", session, defs, decks: resolved.decks };
+    return { kind: "ready", session, defs, decks: resolved.decks, handicaps: handicaps ?? {} };
   } catch (cause) {
-    // `createGame` throws on an illegal deck (§2.6) — the engine's ruling, printed as given.
+    // `createGame` throws on an illegal deck (§2.6) or handicap (R184) — the engine's ruling,
+    // printed as given.
     return { kind: "no-game", message: cause instanceof Error ? cause.message : String(cause) };
   }
 }
@@ -228,10 +316,12 @@ function Hotseat({
   session,
   defs,
   decks,
+  handicaps,
 }: {
   session: HotseatSession;
   defs: CardDefs | null;
   decks: [string[], string[]];
+  handicaps: SeatHandicaps;
 }) {
   useSessionVersion(session);
   const [error, setError] = useState<string | null>(null);
@@ -276,6 +366,9 @@ function Hotseat({
       get decks() {
         return decks;
       },
+      get handicaps() {
+        return handicaps;
+      },
       dispatch: (action: DevAction) => {
         // `createHotseat` re-stamps `playerId` with the seat, so the extra key is overwritten.
         if (action.playerId !== undefined) switchTo(action.playerId);
@@ -290,7 +383,7 @@ function Hotseat({
     return () => {
       if (window.__jackioh === handle) delete window.__jackioh;
     };
-  }, [session, dispatch, switchTo, decks]);
+  }, [session, dispatch, switchTo, decks, handicaps]);
 
   const view = session.view();
   const legal = session.legal();
@@ -369,7 +462,7 @@ export function HotseatRoute() {
     return <GamePanel message={status.message} params={params} />;
   }
 
-  return <Hotseat session={status.session} defs={status.defs} decks={status.decks} />;
+  return <Hotseat session={status.session} defs={status.defs} decks={status.decks} handicaps={status.handicaps} />;
 }
 
 export default HotseatRoute;

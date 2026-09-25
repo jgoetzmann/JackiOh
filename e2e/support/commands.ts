@@ -44,7 +44,9 @@ import {
 import type {
   ActionInput,
   EventType,
+  E2EDeckInjection,
   FixtureDeck,
+  FixtureHandicap,
   GameStateLike,
   JackiOhDevHandle,
   PlayerId,
@@ -68,6 +70,11 @@ export type SeedGameOptions = {
    * spec 02 want. `manual` leaves them open for the spec to drive.
    */
   mulligan?: "keep" | "manual";
+  /**
+   * Runs in the visit's `onBeforeLoad` after the deck injection, for a spec that has to seed more of
+   * the page's storage before the app boots (spec 25 slows the effects down for its screenshots).
+   */
+  onBeforeLoad?: (win: Cypress.AUTWindow) => void;
 };
 
 export type PromptStep = PromptAnswer & { kind?: PromptKind };
@@ -93,12 +100,26 @@ export type SaveTrioInput = { id?: string; name: string; deckIds: (string | null
  *
  *     cy.playByName("Knockoff Temu", { expectAnimating: "radiantSet" });
  *     cy.attack(attacker, { hero: "opponent" }, { expectAnimating: ["attackCancelled"] });
+ *
+ * `during` is the same window for anything else a spec has to see before the board catches up — a
+ * notice that stays until the next view, a number pop — run after `expectAnimating` and before the
+ * drain. Its commands must be retried assertions: nothing in it may wait on a clock.
+ *
+ *     cy.endTurn({ expectAnimating: "fatigue", during: () => cy.get(ts(pileNoticeId("opponent"))).should(…) });
  */
 export type ActOptions = {
   expectAnimating?: EventType | EventType[];
+  during?: () => void;
 };
 
 export type PlayCardOptions = ActOptions & {
+  /**
+   * Click the hand card where it can be seen rather than at its centre. On a phone a full hand fans
+   * out and overlaps (each card tilted, its right part under the next one), so the centre is often
+   * another card's, and a player taps the part that shows: `visiblePart` finds that part the way
+   * the browser would hit-test a tap (`elementFromPoint`) and clicks there.
+   */
+  visiblePart?: boolean;
   /** R81: the zone travels in the play action; the client builds it from a board click. */
   zone?: ZoneRef;
   /** R81: further play-time pickers (targets, modes, X, embiggen, tribute), in the order shown. */
@@ -172,20 +193,63 @@ export type WsPlayerResult = {
 // helpers
 // ---------------------------------------------------------------------------------------------
 
+/** A non-negative integer, as R180 wants every handicap field to be. */
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * A fixture's `handicap` (R180), checked the way the engine's `validateHandicap` checks one — five
+ * non-negative integers, a deck size a library can hold (1..LIBRARY_CAP, R184) and an optional
+ * positive `heroHealth` (R290) — so a bad one fails here with the fixture's name instead of as the
+ * route's "no game" panel.
+ */
+function asHandicap(raw: unknown, id: string): FixtureHandicap {
+  expect(raw, `decks/${id}.json handicap`).to.be.an("object");
+  const handicap = raw as Partial<Record<keyof FixtureHandicap, unknown>>;
+  const fields = ["deckSize", "manaBonus", "manaCap", "extraOpeningCards", "extraDrawsPerTurn"] as const;
+  for (const field of fields) {
+    expect(isCount(handicap[field]), `decks/${id}.json handicap.${field} is a non-negative integer (R180)`).to.eq(true);
+  }
+  expect(handicap.deckSize, `decks/${id}.json handicap.deckSize fits a library (R184)`).to.be.within(
+    1,
+    constants.LIBRARY_CAP,
+  );
+  if (handicap.heroHealth !== undefined) {
+    expect(
+      isCount(handicap.heroHealth) && handicap.heroHealth >= 1,
+      `decks/${id}.json handicap.heroHealth is a positive integer (R290)`,
+    ).to.eq(true);
+  }
+  return raw as FixtureHandicap;
+}
+
 function asDeck(raw: unknown, id: string): FixtureDeck {
   const deck = raw as Partial<FixtureDeck>;
   expect(deck, `fixture decks/${id}.json`).to.be.an("object");
   expect(deck.cards, `decks/${id}.json cards`).to.be.an("array");
   const cards = deck.cards ?? [];
+  const handicap = deck.handicap === undefined ? undefined : asHandicap(deck.handicap, id);
   // L2/L3 (SPEC §9.4) are enforced by `validateDeck` in the engine, which throws inside
-  // `createGame`. Failing here instead gives a readable message before the app is even loaded.
-  expect(cards.length, `decks/${id}.json holds DECK_SIZE cards`).to.eq(constants.DECK_SIZE);
+  // `createGame`. Failing here instead gives a readable message before the app is even loaded. A
+  // handicapped seat's deck holds its handicap's size instead of L2's (R184).
+  const size = handicap?.deckSize ?? constants.DECK_SIZE;
+  expect(
+    cards.length,
+    handicap === undefined ? `decks/${id}.json holds DECK_SIZE cards` : `decks/${id}.json holds its handicap's deckSize (R184)`,
+  ).to.eq(size);
   expect(new Set(cards).size, `decks/${id}.json has no duplicate ids (L3)`).to.eq(cards.length);
   const known = new Set(Object.keys(CARD_NAMES).map((index) => catalogId(Number(index))));
   for (const card of cards) {
     expect(known.has(card), `decks/${id}.json: "${card}" is a SPEC §8 catalog id (L6)`).to.eq(true);
   }
-  return { id, spec: deck.spec ?? id, description: deck.description ?? "", cards };
+  return {
+    id,
+    spec: deck.spec ?? id,
+    description: deck.description ?? "",
+    cards,
+    ...(handicap === undefined ? {} : { handicap }),
+  };
 }
 
 function exists(selector: string): Cypress.Chainable<boolean> {
@@ -220,12 +284,18 @@ function isPicked($option: JQuery<HTMLElement>): boolean {
   return element.attr("aria-pressed") === "true" || element.attr("data-selected") === "true";
 }
 
-/** BUILD M5-T4: assert the animation this command just caused, before it is drained. */
-function captureAnimating(expected: EventType | EventType[] | undefined): void {
-  if (expected === undefined) return;
-  for (const event of Array.isArray(expected) ? expected : [expected]) {
-    cy.expectAnimating(event);
+/**
+ * BUILD M5-T4: assert the animation this command just caused, and run the caller's `during`, before
+ * it is drained.
+ */
+function captureAnimating(options: ActOptions): void {
+  const expected = options.expectAnimating;
+  if (expected !== undefined) {
+    for (const event of Array.isArray(expected) ? expected : [expected]) {
+      cy.expectAnimating(event);
+    }
   }
+  options.during?.();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -350,20 +420,33 @@ Cypress.Commands.add("seedGame", (options: SeedGameOptions) => {
 
   cy.fixture(`decks/${a}.json`).then((rawA) => {
     cy.fixture(`decks/${b}.json`).then((rawB) => {
+      const deckA = asDeck(rawA, a);
+      const deckB = asDeck(rawB, b);
       const decks = {
-        [a]: asDeck(rawA, a).cards,
-        [b]: asDeck(rawB, b).cards,
+        [a]: deckA.cards,
+        [b]: deckB.cards,
+      };
+      // R180: fixture A seats p1 and fixture B seats p2, so their handicaps are p1's and p2's.
+      const handicaps: Partial<Record<PlayerId, FixtureHandicap>> = {
+        ...(deckA.handicap === undefined ? {} : { p1: deckA.handicap }),
+        ...(deckB.handicap === undefined ? {} : { p2: deckB.handicap }),
+      };
+      const injection: E2EDeckInjection = {
+        seed,
+        decks,
+        ...(Object.keys(handicaps).length === 0 ? {} : { handicaps }),
       };
       cy.visit(hotseatUrl(seed, a, b), {
         onBeforeLoad(win) {
           // ASSUMPTION A1: in E2E mode the hotseat route resolves `a=`/`b=` from this injection
-          // before falling back to its built-in dev decks.
-          win.__jackiohE2E = { seed, decks };
+          // before falling back to its built-in dev decks, and creates the game with its handicaps.
+          win.__jackiohE2E = injection;
           try {
-            win.localStorage.setItem(DECKS_STORAGE_KEY, JSON.stringify({ seed, decks }));
+            win.localStorage.setItem(DECKS_STORAGE_KEY, JSON.stringify(injection));
           } catch (error) {
             Cypress.log({ name: "seedGame", message: `localStorage unavailable: ${String(error)}` });
           }
+          options.onBeforeLoad?.(win);
         },
       });
     });
@@ -458,13 +541,44 @@ Cypress.Commands.add("concede", () => {
 // playCard / attack / answerPrompt / endTurn
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A point of `element` no other element covers, relative to its box, found on a grid the way a tap
+ * is hit-tested; `null` when every point of the grid belongs to something else.
+ */
+function uncoveredPoint(element: HTMLElement): { x: number; y: number } | null {
+  const rect = element.getBoundingClientRect();
+  const steps = 8;
+  for (let row = 1; row < steps; row += 1) {
+    for (let col = 1; col < steps; col += 1) {
+      const x = rect.left + (rect.width * col) / steps;
+      const y = rect.top + (rect.height * row) / steps;
+      const hit = element.ownerDocument.elementFromPoint(x, y);
+      if (hit !== null && element.contains(hit)) return { x: x - rect.left, y: y - rect.top };
+    }
+  }
+  return null;
+}
+
+/** Click the part of an element that shows (see `PlayCardOptions.visiblePart`). */
+function clickUncovered(selector: string): void {
+  cy.get(selector, { timeout: timeouts.view })
+    .should(($element) => {
+      expect(uncoveredPoint($element[0] as HTMLElement), `some part of ${selector} is not covered`).to.not.eq(null);
+    })
+    .then(($element) => {
+      const point = uncoveredPoint($element[0] as HTMLElement) ?? { x: 0, y: 0 };
+      cy.wrap($element, { log: false }).click(point.x, point.y);
+    });
+}
+
 Cypress.Commands.add("playCard", (instanceId: string, options: PlayCardOptions = {}) => {
-  cy.get(ts(handCardId(instanceId)), { timeout: timeouts.view }).click();
+  if (options.visiblePart === true) clickUncovered(ts(handCardId(instanceId)));
+  else cy.get(ts(handCardId(instanceId)), { timeout: timeouts.view }).click();
   if (options.zone !== undefined) clickZone(options.zone);
   for (const step of options.answers ?? []) {
     cy.answerPrompt(step.kind ?? null, step);
   }
-  captureAnimating(options.expectAnimating);
+  captureAnimating(options);
   cy.settled();
 });
 
@@ -475,7 +589,7 @@ Cypress.Commands.add("attack", (attackerId: string, target: AttackTarget, option
   } else {
     cy.get(ts(cardId(target.card))).click();
   }
-  captureAnimating(options.expectAnimating);
+  captureAnimating(options);
   cy.settled();
 });
 
@@ -544,7 +658,7 @@ Cypress.Commands.add("answerPrompt", (kind: PromptKind | null, answer: PromptAns
 Cypress.Commands.add("endTurn", (options: ActOptions & { handOver?: boolean } = {}) => {
   cy.get(ts(END_TURN), { timeout: timeouts.view }).should("not.be.disabled");
   cy.get(ts(END_TURN)).click();
-  captureAnimating(options.expectAnimating);
+  captureAnimating(options);
   cy.settled();
   if (options.handOver ?? true) cy.handOver();
 });
@@ -560,7 +674,7 @@ Cypress.Commands.add("handOver", () => {
 
 Cypress.Commands.add("switchPosition", (instanceId: string, options: ActOptions = {}) => {
   cy.get(ts(switchPositionId(instanceId))).click();
-  captureAnimating(options.expectAnimating);
+  captureAnimating(options);
   cy.settled();
 });
 
@@ -571,7 +685,7 @@ Cypress.Commands.add("offerDraw", () => {
 
 Cypress.Commands.add("usePower", (options: ActOptions = {}) => {
   cy.get(ts(POWER)).click();
-  captureAnimating(options.expectAnimating);
+  captureAnimating(options);
   cy.settled();
 });
 
@@ -1047,10 +1161,13 @@ Cypress.Commands.add("replayCheck", (label: string) => {
     const { seed, decks, log, state } = handle;
     expect(decks, "window.__jackioh.decks (ASSUMPTION A2)").to.be.an("array");
     expect(log, "window.__jackioh.log (ASSUMPTION A2)").to.be.an("array");
+    // R180: a handicapped game (a fixture's `handicap`) folds only with the handicaps it was created
+    // with. None is `{}` on the handle, and then the payload is exactly what it always was.
+    const handicaps = handle.handicaps ?? {};
     return cy
       .task<{ replayHash: string; browserHash: string; errors: unknown[] }>(
         "replayHash",
-        { label, seed, decks, log, state },
+        { label, seed, decks, log, state, ...(Object.keys(handicaps).length === 0 ? {} : { handicaps }) },
         { timeout: timeouts.task },
       )
       .should((result) => {

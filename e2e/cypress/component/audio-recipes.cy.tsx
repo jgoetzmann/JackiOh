@@ -57,12 +57,12 @@ const SILENT = 0.001;
 /** B16's tolerance. */
 const RMS_TOLERANCE = 0.01;
 
-/** The SfxId union from types.ts, in its order: SFX_IDS is "all 28, in the order of the union". */
+/** The SfxId union from types.ts, in its order: SFX_IDS is "all 30, in the order of the union". */
 const EXPECTED_IDS = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel", "entrance",
+  "cancel", "entrance", "fatigue", "refuse",
 ] as const;
 
 /** The Surface's recipe table, `durationMs` column: the window each recipe must fall silent in. */
@@ -95,6 +95,8 @@ const DURATION_MS: Readonly<Record<(typeof EXPECTED_IDS)[number], number>> = {
   drain: 600,
   cancel: 260,
   entrance: 1400,
+  fatigue: 650,
+  refuse: 400,
 };
 
 /** B14's params sets, reused so the browser checks the same inputs the fake context does. */
@@ -144,7 +146,7 @@ function rms(samples: Float32Array): number {
 }
 
 describe("polish 2 — SFX recipes rendered by a real browser", () => {
-  it("B15 renders all 28 SfxIds, each with a recipe and the Surface's durationMs", () => {
+  it("B15 renders all 30 SfxIds, each with a recipe and the Surface's durationMs", () => {
     expect([...SFX_IDS], "SFX_IDS, in the order of the SfxId union").to.deep.eq([...EXPECTED_IDS]);
     for (const id of EXPECTED_IDS) {
       const spec = SFX[id];
@@ -315,7 +317,7 @@ const LOUD: readonly Cue[] = [
 ];
 const LOUD_BAND = [-5, 1] as const;
 const ROUTINE: readonly Cue[] = [
-  ...(["draw", "play", "summon", "attack", "shieldShatter", "heal", "buff", "debuff", "burn", "trapSet", "spell", "whoosh", "radiant", "lock", "poof", "notify", "cancel"] as const).map(
+  ...(["draw", "play", "summon", "attack", "shieldShatter", "heal", "buff", "debuff", "burn", "trapSet", "spell", "whoosh", "radiant", "lock", "poof", "notify", "cancel", "fatigue", "refuse"] as const).map(
     (id): Cue => ({ id, params: {} }),
   ),
   { id: "mana", params: { mine: true } },

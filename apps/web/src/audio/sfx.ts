@@ -31,7 +31,7 @@ export const SFX_IDS: readonly SfxId[] = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel", "entrance",
+  "cancel", "entrance", "fatigue", "refuse",
 ];
 
 /** Every card family a summon or spell may be given (types.ts SfxTimbre), for the tests. */
@@ -731,6 +731,50 @@ const entrance: SfxRecipe = (ctx, out, at, params) => {
   return len;
 };
 
+/**
+ * R319: a draw finds the library empty (`fatigue`, before the hit's own impact): two hollow knocks
+ * on an empty box, the second lower, and a low sigh that sinks under them.
+ */
+const fatigue: SfxRecipe = (ctx, out, at) => {
+  const len = 0.62;
+  const k = kit(ctx, out, at, len);
+  const noise = noiseSource(k);
+  const knocks: readonly (readonly [number, number])[] = [
+    [0, 520],
+    [0.16, 400],
+  ];
+  for (const [start, hz] of knocks) {
+    chain(noise, biquad(k, "bandpass", hz * 2, 4), envelope(k, start, 0.002, 1.3, start + 0.08), out);
+    tone(k, out, "sine", hz / 3, start, 0.002, 0.7, start + 0.14);
+  }
+  run(k, noise, 0, 0.26);
+  const sigh = tone(k, out, "triangle", 196, 0.22, 0.06, 0.32, len);
+  glide(k, sigh.frequency, 98, len);
+  return len;
+};
+
+/**
+ * R319: a full library turns a card away (`libraryOverflow`): a dull two-note "no", falling a
+ * fourth, muffled, with a soft thud as the card bounces off.
+ */
+const refuse: SfxRecipe = (ctx, out, at) => {
+  const len = 0.36;
+  const k = kit(ctx, out, at, len);
+  const muffle = biquad(k, "lowpass", 900, 0.7);
+  chain(muffle, out);
+  const notes: readonly (readonly [number, number, number])[] = [
+    [0, 294, 0.14],
+    [0.13, 220, len],
+  ];
+  for (const [start, hz, stop] of notes) {
+    const note = oscillator(k, "square", hz, start);
+    chain(note, envelope(k, start, 0.006, 0.5, stop), muffle);
+    run(k, note, start, stop);
+  }
+  tone(k, out, "sine", 90, 0.13, 0.004, 0.55, 0.3);
+  return len;
+};
+
 export const SFX: { readonly [K in SfxId]: SfxSpec } = {
   draw: { recipe: draw, durationMs: 180, gain: 1 },
   play: { recipe: play, durationMs: 260, gain: 0.82 },
@@ -760,4 +804,6 @@ export const SFX: { readonly [K in SfxId]: SfxSpec } = {
   drain: { recipe: drain, durationMs: 600, gain: 0.69 },
   cancel: { recipe: cancel, durationMs: 260, gain: 1 },
   entrance: { recipe: entrance, durationMs: 1400, gain: 0.6 },
+  fatigue: { recipe: fatigue, durationMs: 650, gain: 0.45 },
+  refuse: { recipe: refuse, durationMs: 400, gain: 0.27 },
 };

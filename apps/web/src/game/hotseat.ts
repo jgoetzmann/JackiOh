@@ -3,8 +3,8 @@
 // Framework-free and deterministic on purpose. No React, no timers, no `Math.random`, no `Date`:
 // the whole point of the M5-T3 acceptance — "the same seed and actions reproduce the same final
 // state hash in the browser and in vitest" — is that this object is a pure function of
-// (seed, decks, the ordered list of dispatched bodies). A random or clock-derived nonce would
-// break that, because the nonce travels inside the recorded `Action` that `replay.fold` folds.
+// (seed, decks, handicaps, the ordered list of dispatched bodies). A random or clock-derived nonce
+// would break that, because the nonce travels inside the recorded `Action` that `replay.fold` folds.
 //
 // It holds no rules. `legal()` is `legalActions`, `view()` is `viewFor`, and `dispatch` hands the
 // action straight to `reduce` without pre-validating it (CLAUDE.md rule 7). `EngineState` stays
@@ -14,7 +14,7 @@
 import { opponentOf } from "@jackioh/shared";
 import type { Action, ActionBody, CardDefs, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
-import type { EnginePort, EngineState } from "./engine.ts";
+import type { CreateGameArgs, EnginePort, EngineState } from "./engine.ts";
 
 /** Seat order: `decks[0]` is p1's library, `decks[1]` is p2's (SPEC §10.1, `createGame`). */
 export const SEATS: readonly [PlayerId, PlayerId] = ["p1", "p2"];
@@ -27,6 +27,13 @@ export type HotseatOptions = {
   decks: [string[], string[]];
   engine: EnginePort;
   catalog?: CardDefs;
+  /**
+   * R180: a seat's handicap, handed to `createGame` untouched. Only the E2E build of `/dev/hotseat`
+   * sets one (a fixture deck's `handicap`, e.g. a 4-card library for R315's fatigue or a 60-card
+   * one for R316's full library); the engine validates it (R184) and throws on a bad one, as it does
+   * on a bad deck. Omitted, the game is SPEC's own and `createGame` is called exactly as before.
+   */
+  handicaps?: CreateGameArgs["handicaps"];
   /** Override only in tests that want to prove the nonces are ours; the default is `n0`, `n1`, … */
   nonce?: (n: number) => string;
 };
@@ -74,6 +81,7 @@ export function createHotseat(options: HotseatOptions): HotseatSession {
     seed: options.seed,
     decks: options.decks,
     ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
+    ...(options.handicaps === undefined ? {} : { handicaps: options.handicaps }),
   });
   const begun = engine.beginGame(created);
   if (begun.error !== undefined) {

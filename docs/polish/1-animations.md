@@ -66,7 +66,8 @@ the redacted stream (R202). No image assets, no new runtime dependency, 60 fps o
 | Health loss (play: purple number) | `healthLost` | `drain` | Violet void wisps sink into the hero, with a violet "−N" splat. |
 | Divine Shield pop (wiki) | `divineShieldLost`; `keywordGranted` Divine Shield; a persistent bubble | `shieldBreak`, `keyword`, CSS | Golden shards burst outward and a gold ring expands. A persistent translucent golden cocoon sits on every card that shows the Divine Shield keyword. |
 | Death that leaves a mark (Berbece) | `destroyed` | `death` | A canvas crack across the card, embers burning away across its box, then smoke. The existing `jk-dissolve` keyframes gain a brightness flash. |
-| Burn (brief: fire and burn-away) | `burned` | `burn` | Fire and embers rise from the hand region while the existing flip-and-burn keyframes play. |
+| Burn (brief: fire and burn-away) | `burned` | `burn` | Fire and embers rise from the hand region while the board's own burn notice (R318: the card rising under "Hand full") scorches and burns away, and embers land at the graveyard. |
+| An empty deck, a full library (R318, added 2026-09-25) | `fatigue`, `libraryOverflow` | `fatigue`, `overflow` | Dust and smoke puff out of an empty library and void wisps streak to its hero; a refusal ring flares on a full library, and the card it turned away fizzles or flies to the graveyard as a back. The "Fatigue N" and "Library full" notices are the board's own (`OverflowNotices.tsx`), not effects. |
 | Secret reveal flash (wiki: class colour) | `trapFired` | `trap` | An arcane (violet) shock ring and mote burst at the trap's card or zone (R154), with a small punch shake. The flip keyframes gain a violet glow. |
 | Golden sheen (Curzon) | `radiantSet` | `radiant` | A gold sheen sweeps across the card, with gold sparkles and soft rays on a field card. |
 | Smoke puff (brief: transform and fuse) | `transformed`, `fused`, `bounced`, `attackCancelled` | `smoke`, `fuse`, `bounce`, `fizzle` | A grey smoke puff. Fuse also streams arcane motes from each ingredient into the survivor. |
@@ -183,7 +184,9 @@ export type FxRecipe =
   | "lunge"
   | "fizzle"
   | "mana"
-  | "banner";
+  | "banner"
+  | "fatigue"
+  | "overflow";
 
 /** The optional `fx` field of an `ANIMATIONS` row: which recipe decorates the event. Data only. */
 export type FxDescriptor = { readonly recipe: FxRecipe };
@@ -249,6 +252,9 @@ export const FX_DEATH_SMOKE_AT = 0.5;
 export const FX_RADIANT_BURST_AT = 0.4;
 export const FX_TRAP_BURST_AT = 0.2;
 export const FX_BURN_AT = 0.25;
+export const FX_FATIGUE_STREAK_AT = 0.35;      // R318: the fatigue hit leaves the empty library at 0.35 D…
+export const FX_FATIGUE_FLIGHT_FRACTION = 0.6; // …and reaches the hero at 0.95 D
+export const FX_OVERFLOW_FIZZLE_AT = 0.45;     // R318: a card a full library refuses fizzles here
 export const FX_MANA_STAGGER_MS = 40;
 export const FX_MANA_MAX_SPARKS = 10;
 export const FX_SHAKE_MIN_DAMAGE = 3;
@@ -396,8 +402,8 @@ Every `ANIMATIONS` row keeps its `animation`, `durationMs`, `testid` and `target
 | `destroyed` | `death` | `costChanged` | `glint` | `manaChanged` | `mana` |
 | `exiled` | `void` | `modifierChanged` | `glint` | `turnStarted` | `banner` |
 | `bounced` | `bounce` | `radiantSet` | `radiant` | `turnAutoEnded` | `banner` |
-| `burned` | `burn` | `transformed` | `smoke` | | |
-| `discarded` | `discard` | | | | |
+| `burned` | `burn` | `transformed` | `smoke` | `fatigue` | `fatigue` |
+| `discarded` | `discard` | | | `libraryOverflow` | `overflow` |
 
 No `fx`: `cardResolved`, `enteredGraveyard`, `positionSwitched`, `rotated`, `swapped`, `turnEnded`,
 `promptOpened`, `promptAnswered`, `drawOffered`, `drawAnswered`, `gameOver`. The `gameOver` row's
@@ -590,7 +596,9 @@ point. `side(x)` is `sideOf(view, x)`. Fractions such as `FX_SLAM_AT·D` are rou
 | `death` | `destroyed` | tgt `card-*`: `crack(tgt, 0)`, `burst(ember, tgt, area, FX_DEATH_EMBER_AT·D)`, `burst(smoke, tgt, area, FX_DEATH_SMOKE_AT·D)`. Otherwise (a pile): `burst(smoke, tgt, point, 0)`. |
 | `void` | `exiled` | `ring(void, tgt, 0)`, `burst(void, tgt, area, 0)` |
 | `bounce` | `bounced` | `burst(smoke, tgt, area, 0)`, plus `ghost(tgt → hand-<side(owner)>, 0)` when tgt is `card-*` |
-| `burn` | `burned` | `burst(fire, tgt, area, FX_BURN_AT·D)`, `burst(ember, tgt, area, FX_BURN_AT·D)` (tgt is `hand-<side(owner)>`) |
+| `burn` | `burned` | `burst(fire, tgt, area, FX_BURN_AT·D)`, `burst(ember, tgt, area, FX_BURN_AT·D)` (tgt is `hand-<side(owner)>`), `burst(ember, graveyard-<side(owner)>, point, D)` (R318: what is left of it reaches the graveyard) |
+| `fatigue` | `fatigue` | (R318) Let l = `FX_FATIGUE_STREAK_AT·D` and f = `FX_FATIGUE_FLIGHT_FRACTION·D`. `burst(dust, tgt, area, 0)`, `burst(smoke, tgt, point, 0)` (tgt is `library-<side(player)>`), `projectile(void, tgt → hero-<side(player)>, l, f)`, `burst(void, hero-<side(player)>, point, l + f)`; l + f ≤ D. |
+| `overflow` | `libraryOverflow` | (R318) `ring(fire, tgt, 0)` (tgt is `library-<side(player)>`). `outcome` graveyard: `ghost(tgt → graveyard-<side(player)>, 0)`, `burst(ember, graveyard-<side(player)>, point, D)`. notCreated or ceased: `burst(smoke, tgt, point, FX_OVERFLOW_FIZZLE_AT·D)`. |
 | `discard` | `discarded` | `ghost(tgt → graveyard-<side(owner)>, 0)`, `burst(ember, graveyard-<side(owner)>, point, D)` |
 | `draw` | `drawn` | `ghost(library-<side(player)> → hand-<side(player)>, 0)`, `burst(sparkle, hand-<side(player)>, point, D)` |
 | `handGlint` | `addedToHand` | `burst(sparkle, hand-<side(player)>, area, 0)` |
@@ -835,7 +843,7 @@ and `data-filled` are e2e contracts, which is why they are safe to target.
 
 Table and runner (slice B):
 
-- **B1** `ANIMATIONS` keeps every row's `animation`, `durationMs`, `testid` and `target`, and exactly the 30 rows in S4 carry `fx: { recipe }` with that recipe. The other 11 carry none. *Observed:* `animations.fx.test.ts` compares the `type → recipe | null` map with S4's table.
+- **B1** `ANIMATIONS` keeps every row's `animation`, `durationMs`, `testid` and `target`, and exactly the 32 rows in S4 carry `fx: { recipe }` with that recipe (30 before R318 added `fatigue` and `libraryOverflow`). The other 11 carry none. *Observed:* `animations.fx.test.ts` compares the `type → recipe | null` map with S4's table.
 - **B2** `subscribeSignals` gets `start` synchronously as each entry goes in flight, carrying its actual `durationMs` and its planning `view`. It gets `idle` each time the pump fires `onSettled`, `drain` from `drain()` and `reset` from `reset()`. A zero-duration entry emits no `start`. *Observed:* listener spy plus a fake `schedule`.
 - **B3** At default settings the runner schedules exactly what it did before this task. *Observed:* `animations.test.ts` passes without modification.
 - **B4** R201: at speed s, each non-zero entry becomes `max(MIN_ENTRY_MS, round(d / s))` and the burst budget becomes `BURST_BUDGET_MS / s`. s is clamped to [0.5, 2], and s = 1 changes nothing. *Observed:* the `schedule` spy with a `settings` option returning speeds 2, 0.5 and 5.
@@ -1040,7 +1048,7 @@ file. Slices build blind against the Surface.
 - **Shared-file edits:** none
 - **Brief:** Write `types.ts` and `constants.ts` verbatim from S1 and S2. They are the contract every other slice compiles against.
   - Build `settings.ts` to S3: `useSyncExternalStore`, with `localStorage` only inside `try/catch`.
-  - Extend `animations.ts` to S4: the `fx` descriptor on the 30 rows, `entry.view`, `subscribeSignals` with the four signals, the live `settings` read at enqueue, `scaleForSpeed`, the budget divided by speed and `reducedMotionNow`.
+  - Extend `animations.ts` to S4: the `fx` descriptor on the 30 rows (32 since R318), `entry.view`, `subscribeSignals` with the four signals, the live `settings` read at enqueue, `scaleForSpeed`, the budget divided by speed and `reducedMotionNow`.
   - At default settings nothing observable may change. `animations.test.ts` must stay green untouched.
 
 ### Slice C: `cue-planner`
