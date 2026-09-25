@@ -322,7 +322,7 @@ describe("results (M7-T2)", () => {
       const now = deps.timers.now();
       let row = await seriesRow(deps);
       for (const [index, seat] of (["p1", "p2"] as const).entries()) {
-        if (row.status !== "picking" || row.sides[index].pick !== null) continue;
+        if (row.status !== "picking" || row.sides[index]?.pick !== null) continue;
         const next = pickDeck(row, seat, slots[index] ?? 0, now);
         await deps.store.series.update(next);
         row = next;
