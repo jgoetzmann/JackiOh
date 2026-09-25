@@ -5,9 +5,17 @@
 // The line it walks, on the lesson's seed: send the 4-mana 7/7 back in the mulligan (§2.1 step 3);
 // play The Coin (R244, R245) and Felinor Fiender with it on the first turn; fill the board with
 // Felinor Tokens on the second, which Fiender counts (§7, #62, #92); make The Rock Radiant with Glowy
-// Jelly Bean on the third (§5.2, #26); and play The Rock on the fourth with a Felinor Token as its
-// Tribute (§6.3, #66). Radiant numbers are never stated: the coach says "stronger" and points at the
-// card, so the text holds whatever the Radiant faces become.
+// Jelly Bean on the third (§5.2, #26); play The Rock on the fourth with a Felinor Token as its
+// Tribute (§6.3, #66); and on the fifth play Reno, which glows yellow because the hero is hurt
+// (R195). Radiant numbers are never stated: the coach says "stronger" and points at the card, so the
+// text holds whatever the Radiant faces become.
+//
+// Every turn of the player's ends in `yourMove` (advice.ts), which names the next sensible move
+// once the turn's lesson is through, so the coach is never silent on the player's own turn; the last
+// one lasts until the game is won. A turn's lesson that cannot happen when the player's turn comes
+// (a card it needs is missing, or the mana, or a free zone), or no longer can because the player
+// spent the mana on something else, is dropped rather than waited for (`outOfReach`): the coach goes
+// straight on to the turn's `yourMove` instead of pointing at a play the engine will not take.
 //
 // Every read is of the view or of `legalActions` (CLAUDE.md rule 7): "can The Rock be played with a
 // token as its Tribute?" is answered by finding that play among the legal ones, never by counting
@@ -15,10 +23,9 @@
 
 import type { ActionBody, PlayerView } from "@jackioh/shared";
 
+import { moveText, nextMove, yourMove } from "../advice.ts";
 import type { CoachCtx, CoachStep, LessonScript } from "../coach.ts";
 import {
-  attackWith,
-  endTurn,
   freshOf,
   info,
   inHand,
@@ -58,13 +65,8 @@ function myTokens(view: PlayerView): string[] {
     .map((unit) => unit.instanceId);
 }
 
-/** A card of this definition is on the human's field or in their graveyard or exile: it was played. */
-function playedAlready(view: PlayerView, defId: string): boolean {
-  return (
-    unitOf(view, "you", defId) !== undefined ||
-    view.you.graveyard.some((card) => card.defId === defId) ||
-    view.you.exile.some((card) => card.defId === defId)
-  );
+function fienderOnField(ctx: CoachCtx): boolean {
+  return unitOf(ctx.view, "you", FELINOR_FIENDER) !== undefined;
 }
 
 /** The Rock is Radiant, in hand or on the field. */
@@ -85,11 +87,6 @@ function beanOnRock(ctx: CoachCtx): Play[] {
   );
 }
 
-/** Glowy Jelly Bean can no longer be played on The Rock: one of them is gone for good. */
-function beanOnRockGone(view: PlayerView): boolean {
-  return inHand(view, GLOWY_JELLY_BEAN) === undefined || playedAlready(view, THE_ROCK);
-}
-
 /**
  * The plays of The Rock the coach asks for: a Felinor Token as the Tribute when there is one, or
  * else the unit worth least (its attack plus health), so the text's advice is what the play does.
@@ -108,6 +105,36 @@ function rockPlays(ctx: CoachCtx): Play[] {
   return plays.filter((play) => cost(play) === cheapest);
 }
 
+/** Reno glows yellow in hand (its condition is met, R195) and the engine offers a play of it. */
+function renoReady(ctx: CoachCtx): boolean {
+  return inHand(ctx.view, RENO)?.conditionActive === true && legalPlays(ctx, RENO).length > 0;
+}
+
+/**
+ * It is the player's main phase and what a step is about cannot happen: the step is dropped, shown
+ * or not, so the coach moves on to the turn's `yourMove` rather than wait for it or point at a play
+ * the engine does not offer.
+ */
+function outOfReach(ctx: CoachCtx, possible: (ctx: CoachCtx) => boolean): boolean {
+  return myMain(ctx) && !possible(ctx);
+}
+
+/** The rest of the player's turn: `yourMove` names each next move and is done once the turn has passed. */
+function restOfTurn(id: string): CoachStep {
+  return yourMove({ id, title: "Your move" });
+}
+
+/** A step asking for a play of this card: dropped once the card is gone or the play is out of reach. */
+function playStep(options: Parameters<typeof playCard>[0] & { possible?: (ctx: CoachCtx) => boolean }): CoachStep {
+  const { possible, ...rest } = options;
+  const reachable = possible ?? ((ctx: CoachCtx): boolean => legalPlays(ctx, rest.defId).length > 0);
+  const step = playCard({ ...rest, when: (ctx) => reachable(ctx) && (rest.when === undefined || rest.when(ctx)) });
+  return {
+    ...step,
+    moot: (ctx, since) => (since === null && inHand(ctx.view, rest.defId) === undefined) || outOfReach(ctx, reachable),
+  };
+}
+
 const makeRadiant: CoachStep = {
   id: "make-radiant",
   title: "Make it Radiant",
@@ -116,7 +143,7 @@ const makeRadiant: CoachStep = {
   anchor: { kind: "handCard", defId: GLOWY_JELLY_BEAN },
   when: (ctx) => myMain(ctx) && beanOnRock(ctx).length > 0,
   done: (ctx) => inHand(ctx.view, GLOWY_JELLY_BEAN) === undefined || rockRadiant(ctx.view),
-  moot: (ctx, since) => since === null && beanOnRockGone(ctx.view),
+  moot: (ctx) => outOfReach(ctx, (now) => beanOnRock(now).length > 0),
   expect: (action, ctx) => beanOnRock(ctx).some((play) => sameAction(play, action)),
 };
 
@@ -131,7 +158,7 @@ const playRock: CoachStep = {
   anchor: { kind: "handCard", defId: THE_ROCK },
   when: (ctx) => myMain(ctx) && rockPlays(ctx).length > 0,
   done: (ctx) => inHand(ctx.view, THE_ROCK) === undefined,
-  moot: (ctx, since) => since === null && playedAlready(ctx.view, THE_ROCK),
+  moot: (ctx, since) => (since === null && inHand(ctx.view, THE_ROCK) === undefined) || outOfReach(ctx, (now) => rockPlays(now).length > 0),
   expect: (action, ctx) => rockPlays(ctx).some((play) => sameAction(play, action)),
 };
 
@@ -173,7 +200,7 @@ export const script: LessonScript = {
     }),
     // Both belong to the first turn: once it has passed, "a turn early" is no longer true.
     {
-      ...playCard({
+      ...playStep({
         id: "play-coin",
         title: "Play The Coin",
         text: "Play The Coin now, so you have 2 mana on your very first turn.",
@@ -182,36 +209,37 @@ export const script: LessonScript = {
       moot: (ctx, since) => (since === null && inHand(ctx.view, COIN) === undefined) || myTurnNumber(ctx.view) > 1,
     },
     {
-      ...playCard({
+      ...playStep({
         id: "play-fiender",
         title: "A turn early",
         text: "With 2 mana you can play Felinor Fiender, a 2-cost unit, a whole turn before you normally could.",
         defId: FELINOR_FIENDER,
-        when: (ctx) => myTurnNumber(ctx.view) === 1,
       }),
-      moot: (ctx, since) => (since === null && inHand(ctx.view, FELINOR_FIENDER) === undefined) || myTurnNumber(ctx.view) > 1,
+      moot: (ctx, since) =>
+        (since === null && inHand(ctx.view, FELINOR_FIENDER) === undefined) ||
+        myTurnNumber(ctx.view) > 1 ||
+        outOfReach(ctx, (now) => legalPlays(now, FELINOR_FIENDER).length > 0),
     },
     {
-      ...endTurn({
-        id: "end-first",
-        title: "End your turn",
-        text: "That is all your mana. End your turn.",
-        when: (ctx) => myTurnNumber(ctx.view) === 1 && ctx.view.you.mana.current === 0,
-      }),
-      moot: (ctx, since) => since === null && myTurnNumber(ctx.view) > 1,
+      ...restOfTurn("end-first"),
+      text: (ctx) => {
+        const move = nextMove(ctx);
+        return move?.kind === "end" && ctx.view.you.mana.current === 0 ? "That is all your mana. End your turn." : moveText(ctx, move);
+      },
     },
 
     // --- your second turn: tribes and tokens ---------------------------------------------------
-    info({
-      id: "tribes",
-      title: "Tribes",
-      text: "Some cards belong to a tribe, named at the bottom of the card, like Felinor. Felinor Fiender adds the stats of all your Felinors to its own.",
-      anchor: { kind: "unit", side: "you", defId: FELINOR_FIENDER },
-      when: (ctx) => myMain(ctx) && unitOf(ctx.view, "you", FELINOR_FIENDER) !== undefined,
-      moot: (ctx, since) =>
-        since === null && unitOf(ctx.view, "you", FELINOR_FIENDER) === undefined && inHand(ctx.view, FELINOR_FIENDER) === undefined,
-    }),
-    playCard({
+    {
+      ...info({
+        id: "tribes",
+        title: "Tribes",
+        text: "Some cards belong to a tribe, named at the bottom of the card, like Felinor. Felinor Fiender adds the stats of all your Felinors to its own.",
+        anchor: { kind: "unit", side: "you", defId: FELINOR_FIENDER },
+        when: (ctx) => myMain(ctx) && fienderOnField(ctx),
+      }),
+      moot: (ctx) => outOfReach(ctx, fienderOnField),
+    },
+    playStep({
       id: "play-friend",
       title: "Felinor Tokens",
       text: "Play Friend of Felinors: it fills every empty zone on your side with a Felinor Token, a small unit the card makes.",
@@ -222,12 +250,10 @@ export const script: LessonScript = {
       title: "It grew",
       text: "Every Felinor Token is a Felinor, so Felinor Fiender counts them all. Look how much bigger it is now.",
       anchor: { kind: "unit", side: "you", defId: FELINOR_FIENDER },
-      when: (ctx) => unitOf(ctx.view, "you", FELINOR_FIENDER) !== undefined && myTokens(ctx.view).length > 0,
-      moot: (ctx, since) =>
-        since === null &&
-        ((unitOf(ctx.view, "you", FELINOR_FIENDER) === undefined && inHand(ctx.view, FELINOR_FIENDER) === undefined) ||
-          (inHand(ctx.view, FRIEND_OF_FELINORS) === undefined && myTokens(ctx.view).length === 0)),
+      when: (ctx) => fienderOnField(ctx) && myTokens(ctx.view).length > 0,
+      moot: (ctx, since) => since === null && (!fienderOnField(ctx) || myTokens(ctx.view).length === 0),
     }),
+    restOfTurn("move-2"),
 
     // --- your third turn: Radiant ----------------------------------------------------------------
     info({
@@ -236,7 +262,7 @@ export const script: LessonScript = {
       text: "Every card has an upgraded Radiant form with a gold face. Look at The Rock in your hand and note its stats.",
       anchor: { kind: "handCard", defId: THE_ROCK },
       when: (ctx) => myMain(ctx) && beanOnRock(ctx).length > 0,
-      moot: (ctx, since) => since === null && beanOnRockGone(ctx.view),
+      moot: (ctx) => outOfReach(ctx, (now) => beanOnRock(now).length > 0),
     }),
     makeRadiant,
     info({
@@ -245,8 +271,9 @@ export const script: LessonScript = {
       text: "The Rock is Radiant now: a gold face and stronger stats. Compare them with before. It stays Radiant for the rest of the game.",
       anchor: { kind: "handCard", defId: THE_ROCK },
       when: (ctx) => rockRadiant(ctx.view),
-      moot: (ctx, since) => since === null && !rockRadiant(ctx.view) && beanOnRockGone(ctx.view),
+      moot: (ctx, since) => since === null && !rockRadiant(ctx.view),
     }),
+    restOfTurn("move-3"),
 
     // --- your fourth turn: Tribute ---------------------------------------------------------------
     info({
@@ -255,36 +282,32 @@ export const script: LessonScript = {
       text: "The Rock has Tribute 1: besides its mana, playing it costs one of your own units, which is sacrificed. A token is perfect for that.",
       anchor: { kind: "handCard", defId: THE_ROCK },
       when: (ctx) => myMain(ctx) && rockPlays(ctx).length > 0,
-      moot: (ctx, since) => since === null && playedAlready(ctx.view, THE_ROCK),
+      moot: (ctx) => outOfReach(ctx, (now) => rockPlays(now).length > 0),
     }),
     playRock,
-    attackWith({
-      id: "rock-attack",
+    info({
+      id: "indestructible",
       title: "Indestructible",
-      text: "The Rock is Indestructible: it never takes damage and can't be destroyed. Attack with it.",
-      attacker: THE_ROCK,
+      text: "The Rock is Indestructible: it never takes damage and can't be destroyed. Next turn it can attack.",
+      anchor: { kind: "unit", side: "you", defId: THE_ROCK },
+      when: (ctx) => unitOf(ctx.view, "you", THE_ROCK) !== undefined,
+      moot: (ctx, since) => since === null && unitOf(ctx.view, "you", THE_ROCK) === undefined,
+    }),
+    restOfTurn("move-4"),
+
+    // --- your fifth turn: the yellow glow ------------------------------------------------------
+    // Taught on the card that glows, when it can be played: Reno glows from the turn the hero is
+    // first hurt, but the coach names it only once the mana is there for it.
+    playStep({
+      id: "play-reno",
+      title: "Glowing yellow",
+      text: "Reno glows yellow: its condition is met right now. Your hero is below 30, so its Cry sets it back to 30. Play it.",
+      defId: RENO,
+      possible: renoReady,
     }),
 
-    // --- the rest of the game --------------------------------------------------------------------
-    info({
-      id: "whats-next",
-      title: "What's next",
-      text: "That's every trick. Next, try practice games against the AI at Easy, Medium and Hard, and build decks of your own.",
-      when: (ctx) => myMain(ctx),
-    }),
-    info({
-      id: "draws",
-      title: "Draws",
-      text: "A game can also end in a draw: when the players agree to one, or when it is still going at the end of turn 30.",
-      when: (ctx) => myMain(ctx),
-    }),
-    info({
-      id: "win",
-      title: "Win the game",
-      text: "Now finish it: bring the enemy hero to 0 health.",
-      anchor: { kind: "hero", side: "opponent" },
-      final: true,
-    }),
+    // --- the rest of the game: the coach names each move until it is won -------------------------
+    yourMove({ id: "win", title: "Win the game", final: true }),
   ],
   tips: [
     tip({
@@ -293,21 +316,20 @@ export const script: LessonScript = {
       text: "A Felinor Token is gone, so Felinor Fiender shrank: it counts only the Felinors you have right now. Tokens never go to the graveyard.",
       anchor: { kind: "unit", side: "you", defId: FELINOR_FIENDER },
       when: (ctx) =>
-        unitOf(ctx.view, "you", FELINOR_FIENDER) !== undefined &&
-        freshOf(ctx, "destroyed").some((event) => event.defId === FELINOR_TOKEN && event.owner === ctx.view.viewer),
+        fienderOnField(ctx) && freshOf(ctx, "destroyed").some((event) => event.defId === FELINOR_TOKEN && event.owner === ctx.view.viewer),
     }),
+    // Another card's glow (Reno's is the `play-reno` step), shown when that card can be played.
     tip({
       id: "yellow-glow",
       title: "Glowing yellow",
-      text: (ctx) =>
-        myHand(ctx.view).some((card) => card.defId === RENO && card.conditionActive === true)
-          ? "Reno glows yellow: its condition is met right now. Your hero is below 30, so its Cry would set it back to 30."
-          : "A card in your hand glows yellow: its special condition is met right now, so it does its extra effect if you play it.",
+      text: "A card in your hand glows yellow: its special condition is met right now, so it does its extra effect if you play it.",
       anchor: (ctx) => {
-        const card = myHand(ctx.view).find((candidate) => candidate.conditionActive === true);
+        const card = myHand(ctx.view).find((candidate) => candidate.defId !== RENO && candidate.conditionActive === true);
         return card === undefined ? null : { kind: "handCard", defId: card.defId };
       },
-      when: (ctx) => myMain(ctx) && myHand(ctx.view).some((card) => card.conditionActive === true),
+      when: (ctx) =>
+        myMain(ctx) &&
+        myHand(ctx.view).some((card) => card.defId !== RENO && card.conditionActive === true && legalPlays(ctx, card.defId).length > 0),
     }),
     tip({
       id: "saintess",
