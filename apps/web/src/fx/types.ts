@@ -111,7 +111,9 @@ export type FxRecipe =
   | "lunge"
   | "fizzle"
   | "mana"
-  | "banner";
+  | "banner"
+  | "fatigue"
+  | "overflow";
 
 /** The optional `fx` field of an `ANIMATIONS` row: which recipe decorates the event. Data only. */
 export type FxDescriptor = { readonly recipe: FxRecipe };

@@ -2338,10 +2338,11 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // Proved by apps/web game/overflow.test.tsx "R318 …" (the rows, the notices on both seats, face and
-  // back, the settings) and game/animations.window.test.ts "R318 …" (each new event handed to each
-  // seat's runner exactly once in real games that reach all three).
+  // back, the settings), game/animations.window.test.ts "R318 …" (each new event handed to each
+  // seat's runner exactly once in real games that reach all three) and fx/cues.test.ts "R318 …" (the
+  // `fatigue`, `overflow` and `burn` recipes, the same for a hidden card as for a readable one).
   it("R318 shows fatigue, a full hand and a full library on both seats, each once", () => {
-    provenIn(318, WEB_OVERFLOW_TEST, WEB_ANIMATIONS_WINDOW_TEST);
+    provenIn(318, WEB_OVERFLOW_TEST, WEB_ANIMATIONS_WINDOW_TEST, WEB_FX_CUES_TEST);
   });
 
   // Proved by apps/web audio/cues.test.ts "R319 …": each overflow's own sound, the same for any card.

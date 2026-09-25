@@ -130,6 +130,13 @@ export type GameEvent =
       instanceId: string;
       defId: string;
       outcome: LibraryOverflowOutcome;
+      /**
+       * R316: the card a `notCreated` copy was a copy of (#33 copies whatever its controller plays,
+       * a Trap set face-down included; #90.1 copies itself), so a view judges the copy that was never
+       * made by that card, and a face-down trap's copy does not name it (R97). Engine bookkeeping: a
+       * view never forwards it.
+       */
+      copyOf?: string;
     }
   | { type: "discarded"; instanceId: string; defId: string; owner: PlayerId }
   | { type: "drawn"; player: PlayerId; instanceId: string; defId: string }

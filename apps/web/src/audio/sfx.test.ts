@@ -15,7 +15,7 @@ const UNION_ORDER: SfxId[] = [
   "draw", "play", "summon", "attack", "impact", "shieldShatter", "heal", "buff", "debuff",
   "death", "burn", "trapSet", "trapSting", "spell", "mana", "turnStart", "victory",
   "defeat", "uiClick", "uiHover", "whoosh", "radiant", "lock", "poof", "notify", "drain",
-  "cancel", "entrance",
+  "cancel", "entrance", "fatigue", "refuse",
 ];
 
 /** The design's durationMs column: each recipe's upper bound over all params. */
@@ -48,6 +48,8 @@ const DURATION_MS: Record<SfxId, number> = {
   drain: 600,
   cancel: 260,
   entrance: 1400,
+  fatigue: 650,
+  refuse: 400,
 };
 
 const PARAM_SETS: readonly SfxParams[] = [{}, { amount: 1 }, { amount: 25 }, { mine: true }];
@@ -194,7 +196,7 @@ function rampProblems(run: Run): string[] {
  * --------------------------------------------------------------------------------------------- */
 
 describe("B14 the SFX table", () => {
-  it("B14 SFX_IDS lists all 28 ids, in the order of the SfxId union", () => {
+  it("B14 SFX_IDS lists all 30 ids, in the order of the SfxId union", () => {
     expect([...SFX_IDS]).toEqual(UNION_ORDER);
   });
 

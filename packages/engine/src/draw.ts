@@ -99,9 +99,16 @@ export function addToHand(sink: EngineSink, instance: CardInstance): "hand" | "b
  *
  * R316: whichever it is, the refusal is reported by `libraryOverflow`, so the board can show the
  * full library turning the card away. Nothing else reported a copy that was never made, and an
- * existing unit-token card that ceased to exist here moved with no event at all (§10.3).
+ * existing unit-token card that ceased to exist here moved with no event at all (§10.3). `copyOf`
+ * names the card a new copy copies, when it copies one, so a view can keep a face-down trap's copy
+ * as secret as the trap.
  */
-export function shuffleIntoLibrary(sink: EngineSink, instance: CardInstance, existing: boolean): "library" | "dropped" {
+export function shuffleIntoLibrary(
+  sink: EngineSink,
+  instance: CardInstance,
+  existing: boolean,
+  copyOf?: string,
+): "library" | "dropped" {
   const side = sink.state.players[instance.owner];
   if (side.library.length >= LIBRARY_CAP) {
     const refused = (outcome: LibraryOverflowOutcome): void => {
@@ -111,6 +118,8 @@ export function shuffleIntoLibrary(sink: EngineSink, instance: CardInstance, exi
         instanceId: instance.id,
         defId: instance.defId,
         outcome,
+        // R316: a copy that was never made is judged by the card it copies, which may be face-down.
+        ...(outcome === "notCreated" && copyOf !== undefined ? { copyOf } : {}),
       });
     };
     if (!existing) {

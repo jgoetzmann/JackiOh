@@ -121,6 +121,8 @@ const SAMPLES: { [K in GameEventType]: Extract<GameEvent, { type: K }> } = {
   exiled: { type: "exiled", instanceId: "u2", defId: UNIT, owner: "p1" },
   bounced: { type: "bounced", instanceId: "u3", defId: UNIT, owner: "p1" },
   burned: { type: "burned", instanceId: "cX", defId: SPELL, owner: "p2" },
+  fatigue: { type: "fatigue", player: "p1", count: 2, amount: 2 },
+  libraryOverflow: { type: "libraryOverflow", player: "p2", instanceId: "c80", defId: SPELL, outcome: "notCreated" },
   discarded: { type: "discarded", instanceId: "c11", defId: SPELL, owner: "p1" },
   drawn: { type: "drawn", player: "p1", instanceId: "cY", defId: UNIT },
   addedToHand: { type: "addedToHand", player: "p2", instanceId: "cZ", defId: UNIT },
@@ -166,6 +168,8 @@ const HEADLINE: Record<GameEventType, SfxId | null> = {
   exiled: "poof",
   bounced: "whoosh",
   burned: "burn",
+  fatigue: "fatigue",
+  libraryOverflow: "refuse",
   discarded: "draw",
   drawn: "draw",
   addedToHand: "draw",
@@ -203,6 +207,8 @@ const UNCONDITIONAL: readonly GameEventType[] = [
   "exiled",
   "bounced",
   "burned",
+  "fatigue",
+  "libraryOverflow",
   "discarded",
   "drawn",
   "addedToHand",
@@ -307,6 +313,45 @@ describe("B17 SOUND_CUES is total over GameEvent types", () => {
 /* --------------------------------------------------------------------------------------------- *
  * B18 and B19: which moments speak (R204)
  * --------------------------------------------------------------------------------------------- */
+
+describe("R319: the overflows' sounds", () => {
+  it("R319 a fatigue draw knocks, a full library refuses, a full hand burns: three sounds of their own", () => {
+    const own = new Set([SOUND_CUES.fatigue.sfx, SOUND_CUES.libraryOverflow.sfx, SOUND_CUES.burned.sfx]);
+    expect([...own].sort()).toEqual(["burn", "fatigue", "refuse"]);
+    // Their own: no other row's headline is a knock or a refusal.
+    const others = GAME_EVENT_TYPES.filter((t) => t !== "fatigue" && t !== "libraryOverflow").map((t) => SOUND_CUES[t].sfx);
+    expect(others).not.toContain("fatigue");
+    expect(others).not.toContain("refuse");
+  });
+
+  it("R319 each plays exactly its sound on either seat, for any count and outcome", () => {
+    for (const player of ["p1", "p2"] as const) {
+      for (const count of [1, 9]) {
+        expect(shape({ type: "fatigue", player, count, amount: count })).toEqual([sfx("fatigue")]);
+      }
+      for (const outcome of ["notCreated", "graveyard", "ceased"] as const) {
+        expect(shape({ type: "libraryOverflow", player, instanceId: "c80", defId: SPELL, outcome })).toEqual([sfx("refuse")]);
+      }
+      expect(shape({ type: "burned", instanceId: "cX", defId: UNIT, owner: player })).toEqual([sfx("burn")]);
+    }
+  });
+
+  it("R319 a card behind the sentinel sounds like any other, and none of the three speaks (R203, R204)", () => {
+    const refusedReadable = cuesFor({ type: "libraryOverflow", player: "p2", instanceId: "c80", defId: UNIT, outcome: "ceased" }, ctx());
+    const refusedHidden = cuesFor(
+      { type: "libraryOverflow", player: "p2", instanceId: HIDDEN_DEF_ID, defId: HIDDEN_DEF_ID, outcome: "ceased" },
+      ctx(),
+    );
+    expect(refusedHidden).toEqual(refusedReadable);
+    const burnedReadable = cuesFor({ type: "burned", instanceId: "cX", defId: UNIT, owner: "p2" }, ctx());
+    const burnedHidden = cuesFor({ type: "burned", instanceId: HIDDEN_DEF_ID, defId: HIDDEN_DEF_ID, owner: "p2" }, ctx());
+    expect(burnedHidden).toEqual(burnedReadable);
+    // #4 has play and death lines in the table: neither is spoken when it burns or is refused.
+    expect(voices({ type: "burned", instanceId: "cX", defId: UNIT, owner: "p1" })).toEqual([]);
+    expect(voices({ type: "libraryOverflow", player: "p1", instanceId: "c80", defId: UNIT, outcome: "graveyard" })).toEqual([]);
+    expect(voices({ type: "fatigue", player: "p1", count: 1, amount: 1 })).toEqual([]);
+  });
+});
 
 describe("R204: which moments speak", () => {
   it("R204 (B18) a readable unit's cardPlayed gives the play whoosh and its play line at VOICE_DELAY_MS", () => {

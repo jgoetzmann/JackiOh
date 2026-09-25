@@ -5,7 +5,7 @@ export type SfxId =
   | "draw" | "play" | "summon" | "attack" | "impact" | "shieldShatter" | "heal" | "buff" | "debuff"
   | "death" | "burn" | "trapSet" | "trapSting" | "spell" | "mana" | "turnStart" | "victory"
   | "defeat" | "uiClick" | "uiHover" | "whoosh" | "radiant" | "lock" | "poof" | "notify" | "drain"
-  | "cancel" | "entrance";
+  | "cancel" | "entrance" | "fatigue" | "refuse";
 
 /**
  * A card's sound family, from its public tags and type (cues.ts `timbreFor`, which follows the

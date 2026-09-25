@@ -609,17 +609,23 @@ function redactEvent(state: GameState, viewer: PlayerId, event: GameEvent, repla
       return { ...rest, instanceId: HIDDEN_ID, defId: HIDDEN_ID };
     }
 
+    // R316: a card a full library refused is judged like the cards below: one that went to the
+    // graveyard reads as long as it stays there. One never created is in no pile and never was
+    // anywhere hidden, so it reads as the card it copies does (`copyOf`), and openly when it copies
+    // none — #33's copy of a Trap set face-down names the trap no more than the trap does. `copyOf`
+    // is the engine's bookkeeping and never travels.
+    case "libraryOverflow": {
+      const { copyOf, ...shown } = event;
+      const unread = hidden(event.instanceId) || (copyOf !== undefined && hidden(copyOf));
+      return unread ? { ...shown, instanceId: HIDDEN_ID, defId: HIDDEN_ID } : shown;
+    }
+
     // R317: a burned card lands in its owner's graveyard, or ceases to exist (R11), so both seats read
     // it — the hand it never entered is not where it is — until something takes it somewhere hidden.
-    //
-    // R316: a card a full library refused is judged the same way. One never created is in no pile and
-    // never was anywhere hidden, so it reads openly like any card that is gone; one that went to the
-    // graveyard reads as long as it stays there.
     case "enteredGraveyard":
     case "exiled":
     case "bounced":
     case "burned":
-    case "libraryOverflow":
     case "discarded":
     case "drawn":
     case "addedToHand":

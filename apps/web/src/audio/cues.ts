@@ -183,7 +183,12 @@ export const SOUND_CUES: { readonly [K in GameEventType]: CueRow<K> } = {
   enteredGraveyard: silent("the destroy, discard or resolve that sent it there already sounded"),
   exiled: { sfx: "poof", cues: () => [sfx("poof")] },
   bounced: { sfx: "whoosh", cues: () => [sfx("whoosh")] },
+  // R319: the three overflows (§2.4) each have their own sound, and none varies with the card, so a
+  // card behind the sentinel sounds the same (R203); none is a moment that speaks (R204). A burn is
+  // the full hand's; the hit after a `fatigue` sounds its own impact.
   burned: { sfx: "burn", cues: () => [sfx("burn")] },
+  fatigue: { sfx: "fatigue", cues: () => [sfx("fatigue")] },
+  libraryOverflow: { sfx: "refuse", cues: () => [sfx("refuse")] },
   discarded: { sfx: "draw", cues: () => [sfx("draw")] },
   drawn: { sfx: "draw", cues: () => [sfx("draw")] },
   addedToHand: { sfx: "draw", cues: () => [sfx("draw")] },

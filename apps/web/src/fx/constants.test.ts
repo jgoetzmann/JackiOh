@@ -34,6 +34,9 @@ const S2 = {
   FX_RADIANT_BURST_AT: 0.4,
   FX_TRAP_BURST_AT: 0.2,
   FX_BURN_AT: 0.25,
+  FX_FATIGUE_STREAK_AT: 0.35,
+  FX_FATIGUE_FLIGHT_FRACTION: 0.6,
+  FX_OVERFLOW_FIZZLE_AT: 0.45,
   FX_MANA_STAGGER_MS: 40,
   FX_MANA_MAX_SPARKS: 10,
   FX_SHAKE_MIN_DAMAGE: 3,
@@ -100,6 +103,9 @@ describe("S2 the effects constants", () => {
       constants.FX_RADIANT_BURST_AT,
       constants.FX_TRAP_BURST_AT,
       constants.FX_BURN_AT,
+      constants.FX_FATIGUE_STREAK_AT,
+      constants.FX_FATIGUE_FLIGHT_FRACTION,
+      constants.FX_OVERFLOW_FIZZLE_AT,
       constants.FX_CONCEAL_AT,
       constants.FX_LUNGE_STANDOFF,
       constants.FX_LUNGE_CONTACT_AT,
@@ -108,6 +114,8 @@ describe("S2 the effects constants", () => {
       expect(fraction).toBeGreaterThan(0);
       expect(fraction).toBeLessThanOrEqual(1);
     }
+    // R318: the fatigue streak leaves the library and lands on the hero inside its entry.
+    expect(constants.FX_FATIGUE_STREAK_AT + constants.FX_FATIGUE_FLIGHT_FRACTION).toBeLessThan(1);
   });
 
   it("S2 the speed steps offered to task 7's panel lie in [FX_SPEED_MIN, FX_SPEED_MAX] and include the default", () => {

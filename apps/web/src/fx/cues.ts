@@ -29,6 +29,8 @@ import {
   FX_CRACK_TAIL_MS,
   FX_DEATH_EMBER_AT,
   FX_DEATH_SMOKE_AT,
+  FX_FATIGUE_FLIGHT_FRACTION,
+  FX_FATIGUE_STREAK_AT,
   FX_FUSE_FLIGHT_FRACTION,
   FX_HANDOVER_BANNER_MS,
   FX_HEAL_SPLAT_AT,
@@ -39,6 +41,7 @@ import {
   FX_MANA_STAGGER_MS,
   FX_MAX_TAIL_MS,
   FX_MIND_CONTROL_FLIGHT_FRACTION,
+  FX_OVERFLOW_FIZZLE_AT,
   FX_PROJECTILE_FLIGHT_FRACTION,
   FX_RADIANT_BURST_AT,
   FX_RAYS_TAIL_MS,
@@ -107,6 +110,12 @@ const TUNING = {
   bounceSmoke: { count: 12, power: 0.7 },
   burnFire: { count: 32, power: 1 },
   burnEmber: { count: 18, power: 0.9 },
+  burnGraveEmber: { count: 8, power: 0.6 },
+  fatigueDust: { count: 16, power: 0.8 },
+  fatigueSmoke: { count: 8, power: 0.6 },
+  fatigueVoid: { count: 12, power: 0.8 },
+  overflowSmoke: { count: 12, power: 0.7 },
+  overflowEmber: { count: 8, power: 0.6 },
   discardEmber: { count: 8, power: 0.6 },
   drawSparkle: { count: 6, power: 0.6 },
   handSparkle: { count: 10, power: 0.7 },
@@ -421,6 +430,11 @@ const bounce: Recipe = (event, p) => {
   return cues;
 };
 
+/**
+ * R318: the card a full hand cannot take burns over it, and what is left of it reaches the graveyard
+ * as the entry ends. The card itself is the board's `burn-notice` (face or back by R97); this only
+ * lights it.
+ */
 const burn: Recipe = (event, p) => {
   if (event.type !== "burned") return [];
   const at = anchor(p.tgt);
@@ -428,6 +442,7 @@ const burn: Recipe = (event, p) => {
   return [
     burst(p.env.intensity, "fire", at, "area", delay, "burnFire"),
     burst(p.env.intensity, "ember", at, "area", delay, "burnEmber"),
+    burst(p.env.intensity, "ember", anchor(animTestid.graveyard(sideOf(p.view, event.owner))), "point", p.D, "burnGraveEmber"),
   ];
 };
 
@@ -613,6 +628,47 @@ const turnBanner: Recipe = (event, p) => {
   return [banner(p.D, FX_TEXT.opponentTurn, "opponent")];
 };
 
+/**
+ * R315, R318: a draw finds the library empty. Dust and a little smoke puff out of the pile at once,
+ * then void wisps streak from it to its owner's hero, landing just inside the entry (R200), where the
+ * `damage` entry after it pops the number and shakes by the amount.
+ */
+const fatigue: Recipe = (event, p) => {
+  if (event.type !== "fatigue") return [];
+  const i = p.env.intensity;
+  const at = anchor(p.tgt);
+  const hero = anchor(testid.hero(sideOf(p.view, event.player)));
+  const leave = frac(FX_FATIGUE_STREAK_AT, p.D);
+  const flight = frac(FX_FATIGUE_FLIGHT_FRACTION, p.D);
+  const streak: FxProjectileCue = { kind: "projectile", preset: "void", from: at, to: hero, delayMs: leave, flightMs: flight, density: i };
+  return [
+    burst(i, "dust", at, "area", 0, "fatigueDust"),
+    burst(i, "smoke", at, "point", 0, "fatigueSmoke"),
+    streak,
+    burst(i, "void", hero, "point", leave + flight, "fatigueVoid"),
+  ];
+};
+
+/**
+ * R316, R318: a full library turns a card away. A refusal ring flares on the pile; a card that was
+ * never made, or has ceased to exist, fizzles into smoke there, and one sent to the graveyard flies
+ * there as a card back (R202: a ghost never names a card) and lands in embers. The card's face, when
+ * the viewer may read it, is the board's `overflow-card`, not an effect.
+ */
+const overflow: Recipe = (event, p) => {
+  if (event.type !== "libraryOverflow") return [];
+  const i = p.env.intensity;
+  const at = anchor(p.tgt);
+  const cues: FxCue[] = [ring(p.D, "fire", at, 0)];
+  if (event.outcome === "graveyard") {
+    const graveyard = anchor(animTestid.graveyard(sideOf(p.view, event.player)));
+    cues.push(ghost(p.D, at, graveyard), burst(i, "ember", graveyard, "point", p.D, "overflowEmber"));
+    return cues;
+  }
+  cues.push(burst(i, "smoke", at, "point", frac(FX_OVERFLOW_FIZZLE_AT, p.D), "overflowSmoke"));
+  return cues;
+};
+
 const RECIPES: { readonly [R in FxRecipe]: Recipe } = {
   cast,
   summon,
@@ -642,6 +698,8 @@ const RECIPES: { readonly [R in FxRecipe]: Recipe } = {
   fizzle,
   mana,
   banner: turnBanner,
+  fatigue,
+  overflow,
 };
 
 /* ------------------------------------------------------------------------------------------- *

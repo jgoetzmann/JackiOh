@@ -183,7 +183,9 @@ export type FxRecipe =
   | "lunge"
   | "fizzle"
   | "mana"
-  | "banner";
+  | "banner"
+  | "fatigue"
+  | "overflow";
 
 /** The optional `fx` field of an `ANIMATIONS` row: which recipe decorates the event. Data only. */
 export type FxDescriptor = { readonly recipe: FxRecipe };
@@ -249,6 +251,9 @@ export const FX_DEATH_SMOKE_AT = 0.5;
 export const FX_RADIANT_BURST_AT = 0.4;
 export const FX_TRAP_BURST_AT = 0.2;
 export const FX_BURN_AT = 0.25;
+export const FX_FATIGUE_STREAK_AT = 0.35;      // R318: the fatigue hit leaves the empty library at 0.35 D…
+export const FX_FATIGUE_FLIGHT_FRACTION = 0.6; // …and reaches the hero at 0.95 D
+export const FX_OVERFLOW_FIZZLE_AT = 0.45;     // R318: a card a full library refuses fizzles here
 export const FX_MANA_STAGGER_MS = 40;
 export const FX_MANA_MAX_SPARKS = 10;
 export const FX_SHAKE_MIN_DAMAGE = 3;
@@ -396,8 +401,8 @@ Every `ANIMATIONS` row keeps its `animation`, `durationMs`, `testid` and `target
 | `destroyed` | `death` | `costChanged` | `glint` | `manaChanged` | `mana` |
 | `exiled` | `void` | `modifierChanged` | `glint` | `turnStarted` | `banner` |
 | `bounced` | `bounce` | `radiantSet` | `radiant` | `turnAutoEnded` | `banner` |
-| `burned` | `burn` | `transformed` | `smoke` | | |
-| `discarded` | `discard` | | | | |
+| `burned` | `burn` | `transformed` | `smoke` | `fatigue` | `fatigue` |
+| `discarded` | `discard` | | | `libraryOverflow` | `overflow` |
 
 No `fx`: `cardResolved`, `enteredGraveyard`, `positionSwitched`, `rotated`, `swapped`, `turnEnded`,
 `promptOpened`, `promptAnswered`, `drawOffered`, `drawAnswered`, `gameOver`. The `gameOver` row's
@@ -590,7 +595,9 @@ point. `side(x)` is `sideOf(view, x)`. Fractions such as `FX_SLAM_AT·D` are rou
 | `death` | `destroyed` | tgt `card-*`: `crack(tgt, 0)`, `burst(ember, tgt, area, FX_DEATH_EMBER_AT·D)`, `burst(smoke, tgt, area, FX_DEATH_SMOKE_AT·D)`. Otherwise (a pile): `burst(smoke, tgt, point, 0)`. |
 | `void` | `exiled` | `ring(void, tgt, 0)`, `burst(void, tgt, area, 0)` |
 | `bounce` | `bounced` | `burst(smoke, tgt, area, 0)`, plus `ghost(tgt → hand-<side(owner)>, 0)` when tgt is `card-*` |
-| `burn` | `burned` | `burst(fire, tgt, area, FX_BURN_AT·D)`, `burst(ember, tgt, area, FX_BURN_AT·D)` (tgt is `hand-<side(owner)>`) |
+| `burn` | `burned` | `burst(fire, tgt, area, FX_BURN_AT·D)`, `burst(ember, tgt, area, FX_BURN_AT·D)` (tgt is `hand-<side(owner)>`), `burst(ember, graveyard-<side(owner)>, point, D)` (R318: what is left of it reaches the graveyard) |
+| `fatigue` | `fatigue` | (R318) Let l = `FX_FATIGUE_STREAK_AT·D` and f = `FX_FATIGUE_FLIGHT_FRACTION·D`. `burst(dust, tgt, area, 0)`, `burst(smoke, tgt, point, 0)` (tgt is `library-<side(player)>`), `projectile(void, tgt → hero-<side(player)>, l, f)`, `burst(void, hero-<side(player)>, point, l + f)`; l + f ≤ D. |
+| `overflow` | `libraryOverflow` | (R318) `ring(fire, tgt, 0)` (tgt is `library-<side(player)>`). `outcome` graveyard: `ghost(tgt → graveyard-<side(player)>, 0)`, `burst(ember, graveyard-<side(player)>, point, D)`. notCreated or ceased: `burst(smoke, tgt, point, FX_OVERFLOW_FIZZLE_AT·D)`. |
 | `discard` | `discarded` | `ghost(tgt → graveyard-<side(owner)>, 0)`, `burst(ember, graveyard-<side(owner)>, point, D)` |
 | `draw` | `drawn` | `ghost(library-<side(player)> → hand-<side(player)>, 0)`, `burst(sparkle, hand-<side(player)>, point, D)` |
 | `handGlint` | `addedToHand` | `burst(sparkle, hand-<side(player)>, area, 0)` |

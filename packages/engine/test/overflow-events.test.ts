@@ -4,11 +4,14 @@
 // each one on both seats (R318), so the proofs here are about the stream: the event exists, it
 // comes in the order the board plays it, and `viewFor` gives each seat exactly what R97 allows.
 
-import type { Action, ActionBody, GameEvent, PlayerId } from "@jackioh/shared";
+import type { Action, ActionBody, CardDef, GameEvent, PlayerId } from "@jackioh/shared";
 import { describe, expect, it } from "vitest";
+import { registerCatalog, registeredCatalog } from "../src/catalog";
 import { FATIGUE_DAMAGE, HAND_CAP, LIBRARY_CAP } from "../src/config";
 import { draw, drawOne, shuffleIntoLibrary } from "../src/draw";
+import { shuffleInto } from "../src/effects";
 import { beginGame, reduce } from "../src/reduce";
+import { makeContext } from "../src/resolve";
 import { newInstance, type GameState } from "../src/state";
 import { HIDDEN_ID, viewFor } from "../src/viewFor";
 import { moveToZone } from "../src/zones";
@@ -150,6 +153,45 @@ describe("R316 library overflow", () => {
     ]);
     expect(token.zone.z).toBe("gone");
     expect(eventsOfType(seen(state, sink.events).p2, "libraryOverflow")[0]?.instanceId).toBe(token.id);
+  });
+
+  it("R316 judges a copy that was never made by the card it copies: a face-down trap's copy names nothing to the other seat", () => {
+    // #33 copies whatever its controller plays, a Trap set face-down included (R17, R34).
+    const trap: CardDef = {
+      id: "ov-secret-trap",
+      index: "1401",
+      name: "Secret Trap (overflow)",
+      set: "Core",
+      type: "Trap",
+      tags: [],
+      rarity: "Common",
+      token: false,
+      cost: 1,
+      base: { keywords: [], text: "secret" },
+      radiant: { keywords: [], text: "secret" },
+    };
+    const state = fullLibrary("r316-copy-of-trap");
+    registerCatalog({ ...registeredCatalog(), [trap.id]: trap });
+    const set = put(state, trap.id, slot("p1", "backrow", 2));
+    const sink = sinkFor(state);
+    shuffleInto({ defId: trap.id, count: 1, copyOf: set.id }).apply(makeContext(sink, null, { controller: "p1" }));
+
+    const refused = eventsOfType(sink.events, "libraryOverflow");
+    expect(refused.map((e) => [e.defId, e.outcome, e.copyOf])).toEqual([[trap.id, "notCreated", set.id]]);
+    const views = seen(state, sink.events);
+    // Its controller reads the trap, and so reads its copy; the other seat reads neither.
+    expect(eventsOfType(views.p1, "libraryOverflow")[0]?.defId).toBe(trap.id);
+    expect(eventsOfType(views.p2, "libraryOverflow")).toEqual([
+      { type: "libraryOverflow", player: "p1", instanceId: HIDDEN_ID, defId: HIDDEN_ID, outcome: "notCreated" },
+    ]);
+    // `copyOf` is bookkeeping: it names the face-down card's id, so no view carries it.
+    for (const viewer of ["p1", "p2"] as const) {
+      expect(JSON.stringify(views[viewer])).not.toContain("copyOf");
+    }
+
+    // Once the trap is public (fired into its graveyard), the copy it would have made is too.
+    moveToZone(state, set, "graveyard");
+    expect(eventsOfType(seen(state, sink.events).p2, "libraryOverflow")[0]?.defId).toBe(trap.id);
   });
 
   it("R316 reports nothing below the cap, and a CN-Virus chain at the cap turns its second copy away", () => {

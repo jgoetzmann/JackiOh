@@ -15,6 +15,8 @@
 //   R80  a library holds at most `LIBRARY_CAP` (60) cards and a copy that would overflow it is
 //        never created. `shuffleIntoLibrary` (engine/src/draw.ts) already drops it, so a 60-card
 //        library simply gains nothing and this file needs no cap check.
+//   R316 the copy a full library refuses is reported by `libraryOverflow`, and `copyOf` names the
+//        played card so a view judges the refusal by it: a Trap set face-down stays unnamed.
 //   R70  a cast is a play and runs the same §10.5 steps, so Hinder and Call to Chaos casts reach
 //        step 7 and are copied like any other play with no extra case here.
 //   R17  "Unstable Clone Machine … fire[s] after the card resolves" (§10.5 step 7), so this answers
@@ -74,7 +76,9 @@ function afterPlay(allRadiant: boolean): TriggerDef {
       const event = ctx.event;
       if (event.type !== "cardResolved" || !answers(ctx, event)) return [];
       const flag = allRadiant || playedRadiantFlag(ctx, event);
-      return [shuffleInto({ defId: event.defId, count: COPIES, radiant: flag })];
+      // R316: the copies copy the played card, so one a full library refuses is judged by it — a
+      // Trap set face-down stays unnamed to the other player.
+      return [shuffleInto({ defId: event.defId, count: COPIES, radiant: flag, copyOf: event.instanceId })];
     },
   };
 }
