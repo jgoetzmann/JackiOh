@@ -39,4 +39,4 @@ export const REF_HOVER_DELAY_MS = 250;
 export const REF_TOOLTIP_HEIGHT_PX = 300;
 
 /** R279: the height of each named card's face in a hover preview's references column. */
-export const REF_PANEL_FACE_HEIGHT_PX = 170;
+export const REF_PANEL_FACE_HEIGHT_PX = 190;

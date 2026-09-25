@@ -1,4 +1,4 @@
-// The cards a face's text names, beside it in the hover preview (SPEC §10.10, R279).
+// The cards a face's text names, in a column beside it in the hover preview (SPEC §10.10, R279).
 //
 // The hover preview takes no pointer events and is hidden from assistive tech (B22), so a reference
 // inside its face cannot be hovered or focused: the names are marked there, and this column shows

@@ -59,6 +59,18 @@
   max-height: none;
 }
 
+/* R279: the named cards, a column of their own beyond the glossary, one face under another. */
+.inspect-hover .inspect-refs {
+  width: 170px; /* PREVIEW_REFS_WIDTH_PX */
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.inspect-hover .inspect-refs-faces {
+  flex-direction: column;
+  align-items: center;
+}
+
 /* ---- Printed text (SPEC §10.10) ---------------------------------------------------------------- */
 
 .inspect-printed {
@@ -544,7 +556,8 @@
    (touch opens the sheet), so the preview shows the card alone rather than spilling off-screen. */
 @media (max-width: 600px) {
   .inspect-hover .inspect-glossary,
-  .inspect-hover .inspect-side {
+  .inspect-hover .inspect-side,
+  .inspect-hover .inspect-refs {
     display: none;
   }
 }

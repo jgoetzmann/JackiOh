@@ -2,8 +2,9 @@
 // PREVIEW_HEIGHT_PX with its glossary beside it, fixed beside the anchor card. It never takes
 // pointer events and is hidden from assistive tech, so it can never cover what a click aims at.
 // A face in play whose printed text differs (SPEC §10.10) has that text above its glossary, and a
-// face whose text names other cards has their faces there too (References.tsx, R279), since a
-// reference inside a preview that takes no pointer events cannot be hovered itself.
+// face whose text names other cards has their faces in a column of their own beyond it
+// (References.tsx, R279), since a reference inside a preview that takes no pointer events cannot
+// be hovered itself.
 
 import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
@@ -17,6 +18,7 @@ import {
   PREVIEW_GLOSSARY_WIDTH_PX,
   PREVIEW_HEIGHT_PX,
   PREVIEW_MAX_VIEWPORT_SHARE,
+  PREVIEW_REFS_WIDTH_PX,
 } from "./constants.ts";
 import { Glossary } from "./Glossary.tsx";
 import { placePreview, type PreviewPrefer, type Rect } from "./placement.ts";
@@ -34,11 +36,12 @@ function viewportSize(): { width: number; height: number } {
 }
 
 /** The preview's size before it has been laid out, from the same numbers inspect.css uses. */
-function estimatedSize(withGlossary: boolean): { width: number; height: number } {
+function estimatedSize(withGlossary: boolean, withRefs: boolean): { width: number; height: number } {
   const height = Math.min(PREVIEW_HEIGHT_PX, window.innerHeight * PREVIEW_MAX_VIEWPORT_SHARE);
   const cardWidth = height * FACE_ASPECT;
-  const width = withGlossary ? cardWidth + PREVIEW_GLOSSARY_GAP_PX + PREVIEW_GLOSSARY_WIDTH_PX : cardWidth;
-  return { width, height };
+  const glossary = withGlossary ? PREVIEW_GLOSSARY_GAP_PX + PREVIEW_GLOSSARY_WIDTH_PX : 0;
+  const refs = withRefs ? PREVIEW_GLOSSARY_GAP_PX + PREVIEW_REFS_WIDTH_PX : 0;
+  return { width: cardWidth + glossary + refs, height };
 }
 
 export function HoverPreview({ face, anchor, prefer = "beside" }: HoverPreviewProps): ReactElement {
@@ -46,8 +49,7 @@ export function HoverPreview({ face, anchor, prefer = "beside" }: HoverPreviewPr
   const entries = glossaryFor(face);
   const resolve = useDefResolver();
   const named = resolve === null ? 0 : namedCards(face, resolve).length;
-  const side = entries.length > 0 || face.printed !== null || named > 0;
-  const placed = placePreview(anchor, viewportSize(), estimatedSize(side), prefer);
+  const placed = placePreview(anchor, viewportSize(), estimatedSize(entries.length > 0 || face.printed !== null, named > 0), prefer);
 
   // Once laid out, place it again by its real size. jsdom has no layout and keeps the estimate.
   useLayoutEffect(() => {
@@ -75,15 +77,15 @@ export function HoverPreview({ face, anchor, prefer = "beside" }: HoverPreviewPr
       <div className="inspect-face" data-testid={INSPECT_FACE} style={{ height: PREVIEW_HEIGHT_PX }}>
         <CardFace face={face} layout="full" />
       </div>
-      {face.printed === null && named === 0 ? (
+      {face.printed === null ? (
         <Glossary entries={entries} />
       ) : (
         <div className="inspect-side">
           <Printed face={face} />
-          <References face={face} />
           <Glossary entries={entries} />
         </div>
       )}
+      <References face={face} />
     </div>,
     document.body,
   );
