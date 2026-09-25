@@ -335,10 +335,24 @@ export type NameLimits = {
   nameMaxLength: number;
 };
 
-// Control characters (C0, DEL and C1): a name is shown in lists, buttons and messages, and none of
-// them has a place there.
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
+// Control characters: a name is shown in lists, buttons and messages, and none of them has a place
+// there. That is the C0 and C1 controls and DEL (`Cc`), and the invisible format characters (`Cf`):
+// the bidirectional controls make a name display as text it does not hold (a right-to-left override
+// between "Aggro" and "orez" shows "Aggrozero"), and a deck code carries its name to other players
+// (R255); the zero-width ones hide characters inside a name. Three kinds of `Cf` are how real text
+// is written and stay legal: the zero-width non-joiner and joiner (Persian and the Indic scripts;
+// every emoji family) and the tag characters of a subdivision flag.
+// An alternation, not one class: a joiner inside a class reads as a joined sequence.
+const WRITING_FORMAT_CHARACTERS = /\u200c|\u200d|[\u{e0020}-\u{e007f}]/gu;
+const CONTROL_CHARACTERS = /[\p{Cc}\p{Cf}]/u;
+
+// Something a player can see: a name made only of spaces, joiners and variation selectors draws
+// nothing, so it is no name at all.
+const VISIBLE_CHARACTER = /[^\p{White_Space}\p{Default_Ignorable_Code_Point}]/u;
+
+function hasControlCharacter(name: string): boolean {
+  return CONTROL_CHARACTERS.test(name.replace(WRITING_FORMAT_CHARACTERS, ""));
+}
 
 /** A name as it is stored: trimmed, and every run of whitespace inside it one space. */
 export function normalizeName(raw: string): string {
@@ -357,8 +371,8 @@ function nameIssue<Rule extends string>(
   limits: NameLimits,
 ): DraftIssue<Rule> | null {
   const name = normalizeName(raw);
-  if (name.length === 0) return { rule, message: `A ${what} needs a name.` };
-  if (CONTROL_CHARACTERS.test(name)) {
+  if (!VISIBLE_CHARACTER.test(name)) return { rule, message: `A ${what} needs a name.` };
+  if (hasControlCharacter(name)) {
     return { rule, message: `A ${what} name cannot contain control characters.` };
   }
   if (nameLength(name) > limits.nameMaxLength) {

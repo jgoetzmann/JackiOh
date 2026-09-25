@@ -369,8 +369,13 @@ function merge<T extends { id: string; createdAt: number }>(
     const mine = localById.get(item.id);
     items.push(mine?.dirty === true ? tracked(mine.item, true) : tracked(item, false));
   }
+  // The mirror is untrusted text: one id listed twice is restored once, or the workshop would list
+  // it twice and send it twice.
+  const restored = new Set<string>();
   for (const entry of local) {
-    if (serverIds.has(entry.item.id) || !entry.dirty || deleting.has(entry.item.id)) continue;
+    const { id } = entry.item;
+    if (serverIds.has(id) || !entry.dirty || deleting.has(id) || restored.has(id)) continue;
+    restored.add(id);
     items.push(tracked(entry.item, true));
   }
   items.sort(byAge);

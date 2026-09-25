@@ -307,6 +307,11 @@ describe("R259 — the series through the API", () => {
 
     expect((await read(h.tokens.stranger, FIRST_MATCH)).series).toBeNull();
     expect((await read(h.tokens.alice, "some-other-match")).series).toBeNull();
+    // An id that is not even valid percent-encoding names nothing either: never a 500.
+    expect((await read(h.tokens.alice, "%E0%A4%A")).series).toBeNull();
+    const malformed = await getSeries(h, h.tokens.alice, "%ZZ");
+    expect(malformed.status).toBe(404);
+    expect((await h.router(jsonRequest("POST", "/api/series/%/pick", { slot: 0 }, { token: h.tokens.alice }))).status).toBe(404);
   });
 });
 

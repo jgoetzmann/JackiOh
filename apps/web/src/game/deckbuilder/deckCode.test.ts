@@ -313,6 +313,11 @@ describe("the name", () => {
       "",
       "   ",
       "bad\u0001name",
+      // A code travels between players (R255): a name that displays as text it does not hold (a
+      // right-to-left override) or hides characters (a zero-width space) is not taken on.
+      "Aggro\u202eorez",
+      "Ag\u200bgro",
+      "\u200d",
       "y".repeat(DECK_NAME_MAX_LENGTH + 1),
       [0xff, 0xfe, 0x41],
     ];

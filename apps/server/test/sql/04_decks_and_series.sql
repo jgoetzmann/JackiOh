@@ -154,6 +154,34 @@ begin
 end $$;
 rollback;
 
+\echo '-- R254 on a loadout no server wrote: every name 0007 makes passes D1 (rolled back)'
+begin;
+-- app.save_loadout never stored names like these, but a raw write could have, and R254 promises a
+-- converted deck "can be saved again as it is": a control or an invisible format character, or a
+-- trailing space left by the cut, would be a name @jackioh/validator's D1 refuses.
+insert into auth.users (id, email, email_confirmed_at)
+values ('66666666-6666-6666-6666-666666666666', 'odd-names@example.test', now());
+insert into public.loadouts (profile_id, catalog_version)
+values ('66666666-6666-6666-6666-666666666666', 'core-0');
+insert into public.loadout_decks (profile_id, slot, name) values
+  ('66666666-6666-6666-6666-666666666666', 1, E'Bad\x01name\nhere'),
+  ('66666666-6666-6666-6666-666666666666', 2, 'abcdefghijklmnopqrstuvwxyzabcdefghijklm nopqrstu'),
+  ('66666666-6666-6666-6666-666666666666', 3, E'Aggro\u202Eorez\u200B');
+\i /tmp/0007_decks_and_trios.sql
+do $$
+declare
+  odd     constant uuid := '66666666-6666-6666-6666-666666666666';
+  v_names text[];
+begin
+  select array_agg(name order by created_at, id) into v_names from public.decks where profile_id = odd;
+  if v_names is distinct from array['Badname here', 'abcdefghijklmnopqrstuvwxyzabcdefghijklm', 'Aggroorez'] then
+    raise exception 'FAIL (R254): odd legacy names became %, expected {"Badname here",abcdefghijklmnopqrstuvwxyzabcdefghijklm,Aggroorez}',
+      v_names;
+  end if;
+  raise notice 'OK (R254): a raw legacy name loses its control and format characters and is trimmed after the cut';
+end $$;
+rollback;
+
 \echo '### R250: app.upsert_deck saves a draft, updates it in place, caps creates and refuses a foreign id ###'
 do $$
 declare

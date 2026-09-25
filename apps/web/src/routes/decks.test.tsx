@@ -90,6 +90,11 @@ async function mount(): Promise<void> {
 // §9.4's gate
 // ---------------------------------------------------------------------------------------------
 
+
+/** Test harness timing, not game or server configuration: how long the account-switch test waits. */
+const SWITCH_WAIT_MS = 10_000;
+const SWITCH_TEST_TIMEOUT_MS = 30_000;
+
 describe("the gate (§9.4)", () => {
   it("sends a pending account to the code screen", async () => {
     // `10-invite-gate.cy.ts`: visiting the deckbuilder while pending lands on `/invite`.
@@ -201,4 +206,53 @@ describe("saving", () => {
     fireEvent.change(screen.getByTestId("deck-name-input"), { target: { value: "Tempo v2" } });
     expect(window.localStorage.getItem(mirrorKey(PROFILE))).toContain("Tempo v2");
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Another account on this device (R256)
+// ---------------------------------------------------------------------------------------------
+
+describe("when another account signs in under an open workshop", () => {
+  const OTHER_TOKEN = "e2e-token-p2";
+  const OTHER_PROFILE = "profile-p2";
+
+  it("R256 never sends one profile's unsaved work with the next profile's token, and keeps it on this device", async () => {
+    vi.mocked(getMe).mockImplementation(async (token) => ({
+      ...meBody("active", false),
+      profile: { id: token === OTHER_TOKEN ? OTHER_PROFILE : PROFILE, status: "active", rating: 1000 },
+    }));
+    await mount();
+    // An edit the debounce has not sent yet: this profile's, and only this profile's.
+    fireEvent.click(screen.getByTestId("deck-new"));
+    const mirrored = window.localStorage.getItem(mirrorKey(PROFILE)) ?? "";
+    expect(mirrored).toContain("Deck 1");
+
+    // Another tab signs in as someone else (the gate hears it through `storage`, R194's path).
+    vi.mocked(getDecks).mockResolvedValue(decksResponse([], [], catalog.version));
+    window.localStorage.setItem(E2E_SESSION_STORAGE_KEY, JSON.stringify({ accessToken: OTHER_TOKEN }));
+    window.dispatchEvent(new StorageEvent("storage", { key: E2E_SESSION_STORAGE_KEY }));
+    // Generous waits: this test runs on the real clock, and under a loaded `pnpm test` the gate's
+    // re-read and the new workshop's mount can take longer than waitFor's one-second default.
+    await waitFor(
+      () => {
+        expect(getDecks).toHaveBeenCalledWith(OTHER_TOKEN);
+      },
+      { timeout: SWITCH_WAIT_MS },
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("workshop-empty")).toBeInTheDocument();
+      },
+      { timeout: SWITCH_WAIT_MS },
+    );
+    // Give the old workshop's last flush and any debounce every chance to go out.
+    await new Promise((resolve) => setTimeout(resolve, DECK_AUTOSAVE_DEBOUNCE_MS * 2));
+
+    const sentAsOther = vi.mocked(putDeck).mock.calls.filter(([token]) => token === OTHER_TOKEN);
+    expect(sentAsOther, "the first profile's new deck must not be created in the second's account").toEqual([]);
+    // Not lost either: it waits in the first profile's own mirror for that profile's next visit.
+    const kept = window.localStorage.getItem(mirrorKey(PROFILE)) ?? "";
+    expect(kept).toContain("Deck 1");
+    expect(kept).toContain('"dirty":true');
+  }, SWITCH_TEST_TIMEOUT_MS);
 });

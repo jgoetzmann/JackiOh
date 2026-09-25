@@ -174,6 +174,16 @@ describe("saved decks (§9.4, R250, R256)", () => {
     expect((await getDecks()).decks).toHaveLength(1);
   });
 
+  it("R256 answers an id that is not even valid percent-encoding as a bad id (400), never a 500", async () => {
+    for (const raw of ["%E0%A4%A", "%ZZ", "%"]) {
+      const put = await router(jsonRequest("PUT", `/api/decks/${raw}`, deckBody(deps), { token }));
+      expect(put.status, `PUT /api/decks/${raw}`).toBe(400);
+      const removed = await router(jsonRequest("DELETE", `/api/trios/${raw}`, undefined, { token }));
+      expect(removed.status, `DELETE /api/trios/${raw}`).toBe(400);
+    }
+    expect(deps.store.tables.decks).toEqual([]);
+  });
+
   it("R256 lists decks oldest first, the order a legacy deckIndex counts in", async () => {
     await putDeck(deckBody(deps, { name: "First" }), uuid(9));
     deps.timers.advance(1_000);
@@ -190,6 +200,9 @@ describe("saved decks (§9.4, R250, R256)", () => {
       { rule: "D1", build: (target) => ({ name: "   ", cards: cards(target, 2) }) },
       { rule: "D1", build: (target) => ({ name: "x".repeat(DECK_NAME_MAX_LENGTH + 1), cards: cards(target, 2) }) },
       { rule: "D1", build: (target) => ({ name: "Bad\u0007name", cards: cards(target, 2) }) },
+      // A right-to-left override makes a name show text it does not hold; a zero-width space hides one.
+      { rule: "D1", build: (target) => ({ name: "Aggro\u202eorez", cards: cards(target, 2) }) },
+      { rule: "D1", build: (target) => ({ name: "\u200b", cards: cards(target, 2) }) },
       // One more than any deck holds: the test catalog has room for it.
       { rule: "D2", build: (target) => ({ name: "Big", cards: cards(target, 21) }) },
       { rule: "D3", build: (target) => ({ name: "Token", cards: [...cards(target, 2), "token-sheep"] }) },

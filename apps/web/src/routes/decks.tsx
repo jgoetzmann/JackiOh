@@ -21,6 +21,13 @@
 // token under an open screen (R194), and a save made after that must carry the new one. For the
 // same reason the reads run once per profile, not once per token, so a renewal does not reload
 // the workshop under the player's hands.
+//
+// A token is only ever the workshop's own profile's. Another tab can sign this device in as someone
+// else, and the gate then hands this screen the new account's token while the old workshop is still
+// mounted — and that workshop's last flush, on unmount, would otherwise send its unsaved decks with
+// the new token and make them in the other account. So each write checks, as it sends, that the
+// session is still the workshop's profile; when it is not, the write fails as unreachable, and the
+// store keeps the edit in that profile's own mirror for its next visit (R256: "never lose work").
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -31,6 +38,7 @@ import { collectionFrom } from "../game/deckbuilder/loadout.ts";
 import type { DeckSyncApi } from "../game/deckbuilder/sync.ts";
 import { DECKBUILDER_ERROR, DECKBUILDER_LOADING } from "../game/deckbuilder/testids.ts";
 import {
+  ApiUnreachableError,
   deleteDeck,
   deleteTrio,
   getCatalog,
@@ -80,26 +88,35 @@ export default function DecksRoute() {
   const profileId = account.kind === "ready" ? account.me.profile.id : null;
   const blocked = account.kind === "ready" && account.me.needsInviteCode;
 
-  // The token a write sends is the one the gate holds NOW (R194 renews it under an open screen).
-  const tokenRef = useRef<string | null>(token);
+  // The token a write sends is the one the gate holds NOW (R194 renews it under an open screen),
+  // with the profile it belongs to, so a write can tell a renewal from another account.
+  const sessionRef = useRef<{ token: string | null; profileId: string | null }>({ token, profileId });
   useLayoutEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
+    sessionRef.current = { token, profileId };
+  }, [token, profileId]);
 
+  const workshopProfile = screen.kind === "ready" ? screen.profileId : null;
   const api = useMemo<DeckSyncApi>(() => {
-    const current = (): string => tokenRef.current ?? "";
-    return {
-      putDeck: (id, input) => putDeck(current(), id, input),
-      deleteDeck: (id) => deleteDeck(current(), id),
-      putTrio: (id, input) => putTrio(current(), id, input),
-      deleteTrio: (id) => deleteTrio(current(), id),
+    // The session's token, only while it is still `workshopProfile`'s (see the header).
+    const current = async (): Promise<string> => {
+      const session = sessionRef.current;
+      if (session.token === null || session.profileId !== workshopProfile) {
+        throw new ApiUnreachableError(new Error("signed in as another account"));
+      }
+      return session.token;
     };
-  }, []);
+    return {
+      putDeck: async (id, input) => putDeck(await current(), id, input),
+      deleteDeck: async (id) => deleteDeck(await current(), id),
+      putTrio: async (id, input) => putTrio(await current(), id, input),
+      deleteTrio: async (id) => deleteTrio(await current(), id),
+    };
+  }, [workshopProfile]);
 
   const hasToken = token !== null;
   useEffect(() => {
     if (!hasToken || profileId === null || blocked) return;
-    const readToken = tokenRef.current ?? "";
+    const readToken = sessionRef.current.token ?? "";
     let cancelled = false;
     setScreen({ kind: "loading" });
 

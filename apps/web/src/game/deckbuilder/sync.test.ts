@@ -473,6 +473,37 @@ describe("merging the mirror over the server", () => {
     }
   });
 
+  it("R256 a mirror naming one unsaved deck or trio twice restores it once, and saves it once", async () => {
+    const server = fakeServer();
+    const storage = memoryStorage();
+    const deck = { id: "dup-deck", name: "Twice", cards: [fixtureCardId(3)], createdAt: 5, updatedAt: 5 };
+    const trio = { id: "dup-trio", name: "Twice", deckIds: ["dup-deck", null, null], createdAt: 6, updatedAt: 6 };
+    storage.setItem(
+      mirrorKey(PROFILE),
+      JSON.stringify({
+        v: 1,
+        decks: [
+          { item: deck, dirty: true },
+          { item: { ...deck, name: "Twice, again" }, dirty: true },
+        ],
+        trios: [
+          { item: trio, dirty: true },
+          { item: trio, dirty: true },
+        ],
+        deletedDecks: [],
+        deletedTrios: [],
+      }),
+    );
+    const clock = manualClock();
+    const store = open({ api: server.api, clock, storage });
+    // One of each: a list keyed by id cannot hold one id twice, and a second copy would be sent twice.
+    expect(store.getSnapshot().decks.map((item) => item.id)).toEqual(["dup-deck"]);
+    expect(store.getSnapshot().trios.map((item) => item.id)).toEqual(["dup-trio"]);
+    await clock.advance(DECK_AUTOSAVE_DEBOUNCE_MS);
+    expect(server.calls.filter((call) => call.op === "putDeck").map((call) => call.id)).toEqual(["dup-deck"]);
+    expect(server.calls.filter((call) => call.op === "putTrio").map((call) => call.id)).toEqual(["dup-trio"]);
+  });
+
   it("R256 a deletion made offline stays deleted on the next visit, and is sent", async () => {
     const server = fakeServer();
     const storage = memoryStorage();

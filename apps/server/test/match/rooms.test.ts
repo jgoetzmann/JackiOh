@@ -23,6 +23,8 @@ import { createDeckRoutes } from "../../src/api/decks";
 import { createRouter, type Router } from "../../src/api/http";
 import type { FrozenTrio, Ids } from "../../src/api/ports";
 import { CODE_ALPHABET, MAX_SAVED_DECKS, MAX_SAVED_TRIOS, ROOM_CODE_LENGTH } from "../../src/config";
+import { createQueueRoutes } from "../../src/api/queue";
+import { createSeriesRoutes } from "../../src/api/series";
 import { createRoomRoutes, e2eRoomSeedCount } from "../../src/match/rooms";
 import { createTestDeps, jsonRequest, readJson, type TestDeps } from "../fakes/deps";
 
@@ -544,6 +546,36 @@ describe("R264 — rooms carry a mode (§9.5, R257)", () => {
     expect(created.status).toBe(409);
     expect((await readJson<ErrorBody>(created)).error.code).toBe("already_in_match");
     expect(h.deps.store.tables.rooms).toHaveLength(1);
+  });
+
+  it("R264 a player queued before joining a Best-of-3 room leaves the queue, so a series that ends before game 1 pairs no one later", async () => {
+    const h = await harness();
+    const router = createRouter([...createRoomRoutes(), ...createQueueRoutes(), ...createSeriesRoutes()], h.deps);
+    const third = h.deps.auth.addUser({ userId: "user-third", email: "third@example.test" });
+    h.deps.store.seedProfile({ id: "third", userId: "user-third", status: "active" });
+    await saveDeck(h.deps, "third", uuid(90), DECK);
+
+    // The guest waits in the Best-of-1 queue, alone, and meanwhile takes a Best-of-3 challenge.
+    const queued = await router(jsonRequest("POST", "/api/queue", { mode: "bo1", deckId: uuid(2) }, { token: h.guest }));
+    expect(queued.status).toBe(200);
+    const hostTrio = await saveTrio(h.deps, HOST, 20);
+    const guestTrio = await saveTrio(h.deps, GUEST, 30);
+    const code = await createIn(h, { mode: "bo3", trioId: hostTrio });
+    const joined = await router(jsonRequest("POST", `/api/rooms/${code}/join`, { mode: "bo3", trioId: guestTrio }, { token: h.guest }));
+    expect(joined.status).toBe(200);
+    const { seriesId } = await readJson<{ seriesId: string }>(joined);
+
+    // The series ends before its first game: the guest forfeits at the pick.
+    const forfeited = await router(jsonRequest("POST", `/api/series/${seriesId}/forfeit`, undefined, { token: h.guest }));
+    expect(forfeited.status).toBe(200);
+
+    // Someone queues for Best of 1. The ticket the guest left behind must not become a match.
+    const other = await router(jsonRequest("POST", "/api/queue", { mode: "bo1", deckId: uuid(90) }, { token: third }));
+    expect(other.status).toBe(200);
+    expect(await readJson(other)).toMatchObject({ status: "open", matchId: null });
+    expect(h.deps.matches.started).toEqual([]);
+    expect((await h.deps.store.profiles.getById(GUEST))?.inMatchId).toBeNull();
+    expect(await h.deps.store.tickets.openForProfile(GUEST)).toBeNull();
   });
 
   it("a join whose host has gone into another game is refused, and the room stays open", async () => {

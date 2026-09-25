@@ -69,8 +69,18 @@ export async function startSeries(
   input: NewSeriesInput,
   store: Store = deps.store,
 ): Promise<SeriesRow> {
-  const series = newSeries(input, deps.timers.now());
+  const now = deps.timers.now();
+  const series = newSeries(input, now);
   await store.series.create(series);
+  // §9.5: a player in a series is in no queue. The queue's own pairing has claimed both tickets
+  // already, but a player may have joined (or hosted) a Best-of-3 room while a ticket of theirs
+  // waited. A match's result cancels such a ticket; a series can end with no game played (a
+  // forfeit or an abandoned pick, R260, R261), and then nothing would, and the stale ticket would
+  // pair them into a match they stopped waiting for. So it goes now, as the series begins.
+  for (const side of series.sides) {
+    const stale = await store.tickets.openForProfile(side.profileId);
+    if (stale !== null) await store.tickets.cancel(stale.id, now);
+  }
   deps.log.info("series.started", {
     seriesId: series.id,
     players: series.sides.map((side) => side.profileId),

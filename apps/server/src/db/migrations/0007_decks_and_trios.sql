@@ -503,9 +503,11 @@ comment on function app.upsert_trio(uuid, uuid, text, uuid, uuid, uuid, timestam
 --     what the player last queued with (ordered by card id, which is the only
 --     order a loadout ever had);
 --   * name: loadout_decks.name as @jackioh/validator's normalizeName would
---     leave it (trimmed, inner whitespace collapsed) and cut to
---     deck_name_max_length, falling back to "Deck <slot>" if nothing is left,
---     so every converted deck passes R250 D1 and can be saved again as it is;
+--     leave it (trimmed, inner whitespace collapsed), without the control and
+--     invisible format characters D1 refuses, and cut to deck_name_max_length
+--     (trimmed again after the cut), falling back to "Deck <slot>" if nothing
+--     is left, so every converted deck passes R250 D1 and can be saved again
+--     as it is;
 --   * catalog_version: the loadout's, the version its decks were last
 --     validated against (R253: informational);
 --   * created_at: loadouts.updated_at plus <slot> milliseconds, so the saved
@@ -528,6 +530,11 @@ declare
   v_id       uuid;
   v_name     text;
   v_name_max int := (app.setting('deck_name_max_length'))::text::int;
+  -- What @jackioh/validator's D1 calls a control character, as far as a converted name can hold
+  -- one: the C0/C1 controls, and the invisible format characters -- soft hyphen, the
+  -- bidirectional marks, embeddings, overrides and isolates, the zero-width space, word joiner and
+  -- invisible operators, the byte-order mark. The joiners emoji are written with stay.
+  v_refused  text := '[[:cntrl:]\u00AD\u061C\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]';
 begin
   for v_loadout in
     select l.profile_id, l.catalog_version, l.updated_at
@@ -544,7 +551,12 @@ begin
        where ld.profile_id = v_loadout.profile_id
        order by ld.slot
     loop
-      v_name := left(btrim(regexp_replace(v_deck.name, '\s+', ' ', 'g')), v_name_max);
+      -- Whitespace first (a tab or a newline is a space to normalizeName), then the characters D1
+      -- refuses, then whitespace again, and the trim after the cut too: a cut that ends on a space
+      -- would leave one.
+      v_name := btrim(left(btrim(regexp_replace(
+        regexp_replace(regexp_replace(v_deck.name, '\s+', ' ', 'g'), v_refused, '', 'g'),
+        '\s+', ' ', 'g')), v_name_max));
       if v_name = '' then
         v_name := 'Deck ' || v_deck.slot;
       end if;

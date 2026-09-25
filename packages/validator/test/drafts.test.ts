@@ -65,6 +65,28 @@ describe("R250 — a saved deck is a draft: D1–D4 are all a save checks", () =
     expect(draft([], "🃏".repeat(NAME_MAX))).toEqual([]);
   });
 
+  it("R250 D1 counts the invisible controls as control characters, and a name nobody can see as no name", () => {
+    const refusedAs = (name: string): string | undefined =>
+      draft([], name).find((issue) => issue.rule === "D1")?.message;
+    const control = "A deck name cannot contain control characters.";
+    // The bidirectional controls make a name display as text it does not hold ("Aggro" + RLO + "orez"
+    // reads "Aggrozero"), and the zero-width ones hide characters inside it.
+    expect(refusedAs("Aggro\u202eorez")).toBe(control);
+    expect(refusedAs("Ag\u2066gro\u2069")).toBe(control);
+    expect(refusedAs("Aggro\u200f")).toBe(control);
+    expect(refusedAs("Ag\u200bgro")).toBe(control);
+    expect(refusedAs("Ag\u2060gro")).toBe(control);
+    expect(refusedAs("Ag\u00adgro")).toBe(control);
+    // A name made only of characters that draw nothing is no name at all.
+    expect(refusedAs("\u200d")).toBe("A deck needs a name.");
+    expect(refusedAs("\ufe0f\u200d\ufe0f")).toBe("A deck needs a name.");
+    // The joiners that emoji and several scripts are written with stay legal, as does a flag.
+    expect(draft([], "\u{1f468}\u200d\u{1f469}\u200d\u{1f467} family")).toEqual([]);
+    expect(draft([], "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645")).toEqual([]);
+    expect(draft([], "\u{1f3f4}\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f} Scot")).toEqual([]);
+    expect(draft([], "\u2764\ufe0f Aggro")).toEqual([]);
+  });
+
   it("R250 D2 refuses more than DECK_SIZE cards", () => {
     const issues = draft(POOL_IDS.slice(0, DECK_SIZE + 1));
     expect(issues.map((issue) => issue.rule)).toEqual(["D2"]);
@@ -123,6 +145,8 @@ describe("R252 — a saved trio is three slots naming three different decks, any
 
   it("R252 T1 names, T2 counts the slots, T3 refuses one deck twice", () => {
     expect(trio(["a", "b", "c"], "")).toEqual(["T1"]);
+    // T1 is "a name as D1": the invisible controls are refused in a trio's name too.
+    expect(trio(["a", "b", "c"], "Ladder\u202e")).toEqual(["T1"]);
     expect(trio(["a", "b"])).toEqual(["T2"]);
     expect(trio(["a", "a", null])).toEqual(["T3"]);
   });
