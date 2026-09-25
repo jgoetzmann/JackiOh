@@ -14,7 +14,7 @@
 #   1. a throwaway Postgres, with its port published so the driver can reach it from the host;
 #   2. test/db/bootstrap.sql — the Supabase-managed pieces (roles, auth.users, auth.uid, the
 #      privileges service_role has in a real project);
-#   3. apps/server/src/db/migrate.ts — the real migration runner, over the four real migrations;
+#   3. apps/server/src/db/migrate.ts — the real migration runner, over every real migration (0001-0009);
 #   4. test/db/grants.sql — service_role's table privileges, repeated after the migrations;
 #   5. vitest, with DATABASE_URL pointing at it.
 #

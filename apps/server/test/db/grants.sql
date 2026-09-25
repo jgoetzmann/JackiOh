@@ -1,4 +1,4 @@
--- Applied by test/db/run.sh AFTER the four migrations, mirroring the privileges a Supabase
+-- Applied by test/db/run.sh AFTER the migrations, mirroring the privileges a Supabase
 -- project gives `service_role`. `alter default privileges` in bootstrap.sql already covers every
 -- table the migrations create; this repeats it explicitly so a table created some other way (a
 -- future migration run by another role, say) cannot silently leave the server without access.

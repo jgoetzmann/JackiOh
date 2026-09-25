@@ -18,8 +18,12 @@
 //
 // REFUSES TO RUN AGAINST NODE_ENV=production. These are accounts with known passwords.
 
+import { randomUUID } from "node:crypto";
+
 import { Client } from "pg";
 
+import { TRIO_DECKS } from "../api/loadout-validator";
+import { MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../config";
 import { loadEnv } from "../env";
 
 /** Known-weak by design; these accounts are for a test deployment, never a real one. */
@@ -84,57 +88,81 @@ async function createOrFindUser(
 }
 
 /**
- * Three legal decks, so a seeded account can queue immediately instead of building 60 cards by
- * hand before it can play once.
+ * Three legal decks and a trio of them, so a seeded account can queue immediately in any mode —
+ * Best of 1 with any of the decks, Best of 3 with the trio (SPEC §9.5, R257) — instead of building
+ * 60 cards by hand before it can play once.
  *
- * Saved through `app.save_loadout` rather than by writing `loadout_decks` and
- * `loadout_deck_cards` directly, because that function IS the rules: L1 (exactly 3 decks), L2
- * (exactly `deck_size` each), L3 (no tokens, at most `max_copies` of a card), L4 (a card in one
- * deck only, also a unique index), L5 and L6 (the card exists in this catalog version and is
- * owned). A seeder that bypassed it could produce a loadout the queue then refuses, which is a
- * worse outcome than no loadout at all.
+ * Saved through `app.upsert_deck` and `app.upsert_trio` (migration 0007) rather than by writing
+ * `public.decks` and `public.trios` directly, because those functions are the one write path the
+ * server uses too: they take the profile lock, apply the caps and refuse a shape the builder could
+ * not have produced. A saved deck is only a draft (R250), so the legality that matters here is the
+ * queue's (R253): `DECK_SIZE` cards each, and — for the trio — no card in two decks.
  *
  * `MAX_COPIES` is 1, so the format is singleton and the three decks need 60 DISTINCT non-token
- * cards. The launch grant gives every active profile all 100 of them, so ordering by id and
- * slicing is enough; no deck here is trying to be good, only legal.
+ * cards. The launch grant gives every active profile all 100 of them, so ordering by id and slicing
+ * is enough; no deck here is trying to be good, only legal.
+ *
+ * Re-runnable: a profile that already holds a deck or a trio is left alone, so a second run neither
+ * piles up starters nor touches decks a tester has built since.
  */
-async function saveStarterLoadout(
+async function saveStarterDecks(
   client: Client,
   profileId: string,
   catalogVersion: string,
 ): Promise<void> {
+  const { rows: held } = await client.query<{ n: string }>(
+    `select ((select count(*) from public.decks where profile_id = $1)
+           + (select count(*) from public.trios where profile_id = $1))::text as n`,
+    [profileId],
+  );
+  if (Number(held[0]?.n ?? "0") > 0) return;
+
   const { rows } = await client.query<{ id: string }>(
     "select id from public.cards where not token and catalog_version = $1 order by id",
     [catalogVersion],
   );
   const ids = rows.map((r) => r.id);
 
-  const { rows: sizes } = await client.query<{ deck_size: number; decks: number }>(
-    "select (app.setting('deck_size'))::text::int as deck_size, 3 as decks",
+  // The database's own copy of `DECK_SIZE` (migration 0003), which `app.upsert_deck` checks a deck
+  // against: read rather than imported, since `src/match/engine.real.ts` is the one file in this
+  // app that imports the engine.
+  const { rows: sizes } = await client.query<{ deck_size: number | null }>(
+    "select (app.setting('deck_size'))::text::int as deck_size",
   );
-  const deckSize = sizes[0]?.deck_size ?? 20;
-  const deckCount = sizes[0]?.decks ?? 3;
+  const deckSize = sizes[0]?.deck_size;
+  if (deckSize === null || deckSize === undefined) {
+    throw new Error("app.settings has no deck_size: is migration 0003 applied?");
+  }
 
-  const needed = deckSize * deckCount;
+  const needed = deckSize * TRIO_DECKS;
   if (ids.length < needed) {
     throw new Error(
-      `need ${String(needed)} distinct non-token cards for ${String(deckCount)} decks of ` +
+      `need ${String(needed)} distinct non-token cards for ${String(TRIO_DECKS)} decks of ` +
         `${String(deckSize)}, but the catalog has ${String(ids.length)}`,
     );
   }
 
-  // `app.save_loadout` reads each entry as `{card_id, count}` and sums `count` for L2, so a bare
-  // id string sums to 0 and the deck reads as empty.
-  const decks = Array.from({ length: deckCount }, (_, i) => ({
-    name: `Starter ${String(i + 1)}`,
-    cards: ids.slice(i * deckSize, (i + 1) * deckSize).map((id) => ({ card_id: id, count: 1 })),
-  }));
+  const deckIds: string[] = [];
+  for (let i = 0; i < TRIO_DECKS; i += 1) {
+    const deckId = randomUUID();
+    const cards = ids.slice(i * deckSize, (i + 1) * deckSize);
+    const { rows: saved } = await client.query<{ outcome: string }>(
+      "select app.upsert_deck($1::uuid, $2::uuid, $3::text, $4::jsonb, $5::text, now(), $6::int) as outcome",
+      [profileId, deckId, `Starter ${String(i + 1)}`, JSON.stringify(cards), catalogVersion, MAX_SAVED_DECKS],
+    );
+    if (saved[0]?.outcome !== "created") {
+      throw new Error(`app.upsert_deck answered ${String(saved[0]?.outcome)} for starter deck ${String(i + 1)}`);
+    }
+    deckIds.push(deckId);
+  }
 
-  await client.query("select app.save_loadout($1::uuid, $2::text, $3::jsonb)", [
-    profileId,
-    catalogVersion,
-    JSON.stringify(decks),
-  ]);
+  const { rows: trio } = await client.query<{ outcome: string }>(
+    "select app.upsert_trio($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, now(), $7::int) as outcome",
+    [profileId, randomUUID(), "Starter trio", deckIds[0], deckIds[1], deckIds[2], MAX_SAVED_TRIOS],
+  );
+  if (trio[0]?.outcome !== "created") {
+    throw new Error(`app.upsert_trio answered ${String(trio[0]?.outcome)} for the starter trio`);
+  }
 }
 
 export async function seedAccounts(count: number): Promise<SeededAccount[]> {
@@ -173,7 +201,7 @@ export async function seedAccounts(count: number): Promise<SeededAccount[]> {
         [id],
       );
 
-      await saveStarterLoadout(client, id, env.CATALOG_VERSION);
+      await saveStarterDecks(client, id, env.CATALOG_VERSION);
       out.push({ email, password: PASSWORD, userId: id, created });
     }
   } finally {
