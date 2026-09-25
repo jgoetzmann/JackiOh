@@ -22,7 +22,7 @@
 
 import { useContext, useLayoutEffect, useRef, type MouseEvent, type ReactElement } from "react";
 
-import type { GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
+import type { GameEvent, LibraryOverflowOutcome, PlayerId, PlayerView } from "@jackioh/shared";
 
 import { useInspectTrigger, type FaceModel } from "../cards/index.ts";
 import { CatalogContext, withMatchDefs } from "./catalog.ts";
@@ -91,6 +91,7 @@ function publicNames(events: readonly GameEvent[]): Map<string, string> {
       case "exiled":
       case "bounced":
       case "burned":
+      case "libraryOverflow":
       case "discarded":
       case "radiantSet":
       case "trapFired":
@@ -129,7 +130,16 @@ function defIdOfInstance(view: PlayerView, instanceId: string): string | undefin
   return undefined;
 }
 
+/** What became of a card a full library turned away (R316), as a line ends. */
+const OVERFLOW_OUTCOME: Readonly<Record<LibraryOverflowOutcome, string>> = {
+  notCreated: "was not created",
+  graveyard: "went to the graveyard",
+  ceased: "ceased to exist",
+};
+
 function describe(event: GameEvent, view: PlayerView, name: Naming): string | null {
+  /** A card an overflow names: by name where the viewer reads it, else "a card" (R97). */
+  const named = (defId: string): string => (defId === HIDDEN_CARD ? "a card" : name.def(defId));
   switch (event.type) {
     case "cardPlayed":
       return `${name.seat(event.player)} played ${name.def(event.defId)} for ${event.costPaid}`;
@@ -154,7 +164,14 @@ function describe(event: GameEvent, view: PlayerView, name: Naming): string | nu
     case "bounced":
       return `${name.def(event.defId)} returned to ${name.whose(event.owner)} hand`;
     case "burned":
-      return `${name.def(event.defId)} burned`;
+      // R317: a full hand's card, named where the viewer reads it (the sentinel is "a card").
+      return capitalised(`${name.whose(event.owner)} hand is full: ${named(event.defId)} burned`);
+    case "fatigue":
+      // R315: public, and it names no card. The hit is the `damage` line after it.
+      return capitalised(`${name.whose(event.player)} library is empty: fatigue ${event.count}`);
+    case "libraryOverflow":
+      // R316: the card a full library turned away, named only where the viewer reads it.
+      return capitalised(`${name.whose(event.player)} library is full: ${named(event.defId)} ${OVERFLOW_OUTCOME[event.outcome]}`);
     case "discarded":
       return `${name.seat(event.owner)} discarded ${name.def(event.defId)}`;
     case "drawn":
@@ -262,6 +279,7 @@ function cardOf(event: GameEvent, view: PlayerView, remembered: ReadonlyMap<stri
     case "exiled":
     case "bounced":
     case "burned":
+    case "libraryOverflow":
     case "discarded":
     case "trapFired":
       return event.instanceId === HIDDEN_CARD ? null : byDef(event.defId, event.instanceId);

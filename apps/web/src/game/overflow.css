@@ -1,0 +1,158 @@
+/* The board's notices for §2.4's overflows (OverflowNotices.tsx, R318): where they stand and how they
+   look. Their motion is animations.css's, keyed off `data-playing` and the pile's `data-animating`.
+
+   A notice is out of flow (absolute), so it moves nothing on the board when it mounts or goes; it
+   floats over its neighbours (z-index 18: over the field, a lifted hand card and a glowing hero, under
+   the phone's open log at 20, the effects layer at 38 and the prompt scrim at 40); and it never takes
+   a pointer event, so whatever it covers still answers a click. It keeps inside the width of the pile or hand it hangs
+   from, give or take a card's width, so it never adds a horizontal scroll at 390 or 1280 wide.
+
+   Resting (its entry over, the board not yet caught up), a notice keeps its tag up and its card at
+   the end of its motion, which is gone: burned, fizzled or dropped. */
+
+/* ---- on a library pile: "Fatigue N" and "Library full" ------------------------------------ */
+
+/* The pile carries its notice above its neighbours while it has one; `relative` moves nothing. */
+.pile:has(> .pile-notice) {
+  position: relative;
+  z-index: 18;
+}
+
+/* Above the viewer's own pile, rising into the field; below the opponent's, hanging into it.
+   `--pile-dir` is 1 where the pile is below the notice and -1 where it is above (animations.css
+   aims the badge's rise and the card's bounce by it). It starts at the pile's own left edge and
+   runs right, over the graveyard and exile piles beside it: centred on a phone's narrow pile, it
+   reached past the edge of the screen when the seat sat against it (844x390). */
+.pile > .pile-notice {
+  --pile-dir: 1;
+
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.pile > .pile-notice[data-side="opponent"] {
+  --pile-dir: -1;
+
+  top: calc(100% + 4px);
+  bottom: auto;
+  flex-direction: column-reverse;
+}
+
+.pile-notice *,
+.burn-notice,
+.burn-notice * {
+  pointer-events: none;
+}
+
+.pile-notice-tag,
+.burn-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.3;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Fatigue is the void's colour, as the drain it deals is (index.css `--plague`). */
+.pile-notice[data-kind="fatigue"] > .pile-notice-tag {
+  border-color: color-mix(in srgb, var(--plague) 70%, white);
+  background: color-mix(in srgb, var(--plague) 34%, var(--bg-sunken));
+  color: #f3e8ff;
+}
+
+/* A refusal is the opponent's red, the colour of "no". */
+.pile-notice[data-kind="libraryFull"] > .pile-notice-tag {
+  border-color: color-mix(in srgb, var(--opponent) 70%, white);
+  background: color-mix(in srgb, var(--opponent) 34%, var(--bg-sunken));
+  color: #ffe4e1;
+}
+
+/* The pile stays dark while it is found empty: its count and icon, never its notice. */
+.pile:has(> .pile-notice[data-kind="fatigue"]) > .pile-label,
+.pile:has(> .pile-notice[data-kind="fatigue"]) > .pile-n,
+.pile:has(> .pile-notice[data-kind="fatigue"])::before {
+  filter: brightness(0.55) grayscale(0.7);
+}
+
+/* The card the library turned away: small, and gone once its motion is over. The graveyard it can
+   drop to is the next pile along (`--overflow-drop-x`). */
+.pile-notice > .overflow-card {
+  --overflow-drop-x: 56px;
+
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  height: 58px;
+  aspect-ratio: 5 / 7;
+  opacity: 0;
+}
+
+/* ---- over a hand: "Hand full" and the card it burned ------------------------------------------ */
+
+/* The hand carries its notice's box while it has one; `relative` moves nothing. */
+.hand:has(> .burn-notice) {
+  position: relative;
+}
+
+/* Centred on the hand and standing up from its lower edge, so the card rises over the fan. The
+   card burns off toward its owner's graveyard: up into the viewer's own seat, and across to the
+   opponent's, which sits beside their hand in every layout. */
+.hand > .burn-notice {
+  --burn-to-x: 0%;
+  --burn-to-y: -40%;
+
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.hand > .burn-notice[data-side="opponent"] {
+  --burn-to-x: -60%;
+  --burn-to-y: 0%;
+
+  top: 4px;
+  bottom: auto;
+}
+
+.burn-tag {
+  border-color: color-mix(in srgb, #f97316 70%, white);
+  background: color-mix(in srgb, #f97316 30%, var(--bg-sunken));
+  color: #ffedd5;
+}
+
+.burn-notice > .burn-card {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  height: clamp(60px, var(--card-h, 80px), 100px);
+  aspect-ratio: 5 / 7;
+  opacity: 0;
+}
+
+/* The viewer's own burn is drawn nearer the size of the hand it could not join. */
+.hand-you > .burn-notice > .burn-card {
+  height: clamp(60px, calc(var(--hand-card-h, 100px) * 0.8), 120px);
+}

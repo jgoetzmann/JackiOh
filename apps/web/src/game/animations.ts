@@ -32,8 +32,8 @@ import { type AnimatingMap, type Side, sideOf, testid } from "./contract";
 
 /**
  * BUILD M5-T1 fixes seven testids (`zone-*`, `card-*`, `hero-*`, `hand-card-*`, `end-turn`,
- * `offer-draw`, `power`) and `contract.ts` adds the controls and the two overlays. Fourteen of
- * the forty rows animate something none of those name — a pile, a tray, a toast, a region — so
+ * `offer-draw`, `power`) and `contract.ts` adds the controls and the two overlays. Sixteen of
+ * the forty-three rows animate something none of those name — a pile, a tray, a toast, a region — so
  * they are declared here and reported as DOM hooks the owning components must render. Keeping
  * them in this file rather than in `contract.ts` (which this task may not edit) means the table
  * stays honest about which hooks exist and which are still owed.
@@ -150,8 +150,8 @@ function zoneOfCard(view: PlayerView, zone: Zone, instanceId: string): string {
 
 /**
  * `eventType → { animation, durationMs, testid }` with exactly one row per `GameEvent["type"]`
- * (BUILD M5-T4). Every duration is the BUILD table's; `animations.test.ts` pins all forty
- * literally so a drift in either direction fails.
+ * (BUILD M5-T4). Every duration is the BUILD table's; `animations.test.ts` pins all
+ * forty-three literally so a drift in either direction fails.
  */
 export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
   // Card lifts from hand and lands in the zone (unit) or flashes centre then to GY (spell).
@@ -259,14 +259,34 @@ export const ANIMATIONS: { [K in GameEventType]: AnimationRow<K> } = {
     fx: { recipe: "bounce" },
     target: (e, view) => instanceOrPile(view, e.instanceId, animTestid.hand(sideOf(view, e.owner))),
   },
-  // Card flips face-up above the hand and burns away. Burned cards come off the library, so they
-  // are never rendered as cards: the hand region is where the flip happens.
+  // R317, R318: the full hand's event. The card rises face-up over its owner's hand under a "Hand
+  // full" tag, catches fire and burns away toward the graveyard (a back for the sentinel). A burned
+  // card never enters the hand, so it is never rendered as a card there: the hand region carries the
+  // motion, which the board draws as its `burn-notice` (OverflowNotices.tsx).
   burned: {
-    animation: "jk-burn-away",
-    durationMs: 400,
+    animation: "jk-hand-full",
+    durationMs: 700,
     testid: "hand-<side>",
     fx: { recipe: "burn" },
     target: (e, view) => animTestid.hand(sideOf(view, e.owner)),
+  },
+  // R315, R318: a draw from an empty library. The pile shakes and dims as it comes up empty and a
+  // "Fatigue N" badge rises from it (`pile-notice`); the `damage` row after it lands the hit.
+  fatigue: {
+    animation: "jk-fatigue",
+    durationMs: 600,
+    testid: "library-<side>",
+    fx: { recipe: "fatigue" },
+    target: (e, view) => animTestid.library(sideOf(view, e.player)),
+  },
+  // R316, R318: a full library turns a card away. "Library full" flashes on the pile, and the card
+  // (face or back by R97) bounces off it, then fizzles or drops toward the graveyard (`pile-notice`).
+  libraryOverflow: {
+    animation: "jk-library-full",
+    durationMs: 500,
+    testid: "library-<side>",
+    fx: { recipe: "overflow" },
+    target: (e, view) => animTestid.library(sideOf(view, e.player)),
   },
   // Card drops from hand to GY.
   discarded: {
@@ -729,7 +749,8 @@ export const HIDDEN_ID = "hidden";
  * `radiant`, `cardPlayed` and `summoned` drop their `formerId` (R227), `buffed` zeroes its
  * `attack` and `health` and `costChanged` blanks its `cost` (R177), and `radiantSet` moves its
  * `zone` to the owner's hand. Every one of them is rewritten only when the event's own
- * `instanceId` is the one hidden.
+ * `instanceId` is the one hidden. `burned` and `libraryOverflow` (R317, R316) change nothing but
+ * their ids, and `fatigue` (R315) is public, so none of the three needs an entry.
  */
 const REWRITTEN_WITH_IDENTITY: Partial<Record<GameEventType, readonly string[]>> = {
   cardResolved: ["radiant"],

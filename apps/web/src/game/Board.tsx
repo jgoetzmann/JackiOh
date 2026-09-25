@@ -17,7 +17,7 @@
 // there and shows `log-toggle` instead, which opens it over the top of the board
 // (`data-log="open"`) until it is pressed again.
 
-import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
+import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from "react";
 
 import type { CardView, GameEvent, GameEventType, PlayerId, PlayerView, Row } from "@jackioh/shared";
 
@@ -41,6 +41,7 @@ import {
 import Hand from "./Hand.tsx";
 import Hero from "./Hero.tsx";
 import Log from "./Log.tsx";
+import { BurnNotice, PileNotice, noticesFrom, type OverflowNotices } from "./OverflowNotices.tsx";
 import Zone from "./Zone.tsx";
 import { listedFace } from "./faces.ts";
 import { glowAttr, hasMovesLeft } from "./glow.ts";
@@ -196,6 +197,7 @@ function Pile({
   fatigue,
   animating,
   browse,
+  children,
 }: {
   label: string;
   regionId: string;
@@ -204,6 +206,8 @@ function Pile({
   fatigue?: number;
   animating?: AnimatingMap;
   browse?: PileBrowse;
+  /** R318: the pile's overflow notice (OverflowNotices.tsx), drawn inside it. */
+  children?: ReactNode;
 }): ReactElement {
   const lookup = useContext(CatalogContext);
   const hoverPreviews = useSetting("hoverPreviews");
@@ -266,6 +270,7 @@ function Pile({
         <span className="pile-n" data-testid={testId}>
           {count}
         </span>
+        {children}
       </span>
       {inspect.overlay}
     </>
@@ -280,6 +285,7 @@ function Seat({
   onClick,
   onControl,
   pops,
+  notices,
 }: {
   view: PlayerView;
   side: Side;
@@ -288,6 +294,7 @@ function Seat({
   onClick?: BoardProps["onClick"];
   onControl?: BoardProps["onControl"];
   pops: ReadonlyMap<string, Pops>;
+  notices: OverflowNotices;
 }): ReactElement {
   const seat = sideView(view, side);
   return (
@@ -310,7 +317,9 @@ function Seat({
           count={seat.libraryCount}
           fatigue={seat.fatigueCount}
           animating={animating}
-        />
+        >
+          <PileNotice notice={notices.pile.get(side)} side={side} view={view} />
+        </Pile>
         <Pile
           label="Graveyard"
           regionId={animTestid.graveyard(side)}
@@ -401,6 +410,9 @@ export default function Board({
   onControl,
 }: BoardProps): ReactElement {
   const pops = popsFrom(view, animating, animated);
+  // R318: fatigue and a full library on a library pile, a full hand over a hand, as the pops are.
+  const notices = noticesFrom(view, animating, animated);
+  const burnNotice = (side: Side): ReactElement => <BurnNotice notice={notices.burn.get(side)} side={side} view={view} />;
   const yourHand: CardView[] | { count: number } = view.you.hand;
   const dragToPlay = useSetting("dragToPlay");
   const confirmEndTurn = useSetting("confirmEndTurn");
@@ -442,8 +454,9 @@ export default function Board({
           onClick={onClick}
           onControl={onControl}
           pops={pops}
+          notices={notices}
         />
-        <Hand side="opponent" hand={view.opponent.hand} highlight={highlight} animating={animating} onClick={onClick} />
+        <Hand side="opponent" hand={view.opponent.hand} highlight={highlight} animating={animating} onClick={onClick} notice={burnNotice("opponent")} />
 
         <div className="field" aria-label="Field">
           {LANES.map((lane) => (
@@ -465,8 +478,8 @@ export default function Board({
           ))}
         </div>
 
-        <Seat view={view} side="you" highlight={highlight} animating={animating} onClick={onClick} onControl={onControl} pops={pops} />
-        <Hand side="you" hand={yourHand} highlight={highlight} animating={animating} onClick={onClick} />
+        <Seat view={view} side="you" highlight={highlight} animating={animating} onClick={onClick} onControl={onControl} pops={pops} notices={notices} />
+        <Hand side="you" hand={yourHand} highlight={highlight} animating={animating} onClick={onClick} notice={burnNotice("you")} />
 
         <div className="control-bar" aria-label="Controls">
           {/* Whose turn, above End turn wherever the controls have a column of their own (board.css
