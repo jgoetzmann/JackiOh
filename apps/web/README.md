@@ -179,23 +179,28 @@ browser and exposes `window.__jackioh = { state, dispatch, seed, … }` whenever
 
 ## Decks, the lobby and the series
 
-The screens an account uses between games (SPEC §9.4, §9.5, R250–R264). None of them decides a rule:
-every verdict they show comes from `@jackioh/validator`, the module the server runs at queue, and
-the server's refusal, when it comes, is shown in its own words (rule 7).
+The screens an account uses between games (SPEC §9.4, §9.5, R250–R264, R330–R341). None of them
+decides a rule: every verdict they show comes from `@jackioh/validator`, the module the server runs at
+queue, and the server's refusal, when it comes, is shown in its own words (rule 7).
 
 ```
 routes/decks.tsx        /decks: loads GET /api/decks, the catalog and the collection, hands them to the workshop
 game/deckbuilder/       the deck workshop: up to ten named decks and five trios (R250, R252), the pool
                         browser, the trio editor that marks every card two of its decks share (R251),
-                        deck codes (deckCode.ts, R255) and autosave with a local mirror of unsaved edits
-                        (sync.ts, R256)
-routes/play.tsx         /play: the mode picker (Best of 1, Best of 3, All Random, R257), the deck or trio
-                        choice with the validator's verdict as UX, the queue and the room code; it waits on
-                        /api/auth/me's currentMatchId and currentSeriesId
-routes/series.tsx       /series/:id: a Best-of-3 series (R259–R262): score, the hidden picks, the pick clock,
+                        deck codes (deckCode.ts, R255), trio codes (trioCode.ts, built on deckCode.ts's
+                        parts, R339) with Copy trio code in the trio editor and Import trio
+                        (TrioImportPanel.tsx, R340), and autosave with a local mirror of unsaved edits
+                        (sync.ts, R256); a trio import is one POST /api/trios/import, never the autosave (R341)
+routes/play.tsx         /play: the mode picker (Best of 1, Conquest, All Random, R257, R330), the deck or
+                        trio choice with the validator's verdict as UX, the queue and the room code; it
+                        waits on /api/auth/me's currentMatchId and currentSeriesId
+routes/series.tsx       /series/:id: a Conquest series (R330–R336): score, both sides' won (locked) decks,
                         the history, forfeit between games, the result
-routes/SeriesBanner.tsx the board's banner for a series game, and its "Continue" once the game is over
-routes/lobby.css        the lobby's and the series screen's look
+routes/SeriesPicker.tsx the deck-selection phase before each game, laid out as the mulligan (R331–R333,
+                        R338): choose a deck that has not won, lock it in, wait sealed; one clock
+routes/SeriesBanner.tsx the board's banner for a series game, each side's won decks as pips, and its
+                        "Continue" once the game is over
+routes/lobby.css        the lobby's and the series screen's look; series-picker.css the picker's and the pips'
 ```
 
 A practice game offers the account's complete saved decks by name, read from `GET /api/decks`.

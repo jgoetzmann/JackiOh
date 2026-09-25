@@ -306,7 +306,7 @@ export const TRIO_CAP = "trio-cap";
 export const TRIO_NEW = "trio-new";
 export const TRIO_CAP_REASON = "trio-cap-reason";
 
-/** One saved trio in the list: `data-ready="true|false"` (R253's Best-of-3 verdict). */
+/** One saved trio in the list: `data-ready="true|false"` (R253's Conquest verdict). */
 export function trioRowId(trioId: string): string {
   return `trio-row-${trioId}`;
 }
@@ -431,6 +431,9 @@ export function trioCardId(slot: number, catalogCardId: string): string {
 export const TRIO_DELETE = "trio-delete";
 export const TRIO_DELETE_CONFIRM = "trio-delete-confirm";
 export const TRIO_DELETE_CANCEL = "trio-delete-cancel";
+/** R339: copies the trio's code and shows it in `TRIO_CODE_OUTPUT`, a read-only field. */
+export const TRIO_COPY_CODE = "trio-copy-code";
+export const TRIO_CODE_OUTPUT = "trio-code-output";
 
 /** Opens the import panel from the rail (R255). */
 export const DECK_IMPORT_OPEN = "deck-import-open";
@@ -444,6 +447,28 @@ export const DECK_IMPORT_PREVIEW = "deck-import-preview";
 export const DECK_IMPORT_SUBMIT = "deck-import-submit";
 export const DECK_IMPORT_CAP_REASON = "deck-import-cap-reason";
 export const DECK_IMPORT_CANCEL = "deck-import-cancel";
+
+/** Opens the trio import panel from the rail's Trios group (R339–R341). */
+export const TRIO_IMPORT_OPEN = "trio-import-open";
+/** The trio import panel. */
+export const TRIO_IMPORT = "trio-import";
+/** Where the trio code is pasted. */
+export const TRIO_IMPORT_INPUT = "trio-import-input";
+/** The live read of the pasted trio code, `data-ok="true|false"`. */
+export const TRIO_IMPORT_PREVIEW = "trio-import-preview";
+/** Slot `n` of the preview, 1-based: `data-empty`, and `data-count` for a deck. */
+export function trioImportSlotId(slot: number): string {
+  return `trio-import-slot-${String(slot)}`;
+}
+/** The cards two or more of the code's decks share (`data-count`): kept, and flagged. */
+export const TRIO_IMPORT_SHARED = "trio-import-shared";
+/** "Import as new trio": off until the code reads and while the caps leave too little room (R340). */
+export const TRIO_IMPORT_SUBMIT = "trio-import-submit";
+/** Exactly how many deck and trio slots the import needs (`data-decks-short`, `data-trios-short`). */
+export const TRIO_IMPORT_CAP_REASON = "trio-import-cap-reason";
+export const TRIO_IMPORT_CANCEL = "trio-import-cancel";
+/** The server's refusal of an import, in its own words. */
+export const TRIO_IMPORT_ERROR = "trio-import-error";
 
 // ---------------------------------------------------------------------------------------------
 // A13: the invite code screen (BUILD M6-T1, SPEC §9.4). Like A11's deckbuilder block, BUILD names
@@ -764,10 +789,11 @@ export const INSPECT_LIST_DETAIL = "inspect-list-detail";
 export const INSPECT_LIST_BACK = "inspect-list-back";
 
 // ---------------------------------------------------------------------------------------------
-// A16: the lobby, the Best-of-3 series screen and the board's series banner (SPEC §9.5,
-// R257–R264). Like A11 and A13 these mirror, name for name, the screens' own vocabulary:
-// `playTestid` / `playModeTestid` in `apps/web/src/routes/play.tsx`, `seriesTestid` in
-// `apps/web/src/routes/series.tsx` and `seriesBannerTestid` in `apps/web/src/routes/SeriesBanner.tsx`.
+// A16: the lobby, the Conquest series screen and its deck picker, and the board's series banner
+// (SPEC §9.5, R257–R264, R330–R338). Like A11 and A13 these mirror, name for name, the screens' own
+// vocabulary: `playTestid` / `playModeTestid` in `apps/web/src/routes/play.tsx`, `seriesTestid` in
+// `apps/web/src/routes/series.tsx`, `seriesPickerTestid` in `apps/web/src/routes/SeriesPicker.tsx`
+// and `seriesBannerTestid` in `apps/web/src/routes/SeriesBanner.tsx`.
 // Keep the files identical.
 // ---------------------------------------------------------------------------------------------
 
@@ -790,7 +816,7 @@ export const PLAY_STATUS = "play-status";
 export const PLAY_ERROR = "play-error";
 /** Best of 1's deck `<select>`: one option per saved deck, its value the deck id. */
 export const PLAY_DECK_SELECT = "play-deck-select";
-/** Best of 3's trio `<select>`: one option per saved trio, its value the trio id. */
+/** Conquest's trio `<select>`: one option per saved trio, its value the trio id. */
 export const PLAY_TRIO_SELECT = "play-trio-select";
 /** The client's verdict on the choice (`data-ready`): UX only, the server's is law (R253). */
 export const PLAY_VERDICT = "play-choice-verdict";
@@ -806,10 +832,14 @@ export const SERIES_SCREEN = "series-screen";
 export const SERIES_ERROR = "series-error";
 /** The game wins so far, in `data-you` and `data-opponent`. */
 export const SERIES_SCORE = "series-score";
-/** "Opponent is choosing…" / "Opponent has picked." (`data-picked`), and never what (R259). */
+/** "Opponent is choosing…" / "Opponent has picked" (`data-picked`), and never what (R331). */
 export const SERIES_OPPONENT_STATUS = "series-opponent-status";
-/** The pick clock's whole seconds left, in `data-seconds` (R260). */
+/** The pick clock's whole seconds left, in `data-seconds` (R333). */
 export const SERIES_PICK_CLOCK = "series-pick-clock";
+/** The deck picker (R338): `data-state="choosing|waiting"`, `data-auto="true"` for a pick made for you. */
+export const SERIES_PICKER = "series-picker";
+/** Seals the selected deck as the pick (R331). */
+export const SERIES_LOCK_IN = "series-lock-in";
 /** While a game is on: the way to its board. */
 export const SERIES_OPEN_MATCH = "series-open-match";
 export const SERIES_FORFEIT = "series-forfeit";
@@ -817,17 +847,17 @@ export const SERIES_FORFEIT_CONFIRM = "series-forfeit-confirm";
 /** Once over: `data-outcome="win|loss|draw|abandoned"`. */
 export const SERIES_RESULT = "series-result";
 
-/** One of your three decks (0-based trio slot): `data-played`, `data-picked`. */
+/** One of your three decks in the standings (0-based trio slot): `data-won` (locked), `data-picked`. */
 export function seriesDeckId(slot: number): string {
   return `series-deck-${String(slot)}`;
 }
 
-/** Its Pick button: rendered only while picking, and only for a deck not yet played. */
+/** A deck in the picker, while choosing: selects it (`data-selected`); disabled once it has won. */
 export function seriesPickId(slot: number): string {
   return `series-pick-${String(slot)}`;
 }
 
-/** One of the opponent's slots: `data-played` and nothing else (R259). */
+/** One of the opponent's slots: `data-won` and nothing else (R336). */
 export function seriesOpponentDeckId(slot: number): string {
   return `series-opponent-deck-${String(slot)}`;
 }
@@ -843,3 +873,10 @@ export const SERIES_BANNER = "series-banner";
 export const SERIES_BANNER_CONTINUE = "series-banner-continue";
 /** Once the series is over: its result, in `data-outcome`. */
 export const SERIES_BANNER_RESULT = "series-banner-result";
+/** One pip per deck on the banner, `data-won="true"` once it has won (R336). */
+export function seriesBannerYourDeckId(slot: number): string {
+  return `series-banner-you-deck-${String(slot)}`;
+}
+export function seriesBannerOpponentDeckId(slot: number): string {
+  return `series-banner-opponent-deck-${String(slot)}`;
+}
