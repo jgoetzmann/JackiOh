@@ -41,6 +41,7 @@ import {
 import { getCatalog } from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
 import { BackLink } from "./nav.tsx";
+import { SeriesBanner, SeriesContinue, useMatchSeries } from "./SeriesBanner.tsx";
 
 /** Chrome this route invented. None of it is in `e2e/support/testids.ts`; see the hand-off report. */
 export const matchTestid = {
@@ -112,6 +113,8 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
     ...(socketFactory === undefined ? {} : { socketFactory }),
   });
   const defs = useCatalog();
+  // R259: a Best-of-3 game shows its series' score, and once it is over the way to the next game.
+  const series = useMatchSeries(token, matchId, match.view?.result != null);
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
 
   // BUILD M5-T3 / `e2e/support/types.ts`: `window.__jackioh` outside production builds. Installed
@@ -184,10 +187,14 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
       onAction={match.send}
       error={match.error}
       resultActions={
-        // A finished match's way on (Result.tsx): the lobby, where the next one starts.
-        <button type="button" data-testid="result-back" onClick={() => navigate(paths.play)}>
-          Back to lobby
-        </button>
+        // A finished match's way on (Result.tsx): the series' next game first when there is one,
+        // then the lobby, where the next one starts.
+        <>
+          <SeriesContinue series={series} matchId={matchId} />
+          <button type="button" data-testid="result-back" onClick={() => navigate(paths.play)}>
+            Back to lobby
+          </button>
+        </>
       }
     />
   );
@@ -211,6 +218,7 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
           graceMs={graceMs}
         />
       </header>
+      <SeriesBanner series={series} matchId={matchId} gameOver={view.result !== null} />
 
       {match.legalSource === "none" ? (
         <p className="notice" data-testid={matchTestid.missingLegal} role="alert">
