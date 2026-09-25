@@ -19,6 +19,8 @@ e2e/
   cypress/e2e/*.cy.ts      the seventeen specs
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
+  cypress/e2e/22-tutorial-lesson-one.cy.ts  SPEC §9.10: lesson 1 played to a win by doing, through the UI, what the coach asks; progress saved; the log replays with the tutorial handicap
+  cypress/e2e/23-tutorial-path.cy.ts  SPEC §9.10: the lesson path (locked, open, completed), progress seeded, reloaded and corrupt, Skip and Exit, a later lesson's fixed deal, the phone layout
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
@@ -28,6 +30,8 @@ e2e/
     testids.ts             every selector the suite uses, in one file
     ux.ts                  polish 7: the pointer-drag gesture (spec 16) and the drag, glow and
                            settings selectors it reads
+    tutorial.ts            specs 22 and 23: the lesson URL, seeded progress, the practice and
+                           tutorial dev handles, and the driver that follows the coach by clicking
     config.ts              routes, endpoints, fixture accounts, the session key, timeouts,
                            SPEC constants
     cards.ts               SPEC §8 index -> name -> `core-NNN` catalog id, and the 9 Tokens
@@ -37,7 +41,10 @@ e2e/
       index.ts             registers the node tasks
       wsPlayer.ts          `cy.task("wsPlayer")`: the second player, driven from Node (spec 06)
       replay.ts            `cy.task("replayHash")`: fold the recorded log (and spec 13's handicaps) outside the browser
-      replay-runner.ts     runs under the repo's tsx; the only file here that imports packages/*
+      replay-runner.ts     runs under the repo's tsx; imports packages/* to fold the log
+      lessons.ts           `cy.task("tutorialLessons")`: the lessons, seeds and decks as apps/web states them
+      lessons-runner.ts    runs under the repo's tsx; reads apps/web/src/tutorial/lessons.ts, AI_TUTORIAL and
+                           the catalog's Quickdraw tag (excluded from tsconfig.json, like replay-runner.ts)
   scripts/check-fixtures.mjs  pre-flight for the deck fixtures; needs no browser and no client
   artifacts/               recorded logs, screenshots, videos (git-ignored)
 ```
@@ -178,6 +185,8 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 15 | Polish 2 (SPEC §10.11): the audio layer on `/dev/hotseat`, M4 + M5, no server. Chrome for the audio context; it asserts the voice request in `window.__jackiohAudio`'s log, never the sound. |
 | 16 | Polish 7 (§10.8, R195): drag to play on `/dev/hotseat` with spec 04's decks and seed, M4 + M5, no server. The gestures are real pointer events from `support/ux.ts`, and the settings panel turns drag to play off. |
 | 17 | M4 + M5 and polish 3 (`/practice`), against `build:e2e` with no server: the opponent's-play showcase, the log's card lines and the pile browser (§10.8, §10.10, R97, R202, R227), with the selectors in `support/testids.ts` block A15. It uses spec 01's and spec 03's decks and seeds, and plays `/practice` at normal pacing, because `?pace=fast` releases the AI without waiting for the showcase. How long the showcase stood is read off a MutationObserver recorder in the page, never off a fixed wait. |
+| 22 | SPEC §9.10 (the tutorial) on `/practice`, against `build:e2e` with no server. It follows the coach through lesson 1 by clicking what `window.__jackiohTutorial.suggested` names (never dispatching), with reduced motion so every view is drawn as it arrives, and folds the log with the tutorial handicap (R290). It names no card or step, so the lesson's content may change under it. |
+| 23 | SPEC §9.10 on `/practice`, against `build:e2e` with no server: the lesson path and its progress in `localStorage["jackioh.tutorial.v1"]` (R294), Skip and Exit, a lesson's seed, decks and handicap (R290, R291) compared with `apps/web/src/tutorial/lessons.ts` through `cy.task("tutorialLessons")`, and a 390x844 smoke. Rebuild the client after a lesson changes, or the task and the bundle disagree. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

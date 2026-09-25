@@ -80,6 +80,18 @@ describe("the coach bubble's placement", () => {
     expect(overlapArea(bubbleRect(place), anchor)).toBe(0);
   });
 
+  it("when every side covers a soft obstacle, takes the side that covers the least of it", () => {
+    // The enemy hero at the top, its front row of units just below: under the hero the bubble would
+    // sit on the row, beside it it only clips the row's top edge.
+    const hero: Rect = { left: 580, top: 80, width: 120, height: 50 };
+    const row: Rect = { left: 100, top: 200, width: 900, height: 100 };
+    const place = placeBubble(input({ anchor: hero, avoid: [row] }));
+    expect(place.side).toBe("right");
+    const below = { left: 470, top: 142, width: BUBBLE.width, height: BUBBLE.height };
+    expect(overlapArea(bubbleRect(place), row)).toBeLessThan(overlapArea(below, row));
+    expect(overlapArea(bubbleRect(place), hero)).toBe(0);
+  });
+
   it("with no anchor, an info step floats in the middle and the waiting bubble in the corner", () => {
     const centre = placeBubble(input({}));
     expect(centre.side).toBe("center");

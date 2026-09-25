@@ -29,6 +29,7 @@ import {
   type ReactElement,
 } from "react";
 
+import { LANES, testid } from "../game/contract.ts";
 import {
   COACH_BUBBLE_GAP_PX,
   COACH_BUBBLE_MIN_HEIGHT_PX,
@@ -44,6 +45,16 @@ import "./tutorial.css";
 
 /** What the bubble stays clear of when it can (an open prompt, your hand, End turn), besides its anchor. */
 const SOFT_OBSTACLES: readonly string[] = ["prompt-modal", "hand-you", "end-turn"];
+
+/**
+ * Beside an anchor, the bubble also stays off both unit rows when one side lets it: the units a step
+ * asks the player to attack with, or at, stand there. A step pointing at the enemy hero otherwise
+ * sat below it, on the enemy Taunt unit its own attack had to hit first (e2e spec 22). An unanchored
+ * bubble keeps to the middle of the screen, which is over the board whatever it does.
+ */
+const UNIT_ROWS: readonly string[] = (["opponent", "you"] as const).flatMap((side) =>
+  LANES.map((lane) => testid.zone(side, "units", lane)),
+);
 
 /** Where focus must never be pulled out of. */
 const FOCUS_KEEPERS = '[data-testid="prompt-modal"], [role="dialog"][aria-modal="true"], [role="alertdialog"]';
@@ -160,7 +171,8 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
       const union = unionRect(found);
       const ring = union === null ? null : padRect(union, COACH_RING_PAD_PX);
       const own = new Set(ids);
-      const avoid = SOFT_OBSTACLES.filter((id) => !own.has(id))
+      const avoid = (ring === null ? SOFT_OBSTACLES : [...SOFT_OBSTACLES, ...UNIT_ROWS])
+        .filter((id) => !own.has(id))
         .map((id) => rectOf(byTestid(id)))
         .filter((rect): rect is Rect => rect !== null);
       const hud = rectOf(byTestid(tutorialTestid.hud));

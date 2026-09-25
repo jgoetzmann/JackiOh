@@ -6,8 +6,9 @@
 //  - Floating (desktop and tablet): beside the anchor, `gap` away, on the first side it fits
 //    whole — above or below first (whichever has the anchor's far side of the screen), then right
 //    or left — slid along that side to stay `margin` inside the viewport. A side that also covers a
-//    soft obstacle (an open prompt the step is not about) loses to one that does not. If no side
-//    fits, it docks as on a phone.
+//    soft obstacle (an open prompt the step is not about, a unit row) loses to one that does not,
+//    and when every side covers one, the side covering the least of them wins. If no side fits, it
+//    docks as on a phone.
 //  - Docked (the board's phone layouts): full width, against the top or bottom edge, whichever
 //    side of the anchor has more room, and never taller than that room (its text scrolls) unless
 //    the room is under `minHeight`: an anchor that leaves less than that on both sides is the one
@@ -181,7 +182,19 @@ export function placeBubble(input: PlaceInput): BubblePlacement {
       (sum, rect) => sum + overlapArea({ left: candidate.left, top: candidate.top, ...bubble }, rect),
       0,
     );
-  const best = fitting.find((candidate) => covers(candidate) === 0) ?? fitting[0];
+  // The first side that covers no soft obstacle; when every side covers one, the side that covers
+  // the least of them (a bubble below the enemy hero sat on the enemy's whole front row, where one
+  // beside it clips only the row's top edge: e2e spec 22).
+  let best: Candidate | undefined;
+  let least = Infinity;
+  for (const candidate of fitting) {
+    const covered = covers(candidate);
+    if (covered < least) {
+      best = candidate;
+      least = covered;
+    }
+    if (covered === 0) break;
+  }
   if (best === undefined) return dock(input, anchor);
   return { side: best.side, left: best.left, top: best.top, width: null, maxHeight: null };
 }
