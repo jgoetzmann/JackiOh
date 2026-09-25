@@ -124,6 +124,548 @@
   font-size: 13px;
 }
 
+/* --- the lobby in the tavern (routes/play.tsx) ------------------------------------------------
+   /play wears the tavern (auth/tavern.css) like the landing, sign-in and account screens: a hero,
+   then numbered panels. Everything below is under `.tavern.play-screen`, one class more specific
+   than the plain lobby rules above, which the series screen still relies on. */
+
+.tavern.play-screen {
+  --play-panel-edge: rgba(201, 149, 63, 0.55);
+  --play-tile: linear-gradient(180deg, rgba(58, 34, 18, 0.9), rgba(26, 15, 8, 0.95));
+  --play-ready: var(--tavern-teal);
+}
+
+.tavern.play-screen .play-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  padding-top: 6px;
+}
+
+.tavern.play-screen .play-hero__title {
+  margin: 0;
+  font-family: var(--tavern-serif);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tavern-gold-pale);
+}
+
+.tavern.play-screen .play-hero__lead {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.tavern.play-screen .play-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .tavern.play-screen .play-layout {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  }
+}
+
+.tavern.play-screen .play-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* A panel: the sign-in board's brass and wood, without its studs, so four can share a screen. */
+.tavern.play-screen .play-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: none;
+  min-width: 0;
+  padding: 20px 20px 22px;
+  border: 1px solid var(--play-panel-edge);
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse 90% 40% at 50% 0%, rgba(255, 190, 110, 0.08), transparent 70%),
+    linear-gradient(180deg, rgba(52, 30, 16, 0.94), rgba(22, 13, 7, 0.96));
+  box-shadow:
+    inset 0 0 0 3px rgba(18, 11, 7, 0.85),
+    inset 0 0 0 4px rgba(201, 149, 63, 0.22),
+    0 18px 44px rgba(0, 0, 0, 0.55);
+}
+
+.tavern.play-screen .play-panel__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--tavern-serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--tavern-gold-pale);
+}
+
+.tavern.play-screen .play-panel__heading--sub {
+  margin-top: 8px;
+  font-size: 17px;
+}
+
+.tavern.play-screen .play-step {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff0bf, var(--tavern-gold) 45%, #a86a1f);
+  color: var(--tavern-ink);
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 2px 0 #4a2a0e;
+}
+
+/* --- modes: three tiles ---------------------------------------------------------------------- */
+
+.tavern.play-screen .lobby-modes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+}
+
+@media (min-width: 620px) {
+  .tavern.play-screen .lobby-modes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* The legend is for a screen reader; the panel's heading already says it to everyone else. */
+.tavern.play-screen .lobby-modes__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tavern.play-screen .play-mode-tile {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas:
+    "icon text"
+    "icon wait";
+  align-items: start;
+  justify-items: start;
+  gap: 4px 12px;
+  min-height: 100%;
+  padding: 12px 40px 12px 14px;
+  border: 1px solid rgba(201, 149, 63, 0.35);
+  border-radius: 12px;
+  background: var(--play-tile);
+  color: var(--tavern-parchment);
+  cursor: pointer;
+  transition: border-color 140ms, box-shadow 140ms, transform 120ms ease-out;
+}
+
+/* Side by side, a tile stands up: the emblem on top, the words under it, the count at the foot. */
+@media (min-width: 620px) {
+  .tavern.play-screen .play-mode-tile {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "icon"
+      "text"
+      "wait";
+    gap: 8px;
+    padding: 14px 14px 12px;
+  }
+}
+
+.tavern.play-screen .play-mode-tile .play-mode-tile__icon {
+  grid-area: icon;
+}
+
+.tavern.play-screen .play-mode-tile .lobby-mode__text {
+  grid-area: text;
+}
+
+.tavern.play-screen .play-mode-tile:hover {
+  border-color: var(--tavern-brass);
+  transform: translateY(-1px);
+}
+
+.tavern.play-screen .play-mode-tile[data-selected="true"] {
+  border-color: var(--tavern-gold);
+  background:
+    radial-gradient(ellipse 100% 60% at 50% 0%, rgba(243, 201, 105, 0.16), transparent 70%),
+    var(--play-tile);
+  box-shadow: 0 0 0 1px var(--tavern-gold), 0 0 24px rgba(243, 201, 105, 0.22);
+}
+
+.tavern.play-screen .play-mode-tile:has(input:focus-visible) {
+  outline: 2px solid var(--tavern-gold-pale);
+  outline-offset: 3px;
+}
+
+/* The radio stays a real, visible control (a test checks it, a keyboard reaches it), drawn as a
+   brass ring in the tile's corner. */
+.tavern.play-screen .play-mode-tile input[type="radio"] {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  appearance: none;
+  border: 2px solid var(--tavern-brass);
+  border-radius: 50%;
+  background: var(--tavern-well);
+  cursor: pointer;
+}
+
+.tavern.play-screen .play-mode-tile input[type="radio"]:checked {
+  border-color: var(--tavern-gold);
+  background: radial-gradient(circle, var(--tavern-gold-pale) 0 3px, var(--tavern-gold) 4px 5px, var(--tavern-well) 6px);
+}
+
+.tavern.play-screen .play-mode-tile__icon {
+  width: 34px;
+  height: 34px;
+  fill: rgba(243, 201, 105, 0.16);
+  stroke: var(--tavern-gold);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.tavern.play-screen .play-mode-tile__pip {
+  fill: var(--tavern-gold);
+  stroke: none;
+}
+
+.tavern.play-screen .play-mode-tile .lobby-mode__name {
+  font-family: var(--tavern-serif);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--tavern-gold-pale);
+}
+
+.tavern.play-screen .play-mode-tile .lobby-mode__hint {
+  color: var(--tavern-text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tavern.play-screen .play-mode-tile__waiting {
+  grid-area: wait;
+  padding: 2px 9px;
+  border: 1px solid rgba(63, 182, 168, 0.45);
+  border-radius: 999px;
+  color: #9fe3da;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the deck or trio --------------------------------------------------------------------- */
+
+.tavern.play-screen .play-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tavern.play-screen .play-pick label,
+.tavern.play-screen .play-join label {
+  color: color-mix(in srgb, var(--tavern-parchment) 80%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.tavern.play-screen .lobby-select,
+.tavern.play-screen .play-join input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(201, 149, 63, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0b0704, var(--tavern-well));
+  color: var(--tavern-parchment);
+  font: inherit;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.65);
+  transition: border-color 140ms, box-shadow 140ms;
+}
+
+.tavern.play-screen .lobby-select:hover,
+.tavern.play-screen .play-join input:hover {
+  border-color: var(--tavern-brass);
+}
+
+.tavern.play-screen .lobby-select:focus-visible,
+.tavern.play-screen .play-join input:focus-visible {
+  outline: none;
+  border-color: var(--tavern-gold);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.65), 0 0 0 3px rgba(243, 201, 105, 0.25);
+}
+
+.tavern.play-screen .play-pick-summary {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tavern.play-screen .play-pick-summary[data-full="true"] {
+  color: #9fe3da;
+}
+
+.tavern.play-screen .play-trio-decks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tavern.play-screen .play-trio-deck {
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid rgba(201, 149, 63, 0.45);
+  border-radius: 999px;
+  background: rgba(14, 9, 5, 0.7);
+  color: var(--tavern-parchment);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.tavern.play-screen .play-trio-deck[data-empty="true"] {
+  border-style: dashed;
+  color: var(--tavern-text-dim);
+}
+
+.tavern.play-screen .lobby-note,
+.tavern.play-screen .lobby-population {
+  margin: 0;
+  color: var(--tavern-text-dim);
+  font-size: 13px;
+}
+
+.tavern.play-screen .lobby-verdict {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(232, 102, 79, 0.55);
+  border-radius: 10px;
+  background: rgba(14, 9, 5, 0.6);
+  color: var(--tavern-parchment);
+  font-size: 13px;
+}
+
+.tavern.play-screen .lobby-verdict[data-ready="true"] {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-color: rgba(63, 182, 168, 0.6);
+  color: #9fe3da;
+  font-weight: 700;
+}
+
+.tavern.play-screen .lobby-verdict__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--play-ready);
+  color: var(--tavern-ink);
+  font-size: 12px;
+}
+
+.tavern.play-screen .lobby-verdict__lead {
+  color: var(--tavern-text-dim);
+}
+
+/* --- finding a match -------------------------------------------------------------------- */
+
+.tavern.play-screen .play-cta {
+  width: 100%;
+}
+
+.tavern.play-screen .play-leave {
+  align-self: center;
+  font-size: 14px;
+}
+
+.tavern.play-screen .play-search {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(63, 182, 168, 0.45);
+  border-radius: 12px;
+  background: rgba(14, 9, 5, 0.6);
+}
+
+.tavern.play-screen .play-search__beacon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #d8fff8 0 3px, var(--tavern-teal) 4px 6px, transparent 7px);
+}
+
+.tavern.play-screen .play-search__ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--tavern-teal);
+  border-radius: 50%;
+  opacity: 0;
+  animation: play-search-ping calc(1800ms * var(--anim-scale)) ease-out infinite;
+}
+
+.tavern.play-screen .play-search__ring--late {
+  animation-delay: calc(900ms * var(--anim-scale));
+}
+
+@keyframes play-search-ping {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern.play-screen .play-search__ring {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.tavern.play-screen .play-search__text {
+  color: var(--tavern-parchment);
+  font-weight: 600;
+}
+
+/* --- a room -------------------------------------------------------------------------------- */
+
+.tavern.play-screen .play-room-create {
+  align-self: flex-start;
+}
+
+.tavern.play-screen .play-ticket {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--tavern-gold);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse 80% 80% at 0% 50%, rgba(243, 201, 105, 0.1), transparent 70%),
+    rgba(14, 9, 5, 0.7);
+}
+
+.tavern.play-screen .play-ticket__label {
+  flex-basis: 100%;
+  color: var(--tavern-text-dim);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tavern.play-screen .play-ticket__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--tavern-gold-pale);
+  background: none;
+  padding: 0;
+}
+
+.tavern.play-screen .lobby-room-mode {
+  padding: 2px 10px;
+  border: 1px solid rgba(201, 149, 63, 0.5);
+  border-radius: 999px;
+  color: var(--tavern-parchment);
+  font-size: 12px;
+}
+
+.tavern.app-shell.play-screen .play-ticket__copy {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 4px 14px;
+  font-size: 14px;
+}
+
+.tavern.play-screen .play-join {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tavern.play-screen .play-join__row {
+  display: flex;
+  gap: 8px;
+}
+
+.tavern.play-screen .play-join input {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* Join is secondary to Find a match: the wood button, not the gold. */
+.tavern.app-shell.play-screen .play-join button[type="submit"] {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 8px 20px;
+  border: 1px solid var(--tavern-brass);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--tavern-wood-light), var(--tavern-wood) 55%, var(--tavern-wood-deep));
+  color: var(--tavern-parchment);
+  font-family: var(--tavern-serif);
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 1px 0 rgba(251, 231, 176, 0.3), 0 3px 0 #1f1008;
+}
+
+.tavern.app-shell.play-screen .play-join button[type="submit"]:hover:not(:disabled) {
+  border-color: var(--tavern-gold);
+  color: var(--tavern-gold-pale);
+}
+
+.tavern.app-shell.play-screen .play-join button[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tavern.play-screen .play-panel--practice a {
+  align-self: flex-start;
+  font-weight: 700;
+}
+
+.tavern.play-screen > .notice {
+  max-width: var(--tavern-content);
+}
+
 /* --- the series screen -------------------------------------------------------------------- */
 
 .series .series-panel {

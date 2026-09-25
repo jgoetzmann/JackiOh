@@ -49,6 +49,7 @@ import {
 } from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
 import { BackLink, followInApp } from "./nav.tsx";
+import "../auth/tavern.css";
 import "./lobby.css";
 
 /** Unit conversion, not configuration. */
@@ -84,6 +85,10 @@ export const playTestid = {
   decksLink: "play-decks-link",
   /** The way to the series a refusal said the player is still in. */
   seriesLink: "play-series-link",
+  /** Copies the created room's code to the clipboard. */
+  copyRoomCode: "play-copy-room-code",
+  /** The "searching" indicator shown while this screen is queued (`data-mode`). */
+  searching: "play-searching",
 } as const;
 
 export const QUEUE_MODES: readonly QueueMode[] = ["bo1", "bo3", "random"];
@@ -401,7 +406,10 @@ function Verdict({ result }: { result: LoadoutResult | null }): ReactElement | n
   if (result.ok) {
     return (
       <p className="lobby-verdict" data-testid={playTestid.verdict} data-ready="true">
-        Ready
+        <span className="lobby-verdict__mark" aria-hidden="true">
+          ✓
+        </span>
+        Ready to queue
       </p>
     );
   }
@@ -444,6 +452,106 @@ function Population({ population }: { population: PopulationResponse | null }): 
         </span>
       ))}
     </p>
+  );
+}
+
+/** Each mode's emblem on its tile: a blade, three shields, a die. Decoration only. */
+function ModeIcon({ mode }: { mode: QueueMode }): ReactElement {
+  const common = { viewBox: "0 0 32 32", "aria-hidden": true, className: "play-mode-tile__icon" } as const;
+  switch (mode) {
+    case "bo1":
+      return (
+        <svg {...common}>
+          <path d="M22 4h6v6L14 24l-6-6z" />
+          <path d="M9 19l4 4-3 3-1.5-1.5L5 28l-1-1 3.5-3.5L6 22z" />
+        </svg>
+      );
+    case "bo3":
+      return (
+        <svg {...common}>
+          <path d="M4 7l6-2 6 2v6c0 4-2.6 6.7-6 8-3.4-1.3-6-4-6-8z" />
+          <path d="M16 11l6-2 6 2v6c0 4-2.6 6.7-6 8-3.4-1.3-6-4-6-8z" />
+          <path d="M10 15l6-2 6 2v6c0 4-2.6 6.7-6 8-3.4-1.3-6-4-6-8z" />
+        </svg>
+      );
+    case "random":
+      return (
+        <svg {...common}>
+          <rect x="5" y="5" width="22" height="22" rx="5" />
+          <circle cx="11" cy="11" r="2" className="play-mode-tile__pip" />
+          <circle cx="16" cy="16" r="2" className="play-mode-tile__pip" />
+          <circle cx="21" cy="21" r="2" className="play-mode-tile__pip" />
+        </svg>
+      );
+  }
+}
+
+/** Best of 1's pick at a glance: how full the deck is. */
+function DeckSummary({ deck }: { deck: SavedDeck }): ReactElement {
+  const full = deck.cards.length === DECK_SIZE;
+  return (
+    <p className="play-pick-summary" data-full={full ? "true" : "false"}>
+      {String(deck.cards.length)} / {String(DECK_SIZE)} cards
+    </p>
+  );
+}
+
+/** Best of 3's pick at a glance: the trio's three decks, or which slots are empty. */
+function TrioSummary({ trio, decks }: { trio: SavedTrio; decks: readonly SavedDeck[] }): ReactElement {
+  return (
+    <ul className="play-trio-decks" aria-label={`Decks in ${trio.name}`}>
+      {trio.deckIds.map((id, slot) => {
+        const deck = id === null ? undefined : decks.find((saved) => saved.id === id);
+        return (
+          // A slot is its position: the same deck cannot sit in two slots, but two can be empty.
+          <li key={`${String(slot)}-${id ?? "empty"}`} className="play-trio-deck" data-empty={deck === undefined}>
+            {deck === undefined ? "Empty slot" : deck.name}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** What this screen shows while it is queued: a slow pulse and who it is looking for. */
+function Searching({ mode }: { mode: QueueMode }): ReactElement {
+  return (
+    <div className="play-search" data-testid={playTestid.searching} data-mode={mode}>
+      <span className="play-search__beacon" aria-hidden="true">
+        <span className="play-search__ring" />
+        <span className="play-search__ring play-search__ring--late" />
+      </span>
+      <span className="play-search__text">Looking for a {MODE_LABEL[mode]} opponent…</span>
+    </div>
+  );
+}
+
+/** The created room's code as a ticket to hand over, with a copy button. */
+function RoomTicket({ room }: { room: Room }): ReactElement {
+  const [copied, setCopied] = useState(false);
+  function copy(): void {
+    // The clipboard can be refused (an insecure origin, a denied permission): the code stays on
+    // screen to read out either way, so a refusal only means the button says nothing.
+    attempt(() => navigator.clipboard.writeText(room.code)).then(
+      () => {
+        setCopied(true);
+      },
+      () => undefined,
+    );
+  }
+  return (
+    <div className="play-ticket">
+      <span className="play-ticket__label">Room code</span>
+      <code className="play-ticket__code" data-testid={playTestid.roomCode}>
+        {room.code}
+      </code>
+      <span className="lobby-room-mode" data-testid={playTestid.roomMode} data-mode={room.mode}>
+        {MODE_LABEL[room.mode]}
+      </span>
+      <button type="button" className="play-ticket__copy" data-testid={playTestid.copyRoomCode} onClick={copy}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
 
@@ -580,173 +688,21 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
   }
 
   const noChoice = choice === null;
+  /** Queued, as opposed to hosting a room: the room shows its own ticket instead of a beacon. */
+  const queued = waiting && room === null;
+  const byMode = population?.byMode;
 
   return (
-    <div className="app-shell lobby">
+    <div className="app-shell tavern lobby play-screen">
       <BackLink />
-      <h1>JackiOh — play</h1>
 
-      <section className="form-card lobby-card">
-        <h2>How do you want to play?</h2>
-        <fieldset className="lobby-modes">
-          <legend className="lobby-modes__legend">Mode</legend>
-          {QUEUE_MODES.map((option) => (
-            <label key={option} className="lobby-mode" data-selected={option === mode ? "true" : "false"}>
-              <input
-                type="radio"
-                name="play-mode"
-                value={option}
-                checked={option === mode}
-                data-testid={playModeTestid(option)}
-                onChange={() => {
-                  setMode(option);
-                }}
-              />
-              <span className="lobby-mode__text">
-                <span className="lobby-mode__name">{MODE_LABEL[option]}</span>
-                <span className="lobby-mode__hint">{MODE_HINT[option]}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-
-        {lobby.kind === "loading" && mode !== "random" ? (
-          <p className="lobby-note" role="status">
-            Loading your decks…
-          </p>
-        ) : null}
-        {lobby.kind === "failed" && mode !== "random" ? (
-          <p className="notice" role="alert">
-            Your decks could not be loaded: {lobby.message}
-          </p>
-        ) : null}
-
-        {data !== null && mode === "bo1" ? (
-          data.decks.length === 0 ? (
-            <p className="lobby-note">
-              You have no saved decks yet. <DecksLink>Build one in Decks</DecksLink>.
-            </p>
-          ) : (
-            <>
-              <label htmlFor="play-deck">Your deck</label>
-              <select
-                id="play-deck"
-                className="lobby-select"
-                data-testid={playTestid.deckSelect}
-                value={deck?.id ?? ""}
-                onChange={(event) => {
-                  setDeckId(event.target.value);
-                }}
-              >
-                {data.decks.map((saved) => (
-                  <option key={saved.id} value={saved.id}>
-                    {saved.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )
-        ) : null}
-
-        {data !== null && mode === "bo3" ? (
-          data.trios.length === 0 ? (
-            <p className="lobby-note">
-              You have no saved trios yet. <DecksLink>Build one in Decks</DecksLink>.
-            </p>
-          ) : (
-            <>
-              <label htmlFor="play-trio">Your trio</label>
-              <select
-                id="play-trio"
-                className="lobby-select"
-                data-testid={playTestid.trioSelect}
-                value={trio?.id ?? ""}
-                onChange={(event) => {
-                  setTrioId(event.target.value);
-                }}
-              >
-                {data.trios.map((saved) => (
-                  <option key={saved.id} value={saved.id}>
-                    {saved.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )
-        ) : null}
-
-        {mode === "random" ? (
-          <p className="lobby-note">No deck needed: the server deals both of you one when the game starts.</p>
-        ) : null}
-
-        <Verdict result={verdict} />
-        <Population population={population} />
-      </section>
-
-      <section className="form-card lobby-card">
-        <h2>Find a match</h2>
-        <div className="row">
-          <button
-            type="button"
-            className="button-primary"
-            data-testid={playTestid.queue}
-            disabled={busy || noChoice}
-            onClick={onEnqueue}
-          >
-            Find a match
-          </button>
-          <button type="button" data-testid={playTestid.leaveQueue} disabled={busy} onClick={onLeaveQueue}>
-            Leave the queue
-          </button>
+      <header className="play-hero">
+        <div className="brand">
+          <h1>JackiOh</h1>
         </div>
-      </section>
-
-      <section className="form-card lobby-card">
-        <h2>Room code</h2>
-        <p className="lobby-note">A room plays the mode it was made with; the joiner picks for the same mode.</p>
-        <div className="row">
-          <button
-            type="button"
-            data-testid={playTestid.createRoom}
-            disabled={busy || noChoice}
-            onClick={onCreateRoom}
-          >
-            Create a room
-          </button>
-          {room === null ? null : (
-            <>
-              <code data-testid={playTestid.roomCode}>{room.code}</code>
-              <span className="lobby-room-mode" data-testid={playTestid.roomMode} data-mode={room.mode}>
-                {MODE_LABEL[room.mode]}
-              </span>
-            </>
-          )}
-        </div>
-
-        <form className="row" data-testid={playTestid.joinForm} onSubmit={onJoin}>
-          <label htmlFor="play-join-code">Join a room</label>
-          <input
-            id="play-join-code"
-            data-testid={playTestid.joinInput}
-            value={joinCode}
-            autoComplete="off"
-            onChange={(event) => {
-              setJoinCode(event.target.value);
-            }}
-          />
-          <button type="submit" data-testid={playTestid.joinSubmit} disabled={busy || noChoice}>
-            Join
-          </button>
-        </form>
-      </section>
-
-      <section className="form-card lobby-card">
-        <h2>Practice</h2>
-        <p>A game against the AI, right here in your browser: no queue, no rating, three difficulties.</p>
-        <a href={paths.practice} data-testid={playTestid.practice}>
-          Practice against the AI →
-        </a>
-      </section>
+        <p className="play-hero__title">Play online</p>
+        <p className="play-hero__lead">Pick a mode, bring a deck, and find someone to play.</p>
+      </header>
 
       {status !== null ? (
         <p className="notice" data-testid={playTestid.status} role="status">
@@ -775,6 +731,205 @@ export default function PlayRoute({ token }: PlayRouteProps): ReactElement {
           )}
         </div>
       ) : null}
+      <div className="play-layout">
+        <section className="lobby-card play-panel play-panel--setup" aria-labelledby="play-setup-heading">
+          <h2 id="play-setup-heading" className="play-panel__heading">
+            <span className="play-step" aria-hidden="true">
+              1
+            </span>
+            How do you want to play?
+          </h2>
+          <fieldset className="lobby-modes">
+            <legend className="lobby-modes__legend">Mode</legend>
+            {QUEUE_MODES.map((option) => (
+              <label
+                key={option}
+                className="lobby-mode play-mode-tile"
+                data-selected={option === mode ? "true" : "false"}
+                data-mode={option}
+              >
+                <input
+                  type="radio"
+                  name="play-mode"
+                  value={option}
+                  checked={option === mode}
+                  data-testid={playModeTestid(option)}
+                  onChange={() => {
+                    setMode(option);
+                  }}
+                />
+                <ModeIcon mode={option} />
+                <span className="lobby-mode__text">
+                  <span className="lobby-mode__name">{MODE_LABEL[option]}</span>
+                  <span className="lobby-mode__hint">{MODE_HINT[option]}</span>
+                </span>
+                {byMode === undefined ? null : (
+                  <span className="play-mode-tile__waiting">{String(byMode[option])} waiting</span>
+                )}
+              </label>
+            ))}
+          </fieldset>
+
+          <h2 className="play-panel__heading play-panel__heading--sub">
+            <span className="play-step" aria-hidden="true">
+              2
+            </span>
+            {mode === "bo3" ? "Bring a trio" : mode === "bo1" ? "Bring a deck" : "No deck to bring"}
+          </h2>
+
+          {lobby.kind === "loading" && mode !== "random" ? (
+            <p className="lobby-note" role="status">
+              Loading your decks…
+            </p>
+          ) : null}
+          {lobby.kind === "failed" && mode !== "random" ? (
+            <p className="notice" role="alert">
+              Your decks could not be loaded: {lobby.message}
+            </p>
+          ) : null}
+
+          {data !== null && mode === "bo1" ? (
+            data.decks.length === 0 ? (
+              <p className="lobby-note">
+                You have no saved decks yet. <DecksLink>Build one in Decks</DecksLink>.
+              </p>
+            ) : (
+              <div className="play-pick">
+                <label htmlFor="play-deck">Your deck</label>
+                <select
+                  id="play-deck"
+                  className="lobby-select"
+                  data-testid={playTestid.deckSelect}
+                  value={deck?.id ?? ""}
+                  onChange={(event) => {
+                    setDeckId(event.target.value);
+                  }}
+                >
+                  {data.decks.map((saved) => (
+                    <option key={saved.id} value={saved.id}>
+                      {saved.name}
+                    </option>
+                  ))}
+                </select>
+                {deck === null ? null : <DeckSummary deck={deck} />}
+              </div>
+            )
+          ) : null}
+
+          {data !== null && mode === "bo3" ? (
+            data.trios.length === 0 ? (
+              <p className="lobby-note">
+                You have no saved trios yet. <DecksLink>Build one in Decks</DecksLink>.
+              </p>
+            ) : (
+              <div className="play-pick">
+                <label htmlFor="play-trio">Your trio</label>
+                <select
+                  id="play-trio"
+                  className="lobby-select"
+                  data-testid={playTestid.trioSelect}
+                  value={trio?.id ?? ""}
+                  onChange={(event) => {
+                    setTrioId(event.target.value);
+                  }}
+                >
+                  {data.trios.map((saved) => (
+                    <option key={saved.id} value={saved.id}>
+                      {saved.name}
+                    </option>
+                  ))}
+                </select>
+                {trio === null ? null : <TrioSummary trio={trio} decks={data.decks} />}
+              </div>
+            )
+          ) : null}
+
+          {mode === "random" ? (
+            <p className="lobby-note">No deck needed: the server deals both of you one when the game starts.</p>
+          ) : null}
+
+          <Verdict result={verdict} />
+        </section>
+
+        <div className="play-side">
+          <section className="lobby-card play-panel play-panel--queue" aria-labelledby="play-queue-heading">
+            <h2 id="play-queue-heading" className="play-panel__heading">
+              <span className="play-step" aria-hidden="true">
+                3
+              </span>
+              Find a match
+            </h2>
+            {queued ? <Searching mode={mode} /> : null}
+            <button
+              type="button"
+              className="button-primary play-cta"
+              data-testid={playTestid.queue}
+              disabled={busy || noChoice}
+              onClick={onEnqueue}
+            >
+              Find a match
+            </button>
+            <button
+              type="button"
+              className="link-button play-leave"
+              data-testid={playTestid.leaveQueue}
+              disabled={busy}
+              onClick={onLeaveQueue}
+            >
+              Leave the queue
+            </button>
+            <Population population={population} />
+          </section>
+
+          <section className="lobby-card play-panel play-panel--room" aria-labelledby="play-room-heading">
+            <h2 id="play-room-heading" className="play-panel__heading">
+              Play a friend
+            </h2>
+            <p className="lobby-note">A room plays the mode it was made with; the joiner picks for the same mode.</p>
+            <button
+              type="button"
+              className="play-room-create"
+              data-testid={playTestid.createRoom}
+              disabled={busy || noChoice}
+              onClick={onCreateRoom}
+            >
+              Create a room
+            </button>
+            {room === null ? null : <RoomTicket room={room} />}
+
+            <form className="play-join" data-testid={playTestid.joinForm} onSubmit={onJoin}>
+              <label htmlFor="play-join-code">Join a room</label>
+              <div className="play-join__row">
+                <input
+                  id="play-join-code"
+                  data-testid={playTestid.joinInput}
+                  value={joinCode}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="Code"
+                  onChange={(event) => {
+                    setJoinCode(event.target.value);
+                  }}
+                />
+                <button type="submit" data-testid={playTestid.joinSubmit} disabled={busy || noChoice}>
+                  Join
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="lobby-card play-panel play-panel--practice" aria-labelledby="play-practice-heading">
+            <h2 id="play-practice-heading" className="play-panel__heading">
+              Practice
+            </h2>
+            <p>A game against the AI, right here in your browser: no queue, no rating, three difficulties.</p>
+            <a href={paths.practice} data-testid={playTestid.practice}>
+              Practice against the AI →
+            </a>
+          </section>
+        </div>
+      </div>
+
     </div>
   );
 }
