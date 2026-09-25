@@ -126,7 +126,7 @@ Every number below is a named export. Nothing in the engine hard-codes them.
 | `HUMAN_HANDICAP` | `{ deckSize: DECK_SIZE, manaBonus: 0, manaCap: MAX_MANA, extraOpeningCards: 0, extraDrawsPerTurn: 0 }` | §9.9, R180 |
 | `AI_DIFFICULTY` | easy = `HUMAN_HANDICAP`; medium `{ 25, +1, cap 5, +1 opening, +0 draws }`; hard `{ 30, +1, cap 7, +1 opening, +1 draw }` (fields in `Handicap` order) | §9.9, R180–R184 |
 
-Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
+Server constants (`apps/server/src/config.ts`, added in M7) carry R79's values: `TURN_CLOCK_SECONDS` 75, `PROMPT_CLOCK_SECONDS` 30, `MULLIGAN_CLOCK_SECONDS` 45 (R268), `DISCONNECT_GRACE_SECONDS` 60, `MATCH_CEILING_MINUTES` 60, `ROOM_CODE_LENGTH` 6, `ELO_K` 32, `ELO_START` 1000.
 
 ## 3. Milestones
 
@@ -150,7 +150,7 @@ Acceptance:
 `reduce(state, action, rng)` returns `{ state, events, error? }`. Action union per §10.2 with `playerId` and `nonce`. `legalActions(state, playerId)` enumerates every action that would not error, including every legal `answer` to an open prompt. Nonce dedupe: a repeated nonce returns the previous result without re-applying.
 Acceptance:
 - An action from the non-active player (other than `answer` to their own prompt, `concede`, `answerDraw`) returns `error` and an unchanged state (deep-equal).
-- An action other than `answer`, `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while `state.pending` is non-null errors.
+- An action other than `answer`, `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while `state.pending` is non-null errors, and so does one other than `mulligan`, `concede`, `timeout`, `disconnectExpired` or `ceilingReached` while the mulligans are open (R265).
 - Every action in `legalActions` succeeds; property test over 200 random states.
 - Replaying the same nonce twice yields identical state and no duplicate events.
 
@@ -164,13 +164,14 @@ Acceptance:
 - Stack: pushing onto an occupied zone makes the pushed card top; only the top card appears in `activeUnits(side)`; popping the top resumes the card beneath with its stored damage.
 
 **M1-T5 Setup and mulligan.** Files: `engine/src/setup.ts`.
-Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); mulligan prompt per player; returned cards redraw first, then shuffle back (R9); The Coin to the seat going second once both mulligans are answered (`OPENING_COINS`, R244); start-of-game hooks (Heroic Power).
+Shuffle both libraries with the match rng; opening draws from `OPENING_DRAW`; Quickdraw cards replace a draw (§6.2); both players' mulligan prompts open at once, each answer sealed until both are in, then both resolve in seat order (R265–R267); returned cards redraw first, then shuffle back (R9); The Coin to the seat going second once both mulligans are answered (`OPENING_COINS`, R244); start-of-game hooks (Heroic Power).
 Acceptance:
 - P1 hand = 3, P2 hand = 4 after setup; libraries 17 and 16.
 - Once both mulligans are answered P2 holds its 4 cards plus The Coin as its last card, and P1 none; a handicapped seat going second gets it too; it is not a draw (R244).
 - A deck with two Quickdraw cards puts both in the opening hand and draws one fewer random card... (exactly `OPENING_DRAW[seat] − quickdrawCount` random draws, minimum 0).
 - Mulligan returning 2 cards: the 2 replacements are not the returned cards (property test over 100 seeds).
 - Heroic Power's power is chosen during setup, deterministically from the seed, including a copy the mulligan returned to the library (R43).
+- Either answer order deals the same game (the same state hash, and both logs fold to it); the other player's view is the same whatever a sealed answer kept; a `timeout` while the mulligans are open keeps that player's whole hand (R265, R266, R268).
 
 **M1-T6 Turn loop and mana.** Files: `engine/src/turn.ts`, `engine/src/mana.ts`, `engine/src/modifiers.ts`.
 Phases per §2.2 and R62. Start-of-turn: refresh mana (`min(turnsStarted, MAX_MANA) + permMod + nextTurnMod`, floor 0), delayed effects due, start-of-turn triggers, then draw. End-of-turn: end-of-turn triggers (Combo-Index and "add back to hand" spells included), the Bread and Butter / Intern Stimmy trap window, delayed effects due, cleanup expiring "this turn" modifiers, turn-cap check. Cost calculation per R65: `effectiveCost(instance, player)` starts from `costOverride` or the printed cost, adds instance `costMod`, then player discounts (next-spell, this-turn), then Curvature, floors at 0; X-cost cards cost exactly X. X and embiggen selection are part of the `play` action and stored on the instance.
@@ -508,7 +509,7 @@ Acceptance: two WebSocket clients complete a scripted game; killing the actor mi
 ### M7 — Clock, disconnects, results, matchmaking
 
 **M7-T1 Turn clock and grace.** Files: `server/src/match/actor.ts` (alarm), `web/src/game/Clock.tsx`.
-Per-turn timer stored on the match and shown to both; expiry → server `timeout` action (auto-answer the open prompts of the player whose clock expired via `aiPolicy`, and end the turn only when that is the active player; a prompt held by the non-active player runs its own `PROMPT_CLOCK_SECONDS` and pauses the turn clock, R79); disconnect grace stored on the match; grace expiry → `disconnectExpired` action → concede; hard wall-clock ceiling with a reaper that resolves stuck matches and clears both players' in-match flags.
+Per-turn timer stored on the match and shown to both; expiry → server `timeout` action (auto-answer the open prompts of the player whose clock expired via `aiPolicy`, and end the turn only when that is the active player; a prompt held by the non-active player runs its own `PROMPT_CLOCK_SECONDS` and pauses the turn clock, R79; the two mulligans share one `MULLIGAN_CLOCK_SECONDS` deadline, and its expiry times out each player still owing one, R268); disconnect grace stored on the match; grace expiry → `disconnectExpired` action → concede; hard wall-clock ceiling with a reaper that resolves stuck matches and clears both players' in-match flags.
 Acceptance: fake-timer test drives a timeout; a trap prompt held by the non-active player pauses the turn clock and its own expiry answers only that prompt (R79); a disconnected player who returns inside grace resumes with the same view; past grace they have lost and both can queue again.
 
 **M7-T2 Results and rating.** Files: `server/src/api/results.ts`.

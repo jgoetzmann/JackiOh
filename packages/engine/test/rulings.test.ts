@@ -2017,6 +2017,38 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   it("R247 offers #82's Discover as the numbers themselves", () => {
     provenIn(247, "effects-choose.test.ts", CARDS_KYS_TRIAL_TEST, WEB_PROMPT_CARDS_TEST);
   });
+
+  // Proved by mulligan-concurrent.test.ts "R265 …": over 60 seeds, and again with cast-on-draw
+  // replacements and a handicapped seat, the two answer orders deal one game (the same hash), both
+  // orders' logs fold to it, and a state waiting on one answer survives JSON and goes on the same.
+  it("R265 opens both players' mulligans at once and resolves them in seat order once both are in", () => {
+    provenIn(265, "mulligan-concurrent.test.ts");
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R266 …": the other seat's view is the same whatever was
+  // kept, and says only that the answer is in; and by observe.test.ts "R266 …": `redact` leaves the
+  // AI the same state whatever the human kept.
+  it("R266 seals a mulligan answer until both are in, and shows the other player only that it is in", () => {
+    provenIn(266, "mulligan-concurrent.test.ts", AI_OBSERVE_TEST);
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R267 …": a fixture cast-on-draw card in p1's replacement
+  // draw discards one of p2's offered cards and gives p2 a new one before p2's sealed answer resolves.
+  it("R267 reads a sealed mulligan answer against the hand it resolves against", () => {
+    provenIn(267, "mulligan-concurrent.test.ts");
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R268 …": the engine's `timeout` keeps the whole hand, only
+  // the timing-out seat's, with no rng draw; the server's clock tests prove the one shared deadline.
+  it("R268 runs one mulligan clock for both players, and keeps the hand of a player it times out", () => {
+    provenIn(268, "mulligan-concurrent.test.ts");
+  });
+
+  // Proved by mulligan-concurrent.test.ts "R269 …": the offer is on both views until it is answered
+  // or its offerer's turn ends, a late answer is refused, and a lapsed offer blocks nothing.
+  it("R269 lets a draw offer stand until it is answered or its offerer's turn ends", () => {
+    provenIn(269, "mulligan-concurrent.test.ts");
+  });
 });
 
 describe("SPEC §11 index completeness", () => {

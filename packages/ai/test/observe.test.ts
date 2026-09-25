@@ -22,10 +22,10 @@ import {
   defOf,
   hashState,
   query,
+  seatToAct,
   viewFor,
   type CardInstance,
   type GameState,
-  seatToAct,
 } from "@jackioh/engine";
 import {
   AI_DETERMINIZE,
@@ -37,6 +37,7 @@ import {
 } from "../src/index";
 import {
   AI,
+  act,
   cardById,
   clone,
   corePool,
@@ -247,6 +248,21 @@ describe("redact (B9)", () => {
     expect(pub.pending?.options).toEqual([]);
     // The seat's own prompt keeps its options: seen from p2 nothing is removed.
     expect(redact(state, "p2").pending?.options).toEqual(state.pending?.options);
+  });
+
+  it("R266 B9: while both mulligans are open, the opponent's sealed answer and its options reach the seat as nothing", () => {
+    const dealt = dealtGame("observe-their-mulligan");
+    const keptAll = act(dealt, "p2", { type: "mulligan", keep: dealt.players.p2.hand.map((card) => card.id) });
+    const keptNone = act(dealt, "p2", { type: "mulligan", keep: [] });
+
+    // Whatever p2 kept, the seat's state is the same: only that p2 has answered (R265, R266).
+    expect(hashState(redact(keptNone, AI))).toBe(hashState(redact(keptAll, AI)));
+    const pub = redact(keptAll, AI);
+    expect(pub.mulligan?.p2.keep).toEqual([]);
+    expect(pub.mulligan?.p2.prompt.options).toEqual([]);
+    // The seat's own mulligan keeps its options, and it answers it without waiting.
+    expect(pub.mulligan?.p1.prompt.options).toEqual(keptAll.mulligan?.p1.prompt.options);
+    expect(decide(keptAll, AI, { rng: createRng("observe-their-mulligan") })?.reason).toBe("mulligan");
   });
 
   it("R185 B9: a card in the seat's own library that was minted for the opponent's deck (R73) is hidden too", () => {
