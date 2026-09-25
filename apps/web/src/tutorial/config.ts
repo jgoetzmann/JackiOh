@@ -29,3 +29,16 @@ export const COACH_VIEWPORT_MARGIN_PX = 8;
  * moves cards as it animates and the hand fans out on hover, and none of that fires a resize.
  */
 export const COACH_TRACK_INTERVAL_MS = 250;
+
+/**
+ * The layouts where the coach bubble docks to the top or bottom edge, full width, instead of
+ * floating beside what it points at: the board's phone layouts, portrait and landscape
+ * (docs/polish/7-mobile-ux.md S7), whose cards leave no room beside them for a bubble.
+ */
+export const COACH_DOCK_QUERY = "(max-width: 600px), (orientation: landscape) and (max-height: 500px)";
+
+/**
+ * A docked bubble squeezed between its anchor and the screen's edge still keeps this much height,
+ * in CSS pixels (its text scrolls inside it): below this it could not show its title and buttons.
+ */
+export const COACH_BUBBLE_MIN_HEIGHT_PX = 96;

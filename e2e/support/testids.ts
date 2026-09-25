@@ -415,6 +415,65 @@ export const PRACTICE_MODIFIERS = "practice-modifiers";
 export const PRACTICE_MODIFIERS_PANEL = "practice-modifiers-panel";
 
 // ---------------------------------------------------------------------------------------------
+// TUTORIAL: the lesson path at the top of `/practice`, and a lesson's HUD, coach and result (SPEC
+// §9.10). These mirror, name for name, `tutorialTestid` in `apps/web/src/tutorial/testids.ts`. Keep
+// the two files identical. A lesson is a practice game, so the PRACTICE names above (the think
+// indicator, the modifiers, "Leave this game?") apply inside one too. None starts with `card-` or
+// `hand-card-`, so `cy.fieldCardByName` and `cy.handCardByName` never resolve to one of them.
+// ---------------------------------------------------------------------------------------------
+
+/** The lesson path at the top of `/practice`'s lobby. */
+export const TUTORIAL_PATH = "tutorial-path";
+
+/** One lesson on the path; `data-status="locked|unlocked|completed"`, `data-next="true"` on the one to play next. */
+export function tutorialLessonId(lessonId: string): string {
+  return `tutorial-lesson-${lessonId}`;
+}
+
+/** A lesson's button: Start, Replay, or Locked (`aria-disabled="true"`, does nothing). */
+export function tutorialStartId(lessonId: string): string {
+  return `tutorial-start-${lessonId}`;
+}
+
+/** In the path's header once a lesson is done and another is open: "Continue: Lesson N". */
+export const TUTORIAL_CONTINUE = "tutorial-continue";
+/** Once every lesson is done the path folds to its header; this shows or hides the lessons (`aria-expanded`). */
+export const TUTORIAL_PATH_TOGGLE = "tutorial-path-toggle";
+/** The lesson's HUD above the board; `data-lesson`, `data-human-seat`, `data-ai-seat`, `data-thinking`. */
+export const TUTORIAL_HUD = "tutorial-hud";
+/** In the HUD: "Step k of n". */
+export const TUTORIAL_STEP = "tutorial-step";
+/** In the HUD: the coach's "Skip step". */
+export const TUTORIAL_SKIP = "tutorial-skip";
+/** In the HUD: back to the lessons; mid-game it opens PRACTICE_LEAVE first. */
+export const TUTORIAL_EXIT = "tutorial-exit";
+/** In the HUD once the lesson is over: the outcome, which reopens the result dialog. */
+export const TUTORIAL_OUTCOME = "tutorial-outcome";
+/**
+ * The coach bubble: `data-coach-mode="step|tip|waiting"`, `data-coach-step` (the step or tip id;
+ * absent while waiting) and `data-coach-anchor` (the board testids it points at, space-separated).
+ */
+export const COACH = "coach";
+/** In the bubble: "Got it", on every tip and info step. */
+export const COACH_ACK = "coach-ack";
+/** In the bubble: "Skip step", always while the lesson is on. */
+export const COACH_SKIP = "coach-skip";
+/** The ring round the anchor's elements; `pointer-events: none`; absent when none is on screen. */
+export const COACH_RING = "coach-ring";
+/** The end-of-lesson dialog; `data-outcome="win|loss|draw"`, `data-lesson`. */
+export const TUTORIAL_RESULT = "tutorial-result";
+/** In the result dialog after a win: start the next lesson. */
+export const TUTORIAL_NEXT = "tutorial-next";
+/** In the result dialog after a loss or draw: the same lesson again, same seed. */
+export const TUTORIAL_RETRY = "tutorial-retry";
+/** In the result dialog: back to the lesson path. */
+export const TUTORIAL_BACK = "tutorial-back";
+/** In the result dialog after the last lesson: back to the lobby's practice setup. */
+export const TUTORIAL_PLAY_PRACTICE = "tutorial-play-practice";
+/** In the result dialog: close it and look at the final board. */
+export const TUTORIAL_VIEW_BOARD = "tutorial-view-board";
+
+// ---------------------------------------------------------------------------------------------
 // A14: card faces, inspect and deck-builder browse (polish 6, docs/polish/6-cards.md). These mirror,
 // name for name, `apps/web/src/cards/inspect/testids.ts` (the `INSPECT_*` overlays) and the browse
 // additions to `apps/web/src/game/deckbuilder/testids.ts` (the `DB_*` names, the id functions and

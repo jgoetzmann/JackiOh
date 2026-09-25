@@ -4,6 +4,10 @@
 // the worker answers: `viewFor(state, human)`, the human's `legalActions` and whether the AI owes an
 // action (CLAUDE.md rule 7). The board is `Game.tsx`, unchanged, inside the catalog the worker sent.
 //
+// The tutorial lives here too (SPEC §9.10): its lesson path tops the lobby, and a lesson is a
+// practice game whose config names it (`tutorial/start.ts`), played under the tutorial's HUD with
+// the coach over the board (`tutorial/`).
+//
 // The route is NOT gated. It asks for the account only to offer an active player's saved decks, and
 // an anonymous visitor makes no request at all: no session means no `/api/auth/me`, and no
 // account means no `/api/loadout`.
@@ -13,6 +17,8 @@
 //   ?difficulty=easy|medium|hard, ?deck=random|preset:<id>|saved:<n>   preselect the setup; with a
 //                         difficulty and a `random` or `preset:` deck the game starts at once
 //   ?seat=p1|p2           the human's seat; otherwise a coin flip per game
+//   ?lesson=<id>          start that tutorial lesson at once, on its own seed and seat (a `?seed=`
+//                         or `?seat=` never overrides a lesson's)
 //   ?pace=fast            e2e pacing, honoured only outside a production build
 
 import {
@@ -66,6 +72,17 @@ import { practiceTestid } from "../practice/testids.ts";
 import { ThinkIndicator } from "../practice/ThinkIndicator.tsx";
 import { DIFFICULTY_LABEL, TierCrest } from "../practice/Tier.tsx";
 import "../practice/practice.css";
+import { Coach } from "../tutorial/Coach.tsx";
+import type { LessonScript } from "../tutorial/coach.ts";
+import { useTutorialDevHandle } from "../tutorial/devHandle.ts";
+import { lessonById, nextLessonOf, type TutorialLesson } from "../tutorial/lessons.ts";
+import { lessonStatus, markLessonComplete, readTutorialProgress } from "../tutorial/progress.ts";
+import { scriptFor } from "../tutorial/scripts/index.ts";
+import { lessonStartConfig } from "../tutorial/start.ts";
+import { createCoachTracker, silentScript, type CoachTracker } from "../tutorial/tracker.ts";
+import { TutorialHud } from "../tutorial/TutorialHud.tsx";
+import { TutorialPath } from "../tutorial/TutorialPath.tsx";
+import { TutorialResult } from "../tutorial/TutorialResult.tsx";
 
 /** The dev handle exists only outside a production build, like `window.__jackioh`. */
 const DEV_ONLY = import.meta.env.MODE !== "production";
@@ -97,6 +114,8 @@ type PracticeParams = {
   difficulty?: Difficulty;
   deck?: string;
   seat?: PlayerId;
+  /** A tutorial lesson's id (`tutorial/lessons.ts`). */
+  lesson?: string;
   pace?: "fast";
 };
 
@@ -120,6 +139,9 @@ export function readPracticeParams(search: string): PracticeParams {
 
   const seat = params.get("seat");
   if (seat === "p1" || seat === "p2") out.seat = seat;
+
+  const lesson = params.get("lesson");
+  if (lesson !== null && lessonById(lesson) !== undefined) out.lesson = lesson;
 
   if (params.get("pace") === "fast") out.pace = "fast";
 
@@ -185,8 +207,13 @@ function configFor(choice: PracticeSetupChoice, params: PracticeParams): Practic
   };
 }
 
-/** `?difficulty=` plus a `random` or `preset:` `?deck=` starts a game with no click. */
+/**
+ * `?lesson=` starts that lesson with no click, on the lesson's own seed and seat; otherwise
+ * `?difficulty=` plus a `random` or `preset:` `?deck=` starts a practice game.
+ */
 function autostartConfig(params: PracticeParams): PracticeStartConfig | null {
+  const lesson = params.lesson === undefined ? undefined : lessonById(params.lesson);
+  if (lesson !== undefined) return lessonStartConfig(lesson);
   if (params.difficulty === undefined || params.deck === undefined) return null;
   if (!isAutostartDeckValue(params.deck)) return null;
   const deck = deckChoiceFromValue(params.deck, null);
@@ -407,6 +434,8 @@ export type PracticeRouteProps = {
   account?: Account;
   /** default getLoadout */
   loadLoadout?: (token: string) => Promise<LoadoutResponse>;
+  /** default the lessons' own coach scripts (`tutorial/scripts`) */
+  coachScript?: (lessonId: string) => LessonScript | undefined;
 };
 
 type ScreenProps = Omit<PracticeRouteProps, "account"> & { account: Account };
@@ -424,7 +453,7 @@ function Shell({ variant, children }: { variant: "lobby" | "game"; children: Rea
   return <div className={`${shell} practice practice--${variant}`}>{children}</div>;
 }
 
-function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenProps): ReactElement {
+function PracticeScreen({ account, hostFactory, pacing, loadLoadout, coachScript }: ScreenProps): ReactElement {
   const params = useMemo(() => readPracticeParams(window.location.search), []);
   const saved = useSavedDecks(account, loadLoadout ?? getLoadout);
 
@@ -439,10 +468,14 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   /** The game to play, fixed (seed and seat included) when it is chosen; null shows the setup. */
   const [game, setGame] = useState<PracticeStartConfig | null>(() => autostartConfig(params));
   const [controller, setController] = useState<PracticeController | null>(null);
+  /** A lesson's coach, fed by the controller from its first snapshot on; null for a practice game. */
+  const [tracker, setTracker] = useState<CoachTracker | null>(null);
 
   // Read when a game starts, so a prop change mid-game does not tear the game down.
   const factory = useRef(hostFactory ?? defaultHostFactory);
   factory.current = hostFactory ?? defaultHostFactory;
+  const scripts = useRef(coachScript ?? scriptFor);
+  scripts.current = coachScript ?? scriptFor;
 
   /** The last catalog a game brought, so the next setup screen previews decks without asking. */
   const [gameDefs, setGameDefs] = useState<CardDefs | null>(null);
@@ -453,11 +486,18 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   useEffect(() => {
     if (game === null) return;
     const next = createPracticeController({ host: factory.current(), pacing: pace.current });
+    // Subscribed before `start` is sent, so the coach reads every snapshot (tutorial/tracker.ts).
+    const lessonId = game.lesson;
+    const coach =
+      lessonId === undefined ? null : createCoachTracker(next, scripts.current(lessonId) ?? silentScript(lessonId));
     setController(next);
+    setTracker(coach);
     void next.start(game);
     return () => {
+      coach?.dispose();
       next.dispose();
       setController((current) => (current === next ? null : current));
+      setTracker((current) => (current === coach ? null : current));
     };
   }, [game]);
 
@@ -497,6 +537,8 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
       if (window.__jackiohPractice === handle) delete window.__jackiohPractice;
     };
   }, [controller]);
+  // The tutorial's own handle for the e2e lesson spec (tutorial/devHandle.ts), under the same rule.
+  useTutorialDevHandle(tracker, game?.lesson ?? null);
 
   const onStart = useCallback(
     (choice: PracticeSetupChoice) => {
@@ -505,6 +547,11 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
     },
     [params],
   );
+
+  /** A lesson always plays on its own seed and seat, from the path, the URL or its result dialog. */
+  const onStartLesson = useCallback((lesson: TutorialLesson) => {
+    setGame(lessonStartConfig(lesson));
+  }, []);
 
   /**
    * "New game" or "Menu" in the middle of a game asks first. The question belongs to the game it
@@ -530,6 +577,25 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
     setLeaveAskedFor(null);
     navigate(paths.landing);
   }, []);
+
+  /** "Exit tutorial" in the middle of a lesson asks first, as "New game" does. */
+  const onAskExitLesson = useCallback(() => {
+    if (game !== null) setLeaveAskedFor({ game, to: "lessons" });
+  }, [game]);
+
+  /** "Play a practice game" after the last lesson: the lobby, scrolled to the practice setup. */
+  const [scrollToSetup, setScrollToSetup] = useState(false);
+  const onPlayPractice = useCallback(() => {
+    setLeaveAskedFor(null);
+    setScrollToSetup(true);
+    setGame(null);
+  }, []);
+  const practiceHeader = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!scrollToSetup || game !== null) return;
+    practiceHeader.current?.scrollIntoView?.({ block: "start" });
+    setScrollToSetup(false);
+  }, [scrollToSetup, game]);
 
   // A reload, a closed tab or a Back that leaves the page would end a game in progress without a
   // word (a practice game is not saved, §9.9), so the browser asks first, as it does for an unsent
@@ -597,11 +663,26 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   const defs = state.defs;
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
 
+  // A lesson won is a lesson completed on this device (R294), the moment the view says so, whether
+  // or not its result dialog is ever seen.
+  const lesson = game?.lesson === undefined ? undefined : lessonById(game.lesson);
+  const lessonResult = lesson !== undefined && state.config === game ? (state.snapshot?.view ?? null) : null;
+  const wonLesson =
+    lesson !== undefined && lessonResult?.result != null && lessonResult.result.winner === lessonResult.viewer
+      ? lesson.id
+      : null;
+  useEffect(() => {
+    if (wonLesson !== null) markLessonComplete(wonLesson);
+  }, [wonLesson]);
+  /** The path as it stood when this game started, so the result can say what the win opened. */
+  const progressAtStart = useMemo(() => (game === null ? null : readTutorialProgress()), [game]);
+
   if (game === null) {
     return (
       <Shell variant="lobby">
         <BackLink to={paths.landing} />
-        <header className="practice-lobby__header">
+        <TutorialPath onStart={onStartLesson} />
+        <header className="practice-lobby__header" ref={practiceHeader}>
           <p className="practice-lobby__eyebrow">Solo play · no account needed</p>
           <h1 className="practice-lobby__title">Practice against the AI</h1>
           <p className="practice-intro">
@@ -664,63 +745,82 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
   );
   const result = snapshot.view.result;
   const outcome = result === null ? null : outcomeOf(result, snapshot.view.viewer);
+  // The lesson this board is playing: the controller's own config, so a screen that has just asked
+  // for the next lesson still labels the game it shows until that one starts.
+  const playing = config.lesson === undefined ? undefined : lessonById(config.lesson);
+  const coached = playing !== undefined && tracker !== null ? { lesson: playing, tracker } : null;
+  const nextLesson = coached === null ? undefined : nextLessonOf(coached.lesson.id);
 
   return (
     <Shell variant="game">
-      <header
-        className="practice-hud"
-        data-testid={practiceTestid.hud}
-        data-difficulty={config.difficulty}
-        data-human-seat={config.humanSeat}
-        data-ai-seat={state.aiSeat ?? ""}
-        data-thinking={state.thinking ? "true" : "false"}
-      >
-        <span className="practice-hud__tier">
-          <TierCrest tier={config.difficulty} size="sm" />
-          <span className="practice-hud__label">
-            <span className="practice-hud__mode">Practice</span>
-            <strong>{DIFFICULTY_LABEL[config.difficulty]}</strong>
+      {coached !== null ? (
+        <TutorialHud
+          lesson={coached.lesson}
+          tracker={coached.tracker}
+          view={snapshot.view}
+          humanSeat={config.humanSeat}
+          aiSeat={state.aiSeat}
+          thinking={state.thinking}
+          outcome={outcome}
+          onShowResult={onShowResult}
+          onExit={result === null ? onAskExitLesson : onNewGame}
+        />
+      ) : (
+        <header
+          className="practice-hud"
+          data-testid={practiceTestid.hud}
+          data-difficulty={config.difficulty}
+          data-human-seat={config.humanSeat}
+          data-ai-seat={state.aiSeat ?? ""}
+          data-thinking={state.thinking ? "true" : "false"}
+        >
+          <span className="practice-hud__tier">
+            <TierCrest tier={config.difficulty} size="sm" />
+            <span className="practice-hud__label">
+              <span className="practice-hud__mode">Practice</span>
+              <strong>{DIFFICULTY_LABEL[config.difficulty]}</strong>
+            </span>
           </span>
-        </span>
-        {/* SPEC §2.1 step 5: p1 takes the first turn. */}
-        <span className="practice-hud__seat">{config.humanSeat === "p1" ? "You go first" : "You go second"}</span>
-        <span className="practice-hud__status">
-          <ModifierList view={snapshot.view} />
-          <ThinkIndicator thinking={state.thinking} />
-          {outcome === null ? null : (
-            <button
-              type="button"
-              className="practice-hud__outcome"
-              data-testid={practiceTestid.outcome}
-              data-outcome={outcome}
-              onClick={onShowResult}
-            >
-              {OUTCOME_TITLE[outcome]}
-            </button>
-          )}
-        </span>
-        {/* A game in progress is one tap from gone, so leaving it asks first; a finished one does not. */}
-        <button
-          type="button"
-          className="practice-hud__new"
-          data-testid={practiceTestid.newGame}
-          aria-haspopup={result === null ? "dialog" : undefined}
-          onClick={result === null ? onAskNewGame : onNewGame}
-        >
-          New game
-        </button>
-        <button
-          type="button"
-          className="practice-hud__menu"
-          data-testid={practiceTestid.menu}
-          aria-haspopup={result === null ? "dialog" : undefined}
-          aria-label="Main menu"
-          title="Main menu"
-          onClick={result === null ? onAskMenu : onMenu}
-        >
-          Menu
-        </button>
-      </header>
+          {/* SPEC §2.1 step 5: p1 takes the first turn. */}
+          <span className="practice-hud__seat">{config.humanSeat === "p1" ? "You go first" : "You go second"}</span>
+          <span className="practice-hud__status">
+            <ModifierList view={snapshot.view} />
+            <ThinkIndicator thinking={state.thinking} />
+            {outcome === null ? null : (
+              <button
+                type="button"
+                className="practice-hud__outcome"
+                data-testid={practiceTestid.outcome}
+                data-outcome={outcome}
+                onClick={onShowResult}
+              >
+                {OUTCOME_TITLE[outcome]}
+              </button>
+            )}
+          </span>
+          {/* A game in progress is one tap from gone, so leaving it asks first; a finished one does not. */}
+          <button
+            type="button"
+            className="practice-hud__new"
+            data-testid={practiceTestid.newGame}
+            aria-haspopup={result === null ? "dialog" : undefined}
+            onClick={result === null ? onAskNewGame : onNewGame}
+          >
+            New game
+          </button>
+          <button
+            type="button"
+            className="practice-hud__menu"
+            data-testid={practiceTestid.menu}
+            aria-haspopup={result === null ? "dialog" : undefined}
+            aria-label="Main menu"
+            title="Main menu"
+            onClick={result === null ? onAskMenu : onMenu}
+          >
+            Menu
+          </button>
+        </header>
+      )}
       {/* `practice-table` holds the board and hands it the screen's height (practice.css, "the game
           screen"); the wrapper is also the root `useBoardBusy` watches. */}
       <div
@@ -731,6 +831,7 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
       >
         {lookup === null ? board : <CatalogContext.Provider value={lookup}>{board}</CatalogContext.Provider>}
       </div>
+      {coached === null ? null : <Coach tracker={coached.tracker} boardRoot={boardRoot} />}
       {leaveAskedFor !== null && leaveAskedFor.game === game && result === null ? (
         <PracticeLeave
           to={leaveAskedFor.to}
@@ -738,7 +839,26 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout }: ScreenPro
           onLeave={leaveAskedFor.to === "menu" ? onMenu : onNewGame}
         />
       ) : null}
-      {result === null || resultClosedFor === game || resultReadyFor !== game ? null : (
+      {result === null || resultClosedFor === game || resultReadyFor !== game ? null : coached !== null ? (
+        <TutorialResult
+          result={result}
+          viewer={snapshot.view.viewer}
+          lesson={coached.lesson}
+          next={nextLesson}
+          unlockedNow={
+            nextLesson !== undefined && progressAtStart !== null && lessonStatus(progressAtStart, nextLesson) === "locked"
+          }
+          onNext={() => {
+            if (nextLesson !== undefined) onStartLesson(nextLesson);
+          }}
+          onRetry={() => {
+            onStartLesson(coached.lesson);
+          }}
+          onBack={onNewGame}
+          onPlayPractice={onPlayPractice}
+          onViewBoard={onViewBoard}
+        />
+      ) : (
         <PracticeResult
           result={result}
           viewer={snapshot.view.viewer}

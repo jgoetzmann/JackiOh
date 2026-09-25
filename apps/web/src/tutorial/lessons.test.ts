@@ -53,6 +53,13 @@ const COMBAT_KEYWORDS: readonly string[] = [
   "Can't attack",
 ];
 
+/**
+ * R290, R291: cards that read their controller's health against §2's 30, which the tutorial hero's
+ * 20 bends: #53 Reno would lift the AI's hero from 20 to 30, and #70 Spiteful Stab counts ten health
+ * as already missing (R72), so both would hand the tutorial opponent more than a human gets.
+ */
+const READS_THIRTY: readonly string[] = ["core-053", "core-070"];
+
 function def(id: string): CardDef {
   const found = catalog[id];
   if (found === undefined) throw new Error(`${id} is not in the catalog`);
@@ -120,6 +127,7 @@ describe("R291 the tutorial's lessons", () => {
         expect(card.token, where).toBe(false);
         expect(SHADOW_BAN_IDS, where).not.toContain(id);
         expect(SHOWPIECE_RARITIES, where).not.toContain(card.rarity);
+        expect(READS_THIRTY, `${where}: reads its hero's health against 30`).not.toContain(id);
         if (lesson.number < BACKROW_LESSON) expect(BACKROW_TYPES, `${where}: no backrow card before lesson ${String(BACKROW_LESSON)}`).not.toContain(card.type);
         if (lesson.number < SPELL_LESSON) {
           expect(card.type, `${where}: units only in lesson 1`).toBe("Unit");

@@ -1,0 +1,896 @@
+/* The tutorial's chrome (SPEC §9.10): the lesson path at the top of the practice lobby, the
+   lesson's HUD, the coach's bubble and ring over the board, and the end-of-lesson dialog. The board
+   is practice's, untouched; the HUD and the dialog wear practice.css's look and change only what a
+   lesson needs.
+
+   The coach has a colour of its own, lavender (`--coach`), because every colour the board already
+   uses means something there: green "can act", yellow "condition met", ice blue "selected", blue
+   you, red the opponent, gold the primary action. A ring the player could mistake for a glow would
+   say the wrong thing. Motion is scaled by `--anim-scale` and stops under reduced motion, the OS
+   preference or the settings panel's switch alike (the block at the end). */
+
+.practice {
+  --coach: #c4b5fd;
+  --coach-ink: #1d1233;
+}
+
+/* Read by a screen reader, not drawn. */
+.tutorial-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tutorial-icon {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+/* ---- the lesson path ---------------------------------------------------------------------- */
+
+.tutorial-path {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 16px;
+  border: 1px solid color-mix(in srgb, var(--coach) 30%, var(--line));
+  border-radius: 16px;
+  background:
+    radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--coach) 11%, transparent), transparent 65%),
+    color-mix(in srgb, var(--bg-raised) 78%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 4%),
+    0 14px 30px -20px rgb(0 0 0 / 90%);
+}
+
+.tutorial-path__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+
+.tutorial-path__heading {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-shell .tutorial-path__eyebrow {
+  margin: 0;
+  color: var(--coach);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.app-shell .tutorial-path__title {
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 750;
+}
+
+.app-shell .tutorial-path__intro {
+  font-size: 14px;
+}
+
+.tutorial-path__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.app-shell .tutorial-path__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tutorial-path__meter {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.tutorial-path__meter i {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-bright);
+}
+
+.tutorial-path__meter i[data-done="true"] {
+  background: var(--coach);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--coach) 60%, transparent);
+}
+
+.app-shell .tutorial-path__continue,
+.app-shell .tutorial-path__toggle {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.app-shell .tutorial-path__continue {
+  border-color: color-mix(in srgb, var(--coach) 70%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--coach) 85%, white), var(--coach));
+  color: var(--coach-ink);
+}
+
+.app-shell .tutorial-path__continue:hover:not(:disabled) {
+  border-color: white;
+  background: linear-gradient(180deg, white, color-mix(in srgb, var(--coach) 85%, white));
+}
+
+/* Four stops along a path: each lesson's node sits on its card's top edge, and a line runs from
+   node to node behind the cards, showing through the gaps between them. */
+.tutorial-path__lessons {
+  --node: 34px;
+  --path-gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--path-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tutorial-path__lessons[hidden] {
+  display: none;
+}
+
+.tutorial-lesson {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.tutorial-lesson:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--node) / 2 - 1.5px);
+  left: 50%;
+  z-index: 0;
+  width: calc(100% + var(--path-gap));
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-bright);
+}
+
+.tutorial-lesson[data-status="completed"]:not(:last-child)::after {
+  background: linear-gradient(90deg, var(--coach), color-mix(in srgb, var(--coach) 55%, var(--line-bright)));
+}
+
+.tutorial-lesson__node {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--node);
+  height: var(--node);
+  border: 2px solid var(--line-bright);
+  border-radius: 50%;
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial-lesson[data-status="unlocked"] .tutorial-lesson__node {
+  border-color: var(--coach);
+  color: var(--text);
+}
+
+.tutorial-lesson[data-status="completed"] .tutorial-lesson__node {
+  border-color: var(--coach);
+  background: color-mix(in srgb, var(--coach) 26%, var(--bg-sunken));
+  color: var(--coach);
+}
+
+.tutorial-lesson[data-next="true"] .tutorial-lesson__node {
+  background: var(--coach);
+  color: var(--coach-ink);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--coach) 22%, transparent);
+}
+
+.tutorial-lesson__card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  margin-top: calc(var(--node) / -2);
+  padding: calc(var(--node) / 2 + 4px) 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--bg-raised) 55%, var(--bg-sunken)));
+}
+
+.tutorial-lesson[data-next="true"] .tutorial-lesson__card {
+  border-color: color-mix(in srgb, var(--coach) 65%, var(--line));
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--coach) 14%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--bg-raised) 55%, var(--bg-sunken)));
+  box-shadow: 0 12px 28px -18px color-mix(in srgb, var(--coach) 80%, transparent);
+}
+
+.tutorial-lesson[data-status="locked"] .tutorial-lesson__card {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--bg-sunken) 70%, var(--bg-raised));
+}
+
+.tutorial-lesson[data-status="locked"] :is(.tutorial-lesson__title, .tutorial-lesson__summary, .tutorial-lesson__chips) {
+  opacity: 0.62;
+}
+
+.app-shell .tutorial-lesson__kicker {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tutorial-lesson__next {
+  color: var(--coach);
+}
+
+.app-shell .tutorial-lesson__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.app-shell .tutorial-lesson__summary {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.tutorial-lesson__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tutorial-lesson__chip {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--coach) 24%, var(--line));
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: color-mix(in srgb, var(--coach) 30%, var(--text-dim));
+  font-size: 10.5px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+/* Status and button share one row: the status wraps inside its own column rather than pushing
+   the button onto a row of its own. */
+.tutorial-lesson__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.tutorial-lesson__status {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.tutorial-lesson[data-status="completed"] .tutorial-lesson__status,
+.tutorial-lesson[data-next="true"] .tutorial-lesson__status {
+  color: var(--coach);
+  font-weight: 650;
+}
+
+.app-shell .tutorial-lesson__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 6px;
+  min-width: 84px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-shell .tutorial-lesson__button--unlocked {
+  border-color: color-mix(in srgb, var(--coach) 60%, var(--line-bright));
+  color: var(--text);
+}
+
+.app-shell .tutorial-lesson__button--next {
+  border-color: color-mix(in srgb, var(--coach) 70%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--coach) 85%, white), var(--coach));
+  color: var(--coach-ink);
+  box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--coach) 90%, transparent);
+}
+
+.app-shell .tutorial-lesson__button--next:hover:not(:disabled) {
+  border-color: white;
+  background: linear-gradient(180deg, white, color-mix(in srgb, var(--coach) 85%, white));
+}
+
+.app-shell .tutorial-lesson__button--completed {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+/* A locked lesson's button is focusable and says why it is locked; it just does nothing. */
+.app-shell .tutorial-lesson__button--locked,
+.app-shell .tutorial-lesson__button--locked:hover:not(:disabled) {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-dim);
+  transform: none;
+}
+
+/* ---- the lesson's HUD ---------------------------------------------------------------------- */
+
+.practice-hud.tutorial-hud {
+  --tier: var(--coach);
+}
+
+.tutorial-hud__lesson {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tutorial-hud__badge {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--coach);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--coach) 22%, var(--bg-sunken));
+  color: var(--coach);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tutorial-hud__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.tutorial-hud__title {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--coach) 70%, var(--text));
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.tutorial-hud__step {
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tutorial-hud__step-short,
+.tutorial-hud__short {
+  display: none;
+}
+
+.tutorial-hud__meter {
+  position: relative;
+  width: 76px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.tutorial-hud__meter::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--done, 0) * 100%);
+  border-radius: 2px;
+  background: var(--coach);
+  transition: width calc(240ms * var(--anim-scale, 1)) ease-out;
+}
+
+.practice .tutorial-hud__skip,
+.practice .tutorial-hud__exit {
+  flex: none;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-color: var(--line-bright);
+  background: transparent;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.practice .tutorial-hud__skip {
+  color: var(--text-dim);
+}
+
+@media (max-width: 560px) {
+  .tutorial-hud__badge,
+  .tutorial-hud__step-long,
+  .tutorial-hud__long {
+    display: none;
+  }
+
+  .tutorial-hud__step-short,
+  .tutorial-hud__short {
+    display: inline;
+  }
+
+  .tutorial-hud__step {
+    padding-left: 8px;
+  }
+
+  .tutorial-hud__meter {
+    width: 32px;
+  }
+
+  .practice .tutorial-hud__skip,
+  .practice .tutorial-hud__exit {
+    padding: 6px 10px;
+  }
+}
+
+/* ---- the coach: ring and bubble ------------------------------------------------------------ */
+
+/* Over the board and its prompts (40-50), under the drag overlay, the card previews and every
+   dialog (60 and up), so a dragged card, an inspected card and "Leave this game?" stay on top. */
+.coach-ring {
+  position: fixed;
+  z-index: 55;
+  border: 3px solid var(--coach);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--coach) 22%, transparent),
+    0 0 26px 4px color-mix(in srgb, var(--coach) 45%, transparent);
+  pointer-events: none;
+  transition:
+    left calc(160ms * var(--anim-scale, 1)) ease-out,
+    top calc(160ms * var(--anim-scale, 1)) ease-out,
+    width calc(160ms * var(--anim-scale, 1)) ease-out,
+    height calc(160ms * var(--anim-scale, 1)) ease-out;
+}
+
+.coach-ring[data-stale="true"] {
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .coach-ring {
+    animation: coach-pulse calc(1.6s * var(--anim-scale, 1)) ease-in-out infinite;
+  }
+}
+
+@keyframes coach-pulse {
+  50% {
+    box-shadow:
+      0 0 0 9px color-mix(in srgb, var(--coach) 10%, transparent),
+      0 0 36px 8px color-mix(in srgb, var(--coach) 55%, transparent);
+  }
+}
+
+.coach {
+  position: fixed;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(340px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  padding: 12px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--coach) 60%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--coach) 12%, var(--bg-raised)), var(--bg-raised) 70%);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 35%),
+    0 18px 44px -12px rgb(0 0 0 / 85%),
+    0 0 28px -10px color-mix(in srgb, var(--coach) 70%, transparent);
+  color: var(--text);
+  font-size: 14px;
+  transition:
+    left calc(180ms * var(--anim-scale, 1)) ease-out,
+    top calc(180ms * var(--anim-scale, 1)) ease-out,
+    opacity calc(160ms * var(--anim-scale, 1));
+}
+
+/* Placed before it is painted: the first measure runs before the first frame. */
+.coach[data-placed="false"] {
+  visibility: hidden;
+}
+
+/* The board has not caught up with the coach yet (Coach.tsx): this bubble is about to change. */
+.coach[data-stale="true"] {
+  opacity: 0.55;
+}
+
+/* A card in flight (drag.css marks <html data-dragging>): the bubble fades and lets the pointer
+   through, so the zones under it show. The drop itself never depended on it (the drag layer reads
+   every element under the pointer, not the topmost). */
+:root[data-dragging] .coach {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.coach:focus {
+  outline: none;
+}
+
+.coach:focus-visible {
+  outline: 2px solid var(--coach);
+  outline-offset: 2px;
+}
+
+.coach__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.coach__eyebrow {
+  color: var(--coach);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.coach__count {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .coach__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.app-shell .coach__text {
+  max-width: none;
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.coach__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.app-shell .coach__ack,
+.app-shell .coach__skip {
+  min-height: 40px;
+  padding: 7px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.app-shell .coach__ack {
+  border-color: color-mix(in srgb, var(--coach) 70%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--coach) 85%, white), var(--coach));
+  color: var(--coach-ink);
+  font-weight: 750;
+}
+
+.app-shell .coach__ack:hover:not(:disabled) {
+  border-color: white;
+  background: linear-gradient(180deg, white, color-mix(in srgb, var(--coach) 85%, white));
+}
+
+.app-shell .coach__skip {
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* The slim bubble while the coach waits (the AI's turn, a step whose moment has not come): one
+   line of what is happening, and Skip step. */
+.coach.coach--slim {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  width: auto;
+  max-width: min(440px, calc(100vw - 16px));
+  padding: 6px 6px 6px 14px;
+  gap: 6px 12px;
+}
+
+.coach--slim .coach__head {
+  gap: 10px;
+}
+
+.app-shell .coach--slim .coach__text {
+  flex: 1 1 auto;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.coach--slim .coach__actions {
+  margin: 0 0 0 auto;
+}
+
+/* Docked on a phone, the bubble spans the screen (its width is set inline) and scrolls its own
+   text if the room between its anchor and the edge is short. */
+.coach[data-coach-side="dock-top"],
+.coach[data-coach-side="dock-bottom"] {
+  max-width: none;
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .app-shell .coach__ack,
+  .app-shell .coach__skip {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .coach {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .app-shell .coach__title {
+    font-size: 15px;
+  }
+
+  .app-shell .coach__text {
+    font-size: 13px;
+  }
+}
+
+/* ---- the end of a lesson ------------------------------------------------------------------- */
+
+/* A lesson lost is a lesson to try again, not a defeat: the coach's colour, not the opponent's. */
+.practice-result.tutorial-result[data-outcome="loss"],
+.practice-result.tutorial-result[data-outcome="draw"] {
+  --glow: var(--coach);
+}
+
+.app-shell .practice-result__title.tutorial-result__title {
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+.tutorial-result__seal {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  overflow: visible;
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--glow) 45%, transparent));
+}
+
+.tutorial-result__seal-ring {
+  fill: color-mix(in srgb, var(--glow) 22%, var(--bg-sunken));
+  stroke: var(--glow);
+  stroke-width: 3;
+}
+
+.tutorial-result__seal-mark {
+  fill: none;
+  stroke: var(--glow);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tutorial-result__seal-number {
+  fill: var(--glow);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.app-shell .tutorial-result__tip {
+  width: 100%;
+  max-width: none;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--coach);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+/* ---- tablets and phones: the path runs down the screen ----------------------------------- */
+
+/* Four across needs a desktop's width; below it the lessons stack, each node on the path's line
+   down the left. */
+@media (max-width: 900px) {
+  .tutorial-path__lessons {
+    --node: 30px;
+    --path-gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tutorial-lesson {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .tutorial-lesson:not(:last-child)::after {
+    top: calc(12px + var(--node) / 2);
+    left: calc(var(--node) / 2 - 1.5px);
+    width: 3px;
+    height: calc(100% + var(--path-gap));
+  }
+
+  .tutorial-lesson[data-status="completed"]:not(:last-child)::after {
+    background: linear-gradient(180deg, var(--coach), color-mix(in srgb, var(--coach) 55%, var(--line-bright)));
+  }
+
+  .tutorial-lesson__node {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+
+  .tutorial-lesson__card {
+    margin-top: 0;
+    padding: 10px 12px 12px;
+  }
+}
+
+/* A tablet's card is wide enough to keep its button beside the text rather than under it. */
+@media (min-width: 561px) and (max-width: 900px) {
+  .tutorial-lesson__card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "kicker foot"
+      "title foot"
+      "summary foot"
+      "chips foot";
+    column-gap: 16px;
+  }
+
+  .tutorial-lesson__kicker {
+    grid-area: kicker;
+  }
+
+  .tutorial-lesson__title {
+    grid-area: title;
+  }
+
+  .tutorial-lesson__summary {
+    grid-area: summary;
+  }
+
+  .tutorial-lesson__chips {
+    grid-area: chips;
+  }
+
+  .tutorial-lesson__foot {
+    grid-area: foot;
+    flex-direction: column;
+    align-items: flex-end;
+    align-self: center;
+    justify-content: center;
+    max-width: 180px;
+    margin: 0;
+    padding: 0;
+  }
+
+  .tutorial-lesson__status {
+    flex: none;
+    text-align: right;
+  }
+}
+
+@media (max-width: 720px) {
+  .tutorial-path {
+    gap: 12px;
+    padding: 14px 12px 14px;
+  }
+
+  .app-shell .tutorial-path__title {
+    font-size: 20px;
+  }
+}
+
+/* A landscape phone: the path keeps its row of four, tighter, so the practice setup is not pushed
+   a whole screen down. */
+@media (max-height: 520px) and (min-width: 721px) {
+  .tutorial-path {
+    gap: 10px;
+    padding: 10px 12px 12px;
+  }
+
+  .app-shell .tutorial-path__intro {
+    display: none;
+  }
+
+  .app-shell .tutorial-lesson__summary {
+    display: none;
+  }
+}
+
+/* ---- reduced motion ------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-ring,
+  .coach,
+  .tutorial-hud__meter::after {
+    animation: none;
+    transition: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .coach-ring,
+:root[data-reduce-motion="true"] .coach,
+:root[data-reduce-motion="true"] .tutorial-hud__meter::after {
+  animation: none;
+  transition: none;
+}
