@@ -193,7 +193,7 @@ const HEADLINE: Record<GameEventType, SfxId | null> = {
   promptOpened: "notify",
   promptAnswered: null,
   drawOffered: "notify",
-  drawAnswered: "notify",
+  drawAnswered: "cancel",
   gameOver: "victory",
 };
 
@@ -220,7 +220,6 @@ const UNCONDITIONAL: readonly GameEventType[] = [
   "attackDeclared",
   "attackCancelled",
   "turnAutoEnded",
-  "drawAnswered",
 ];
 
 /* --------------------------------------------------------------------------------------------- *
@@ -582,6 +581,26 @@ describe("B23 seat-relative rows", () => {
     expect(shape({ type: "drawOffered", player: "p2" })).toEqual([sfx("notify")]);
     expect(shape({ type: "drawOffered", player: "p1" })).toEqual([]);
     expect(shape({ type: "drawOffered", player: "p2" }, p2Seat())).toEqual([]);
+  });
+
+  it("drawOffered rings as a question (the urgent notify), not as the routine blips", () => {
+    expect(onlySfx({ type: "drawOffered", player: "p2" }).params).toEqual({ urgent: true });
+    expect(onlySfx({ type: "drawOffered", player: "p1" }, p2Seat()).params).toEqual({ urgent: true });
+    // Every other notify stays the plain one.
+    expect(onlySfx({ type: "turnAutoEnded", player: "p1", turn: 3 }).params).toBeUndefined();
+    expect(onlySfx({ type: "promptOpened", player: "p1", choiceId: "ch1", kind: "target" }).params).toBeUndefined();
+  });
+
+  it("drawAnswered is the offerer's news: a decline sounds cancel, an acceptance leaves the draw to gameOver, and the answering seat hears nothing", () => {
+    // p1 is the viewer. p2 answered p1's offer: p1 is the offerer.
+    expect(shape({ type: "drawAnswered", player: "p2", accept: false })).toEqual([sfx("cancel")]);
+    expect(shape({ type: "drawAnswered", player: "p2", accept: true })).toEqual([]);
+    // p1 answered p2's offer: its own click already ticked.
+    expect(shape({ type: "drawAnswered", player: "p1", accept: false })).toEqual([]);
+    expect(shape({ type: "drawAnswered", player: "p1", accept: true })).toEqual([]);
+    // The same from p2's seat.
+    expect(shape({ type: "drawAnswered", player: "p1", accept: false }, p2Seat())).toEqual([sfx("cancel")]);
+    expect(shape({ type: "drawAnswered", player: "p2", accept: false }, p2Seat())).toEqual([]);
   });
 
   it("B23 turnStarted carries mine for the viewer's own turn only", () => {

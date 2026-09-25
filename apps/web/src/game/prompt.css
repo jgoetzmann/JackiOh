@@ -712,3 +712,43 @@
     min-height: 44px;
   }
 }
+
+/* --- the concurrent mulligan (R265) --------------------------------------------------------- */
+
+/* Whether the opponent has answered its own mulligan: a dim "choosing…", then a green "ready". */
+.prompt > .mulligan-status {
+  max-width: none;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.prompt > .mulligan-status[data-ready="true"] {
+  color: var(--legal);
+}
+
+.prompt:has(> .prompt-cards) > .mulligan-status {
+  text-align: center;
+}
+
+/* After Ready: the same hand at the same size, each card stamped Keep or Redraw, and nothing to
+   press. The stamps are the picker's; a card here is a picture, not a button, so it gets the
+   picker's frame and none of its lift. */
+.prompt.prompt-mulligan-waiting {
+  align-items: center;
+  text-align: center;
+}
+
+.prompt.prompt-mulligan-waiting > .prompt-title,
+.prompt.prompt-mulligan-waiting > .prompt-sub {
+  max-width: none;
+  text-align: center;
+}
+
+.prompt-mulligan-waiting .prompt-card {
+  border: 1px solid #3f4964;
+  cursor: default;
+}
+
+.prompt-mulligan-waiting .prompt-card:hover {
+  transform: none;
+}

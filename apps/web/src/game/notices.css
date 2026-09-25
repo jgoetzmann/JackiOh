@@ -1,0 +1,243 @@
+/* The table talk around the board: the draw offer's notices (DrawOffer.tsx) and "Concede this
+   game?" (ConfirmConcede.tsx). Both float over the board rather than taking height from it (the
+   game screen is budgeted to the viewport, board.css), and both are drawn in the design tokens, so
+   they read on any theme those tokens describe. */
+
+/* ---- the draw offer ----------------------------------------------------------------------- */
+
+/* The live region: always in the tree, sized by the notice in it, blind to the pointer where it is
+   empty. Across the top of the screen under the refusal toast (`.game-error`, z 45), over the
+   board and its effects layer, clear of the safe area. */
+.game > .draw-notices {
+  position: fixed;
+  top: calc(max(12px, env(safe-area-inset-top)) + 44px);
+  left: 50%;
+  z-index: 44;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.draw-toast {
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--selected) 55%, var(--line-bright));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--selected) 12%, var(--bg-raised));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+  pointer-events: auto;
+}
+
+/* The app shell dims and caps every paragraph (src/index.css); a notice is the brightest line on it. */
+.draw-toast .draw-toast__line {
+  max-width: none;
+  margin: 0;
+  color: var(--text);
+}
+
+/* The offerer's own line is a quiet status, not a call to act. */
+.draw-toast[data-draw="waiting"] {
+  border-color: var(--line-bright);
+  background: var(--bg-raised);
+  font-weight: 600;
+}
+
+/* The seat that must answer: the question, then its two answers, on one row where they fit. */
+.draw-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+}
+
+.draw-offer__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.draw-offer__actions > button {
+  min-width: 88px;
+  padding: 6px 14px;
+  font-weight: 700;
+}
+
+.draw-offer__actions > .draw-offer__accept:not(:disabled) {
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+}
+
+.draw-offer__actions > .draw-offer__accept:not(:disabled):hover {
+  background: var(--primary-face-hover);
+}
+
+/* What became of the offer says its piece and fades, like the refusal toast: once the animation
+   table's own `drawAnswered` pulse (animations.css) has played on it, never over it. Reduced motion
+   zeroes every delay, which would fade it at once, so there it simply stays for the rest of the turn. */
+.draw-toast[data-draw="declined"],
+.draw-toast[data-draw="accepted"],
+.draw-toast[data-draw="expired"] {
+  border-color: var(--line-bright);
+  background: var(--bg-raised);
+  pointer-events: none;
+}
+
+.draw-toast[data-draw="declined"]:not([data-animating]),
+.draw-toast[data-draw="accepted"]:not([data-animating]),
+.draw-toast[data-draw="expired"]:not([data-animating]) {
+  animation: draw-toast-fade 400ms ease-in 5s forwards;
+}
+
+@keyframes draw-toast-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-toast[data-draw]:not([data-animating]) {
+    animation: none;
+  }
+}
+
+:root[data-reduce-motion="true"] .draw-toast[data-draw]:not([data-animating]) {
+  animation: none;
+}
+
+/* Touch: the answers are full 44 px targets wherever a finger is the pointer (polish task 7). */
+@media (max-width: 1024px), (pointer: coarse) {
+  .draw-offer__actions > button {
+    min-height: 44px;
+  }
+}
+
+/* A phone: the notice may take the width it needs, and the question sits above its answers. */
+@media (max-width: 600px) {
+  .game > .draw-notices {
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
+
+  .draw-offer {
+    flex-direction: column;
+  }
+
+  .draw-offer__actions {
+    width: 100%;
+  }
+
+  .draw-offer__actions > button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+/* ---- "Concede this game?" ----------------------------------------------------------------- */
+
+/* Above the prompt's scrim (40), the result overlay (39) and the drag layer (60): it is the one
+   question on the screen while it is open. */
+.concede-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: flex;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  overflow-y: auto;
+  background: rgb(7 9 14 / 70%);
+  animation: concede-fade-in calc(160ms * var(--anim-scale, 1)) ease-out both;
+}
+
+.concede-dialog {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(380px, 100%);
+  margin: auto;
+  padding: 20px 20px 18px;
+  border: 1px solid color-mix(in srgb, var(--opponent) 45%, var(--line-bright));
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--bg-raised), var(--bg-sunken));
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 40%),
+    0 24px 64px -16px rgb(0 0 0 / 90%);
+  color: var(--text);
+  text-align: center;
+}
+
+.concede-dialog .concede-dialog__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 750;
+}
+
+.concede-dialog .concede-dialog__body {
+  max-width: none;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.concede-dialog__actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.concede-dialog__actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
+/* Keep playing is the default and looks it; Concede wears the opponent's red, the colour of a loss. */
+.concede-dialog__actions > .concede-dialog__stay {
+  border-color: var(--primary-edge);
+  background: var(--primary-face);
+  color: var(--primary-ink);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+}
+
+.concede-dialog__actions > .concede-dialog__stay:hover {
+  background: var(--primary-face-hover);
+}
+
+.concede-dialog__actions > .concede-dialog__concede {
+  border-color: color-mix(in srgb, var(--opponent) 70%, var(--line-bright));
+  background: color-mix(in srgb, var(--opponent) 22%, var(--bg-raised));
+  color: var(--text);
+}
+
+.concede-dialog__actions > .concede-dialog__concede:hover {
+  background: color-mix(in srgb, var(--opponent) 34%, var(--bg-raised));
+}
+
+.concede-dialog__actions > button:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
+}
+
+@keyframes concede-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The narrowest phones (360 px and under): the two answers stack, Keep playing on top. */
+@media (max-width: 360px) {
+  .concede-dialog__actions {
+    flex-direction: column;
+  }
+}

@@ -6,10 +6,19 @@
 // clock is a `turnDeadline` of `null` in the frame the server pushed, not an inference drawn here
 // (CLAUDE.md rule 7).
 //
-// THE NUMBERS COME FROM CONFIG. `TURN_CLOCK_MS`, `PROMPT_CLOCK_MS`, `DISCONNECT_GRACE_MS` and
-// `MATCH_CEILING_MS` are `TURN_CLOCK_SECONDS`, `PROMPT_CLOCK_SECONDS`, `DISCONNECT_GRACE_SECONDS`
-// and `MATCH_CEILING_MINUTES` in milliseconds, declared in `apps/server/src/config.ts` alongside
-// them. They are the full length of each bar; no duration or threshold is spelled in this file.
+// THE MULLIGAN IS BOTH SEATS' AT ONCE (R265), and R268 gives it one clock: the server arms one
+// deadline when the window opens, never moves it when a seat answers, and reports it as the frame's
+// `promptDeadline` and as each seat's `clockMs`. So while `mulligan` is set — the route sets it for
+// exactly the window the view carries `view.mulligan` — both sides show that one countdown, the seat
+// that has already answered included (it is waiting on it), over `MULLIGAN_CLOCK_MS`, and there is
+// no turn clock: setup is nobody's turn (§2.1). A question a card asks during setup outside the
+// window is an ordinary prompt and keeps R79's clocks.
+//
+// THE NUMBERS COME FROM CONFIG. `TURN_CLOCK_MS`, `PROMPT_CLOCK_MS`, `MULLIGAN_CLOCK_MS`,
+// `DISCONNECT_GRACE_MS` and `MATCH_CEILING_MS` are `TURN_CLOCK_SECONDS`, `PROMPT_CLOCK_SECONDS`,
+// `MULLIGAN_CLOCK_SECONDS`, `DISCONNECT_GRACE_SECONDS` and `MATCH_CEILING_MINUTES` in milliseconds,
+// declared in `apps/server/src/config.ts` alongside them. They are the full length of each bar; no
+// duration or threshold is spelled in this file.
 // (`TICK_MS` below is a repaint cadence, not a rule value: nothing in SPEC or BUILD depends on it.)
 //
 // TIME IS MEASURED MONOTONICALLY. `apps/server/src/match/protocol.ts` on the `clock` message:
@@ -23,6 +32,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   DISCONNECT_GRACE_MS,
   MATCH_CEILING_MS,
+  MULLIGAN_CLOCK_MS,
   PROMPT_CLOCK_MS,
   TURN_CLOCK_MS,
 } from "../../../server/src/config.ts";
@@ -68,11 +78,16 @@ export type ClockProps = {
   activePlayer?: Seat | null;
   /** R79: the seat holding the open prompt, when one is open. */
   promptHolder?: Seat | null;
+  /**
+   * R265, R268: both mulligans are open (the view carries `view.mulligan`). The frame's
+   * `promptDeadline` is then the one mulligan deadline, and `youMs` / `opponentMs` both carry it.
+   */
+  mulligan?: boolean;
   /** Monotonic source; `performance.now` in a browser, injected in tests. */
   monotonic?: () => number;
 };
 
-export type ClockKind = "turn" | "prompt" | "idle";
+export type ClockKind = "turn" | "prompt" | "mulligan" | "idle";
 
 export type ClockLine = {
   /** null when the frame arms a clock nobody has been named the holder of. */
@@ -115,12 +130,23 @@ export function readClock(props: ClockProps, elapsedMs: number): ClockReadout {
   const frame = props.frame ?? null;
   const clocks = frame?.clocks ?? null;
   const serverNow = frame === null ? null : frame.now + elapsedMs;
+  const mulligan = props.mulligan === true;
+  /** R268: the one mulligan deadline, when a frame reports it. */
+  const mulliganMs =
+    mulligan && clocks !== null && serverNow !== null && clocks.promptDeadline !== null
+      ? clocks.promptDeadline - serverNow
+      : null;
 
   const lineFor = (side: ClockSide): ClockLine => {
     const seat = seatOf(side, viewer);
     const fallback = side === "you" ? props.youMs : props.opponentMs;
     const isActive = props.activePlayer === seat;
     const holdsPrompt = props.promptHolder === seat;
+
+    // R268: one clock for both seats, answered or not.
+    if (mulligan) {
+      return { side, kind: "mulligan", remainingMs: mulliganMs ?? fallback, totalMs: MULLIGAN_CLOCK_MS, paused: false };
+    }
 
     if (clocks !== null && serverNow !== null) {
       if (holdsPrompt && clocks.promptDeadline !== null) {
@@ -162,8 +188,10 @@ export function readClock(props: ClockProps, elapsedMs: number): ClockReadout {
   const opponent = lineFor("opponent");
 
   const active = props.activePlayer ?? null;
-  const turn: ClockLine | null =
-    active === null
+  // §2.1: setup is nobody's turn, so the mulligan window shows no turn clock (R268).
+  const turn: ClockLine | null = mulligan
+    ? null
+    : active === null
       ? clocks === null || clocks.turnDeadline === null || serverNow === null
         ? null
         : {
@@ -178,7 +206,12 @@ export function readClock(props: ClockProps, elapsedMs: number): ClockReadout {
         : opponent;
 
   let prompt: ClockLine | null = null;
-  if (clocks !== null && serverNow !== null && clocks.promptDeadline !== null) {
+  if (mulligan) {
+    prompt =
+      mulliganMs === null
+        ? null
+        : { side: null, kind: "mulligan", remainingMs: mulliganMs, totalMs: MULLIGAN_CLOCK_MS, paused: false };
+  } else if (clocks !== null && serverNow !== null && clocks.promptDeadline !== null) {
     const holder = props.promptHolder ?? null;
     prompt =
       holder === null

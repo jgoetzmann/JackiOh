@@ -23,6 +23,11 @@ export type SfxParams = {
   timbre?: SfxTimbre;
   /** entrance: a Mythic's prismatic sting rather than a Legendary's brass. */
   mythic?: boolean;
+  /**
+   * notify: a notice that waits on the viewer's answer (the other seat's draw offer), which rings
+   * like a doorbell rather than the routine two blips, inside the same durationMs.
+   */
+  urgent?: boolean;
 };
 
 export type VoiceLineKind = "play" | "death" | "cast";

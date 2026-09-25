@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DISCONNECT_GRACE_MS,
   MATCH_CEILING_MS,
+  MULLIGAN_CLOCK_MS,
   PROMPT_CLOCK_MS,
   TURN_CLOCK_MS,
 } from "../../../server/src/config.ts";
@@ -252,5 +253,68 @@ describe("the rendered clock", () => {
     at.ms = 10_000;
     view.rerender(<Clock {...pinned} />);
     expect(screen.getByTestId("clock-you")).toHaveTextContent(formatClock(TURN_CLOCK_MS - 10_000));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R268: the mulligan window runs one clock for both seats
+// ---------------------------------------------------------------------------------------------
+
+describe("R268 — while both mulligans are open, one mulligan clock for both seats", () => {
+  /** The server's frame in the window: the turn clock paused, the mulligan deadline as the prompt's. */
+  function mulliganFrame(): ClockFrame {
+    return frame({ turnDeadline: null, promptDeadline: NOW + MULLIGAN_CLOCK_MS });
+  }
+
+  it("R268 both sides count the one deadline down over MULLIGAN_CLOCK_MS, and no turn clock runs", () => {
+    const readout = readClock(props({ frame: mulliganFrame(), mulligan: true }), 5_000);
+    for (const line of [readout.you, readout.opponent]) {
+      expect(line.kind).toBe("mulligan");
+      expect(line.remainingMs).toBe(MULLIGAN_CLOCK_MS - 5_000);
+      expect(line.totalMs).toBe(MULLIGAN_CLOCK_MS);
+      expect(line.paused).toBe(false);
+    }
+    expect(readout.turn, "setup is nobody's turn").toBeNull();
+    expect(readout.prompt).toEqual({
+      side: null,
+      kind: "mulligan",
+      remainingMs: MULLIGAN_CLOCK_MS - 5_000,
+      totalMs: MULLIGAN_CLOCK_MS,
+      paused: false,
+    });
+  });
+
+  it("R268 the seat that has already answered sees the same countdown as the one still choosing", () => {
+    // Answered: the view names the other seat as the one a prompt waits on.
+    const ready = readClock(props({ frame: mulliganFrame(), mulligan: true, viewer: "p1", promptHolder: "p2" }), 0);
+    const owing = readClock(props({ frame: mulliganFrame(), mulligan: true, viewer: "p2", promptHolder: "p2" }), 0);
+    expect(ready.you).toEqual(owing.you);
+    expect(ready.opponent).toEqual(owing.opponent);
+    expect(ready.you.remainingMs).toBe(MULLIGAN_CLOCK_MS);
+  });
+
+  it("outside the window the same deadline is an ordinary prompt's, over PROMPT_CLOCK_MS", () => {
+    const readout = readClock(props({ frame: mulliganFrame(), promptHolder: "p2" }), 0);
+    expect(readout.prompt?.kind).toBe("prompt");
+    expect(readout.prompt?.totalMs).toBe(PROMPT_CLOCK_MS);
+  });
+
+  it("R268 with no frame yet, both sides read PlayerView.clockMs as the mulligan clock", () => {
+    const readout = readClock(props({ youMs: 30_000, opponentMs: 30_000, mulligan: true, frame: null }), 0);
+    expect(readout.you).toEqual({ side: "you", kind: "mulligan", remainingMs: 30_000, totalMs: MULLIGAN_CLOCK_MS, paused: false });
+    expect(readout.opponent.kind).toBe("mulligan");
+    expect(readout.prompt).toBeNull();
+  });
+
+  it("R268 renders both sides and the prompt clock as the mulligan's, with no turn clock", () => {
+    const at = { ms: 0 };
+    render(<Clock {...props({ frame: mulliganFrame(), mulligan: true, monotonic: monotonicAt(at) })} />);
+    for (const id of ["clock-you", "clock-opponent", "prompt-clock"]) {
+      const line = screen.getByTestId(id);
+      expect(line, id).toHaveAttribute("data-kind", "mulligan");
+      expect(line, id).toHaveAttribute("data-total-ms", String(MULLIGAN_CLOCK_MS));
+      expect(line, id).toHaveTextContent(formatClock(MULLIGAN_CLOCK_MS));
+    }
+    expect(screen.queryByTestId("turn-clock")).toBeNull();
   });
 });

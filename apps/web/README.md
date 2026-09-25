@@ -47,6 +47,9 @@ src/
     hotseat.ts decks.ts                                                 M5-T3
     animations.ts                                                       M5-T4
     Game.tsx            board + prompts + animation runner + effects layer + audio + drag layer + showcase, wired together
+    ConfirmConcede.tsx  "Concede this game?": the Concede control only asks (see "Three flows at the table")
+    DrawOffer.tsx       the draw offer's notices and the answering seat's Accept / Decline (same section)
+    notices.css         the look of both: over the board, never taking height from it
     showcase/           the opponent's play held up beside the field for about a second (SHOWCASE_HOLD_MS over the
                         effects speed): plan.ts picks the opponent's `cardPlayed` out of the redacted events,
                         per viewer, and a card the view hides (R97, R227) is a back with "Opponent set a card".
@@ -98,6 +101,63 @@ scripts/
   gen-voice.mjs         renders voice-lines.json to public/audio/voice/<card-id>-<play|death|cast>.m4a
 ```
 
+## Three flows at the table
+
+None of them is a rule (CLAUDE.md rule 7): each reads the view, takes its moves from `legal`, and
+sends intent. The testids are `contract.ts`'s `testid`, and e2e reads the same strings.
+
+**The mulligan is both seats' at once** (SPEC §2.1, R265–R268). Each seat answers its own, in
+either order; an answer is sealed until the other is in, and the hand does not change until then.
+The view says so: a seat that still owes sees its own `pending` mulligan, one that has answered sees
+`pending: { forYou: false, pendingFor }`, and `view.mulligan = { youReady, opponentReady, kept? }` is
+present for exactly that window.
+
+- The picker (`Prompt.tsx`) keeps its testids (`prompt-modal` with `data-prompt-kind="mulligan"`,
+  `prompt-option-<id>`, `prompt-submit`); its confirm reads "Ready". Under the count,
+  `mulligan-opponent-status` (`data-ready="true|false"`) says "Opponent is choosing…" or holds
+  `mulligan-opponent-ready`, "Opponent is ready".
+- After Ready, until the game starts: `mulligan-waiting`, "Waiting for your opponent…", with the
+  hand and each card stamped Keep or Redraw from `kept` (`mulligan-waiting-card-<id>`,
+  `data-verdict`; `data-returning` counts the cards going back). It has no `data-prompt-kind`, so no
+  picker helper takes it for a question.
+- Practice: the AI owes its mulligan from the first snapshot and answers it after
+  `promptAnswerMs` (controller.ts), never after the human; the human's Ready goes out whenever it is
+  pressed, queued behind an AI step already in flight.
+- Hotseat: the device follows the view's `pending.pendingFor`, so after one seat's Ready it goes to
+  the seat that still owes one, whichever answered first (p2 may answer first after a manual
+  hand-over). Turn 1 is then handed over with the button, as every turn is.
+- Online, the window has one clock (R268): the server reports its deadline as the frame's
+  `promptDeadline` and as each seat's `clockMs`, and `Clock.tsx` (with `mulligan` set by the match
+  route for exactly the window) shows it on both sides, the seat that is ready included, as
+  `data-kind="mulligan"` over `MULLIGAN_CLOCK_MS`, with no turn clock.
+
+**Concede asks first** (`ConfirmConcede.tsx`, mounted by `Game.tsx`, so every mode has it). The
+`concede` control opens `concede-dialog`, a modal `alertdialog` "Concede this game?"; only
+`concede-confirm` ("Concede") sends `{ type: "concede" }`. `concede-cancel` ("Keep playing") has the
+focus on open and is what Escape and a click outside do; Tab stays in the dialog, and the focus goes
+back to the control when it closes. A hotseat hand-over or the game's end drops the question.
+
+**A draw offer is a question with two answers** (SPEC §2.5, R36, R269). Only the active player
+offers, and `view.drawOffer = { by }` stands on both seats until the offer is answered or lapses at
+the end of the offerer's turn. `DrawOffer.tsx` draws one element, `draw-toast` (the element the
+animation table's `drawOffered` and `drawAnswered` rows play on), inside an always-present
+`aria-live` region across the top of the screen:
+
+- the offerer: `draw-offer-status`, "Draw offered — waiting for reply";
+- the other seat: `draw-offer` (a `region`, not a modal), "Your opponent offers a draw", with
+  `draw-accept` and `draw-decline`, live exactly when `legal` lists the matching `answerDraw` (the
+  engine withholds it while a prompt is open) and sending that listed body;
+- afterwards, `draw-outcome` with `data-outcome`: "You declined the draw" / "Your opponent declined
+  the draw" for the rest of that turn, "Draw accepted" (the result reads "Game drawn by
+  agreement."), and "The draw offer expired" through the turn after an unanswered offer lapsed.
+- Sound (`audio/cues.ts`): the answering seat hears an urgent notify (a doorbell, `urgent: true`);
+  the offerer hears `cancel` on a decline, and an acceptance is sounded by the `gameOver` that
+  follows.
+- Hotseat: an offer from the seat holding the device hands it to the other seat to answer, and the
+  answer hands it back to the player whose turn it is (`hotseat.ts`). Practice hides the Offer draw
+  control (SPEC §9.9, R188); an offer made anyway is declined at once and reads as declined.
+
+## Commands
 ## Commands
 
 ```

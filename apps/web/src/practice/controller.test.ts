@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActionBody, DistributiveOmit, PlayerView } from "@jackioh/shared";
 
-import { baseView, waitingPending } from "../test/fixtures.ts";
+import { baseView, pendingFor, waitingPending } from "../test/fixtures.ts";
 import type { PracticePacing } from "./config.ts";
 import { createPracticeController } from "./controller.ts";
 import type { PracticeController, PracticeTimers } from "./controller.ts";
@@ -422,6 +422,94 @@ describe("B36 the pacing loop", () => {
 
     expect(controller.getState().snapshot).toEqual(refused);
     expect(controller.getState().phase).toBe("playing");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R265: the opening mulligans, both open at once
+// ---------------------------------------------------------------------------------------------
+
+/** The human's (p1) own mulligan picker; `aiReady` says whether the AI has answered its own. */
+function mulliganOpen(aiReady: boolean): PracticeSnapshot {
+  return snap(
+    {
+      turn: 0,
+      active: "p1",
+      phase: "mulligan",
+      pending: pendingFor("mulligan", [{ key: "c1", label: "core-001" }], { min: 0 }),
+      mulligan: { youReady: false, opponentReady: aiReady },
+    },
+    !aiReady,
+    [{ type: "mulligan", keep: ["c1"] }, { type: "mulligan", keep: [] }, { type: "concede" }],
+  );
+}
+
+/** The human has answered and waits on the AI, whose mulligan is the prompt pending elsewhere. */
+function humanReady(): PracticeSnapshot {
+  return snap(
+    {
+      turn: 0,
+      active: "p1",
+      phase: "mulligan",
+      pending: waitingPending,
+      mulligan: { youReady: true, opponentReady: false, kept: ["c1"] },
+    },
+    true,
+    [{ type: "concede" }],
+  );
+}
+
+describe("R265 the mulligans: the AI answers its own at once and never waits on the human's", () => {
+  it("R265 the AI's mulligan goes out after promptAnswerMs while the human's own picker is still open", async () => {
+    const fake = fakeHost();
+    const controller = controllerFor(fake);
+    await startWith(fake, controller, mulliganOpen(false));
+    expect(controller.getState().thinking).toBe(true);
+    await expectAiStepAfter(fake, PACING.promptAnswerMs);
+
+    // The AI has answered: the human's picker stays, and nothing more is asked of the AI.
+    fake.respond({ type: "snapshot", snapshot: mulliganOpen(true) });
+    await flush();
+    expect(controller.getState().thinking).toBe(false);
+    await vi.advanceTimersByTimeAsync(LONGEST_GAP * 4);
+    expect(fake.open()).toHaveLength(0);
+
+    controller.act({ type: "mulligan", keep: ["c1"] });
+    await flush();
+    expect(fake.open().map((held) => held.body)).toEqual([{ type: "act", action: { type: "mulligan", keep: ["c1"] } }]);
+  });
+
+  it("R265 a Ready pressed before the AI's step goes out at once, and the AI answers promptAnswerMs later", async () => {
+    const fake = fakeHost();
+    const controller = controllerFor(fake);
+    await startWith(fake, controller, mulliganOpen(false));
+
+    // The human is quicker than the gap: its answer is not held back behind the AI's.
+    await vi.advanceTimersByTimeAsync(PACING.promptAnswerMs - 1);
+    controller.act({ type: "mulligan", keep: ["c1"] });
+    await flush();
+    expect(bodies(fake).slice(1)).toEqual([{ type: "act", action: { type: "mulligan", keep: ["c1"] } }]);
+
+    fake.respond({ type: "snapshot", snapshot: humanReady() });
+    await flush();
+    expect(controller.getState().thinking).toBe(true);
+    await expectAiStepAfter(fake, PACING.promptAnswerMs);
+    expect(fake.maxInFlight()).toBe(1);
+  });
+
+  it("R265 a Ready pressed while the AI's step is in flight is queued behind it and sent when it answers", async () => {
+    const fake = fakeHost();
+    const controller = controllerFor(fake);
+    await startWith(fake, controller, mulliganOpen(false));
+    await vi.advanceTimersByTimeAsync(PACING.promptAnswerMs);
+    expect(fake.open().map((held) => held.body)).toEqual([{ type: "aiStep" }]);
+
+    controller.act({ type: "mulligan", keep: [] });
+    await flush();
+    fake.respond({ type: "snapshot", snapshot: mulliganOpen(true) });
+    await flush();
+    expect(fake.open().map((held) => held.body)).toEqual([{ type: "act", action: { type: "mulligan", keep: [] } }]);
+    expect(fake.maxInFlight()).toBe(1);
   });
 });
 
