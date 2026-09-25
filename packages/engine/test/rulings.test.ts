@@ -240,6 +240,10 @@ const WEB_TUTORIAL_LESSON_TESTS = [
   "../../../apps/web/src/tutorial/scripts/traps.test.ts",
   "../../../apps/web/src/tutorial/scripts/advanced.test.ts",
 ] as const;
+/** R315 to R319's proofs: the overflow events, what each seat reads of them, and how the board and the speakers play them. */
+const OVERFLOW_EVENTS_TEST = "overflow-events.test.ts";
+const WEB_OVERFLOW_TEST = "../../../apps/web/src/game/overflow.test.tsx";
+const WEB_ANIMATIONS_WINDOW_TEST = "../../../apps/web/src/game/animations.window.test.ts";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -2312,6 +2316,37 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by apps/web tutorial/progress.test.ts "R294 …": the on-device store and the unlock order.
   it("R294 keeps tutorial progress on the device and opens the lessons in order", () => {
     provenIn(294, WEB_TUTORIAL_PROGRESS_TEST);
+  });
+
+  // Proved by overflow-events.test.ts "R315 …": a fatigue draw through `reduce` reports `fatigue`
+  // before its hit on both seats, one per draw of a draw N, still when Armor takes the hit whole, and
+  // never for a draw #75 replaces.
+  it("R315 reports each fatigue draw as `fatigue`, public, just before its hit", () => {
+    provenIn(315, OVERFLOW_EVENTS_TEST);
+  });
+
+  // Proved by overflow-events.test.ts "R316 …": each of R80's three outcomes, what both seats read of
+  // it, nothing below the cap, and a CN-Virus chain at the cap.
+  it("R316 reports every card a full library turns away as `libraryOverflow`, with its outcome", () => {
+    provenIn(316, OVERFLOW_EVENTS_TEST);
+  });
+
+  // Proved by overflow-events.test.ts "R317 …": a burn through `reduce` read by both seats, a burned
+  // card hidden again once it is back in its owner's hand, and a unit-token card burned out of existence.
+  it("R317 lets both players read a burned card while it stays public", () => {
+    provenIn(317, OVERFLOW_EVENTS_TEST);
+  });
+
+  // Proved by apps/web game/overflow.test.tsx "R318 …" (the rows, the notices on both seats, face and
+  // back, the settings) and game/animations.window.test.ts "R318 …" (each new event handed to each
+  // seat's runner exactly once in real games that reach all three).
+  it("R318 shows fatigue, a full hand and a full library on both seats, each once", () => {
+    provenIn(318, WEB_OVERFLOW_TEST, WEB_ANIMATIONS_WINDOW_TEST);
+  });
+
+  // Proved by apps/web audio/cues.test.ts "R319 …": each overflow's own sound, the same for any card.
+  it("R319 gives each overflow a sound of its own that says nothing of the card", () => {
+    provenIn(319, WEB_AUDIO_CUES_TEST);
   });
 });
 

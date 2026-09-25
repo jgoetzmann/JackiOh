@@ -193,6 +193,10 @@ function removalsIn(event: GameEvent): readonly string[] {
     case "shuffledIn":
     case "controlChanged":
       return [event.instanceId];
+    // R316: an existing card a full library refused left where it was, like a `shuffledIn`; a copy
+    // that was never created left nothing.
+    case "libraryOverflow":
+      return event.outcome === "notCreated" ? [] : [event.instanceId];
     case "fused":
       return event.instanceIds.filter((id) => id !== event.resultInstanceId);
     default:
@@ -248,6 +252,10 @@ function movedBy(event: GameEvent): readonly string[] {
     case "addedToHand":
     case "shuffledIn":
       return [event.instanceId];
+    // R316: as in `removalsIn`, an existing card a full library refused has moved; a copy never
+    // created has not.
+    case "libraryOverflow":
+      return event.outcome === "notCreated" ? [] : [event.instanceId];
     case "transformed":
       return [event.instanceId, event.newInstanceId];
     case "fused":

@@ -68,9 +68,10 @@ describe("GAME_EVENT_TYPES", () => {
   });
 
   it("agrees with SPEC §10.3's count, which BUILD M5-T4's table has one row for each of", () => {
-    // 41 is the number of rows in BUILD M5-T4's table; the two tests above make this a count of
-    // the union itself rather than a count of the array copied from it.
-    expect(declaredTypes()).toHaveLength(41);
-    expect(GAME_EVENT_TYPES).toHaveLength(41);
+    // 43 is the number of rows in BUILD M5-T4's table (41, and R315's `fatigue` and R316's
+    // `libraryOverflow`); the two tests above make this a count of the union itself rather than a
+    // count of the array copied from it.
+    expect(declaredTypes()).toHaveLength(43);
+    expect(GAME_EVENT_TYPES).toHaveLength(43);
   });
 });
