@@ -2,8 +2,9 @@
 //
 // One module-level store read through `useSyncExternalStore`, so no React context is needed and
 // code outside React (the drag layer's `pointerdown`) can call `readSettings()` directly. These
-// are input and display preferences only: nothing here changes a rule or reaches the server
-// (CLAUDE.md rule 7).
+// are input and display preferences, and none of them is a rule (CLAUDE.md rule 7). One reaches
+// the engine: `autoEndTurn` is the player's intent for R82, which `Game.tsx` sends as the
+// `setAutoEndTurn` action (R345) for the engine to apply.
 //
 // `localStorage` is untrusted and may be missing. Private windows, blocked site data and
 // sandboxed frames make it throw on access, and a hand-edited value can hold anything. Every
@@ -20,6 +21,11 @@ export type Settings = {
    * false, and it must stay false: every e2e spec ends its turns with one click.
    */
   confirmEndTurn: boolean;
+  /**
+   * Gameplay. R82: end the turn by itself once nothing but ending it is left. Default true, the
+   * rule's own default; off, the turn waits for End turn (R345).
+   */
+  autoEndTurn: boolean;
   /** Gameplay. Hovering a hand card with a fine pointer lifts it; task 6's hover inspect reads it. */
   hoverPreviews: boolean;
   /** Visuals. Force reduced motion on top of the OS preference (`--anim-scale: 0`). */
@@ -33,6 +39,7 @@ export const SETTINGS_STORAGE_KEY = "jackioh.settings";
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   dragToPlay: true,
   confirmEndTurn: false,
+  autoEndTurn: true,
   hoverPreviews: true,
   reduceMotion: false,
 });
@@ -41,6 +48,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
 const SETTING_KEYS: readonly SettingKey[] = [
   "dragToPlay",
   "confirmEndTurn",
+  "autoEndTurn",
   "hoverPreviews",
   "reduceMotion",
 ];

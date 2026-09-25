@@ -78,12 +78,25 @@ export type GameProps = {
   resultActions?: ReactNode;
   /** `chip` when the route draws its own result dialog (practice); `panel` otherwise. */
   resultForm?: ResultForm;
+  /**
+   * R345: pins the R82 preference this board sends, whatever the player's "End turn automatically"
+   * setting says. The tutorial pins it on, since its lessons are written around R82.
+   */
+  autoEndTurn?: boolean;
 };
 
 /** What the board is offered while it is still showing an older view than `legal` describes. */
 const NOTHING_LEGAL: readonly ActionBody[] = [];
 
-export default function Game({ view, legal: offered, onAction, error, resultActions, resultForm = "panel" }: GameProps): ReactElement {
+export default function Game({
+  view,
+  legal: offered,
+  onAction,
+  error,
+  resultActions,
+  resultForm = "panel",
+  autoEndTurn: pinnedAutoEndTurn,
+}: GameProps): ReactElement {
   const [interaction, setInteraction] = useState<Interaction>(IDLE);
   const root = useRef<HTMLDivElement>(null);
   /**
@@ -125,6 +138,25 @@ export default function Game({ view, legal: offered, onAction, error, resultActi
    */
   const [burst, setBurst] = useState<readonly AnimationEntry[]>([]);
   const queue = useRef<AnimationQueue | null>(null);
+
+  // R345: "End turn automatically" is the player's intent for R82, and the engine holds it, so it
+  // goes out as an action whenever it differs from what this seat's view says. It is sent once per
+  // seat and value: a refusal is not retried until the setting or the seat changes.
+  const wantAutoEndTurn = useSetting("autoEndTurn");
+  const autoEndTurn = pinnedAutoEndTurn ?? wantAutoEndTurn;
+  const engineAutoEndTurn = view.autoEndTurn !== false;
+  const autoEndTurnSent = useRef<string | null>(null);
+  useEffect(() => {
+    if (view.result !== null) return;
+    if (autoEndTurn === engineAutoEndTurn) {
+      autoEndTurnSent.current = null;
+      return;
+    }
+    const sent = `${view.viewer}:${String(autoEndTurn)}`;
+    if (autoEndTurnSent.current === sent) return;
+    autoEndTurnSent.current = sent;
+    onAction({ type: "setAutoEndTurn", enabled: autoEndTurn });
+  }, [view.viewer, view.result, autoEndTurn, engineAutoEndTurn, onAction]);
 
   // Polish task 7: the "Reduce motion" setting does what the OS preference does, so every duration
   // is 0 and the queue drains synchronously (BUILD M5-T4). The queue reads it once, when it is

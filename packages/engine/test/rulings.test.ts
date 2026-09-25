@@ -232,6 +232,9 @@ const WEB_SERIES_TEST = "../../../apps/web/src/routes/series.test.tsx";
 const WEB_SERIES_BANNER_TEST = "../../../apps/web/src/routes/SeriesBanner.test.tsx";
 const WEB_TRIO_CODE_TEST = "../../../apps/web/src/game/deckbuilder/trioCode.test.ts";
 
+/** R345's proof on the client: the "End turn automatically" switch and what Game.tsx sends. */
+const WEB_SETTINGS_TEST = "../../../apps/web/src/test/ux/settings.test.tsx";
+
 /** R290 to R294's proofs: the tutorial (SPEC §9.10) — its handicap, lessons, coach and progress. */
 const AI_TUTORIAL_TIER_TEST = "../../ai/test/tutorial-tier.test.ts";
 const WEB_TUTORIAL_LESSONS_TEST = "../../../apps/web/src/tutorial/lessons.test.ts";
@@ -2391,6 +2394,15 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // (one request, ids reused on a retry) and DeckWorkshop.test.tsx "R341 …".
   it("R341 checks a trio import on the server and writes it all or nothing", () => {
     provenIn(341, SERVER_DECKS_TEST, WEB_DECK_SYNC_TEST, WEB_WORKSHOP_TEST);
+  });
+
+  // Proved by auto-end-turn.test.ts "R345 …": off, an idle turn waits for End turn and on again it
+  // ends at once; the preference is the sender's own, taken from either seat at any moment, never
+  // offered by legalActions, shown only in the viewer's own view, and folded with the log; by
+  // actor.test.ts "R345 …": the actor carries it over the wire and refuses a malformed one; and by
+  // apps/web test/ux/settings.test.tsx "R345 …": the switch goes out as setAutoEndTurn, once.
+  it("R345 lets each player turn R82's automatic turn end off for themselves", () => {
+    provenIn(345, "auto-end-turn.test.ts", SERVER_ACTOR_TEST, WEB_SETTINGS_TEST);
   });
 });
 
