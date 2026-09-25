@@ -8,9 +8,10 @@
 // practice game whose config names it (`tutorial/start.ts`), played under the tutorial's HUD with
 // the coach over the board, or on a phone in a panel above it (`tutorial/`).
 //
-// The route is NOT gated. It asks for the account only to offer an active player's saved decks, and
-// an anonymous visitor makes no request at all: no session means no `/api/auth/me`, and no
-// account means no `/api/decks`.
+// The route is NOT gated. It asks for the account only to offer an active player's saved decks and
+// to keep an active player's tutorial progress on the account as well as the device (R320, R321,
+// `tutorial/accountSync.ts`), and an anonymous visitor makes no request at all: no session means no
+// `/api/auth/me`, and no account means no `/api/decks` and no `/api/tutorial`.
 //
 // URL params, all optional and dropped when invalid:
 //   ?seed=<string>        the practice seed; otherwise 8 random hex characters per game
@@ -72,6 +73,7 @@ import { practiceTestid } from "../practice/testids.ts";
 import { ThinkIndicator } from "../practice/ThinkIndicator.tsx";
 import { DIFFICULTY_LABEL, TierCrest } from "../practice/Tier.tsx";
 import "../practice/practice.css";
+import { useTutorialAccountSync, type TutorialAccountApi } from "../tutorial/accountSync.ts";
 import { Coach } from "../tutorial/Coach.tsx";
 import type { LessonScript } from "../tutorial/coach.ts";
 import { useTutorialDevHandle } from "../tutorial/devHandle.ts";
@@ -433,6 +435,8 @@ export type PracticeRouteProps = {
   account?: Account;
   /** default getDecks */
   loadDecks?: (token: string) => Promise<DecksResponse>;
+  /** default `GET`/`PUT /api/tutorial` (R320, R321) */
+  tutorialAccount?: TutorialAccountApi;
   /** default the lessons' own coach scripts (`tutorial/scripts`) */
   coachScript?: (lessonId: string) => LessonScript | undefined;
 };
@@ -452,9 +456,18 @@ function Shell({ variant, children }: { variant: "lobby" | "game"; children: Rea
   return <div className={`${shell} practice practice--${variant}`}>{children}</div>;
 }
 
-function PracticeScreen({ account, hostFactory, pacing, loadDecks, coachScript }: ScreenProps): ReactElement {
+function PracticeScreen({
+  account,
+  hostFactory,
+  pacing,
+  loadDecks,
+  tutorialAccount,
+  coachScript,
+}: ScreenProps): ReactElement {
   const params = useMemo(() => readPracticeParams(window.location.search), []);
   const saved = useSavedDecks(account, loadDecks ?? getDecks);
+  // R321: an active account's tutorial progress is merged with this device's and kept level with it.
+  useTutorialAccountSync(account, tutorialAccount);
 
   const initial = useMemo(() => {
     const stored = readStoredSetup();
@@ -663,7 +676,7 @@ function PracticeScreen({ account, hostFactory, pacing, loadDecks, coachScript }
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
 
   // A lesson won is a lesson completed on this device (R294), the moment the view says so, whether
-  // or not its result dialog is ever seen.
+  // or not its result dialog is ever seen; an active account hears of it from the sync (R321).
   const lesson = game?.lesson === undefined ? undefined : lessonById(game.lesson);
   const lessonResult = lesson !== undefined && state.config === game ? (state.snapshot?.view ?? null) : null;
   const wonLesson =

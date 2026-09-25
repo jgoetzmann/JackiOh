@@ -23,7 +23,7 @@ import { FX_LETHAL_LEAD_MAX_MS, FX_RESULT_MS } from "../fx/constants.ts";
 import { resetFxSettingsForTests, setFxSettings } from "../fx/settings.ts";
 
 import { DECK_NAME_MAX_LENGTH, MAX_SAVED_DECKS, MAX_SAVED_TRIOS } from "../../../server/src/config.ts";
-import type { DecksResponse } from "../net/api.ts";
+import type { DecksResponse, TutorialAccountProgress } from "../net/api.ts";
 import type { Account } from "../net/gate.ts";
 import {
   PRACTICE_PACING,
@@ -51,6 +51,10 @@ import type {
 import { practiceTestid } from "../practice/testids.ts";
 import { baseView, emptySide } from "../test/fixtures.ts";
 import { setReducedMotion } from "../test/setup.ts";
+import type { TutorialAccountApi } from "../tutorial/accountSync.ts";
+import { TUTORIAL_LESSONS } from "../tutorial/lessons.ts";
+import { __resetTutorialProgressForTests, markLessonComplete, readTutorialProgress } from "../tutorial/progress.ts";
+import { tutorialTestid } from "../tutorial/testids.ts";
 import PracticeRoute, { readPracticeParams } from "./practice.tsx";
 import type { PracticeRouteProps } from "./practice.tsx";
 
@@ -1712,5 +1716,89 @@ describe("R265 the practice mulligan: the human and the AI answer in either orde
     document.body.removeAttribute("data-speaking");
     await gameBegun();
     expect(screen.queryByTestId(`hand-card-${returned}`), "the returned card went back").toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R321: the tutorial's progress on an active account
+// ---------------------------------------------------------------------------------------------
+
+describe("R321 /practice keeps an active account's tutorial progress level with the device's", () => {
+  const [first, second] = TUTORIAL_LESSONS.map((each) => each.id);
+
+  /** An account holding `completed`, merging a write as `PUT /api/tutorial` does (R320). */
+  function tutorialAccount(completed: string[]): TutorialAccountApi & { load: Mock; save: Mock } {
+    let stored: TutorialAccountProgress = { completed, hiddenChoice: null };
+    return {
+      load: vi.fn(() => Promise.resolve(structuredClone(stored))),
+      save: vi.fn((_token: string, body: TutorialAccountProgress) => {
+        stored = { completed: [...new Set([...stored.completed, ...body.completed])].sort(), hiddenChoice: body.hiddenChoice };
+        return Promise.resolve(structuredClone(stored));
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    __resetTutorialProgressForTests();
+  });
+
+  afterEach(() => {
+    __resetTutorialProgressForTests();
+  });
+
+  it("R321 the path shows the account's lessons, and a lesson this device won goes up with them", async () => {
+    if (first === undefined || second === undefined) throw new Error("the tutorial has two lessons");
+    markLessonComplete(first);
+    const account = tutorialAccount([second]);
+    renderRoute(routeHost(), {
+      account: signedIn("active"),
+      loadDecks: vi.fn(() => Promise.resolve(decksResponse(null))),
+      tutorialAccount: account,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId(tutorialTestid.lesson(second))).toHaveAttribute("data-status", "completed");
+    });
+    expect(screen.getByTestId(tutorialTestid.lesson(first))).toHaveAttribute("data-status", "completed");
+    expect(account.load).toHaveBeenCalledWith("tok-1");
+    await waitFor(() => {
+      expect(account.save).toHaveBeenCalledWith("tok-1", { completed: [first, second], hiddenChoice: null });
+    });
+  });
+
+  it("R321 an anonymous visitor or a pending account asks the account nothing, and the path is the device's", async () => {
+    if (first === undefined) throw new Error("the tutorial has a lesson");
+    markLessonComplete(first);
+    for (const account of [ANONYMOUS, signedIn("pending")]) {
+      const tutorial = tutorialAccount([]);
+      renderRoute(routeHost(), { account, tutorialAccount: tutorial });
+      await settle();
+      expect(screen.getByTestId(tutorialTestid.lesson(first))).toHaveAttribute("data-status", "completed");
+      expect(tutorial.load).not.toHaveBeenCalled();
+      expect(tutorial.save).not.toHaveBeenCalled();
+      cleanup();
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(readTutorialProgress().completed).toEqual([first]);
+  });
+
+  it("R321 an account that cannot be reached leaves the path and the lessons as the device has them", async () => {
+    if (first === undefined) throw new Error("the tutorial has a lesson");
+    markLessonComplete(first);
+    const unreachable: TutorialAccountApi = {
+      load: vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+      save: vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+    };
+    renderRoute(routeHost(), {
+      account: signedIn("active"),
+      loadDecks: vi.fn(() => Promise.resolve(decksResponse(null))),
+      tutorialAccount: unreachable,
+    });
+    await settle();
+
+    expect(unreachable.load).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId(tutorialTestid.path)).toBeInTheDocument();
+    expect(screen.getByTestId(tutorialTestid.lesson(first))).toHaveAttribute("data-status", "completed");
+    expect(screen.getByTestId(T.setup)).toBeInTheDocument();
   });
 });

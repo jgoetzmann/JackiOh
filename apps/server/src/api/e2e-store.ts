@@ -24,9 +24,10 @@
  *  - `results.insert` refuses a second row for the same match (§9.5);
  *  - `tickets.insert` refuses a second open ticket for one profile (`tickets_profile_queued_key`,
  *    which `queue.ts` relies on as the race-proof half of "not already queued");
- *  - `decks`, `trios` and `series` are `src/api/memory-stores.ts`, shared with the unit-test fake:
- *    the deck and trio caps, the owner check and `series.update`'s compare-and-set are one
- *    implementation for both in-memory stores (R250, R252, R263).
+ *  - `decks`, `trios`, `series` and `tutorial` are `src/api/memory-stores.ts`, shared with the
+ *    unit-test fake: the deck and trio caps, the owner check, `series.update`'s compare-and-set and
+ *    the tutorial's grow-only merge are one implementation for both in-memory stores (R250, R252,
+ *    R263, R320).
  *
  * R111 IS A DATABASE TRIGGER, so it is implemented here rather than in a handler. SPEC §11 R111:
  * "Becoming `active` grants one copy of every non-token card, written by a trigger on the
@@ -49,7 +50,12 @@ import {
   CODE_ATTEMPT_WINDOW_SECONDS,
 } from "../config";
 import { LAUNCH_COPIES, LAUNCH_GRANT_REASON } from "./collection";
-import { createMemoryDeckStores, type DeckTables } from "./memory-stores";
+import {
+  createMemoryDeckStores,
+  createMemoryTutorialStore,
+  type DeckTables,
+  type TutorialTables,
+} from "./memory-stores";
 import type {
   CatalogInfo,
   CodeAttempt,
@@ -82,7 +88,8 @@ type Tables = {
   rooms: Room[];
   tickets: Ticket[];
   results: ResultRow[];
-} & DeckTables;
+} & DeckTables &
+  TutorialTables;
 
 function emptyTables(): Tables {
   return {
@@ -99,6 +106,7 @@ function emptyTables(): Tables {
     rooms: [],
     tickets: [],
     results: [],
+    tutorial: [],
   };
 }
 
@@ -524,6 +532,9 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
   store.decks = deckStores.decks;
   store.trios = deckStores.trios;
   store.series = deckStores.series;
+
+  // R320: tutorial progress on the account, shared with the unit-test fake like the decks.
+  store.tutorial = createMemoryTutorialStore(() => tables);
 
   // -------------------------------------------------------------------------
   // Matches (§9.3, §9.5)

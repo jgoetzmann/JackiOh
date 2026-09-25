@@ -161,7 +161,7 @@ describe("#42 Eugenics — R311 the owner's library list", () => {
     expect(remaining.some((card) => card.radiant)).toBe(true);
 
     // The rolls happened where nobody reads them (R177), so the list shows none of them.
-    expect(s.view("p1").you.library).toEqual({
+    expect(s.view("p1").you.ownLibrary).toEqual({
       cards: [{ defId: "core-025", radiant: false, count: remaining.length }],
       unknown: 0,
     });

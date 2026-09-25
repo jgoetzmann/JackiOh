@@ -160,7 +160,7 @@ export type SideView = {
    * R310: the viewer's own library, as a list without order. Present on the viewer's own side only;
    * the opponent's library is `libraryCount` and nothing else (§9.1, §10.8).
    */
-  library?: LibraryView;
+  ownLibrary?: LibraryView;
   graveyard: CardView[];
   exile: CardView[];
   /**

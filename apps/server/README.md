@@ -1,8 +1,8 @@
 # `apps/server` — the JackiOh server runtime
 
 The authority for everything that is not presentation. It owns identity and the invite gate, the
-collection ledger, saved decks and trios, matchmaking in three modes, the Best-of-3 series, and the
-match itself: one actor per match holding the
+collection ledger, saved decks and trios, an active account's copy of its tutorial progress (R320),
+matchmaking in three modes, the Best-of-3 series, and the match itself: one actor per match holding the
 `GameState` in memory, one WebSocket per player, `reduce` on every action and `viewFor` pushed to
 each player after every change (SPEC §9.1–§9.5, §10.8).
 
@@ -159,6 +159,8 @@ top of every handler:
 | `POST` | `/api/series/:id/pick` | active | Pick the next game's deck from the frozen trio; the game starts when both have picked |
 | `POST` | `/api/series/:id/forfeit` | active | Leave the series between games; the other side wins it (R261) |
 | `GET` | `/api/matches/:id/series` | active | The series a match is a game of, for the board's banner |
+| `GET` | `/api/tutorial` | active | The account's tutorial progress (R320): completed lesson ids and the newest Hide/Show choice; empty before the first write |
+| `PUT` | `/api/tutorial` | active | Merge a device's progress into the account's (R320): `{ completed, hiddenChoice? }`. The lessons become the union, a choice replaces the stored one only when it is newer (a time after the server's clock counts as now), nothing is ever removed, and the answer is the merged progress. Ids are checked for shape only (lower-case slugs, `TUTORIAL_LESSON_ID_MAX_LENGTH`, at most `TUTORIAL_LESSONS_MAX`); the lessons are the client's |
 
 ## WebSocket surface
 
@@ -263,7 +265,8 @@ There is no test database and no network in the suite. The doubles in `test/fake
 
 Real: the ports and the gate; invite codes and the six-step redemption with its identical error and
 identical timing; the collection ledger's two-table transaction; saved decks and trios as drafts
-with client-minted ids, and the queue-time check against the shared validator; the match actor,
+with client-minted ids, and the queue-time check against the shared validator; the tutorial's
+grow-only account copy (R320); the match actor,
 protocol, nonce dedupe, action log and log-folding recovery; room codes, in all three modes; the
 clock; results and Elo; matchmaking in three modes with frozen decks, opportunistic pairing, a
 sweeper, the widening window and the atomic claim; All Random's seeded decks; the Best-of-3 series,

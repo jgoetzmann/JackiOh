@@ -317,13 +317,13 @@ describe("#87 Pocket Chaos — R312 the owners' library lists", () => {
       p1: { hand: [CHAOS, FILLER], library: [GARY] },
       p2: { hand: [FILLER], library: [RENO, POSTDOC] },
     });
-    expect(s.view("p1").you.library).toEqual({ cards: [{ defId: GARY, radiant: false, count: 1 }], unknown: 0 });
+    expect(s.view("p1").you.ownLibrary).toEqual({ cards: [{ defId: GARY, radiant: false, count: 1 }], unknown: 0 });
 
     s.play(CHAOS, { modes: ["library"] });
 
     // Each player now holds the other's old library, and was shown none of it.
-    expect(s.view("p1").you.library).toEqual({ cards: [], unknown: 2 });
-    expect(s.view("p2").you.library).toEqual({ cards: [], unknown: 1 });
+    expect(s.view("p1").you.ownLibrary).toEqual({ cards: [], unknown: 2 });
+    expect(s.view("p2").you.ownLibrary).toEqual({ cards: [], unknown: 1 });
     const mine = JSON.stringify(s.view("p1"));
     expect(mine).not.toContain(`"${RENO}"`);
     expect(mine).not.toContain(`"${POSTDOC}"`);

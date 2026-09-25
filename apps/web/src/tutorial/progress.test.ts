@@ -1,8 +1,10 @@
-// The tutorial's progress store (tutorial/progress.ts): R294.
+// The tutorial's progress store (tutorial/progress.ts): R294 and R321.
 //
-// Progress is kept on the device only, in localStorage, read and written inside try/catch, parsed
-// tolerantly, and synced across tabs by the `storage` event. The unlock rule is lesson 1 always,
-// lesson N once lesson N-1 is completed, and completed stays completed.
+// The device's progress is kept in localStorage, read and written inside try/catch, parsed
+// tolerantly, and synced across tabs by the `storage` event; this module itself sends nothing
+// anywhere (the account's copy is accountSync.ts's, tested there). The unlock rule is lesson 1
+// always, lesson N once lesson N-1 is completed, and completed stays completed. R321's merge with
+// the account's copy is a union of lessons and the newest Hide/Show choice.
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,12 +13,17 @@ import { TUTORIAL_PROGRESS_KEY, TUTORIAL_PROGRESS_VERSION } from "./config.ts";
 import { TUTORIAL_LESSONS, type TutorialLesson } from "./lessons.ts";
 import {
   __resetTutorialProgressForTests,
+  accountLacks,
+  adoptTutorialProgress,
+  isTutorialHidden,
   lessonStatus,
   markLessonComplete,
+  mergeTutorialProgress,
   nextLessonToPlay,
   parseTutorialProgress,
   readTutorialProgress,
   resetTutorialProgress,
+  setTutorialHidden,
   useTutorialProgress,
 } from "./progress.ts";
 
@@ -214,5 +221,85 @@ describe("R294 tutorial progress is kept on this device", () => {
       markLessonComplete(lesson(1).id);
     });
     expect(result.current.completed).toEqual([lesson(1).id]);
+  });
+});
+
+describe("R321 the device's copy merges with the account's, and never steps backwards", () => {
+  it("R321 the merge is the union of completed lessons, in path order, with unknown ids dropped", () => {
+    const [one, two, three] = [lesson(1).id, lesson(2).id, lesson(3).id];
+    const merged = mergeTutorialProgress(
+      { completed: [three, one], hiddenChoice: null },
+      { completed: [two, one, "a-lesson-from-a-newer-client"], hiddenChoice: null },
+    );
+    expect(merged.completed).toEqual([one, two, three]);
+    // A copy that has fewer lessons takes none away, whichever side it is on.
+    expect(mergeTutorialProgress({ completed: [one, two], hiddenChoice: null }, { completed: [], hiddenChoice: null }).completed).toEqual([one, two]);
+    expect(mergeTutorialProgress({ completed: [], hiddenChoice: null }, { completed: [one, two], hiddenChoice: null }).completed).toEqual([one, two]);
+  });
+
+  it("R321 the newest Hide/Show choice wins, a tie keeping the device's, and no choice never erases one", () => {
+    const hide = { hidden: true, at: 1_000 };
+    const show = { hidden: false, at: 2_000 };
+    const merge = (a: typeof hide | null, b: typeof hide | null) =>
+      mergeTutorialProgress({ completed: [], hiddenChoice: a }, { completed: [], hiddenChoice: b }).hiddenChoice;
+    expect(merge(hide, show)).toEqual(show);
+    expect(merge(show, hide)).toEqual(show);
+    expect(merge(hide, null)).toEqual(hide);
+    expect(merge(null, hide)).toEqual(hide);
+    expect(merge({ hidden: true, at: 5 }, { hidden: false, at: 5 })).toEqual({ hidden: true, at: 5 });
+    // A malformed choice from the other copy is no choice.
+    expect(
+      mergeTutorialProgress(
+        { completed: [], hiddenChoice: hide },
+        { completed: [], hiddenChoice: { hidden: "no", at: 9_999 } as unknown as typeof hide },
+      ).hiddenChoice,
+    ).toEqual(hide);
+  });
+
+  it("R321 the account lacks a lesson it does not list, or a later choice that says otherwise — not a later one that agrees", () => {
+    const one = lesson(1).id;
+    const device = markLessonComplete(one);
+    expect(accountLacks({ completed: [], hiddenChoice: null }, device)).toBe(true);
+    expect(accountLacks({ completed: [one, "other"], hiddenChoice: null }, device)).toBe(false);
+
+    const hidden = setTutorialHidden(true, 5_000);
+    expect(accountLacks({ completed: [one], hiddenChoice: null }, hidden)).toBe(true);
+    expect(accountLacks({ completed: [one], hiddenChoice: { hidden: false, at: 4_000 } }, hidden)).toBe(true);
+    expect(accountLacks({ completed: [one], hiddenChoice: { hidden: false, at: 6_000 } }, hidden)).toBe(false);
+    // Same choice, stamped earlier by a server whose clock is behind this device's: nothing to send.
+    expect(accountLacks({ completed: [one], hiddenChoice: { hidden: true, at: 1 } }, hidden)).toBe(false);
+  });
+
+  it("R321 adopting the account's copy unions it in, stores it, and a copy with nothing new changes nothing", () => {
+    const [one, two] = [lesson(1).id, lesson(2).id];
+    const before = markLessonComplete(two);
+    const same = adoptTutorialProgress({ completed: [two], hiddenChoice: null });
+    expect(same).toBe(before);
+
+    const after = adoptTutorialProgress({ completed: [one], hiddenChoice: { hidden: true, at: 3_000 } });
+    expect(after.completed).toEqual([one, two]);
+    expect(isTutorialHidden(after)).toBe(true);
+    expect(stored()).toEqual({ v: 1, completed: [one, two], hiddenChoice: { hidden: true, at: 3_000 } });
+
+    // An account that lags this device changes nothing here.
+    expect(adoptTutorialProgress({ completed: [], hiddenChoice: { hidden: false, at: 1_000 } })).toBe(after);
+  });
+
+  it("R321 a Hide/Show choice is stored with its time, always later than the one it replaces, and read back tolerantly", () => {
+    const first = setTutorialHidden(true, 10_000);
+    expect(first.hiddenChoice).toEqual({ hidden: true, at: 10_000 });
+    expect(stored()).toEqual({ v: 1, completed: [], hiddenChoice: { hidden: true, at: 10_000 } });
+
+    // The clock stepped back: the new choice is still the newer one.
+    const second = setTutorialHidden(false, 4_000);
+    expect(second.hiddenChoice).toEqual({ hidden: false, at: 10_001 });
+
+    __resetTutorialProgressForTests();
+    expect(readTutorialProgress().hiddenChoice).toEqual({ hidden: false, at: 10_001 });
+    for (const hiddenChoice of [true, { hidden: 1, at: 2 }, { hidden: true, at: -1 }, { hidden: true, at: 1.5 }, { hidden: true }]) {
+      expect(parseTutorialProgress({ v: 1, completed: [], hiddenChoice }).hiddenChoice).toBeNull();
+    }
+    // A reset forgets the choice too.
+    expect(resetTutorialProgress().hiddenChoice).toBeNull();
   });
 });

@@ -5,13 +5,28 @@
 // stays focusable and says why it is locked (`aria-disabled`, not `disabled`), and does nothing.
 // Once every lesson is done the path folds to its header, so a player who has finished the
 // tutorial gets straight to practice; one button opens it again.
+//
+// R322: while a lesson is still to do, the header also offers "Hide tutorial", which folds the
+// whole path to a single "Show tutorial" button in its place. The choice is the player's and is
+// kept with their progress (progress.ts, and the account's copy, R321), so it holds on the next
+// visit and whatever the progress: a path hidden before the last lesson stays hidden after it. A
+// finished path offers no Hide, since it already folds to its header by itself. Focus follows the
+// player's own press to the button that undoes it, so a keyboard is never left on nothing.
 
-import { useId, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 
 import { TUTORIAL_LESSONS, type TutorialLesson } from "./lessons.ts";
-import { lessonStatus, nextLessonToPlay, useTutorialProgress, type LessonStatus } from "./progress.ts";
+import {
+  isTutorialHidden,
+  lessonStatus,
+  nextLessonToPlay,
+  setTutorialHidden,
+  useTutorialProgress,
+  type LessonStatus,
+} from "./progress.ts";
 import { tutorialTestid } from "./testids.ts";
 import "./tutorial.css";
+import "./path-visibility.css";
 
 type TutorialPathProps = {
   /** Start (or replay) this lesson. Never called for a locked one. */
@@ -136,6 +151,54 @@ export function TutorialPath({ onStart }: TutorialPathProps): ReactElement {
   const [openChoice, setOpenChoice] = useState<boolean | null>(null);
   const open = openChoice ?? !allDone;
 
+  // R322: hidden by the player's own choice, stored with the progress.
+  const hidden = isTutorialHidden(progress);
+  /** Where focus goes once this component's own Hide or Show has re-rendered it; null otherwise. */
+  const focusAfter = useRef<"show" | "reveal" | null>(null);
+  const showButton = useRef<HTMLButtonElement>(null);
+  const hideButton = useRef<HTMLButtonElement>(null);
+  const toggleButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const wanted = focusAfter.current;
+    if (wanted === null) return;
+    focusAfter.current = null;
+    // After Show, the Hide button — or, on a finished path, which offers none, its Show lessons.
+    const target = wanted === "show" ? showButton.current : (hideButton.current ?? toggleButton.current);
+    target?.focus();
+  }, [hidden]);
+
+  if (hidden) {
+    return (
+      <section
+        className="tutorial-path-hidden"
+        data-testid={tutorialTestid.hidden}
+        data-complete={allDone ? "true" : "false"}
+        aria-labelledby={headingId}
+      >
+        <p className="tutorial-path-hidden__text">
+          <span className="tutorial-path-hidden__title" id={headingId}>
+            Tutorial hidden
+          </span>
+          <span className="tutorial-path-hidden__progress">
+            {done} of {total} lessons complete
+          </span>
+        </p>
+        <button
+          ref={showButton}
+          type="button"
+          className="tutorial-path-hidden__show"
+          data-testid={tutorialTestid.show}
+          onClick={() => {
+            focusAfter.current = "reveal";
+            setTutorialHidden(false);
+          }}
+        >
+          Show tutorial
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section
       className="tutorial-path"
@@ -176,8 +239,23 @@ export function TutorialPath({ onStart }: TutorialPathProps): ReactElement {
               Continue: Lesson {next.number}
             </button>
           ) : null}
+          {!allDone ? (
+            <button
+              ref={hideButton}
+              type="button"
+              className="tutorial-path__toggle tutorial-path__hide"
+              data-testid={tutorialTestid.hide}
+              onClick={() => {
+                focusAfter.current = "show";
+                setTutorialHidden(true);
+              }}
+            >
+              Hide tutorial
+            </button>
+          ) : null}
           {allDone ? (
             <button
+              ref={toggleButton}
               type="button"
               className="tutorial-path__toggle"
               data-testid={tutorialTestid.pathToggle}

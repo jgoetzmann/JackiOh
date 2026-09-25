@@ -262,12 +262,12 @@ describe("#33 Unstable Clone Machine — R311 the owner's library list", () => {
     s.play("15");
 
     // The copies are of a card p1 played in the open, so p1 knows what went in (never where).
-    const list = s.view("p1").you.library;
+    const list = s.view("p1").you.ownLibrary;
     expect(list?.unknown).toBe(0);
     expect(list?.cards).toContainEqual({ defId: "core-015", radiant: true, count: 3 });
     expect(list?.cards).toContainEqual({ defId: "core-025", radiant: false, count: 1 });
     // p2 reads p1's library as a count and nothing else.
-    expect(s.view("p2").opponent.library).toBeUndefined();
+    expect(s.view("p2").opponent.ownLibrary).toBeUndefined();
     expect(s.view("p2").opponent.libraryCount).toBe(4);
   });
 });

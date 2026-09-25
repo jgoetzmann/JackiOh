@@ -14,6 +14,12 @@ export const tutorialTestid = {
   continue: "tutorial-continue",
   /** Once every lesson is done the path folds to its header; this shows or hides the lessons (`aria-expanded`). */
   pathToggle: "tutorial-path-toggle",
+  /** In the path's header while a lesson is still to do: "Hide tutorial" (R322). */
+  hide: "tutorial-hide",
+  /** In the path's place while the player has hidden it (R322): `data-complete` as the path's. */
+  hidden: "tutorial-path-hidden",
+  /** In the hidden path's place: "Show tutorial", which brings the path back (R322). */
+  show: "tutorial-show",
   /** The lesson's HUD above the board; `data-lesson`, `data-human-seat`, `data-ai-seat`, `data-thinking`. */
   hud: "tutorial-hud",
   /** In the HUD: "Step k of n". */

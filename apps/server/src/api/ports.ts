@@ -694,6 +694,55 @@ export type SeriesStore = {
   active: () => Promise<SeriesRow[]>;
 };
 
+// ---------------------------------------------------------------------------
+// Tutorial progress on the account (SPEC §9.10, R320). The device keeps its own copy (R294) and the
+// client merges the two (R321); this is the account's half, which only ever grows.
+// ---------------------------------------------------------------------------
+
+/**
+ * R320, R322: the player's newest explicit choice to hide or show the lesson path, and when it was
+ * made (epoch ms, the choosing device's clock, never later than the server's when it arrived).
+ */
+export type TutorialHiddenChoice = { hidden: boolean; at: number };
+
+export type TutorialProgressRow = {
+  profileId: string;
+  /** Completed lesson ids, each once, in code-point order. Ids the client does not know are kept. */
+  completed: string[];
+  /** Null until the player first hides or shows the path. */
+  hiddenChoice: TutorialHiddenChoice | null;
+};
+
+/** What one write proposes: the device's progress, merged into the account's (R320). */
+export type TutorialMergeInput = {
+  profileId: string;
+  /** Already checked by the handler: lesson-id slugs, each once. */
+  completed: readonly string[];
+  hiddenChoice: TutorialHiddenChoice | null;
+  /**
+   * The server's clock when the write arrived. Postgres stamps it as the row's `updated_at` (and
+   * `created_at` for a new row), for operators; nothing reads it back through the port.
+   */
+  at: number;
+};
+
+/**
+ * `merged` with the row as it now stands, or `limit` when the union would pass the cap (nothing
+ * written). Reachable only by a client that sends ids no lesson has.
+ */
+export type TutorialMergeOutcome = { kind: "merged"; progress: TutorialProgressRow } | { kind: "limit" };
+
+export type TutorialStore = {
+  /** The profile's row, or null before its first write. */
+  get: (profileId: string) => Promise<TutorialProgressRow | null>;
+  /**
+   * R320: one atomic merge. The stored lessons become the union of the stored and the sent (a write
+   * never removes one), and the stored choice is replaced only by a strictly newer one. A profile
+   * with no row gets one. `maxLessons` is the caller's cap on the union (`TUTORIAL_LESSONS_MAX`).
+   */
+  merge: (input: TutorialMergeInput, maxLessons: number) => Promise<TutorialMergeOutcome>;
+};
+
 /**
  * `tx` runs `fn` against a handle scoped to one database transaction and rolls back if `fn`
  * throws. Nested `tx` joins the enclosing transaction.
@@ -732,6 +781,8 @@ export type Store = {
   tickets: TicketStore;
   results: ResultStore;
   series: SeriesStore;
+  /** R320: tutorial progress kept on the account. */
+  tutorial: TutorialStore;
 };
 
 // ---------------------------------------------------------------------------

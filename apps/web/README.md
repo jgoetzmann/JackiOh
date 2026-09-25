@@ -47,7 +47,7 @@ src/
     Board.tsx Zone.tsx Card.tsx Hand.tsx Hero.tsx Backrow.tsx Log.tsx   M5-T1; a graveyard or exile pile that
                         holds cards (public on both seats, §10.8) opens its cards on hover and in a dialog on a
                         click (cards/inspect/CardList.tsx), and so does your own library, from the list without
-                        order the view carries for it (`SideView.library`, R310–R313): grouped with counts,
+                        order the view carries for it (`SideView.ownLibrary`, R310–R313): grouped with counts,
                         "Order hidden", unknown cards as backs; the opponent's library is a count. A log line
                         that names a card opens that card
     actions.ts Prompt.tsx                                               M5-T2

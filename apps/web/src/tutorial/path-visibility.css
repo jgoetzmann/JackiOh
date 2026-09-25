@@ -1,0 +1,74 @@
+/* R322: the lesson path's "Hide tutorial" and, while the player has hidden it, the one line that
+   stands in its place with "Show tutorial". Kept apart from tutorial.css so the path's own look is
+   untouched: Hide reads as the quieter of the header's buttons, and the hidden line is as short as
+   a line can be while its button keeps a 44px touch target and wraps under the text on a phone. */
+
+.app-shell .tutorial-path__hide {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.app-shell .tutorial-path__hide:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--coach) 60%, var(--line));
+  color: var(--text);
+}
+
+.tutorial-path-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 12px 8px 16px;
+  border: 1px dashed color-mix(in srgb, var(--coach) 30%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-raised) 60%, transparent);
+}
+
+.app-shell .tutorial-path-hidden__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+}
+
+.tutorial-path-hidden__title {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.tutorial-path-hidden__progress {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.app-shell .tutorial-path-hidden__show {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-color: color-mix(in srgb, var(--coach) 55%, var(--line));
+  border-radius: 10px;
+  color: var(--coach);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.app-shell .tutorial-path-hidden__show:hover:not(:disabled) {
+  border-color: var(--coach);
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .tutorial-path-hidden {
+    padding: 10px 12px;
+  }
+
+  .app-shell .tutorial-path-hidden__show {
+    flex: 1 1 100%;
+  }
+}

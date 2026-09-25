@@ -204,13 +204,13 @@ describe("R313 your own library, without its order", () => {
   function withLibrary(library: LibraryView = LIBRARY): PlayerView {
     const view = fullBoardView();
     const count = library.cards.reduce((sum, entry) => sum + entry.count, 0) + library.unknown;
-    return { ...view, you: { ...view.you, libraryCount: count, library } };
+    return { ...view, you: { ...view.you, libraryCount: count, ownLibrary: library } };
   }
 
   it("R313 your library pile is a button when the view lists it, and the opponent's never is", () => {
     const view = withLibrary();
     // Even a view that wrongly carried a list for the opponent's library would open nothing.
-    renderBoard({ ...view, opponent: { ...view.opponent, library: LIBRARY } });
+    renderBoard({ ...view, opponent: { ...view.opponent, ownLibrary: LIBRARY } });
     const mine = screen.getByTestId("library-you");
     expect(mine).toHaveAttribute("data-browsable", "true");
     expect(mine).toHaveAttribute("role", "button");

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Apply every migration (0001-0010) to a throwaway Postgres and assert the
+# Apply every migration (0001-0011) to a throwaway Postgres and assert the
 # invariants of SPEC §9.1, §9.4 and §9.5 against a real database.
 #
 #   pnpm test:sql            # or: sh apps/server/test/sql/run.sh
@@ -30,7 +30,7 @@
 # DATA migration: 0007 turns every loadout that exists when it runs into three
 # decks and a trio, so there has to be a loadout for it to find. 03b seeds one
 # — through 0003's own app.save_loadout, as a player of the old server saved
-# it — after 0001-0006 and before 0007-0010, exactly the order a database that
+# it — after 0001-0006 and before 0007-0011, exactly the order a database that
 # predates 0007 sees. 04 then checks what 0007 made of it.
 #
 # The CONTAINER name is fixed so a run can be inspected afterwards; the script
@@ -99,8 +99,9 @@ if ! $PSQL -d jackioh -f /tmp/03b_legacy_loadout_seed.sql; then
   failed=1
 fi
 
-echo "--- migrations 0007-0010 ---"
-for f in 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag; do
+echo "--- migrations 0007-0011 ---"
+for f in 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag \
+         0011_tutorial_progress; do
   apply_migration "$f"
 done
 
@@ -108,13 +109,14 @@ done
 # check ever ran against. Refuse it rather than pass without it.
 for f in "$REPO"/apps/server/src/db/migrations/*.sql; do
   name=$(basename "$f" .sql)
-  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag " in
+  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag 0011_tutorial_progress " in
     *" $name "*) ;;
     *) echo "!!! migration $name is not applied by this script; add it above"; failed=1 ;;
   esac
 done
 
-for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle 04_decks_and_series; do
+for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle 04_decks_and_series \
+         05_tutorial_progress; do
   echo "--- $f ---"
   status=0
   out=$(docker exec "$CONTAINER" psql -U postgres -q -v ON_ERROR_STOP=1 \
@@ -125,7 +127,7 @@ for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle 04_decks_and_s
     failed=1
   fi
   # A `raise notice 'FAIL ...'` leaves psql's exit status at 0, so the text would be
-  # the only signal. All four files raise instead, which is why the exit-status
+  # the only signal. All five files raise instead, which is why the exit-status
   # check above is the primary gate; this grep is the backstop for a check that ever
   # regresses to a notice.
   if printf '%s\n' "$out" | grep -E 'FAIL|UNEXPECTED' >/dev/null 2>&1; then

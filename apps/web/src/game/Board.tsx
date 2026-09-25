@@ -185,7 +185,7 @@ function ManaTray({ side, mana, animating }: { side: Side; mana: { current: numb
  * full `CardView` lists), so either one can be looked through (`browse`): a resting mouse opens a
  * preview of its newest cards, and a click, a tap, a long-press or Enter opens every card in a
  * sheet, newest first. The viewer's own library can be looked through the same way (R313), from the
- * list without order the view carries for it (`SideView.library`, R310): one face per entry with
+ * list without order the view carries for it (`SideView.ownLibrary`, R310): one face per entry with
  * its count, in the view's order, each printed on the face it went in with (R311), and a card back
  * for the cards the viewer was never shown (R312). The opponent's library is a count and nothing
  * else, so it has no `browse`. Nothing here reads a rule or a hidden card (CLAUDE.md rule 7).
@@ -337,8 +337,8 @@ function Seat({
           fatigue={seat.fatigueCount}
           animating={animating}
           // R310, R313: only the viewer's own side carries the list; the opponent's is a count.
-          {...(side === "you" && seat.library !== undefined
-            ? { browse: { kind: "library" as const, title: "Your library", library: seat.library, view } }
+          {...(side === "you" && seat.ownLibrary !== undefined
+            ? { browse: { kind: "library" as const, title: "Your library", library: seat.ownLibrary, view } }
             : {})}
         />
         <Pile

@@ -218,7 +218,7 @@ describe("#90 and #90.1 — R311 the owner's library list", () => {
 
     // The play was public and its text names the card, so p2 knows what went in; never where.
     // Both cost 1, so the list goes by name (R310): CN-Virus before Stockpile.
-    expect(s.view("p2").you.library).toEqual({
+    expect(s.view("p2").you.ownLibrary).toEqual({
       cards: [
         { defId: VIRUS, radiant: true, count: 1 },
         { defId: "core-005", radiant: false, count: 4 },
@@ -226,7 +226,7 @@ describe("#90 and #90.1 — R311 the owner's library list", () => {
       unknown: 0,
     });
     // The caster reads p2's library as a count and nothing else.
-    expect(s.view("p1").opponent.library).toBeUndefined();
+    expect(s.view("p1").opponent.ownLibrary).toBeUndefined();
     expect(s.view("p1").opponent.libraryCount).toBe(5);
   });
 
@@ -239,7 +239,7 @@ describe("#90 and #90.1 — R311 the owner's library list", () => {
 
     s.play(VIRUS);
 
-    const list = s.view("p1").you.library;
+    const list = s.view("p1").you.ownLibrary;
     expect(list?.unknown).toBe(0);
     expect(list?.cards).toContainEqual({ defId: VIRUS, radiant: false, count: 2 });
     expect(list?.cards).toContainEqual({ defId: "core-005", radiant: false, count: 3 });

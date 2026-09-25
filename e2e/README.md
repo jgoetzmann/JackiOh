@@ -1,4 +1,4 @@
-# `e2e/` — the twenty-four specs: BUILD M8's seventeen and `18`–`24`
+# `e2e/` — the twenty-five specs: BUILD M8's seventeen, `18`–`24` and `27`
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,7 +16,7 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the twenty-four specs (`99-online-smoke` is skipped unless enabled)
+  cypress/e2e/*.cy.ts      the twenty-five specs (`99-online-smoke` is skipped unless enabled)
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
   cypress/e2e/18-deck-workshop.cy.ts  TASK 1 (R250–R252, R255, R256): an incomplete deck saves and survives a reload, an edit made while `PUT /api/decks/:id` fails at the network is kept on the device and saved once it answers, a copied deck code imports as a new deck and a damaged one is refused with a sentence, a trio marks the cards two decks share and is ready once they share none, and the deck cap
@@ -27,6 +27,7 @@ e2e/
   cypress/e2e/22-tutorial-lesson-one.cy.ts  SPEC §9.10: lesson 1 played to a win by doing, through the UI, what the coach asks; progress saved; the log replays with the tutorial handicap
   cypress/e2e/23-tutorial-path.cy.ts  SPEC §9.10: the lesson path (locked, open, completed), progress seeded, reloaded and corrupt, no Skip step and Exit (R314), a later lesson's fixed deal, the phone layout
   cypress/e2e/24-library-browse.cy.ts  R310–R314: on /dev/hotseat your own library opens on hover, click and Enter, grouped with counts and "Order hidden", card for card what the library holds; the opponent's is a count; the other seat's opens after the hand-over; in a tutorial lesson there is no Skip step and the library opens there too
+  cypress/e2e/27-account-tutorial-and-email-link.cy.ts  R320–R322, networked: a lesson won on the device reaches a signed-in account and a device with empty storage finds it on the path; Hide tutorial folds the path to one focused Show tutorial button, the choice follows the account to a fresh device, and Show brings the path back everywhere (the newest choice wins); both buttons are 44 px touch targets at 390x844; and R323, R324: an emailed link's PKCE code opened on another device lands on /login, scrubbed, and says the email is confirmed (the exchange itself is unit-tested: a build:e2e bundle has no auth provider)
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   cypress/component/deckbuilder-layout.cy.tsx  B39/B29/B38 on the deck workshop (`DeckWorkshop`, a full deck open): no overflow at 390x844 and 1280x720, two pool columns on the phone, two whole pool rows at 1280x720, the first pool row on a phone's first screen, the verdict in the sidebar
@@ -79,7 +80,7 @@ pnpm check:fixtures     # every deck fixture obeys L2/L3/L6 before a browser is 
 # 1. the client, in E2E mode
 E2E=1 pnpm --dir apps/web dev                  # must serve http://localhost:5173
 
-# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10, 18, 19
+# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10, 18, 19, 20, 27
 E2E=1 pnpm --dir apps/server dev               # http://localhost:8787 and ws://…/ws/match (WS_PATH)
 
 # 3. the suite
@@ -206,6 +207,7 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 20 | M6 + M7-T1 and a `build:e2e` client, like 05 and 06: a room-code match per case with seat 2 on `cy.task("wsPlayer")`, spec 06's decks, and one seed per case; the selectors are `support/testids.ts` block A16. The draw offer's sound is asserted in `window.__jackiohAudio`'s log, as spec 15 asserts its voice lines. |
 | 22 | SPEC §9.10 (the tutorial) on `/practice`, against `build:e2e` with no server. It follows the coach through lesson 1 by clicking what `window.__jackiohTutorial.suggested` names (never dispatching), with reduced motion so every view is drawn as it arrives, and folds the log with the tutorial handicap (R290). It names no card or step, so the lesson's content may change under it. |
 | 23 | SPEC §9.10 on `/practice`, against `build:e2e` with no server: the lesson path and its progress in `localStorage["jackioh.tutorial.v1"]` (R294), no Skip step (R314) and Exit, a lesson's seed, decks and handicap (R290, R291) compared with `apps/web/src/tutorial/lessons.ts` through `cy.task("tutorialLessons")`, and a 390x844 smoke. Rebuild the client after a lesson changes, or the task and the bundle disagree. |
+| 27 | SPEC §9.10's account copy (R320–R322): the `E2E=1` server and a `build:e2e` client, as `e2e-p1`. The server's store lives as long as the server and tutorial progress only grows, so every assertion is "contains", and each test first makes an explicit Show through `PUT /api/tutorial`, the newest choice until the page makes its own. The page's `GET` and `PUT /api/tutorial` are spied on with `cy.intercept` and awaited, never answered by the spec. The emailed-link block is filled in with the PKCE sign-in; until then that case is covered by the web client's unit tests. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

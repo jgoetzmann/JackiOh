@@ -36,6 +36,7 @@ import { systemTimers } from "./api/ports";
 import { createQueueRoutes, startMatchmaker } from "./api/queue";
 import { createRecordResult, reapStuckMatches } from "./api/results";
 import { createSeriesRoutes, startSeriesSweeper } from "./api/series";
+import { createTutorialRoutes } from "./api/tutorial";
 import { MATCH_REAPER_INTERVAL_SECONDS } from "./config";
 import { loadEnv, type ServerEnv } from "./env";
 import { createMatchClock } from "./match/clock";
@@ -250,6 +251,7 @@ export function allRoutes(): Route[] {
     ...createQueueRoutes(),
     ...createRoomRoutes(),
     ...createSeriesRoutes(),
+    ...createTutorialRoutes(),
   ];
 }
 

@@ -702,4 +702,124 @@ end $$;
 reset role;
 rollback;
 
+\echo '### R320: a player reads only its own tutorial progress and writes none of it ###'
+begin;
+
+-- 0011's table, one row for EACH profile: profile 2's is the row to hide from profile 1 (and
+-- profile 1's from profile 2), and each profile's own is the row it must still see. Raw inserts,
+-- as superuser, because the point is what RLS shows, not how a row got there.
+insert into public.tutorial_progress (profile_id, completed, hidden, hidden_at) values
+  ('11111111-1111-1111-1111-111111111111', '{basics}', null, null),
+  ('22222222-2222-2222-2222-222222222222', '{basics,spells}', true, '2026-01-01 00:00:00+00');
+
+-- Preflight: every write the client is about to be refused is one the owner can make, inside a
+-- subtransaction rolled back at once, so each refusal below is the privilege system and nothing
+-- else (CHECK 4's reasoning). The merge is called for profile 1, which is active.
+do $$
+begin
+  begin
+    insert into public.tutorial_progress (profile_id, completed)
+    values ('11111111-1111-1111-1111-111111111111', '{traps}')
+    on conflict (profile_id) do update set completed = excluded.completed;
+    update public.tutorial_progress set completed = '{}';
+    delete from public.tutorial_progress;
+    perform app.merge_tutorial_progress('11111111-1111-1111-1111-111111111111', '{traps}', null, null,
+                                        now(), 32);
+    raise exception 'owner-control-rollback';
+  exception when others then
+    if sqlerrm <> 'owner-control-rollback' then
+      raise exception
+        'FAIL (R320): the owner could not run the writes the client is about to be refused ("%", %) — the refusals below would prove nothing about privileges',
+        sqlerrm, sqlstate;
+    end if;
+  end;
+  perform set_config('rls5.total', (select count(*) from public.tutorial_progress)::text, true);
+end $$;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+
+\echo '-- tutorial_progress as profile 1: must be 1 (its own row only)'
+select count(*) as tutorial_visible from public.tutorial_progress;
+
+do $$
+declare
+  caller constant uuid := '11111111-1111-1111-1111-111111111111';
+  total  bigint := coalesce(nullif(current_setting('rls5.total', true), ''), '-1')::bigint;
+  seen   bigint;
+  probe  text;
+  probes constant text[][] := array[
+    ['tutorial_progress INSERT',
+     $q$insert into public.tutorial_progress (profile_id, completed)
+        values ('11111111-1111-1111-1111-111111111111', '{traps}')
+        on conflict (profile_id) do update set completed = excluded.completed$q$,
+     'tutorial_progress'],
+    ['tutorial_progress UPDATE', $q$update public.tutorial_progress set completed = '{}'$q$, 'tutorial_progress'],
+    ['tutorial_progress DELETE', $q$delete from public.tutorial_progress$q$, 'tutorial_progress'],
+    ['app.merge_tutorial_progress',
+     $q$select app.merge_tutorial_progress('11111111-1111-1111-1111-111111111111', '{traps}', null, null,
+                                           now(), 32)$q$,
+     'merge_tutorial_progress']];
+  i int;
+begin
+  if current_user <> 'authenticated' then
+    raise exception 'FAIL (R320): running as %, not authenticated — SET LOCAL did not take', current_user;
+  end if;
+  -- Vacuity guard: two rows, one of them another profile's, or "sees only its own" is free.
+  if total <> 2 then
+    raise exception 'FAIL (R320): % tutorial_progress rows to measure against, expected 2 (one per profile)', total;
+  end if;
+
+  select count(*) into seen from public.tutorial_progress;
+  if seen <> 1 or exists (select 1 from public.tutorial_progress where profile_id <> caller) then
+    raise exception 'FAIL (R320): profile 1 saw % of % tutorial_progress rows — another profile''s progress leaked',
+      seen, total;
+  end if;
+  if (select completed from public.tutorial_progress) <> '{basics}'::text[] then
+    raise exception 'FAIL (R320): profile 1''s own row reads back as %', (select completed from public.tutorial_progress);
+  end if;
+
+  -- SPEC §9.1: no client write path at all — not into another profile's row, and not into its own.
+  for i in 1 .. array_length(probes, 1) loop
+    probe := probes[i][1];
+    begin
+      execute probes[i][2];
+      raise exception 'FAIL (R320): % succeeded as a client — tutorial progress is written by the server alone', probe;
+    exception
+      when insufficient_privilege then
+        if sqlerrm not like '%' || probes[i][3] || '%' then
+          raise exception 'FAIL (R320): % was refused by "%" (%), which does not name %',
+            probe, sqlerrm, sqlstate, probes[i][3];
+        end if;
+        raise notice 'OK (R320): % refused — % (%)', probe, sqlerrm, sqlstate;
+      when others then
+        if sqlerrm like 'FAIL%' then raise; end if;
+        raise exception 'FAIL (R320): % raised "%" (%), not insufficient_privilege', probe, sqlerrm, sqlstate;
+    end;
+  end loop;
+
+  raise notice 'OK (R320): profile 1 sees its own tutorial row and not profile 2''s, and 3 writes and the merge were refused';
+end $$;
+
+-- And the other way round: profile 2 sees its own row, never profile 1's.
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+do $$
+declare
+  seen bigint;
+begin
+  if current_user <> 'authenticated' then
+    raise exception 'FAIL (R320): running as %, not authenticated', current_user;
+  end if;
+  select count(*) into seen from public.tutorial_progress;
+  if seen <> 1 or exists (
+    select 1 from public.tutorial_progress where profile_id <> '22222222-2222-2222-2222-222222222222'
+  ) then
+    raise exception 'FAIL (R320): profile 2 saw % tutorial_progress rows, expected only its own', seen;
+  end if;
+  raise notice 'OK (R320): profile 2 sees only its own tutorial row';
+end $$;
+
+reset role;
+rollback;
+
 \echo '### ALL RLS CHECKS RAN ###'

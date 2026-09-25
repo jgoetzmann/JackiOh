@@ -1,6 +1,6 @@
 /**
  * The production `Store` (SPEC §9.2's `API functions -> Postgres` edge), implemented over the
- * migrations in `./migrations` (0001-0010) with the `pg` driver already in `apps/server/package.json`.
+ * migrations in `./migrations` (0001-0011) with the `pg` driver already in `apps/server/package.json`.
  *
  * `src/index.ts` finds this module by dynamic import and calls `createPostgresStore({
  * connectionString })`; until it existed the server threw `StoreUnavailableError` and could only
@@ -72,6 +72,7 @@ import type {
   Ticket,
   TicketStatus,
   TrioUpsertOutcome,
+  TutorialProgressRow,
   UpsertOutcome,
 } from "../api/ports";
 import type { Action } from "@jackioh/shared";
@@ -572,6 +573,27 @@ function upsertOutcomeOf<T extends string>(fn: string, allowed: readonly T[], va
   throw new Error(
     `${fn} returned ${JSON.stringify(value)}, which is not one of ${allowed.join(", ")} (migration 0007)`,
   );
+}
+
+/** `public.tutorial_progress` (migration 0011, R320). */
+type TutorialDbRow = {
+  profile_id: string;
+  completed: string[];
+  hidden: boolean | null;
+  hidden_at: Date | null;
+};
+
+const TUTORIAL_COLUMNS = `profile_id, completed, hidden, hidden_at`;
+
+function toTutorial(row: TutorialDbRow): TutorialProgressRow {
+  const at = msOrNull(row.hidden_at);
+  return {
+    profileId: row.profile_id,
+    // node-pg parses a text[] into a string[]; the function keeps it sorted and each id once.
+    completed: [...row.completed],
+    // `tutorial_progress_choice_pair_check`: both or neither.
+    hiddenChoice: row.hidden === null || at === null ? null : { hidden: row.hidden, at },
+  };
 }
 
 /**
@@ -1895,6 +1917,52 @@ function buildStore(session: Session): Store {
     },
   };
 
+  // -------------------------------------------------------------------------
+  // Tutorial progress on the account (SPEC §9.10, R320)
+  // -------------------------------------------------------------------------
+
+  store.tutorial = {
+    get: async (profileId) => {
+      if (!isUuid(profileId)) return null;
+      const { rows } = await session.query<TutorialDbRow>(
+        profileId,
+        `select ${TUTORIAL_COLUMNS} from public.tutorial_progress where profile_id = $1::uuid`,
+        [profileId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toTutorial(row);
+    },
+
+    /**
+     * R320: one call to `app.merge_tutorial_progress` (0011), which takes the profile row lock,
+     * re-checks the shape, unions the lessons and keeps the strictly newer choice; then the row as
+     * it now stands, read in the same transaction so the answer is exactly what this write left.
+     */
+    merge: async (input, maxLessons) =>
+      session.run(input.profileId, async (q) => {
+        const choice = input.hiddenChoice;
+        const { rows } = await q<{ outcome: unknown }>(
+          `select app.merge_tutorial_progress($1::uuid, $2::text[], $3::boolean, ${nullableTs("$4")},
+                                              ${ts("$5")}, $6::int) as outcome`,
+          [input.profileId, [...input.completed], choice?.hidden ?? null, choice?.at ?? null, input.at, maxLessons],
+        );
+        const outcome = rows[0]?.outcome;
+        if (outcome === "limit") return { kind: "limit" } as const;
+        if (outcome !== "merged") {
+          throw new Error(
+            `app.merge_tutorial_progress returned ${JSON.stringify(outcome)}, which is not merged or limit (migration 0011)`,
+          );
+        }
+        const read = await q<TutorialDbRow>(
+          `select ${TUTORIAL_COLUMNS} from public.tutorial_progress where profile_id = $1::uuid`,
+          [input.profileId],
+        );
+        const row = read.rows[0];
+        if (row === undefined) throw new Error("app.merge_tutorial_progress answered merged and wrote no row");
+        return { kind: "merged", progress: toTutorial(row) } as const;
+      }),
+  };
+
   return store;
 }
 
@@ -1968,6 +2036,14 @@ function fromTicketStatus(status: TicketStatus): string {
 //    these, because the server's `checkDeckDraft` / `checkTrioDraft` refuse them first with a
 //    sentence a player reads. The real store is strictly stricter, which is §9.4's "defense in
 //    depth" by design. D3 (a deckable card) is checked by neither store: see 0007.
+//  * tutorial strictness (R320). `app.merge_tutorial_progress` (0011) refuses — by raising — a
+//    profile that is not active, a lesson id that is not a lower-case slug of at most
+//    `tutorial_lesson_id_max_length` characters, and a choice with no time; and a profile with no
+//    `public.profiles` row fails its foreign key. The in-memory stores check none of these, because
+//    `src/api/tutorial.ts` refuses a malformed body first and its route is `active`. The merge
+//    itself (the union, the strictly-newer choice, the `limit` outcome) is the same in both and is
+//    asserted in `test/db/contract.ts`. Its cap is the smaller of the caller's and
+//    `app.settings.tutorial_lessons_max`, as for the deck caps below.
 //  * caps. The port passes the cap (`maxDecks`, `maxTrios`); the SQL applies the smaller of it and
 //    `app.settings.max_saved_decks` / `max_saved_trios` (0007, mirroring `MAX_SAVED_DECKS` and
 //    `MAX_SAVED_TRIOS`). Equal today. Raising a cap in `src/config.ts` alone raises it only in

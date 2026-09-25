@@ -54,7 +54,7 @@ function run(state: GameState, effect: Effect, controller: PlayerId = "p1"): Gam
 }
 
 function listOf(state: GameState, viewer: PlayerId): LibraryView {
-  const library = viewFor(state, viewer).you.library;
+  const library = viewFor(state, viewer).you.ownLibrary;
   if (library === undefined) throw new Error(`${viewer}'s view carries no library list`);
   return library;
 }
@@ -75,7 +75,7 @@ describe("R310 the viewer's own library, without its order", () => {
     const theirs = setLibrary(state, "p2", [legendary.id, alpha.id]);
     const view = viewFor(state, "p1");
 
-    expect(view.you.library).toEqual({
+    expect(view.you.ownLibrary).toEqual({
       cards: [
         // Printed cost first (R65: X is 0, embiggen its base price), then name, then id: the X
         // card costs 0 like "Zed the Cheap" and goes first by name.
@@ -91,8 +91,8 @@ describe("R310 the viewer's own library, without its order", () => {
     expect(total(listOf(state, "p1"))).toBe(view.you.libraryCount);
 
     // The opponent's library is a count and nothing else (§9.1, §10.8).
-    expect(view.opponent.library).toBeUndefined();
-    expect(Object.keys(view.opponent)).not.toContain("library");
+    expect(view.opponent.ownLibrary).toBeUndefined();
+    expect(Object.keys(view.opponent)).not.toContain("ownLibrary");
     const serialized = JSON.stringify(view);
     expect(serialized).not.toContain(`"${legendary.id}"`);
     for (const id of idsOf(theirs)) expect(serialized).not.toContain(`"${id}"`);
@@ -124,16 +124,16 @@ describe("R310 the viewer's own library, without its order", () => {
     }
 
     const view = viewFor(a, "p1");
-    expect(view.you.library?.cards).toContainEqual({ defId: beta.id, radiant: false, count: 1 });
-    expect(view.you.library?.cards).toContainEqual({ defId: beta.id, radiant: true, count: 1 });
+    expect(view.you.ownLibrary?.cards).toContainEqual({ defId: beta.id, radiant: false, count: 1 });
+    expect(view.you.ownLibrary?.cards).toContainEqual({ defId: beta.id, radiant: true, count: 1 });
     // Base before Radiant within one definition.
-    const betas = (view.you.library?.cards ?? []).filter((entry) => entry.defId === beta.id);
+    const betas = (view.you.ownLibrary?.cards ?? []).filter((entry) => entry.defId === beta.id);
     expect(betas.map((entry) => entry.radiant)).toEqual([false, true]);
     // No instance id of the viewer's own library reaches the viewer (§9.1): a list, not the pile.
     const serialized = JSON.stringify(view);
     for (const id of idsOf(a.players.p1.library)) expect(serialized).not.toContain(`"${id}"`);
     // An entry is three fields and no more: nothing a position, a live cost or a roll could ride on.
-    for (const entry of view.you.library?.cards ?? []) expect(Object.keys(entry).sort()).toEqual(["count", "defId", "radiant"]);
+    for (const entry of view.you.ownLibrary?.cards ?? []) expect(Object.keys(entry).sort()).toEqual(["count", "defId", "radiant"]);
   });
 });
 
@@ -188,7 +188,7 @@ describe("R311 what the owner was shown going in", () => {
       expect(shuffled.every((event) => event.type === "shuffledIn" && event.defId === "hidden")).toBe(true);
     }
     // And p2, who played it, still reads p1's library as a count.
-    expect(viewFor(state, "p2").opponent.library).toBeUndefined();
+    expect(viewFor(state, "p2").opponent.ownLibrary).toBeUndefined();
   });
 
   it("R311 keeps the face a card went in with when it turns Radiant inside the library, where nobody sees it", () => {

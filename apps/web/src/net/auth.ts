@@ -678,8 +678,11 @@ export type CodeExchange =
  */
 export async function exchangeAuthCode(code: string): Promise<CodeExchange> {
   if (!isAuthCode(code)) return { kind: "refused" };
+  const verifiers = storedVerifiers();
+  // Nothing to send: a link from elsewhere, whether or not this build can reach a provider.
+  if (verifiers.length === 0) return { kind: "elsewhere" };
   const config = requireConfig();
-  for (const { flow, verifier } of storedVerifiers()) {
+  for (const { flow, verifier } of verifiers) {
     const { status, json } = await send(config, {
       method: "POST",
       path: "/auth/v1/token?grant_type=pkce",

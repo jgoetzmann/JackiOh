@@ -249,11 +249,15 @@ const CARD_TESTS_R311 = [
   "../../cards/test/042-eugenics.test.ts",
 ] as const;
 const CARD_TESTS_R312 = ["../../cards/test/087-pocket-chaos.test.ts", "../../cards/test/083-transmogulate.test.ts"] as const;
-/** R323 and R324's proofs: PKCE for the emailed links. */
+/** R320 to R322's proofs: tutorial progress and the hidden path on the account (§9.10). */
+const SERVER_TUTORIAL_API_TEST = "../../../apps/server/test/api/tutorial.test.ts";
+const SERVER_TUTORIAL_SQL = "../../../apps/server/test/sql/05_tutorial_progress.sql";
+const SERVER_RLS_SQL = "../../../apps/server/test/sql/02_rls_as_client.sql";
+const WEB_TUTORIAL_ACCOUNT_SYNC_TEST = "../../../apps/web/src/tutorial/accountSync.test.ts";
+const WEB_PRACTICE_ROUTE_TEST = "../../../apps/web/src/routes/practice.test.tsx";
+const WEB_TUTORIAL_PATH_TEST = "../../../apps/web/src/tutorial/TutorialPath.test.tsx";
+/** R323's proof of the verifier itself; the auth-flow, redirect and login proofs are R192–R194's own. */
 const WEB_PKCE_TEST = "../../../apps/web/src/auth/pkce.test.ts";
-const WEB_AUTH_FLOWS_TEST = "../../../apps/web/src/net/auth-flows.test.ts";
-const WEB_REDIRECT_TEST = "../../../apps/web/src/auth/redirect.test.ts";
-const WEB_LOGIN_FLOWS_TEST = "../../../apps/web/src/routes/login-flows.test.tsx";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -2354,6 +2358,24 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // and routes/practice-tutorial.test.tsx "R314 …" (no Skip step on the page; Got it and Exit are).
   it("R314 has no Skip step in the tutorial, and nothing that strands the player", () => {
     provenIn(314, WEB_TUTORIAL_COACH_TEST, WEB_PRACTICE_TUTORIAL_TEST);
+  });
+
+  // Proved by apps/server test/api/tutorial.test.ts (the routes: active only, the union, the clamped
+  // choice, the body's checks), test/db/contract.ts (both stores), and the SQL suite's 05 (the merge
+  // function) and 02 (a player reads only its own row and writes none) headings.
+  it("R320 keeps an active account's tutorial progress on the server, merged and never removed", () => {
+    provenIn(320, SERVER_TUTORIAL_API_TEST, SERVER_STORE_CONTRACT, SERVER_TUTORIAL_SQL, SERVER_RLS_SQL);
+  });
+
+  // Proved by apps/web tutorial/accountSync.test.ts (load, push-up, one request at a time, failures
+  // dropped), tutorial/progress.test.ts (the union and the newest choice) and routes/practice.test.tsx.
+  it("R321 merges the device's tutorial progress with the account's as a union, never stepping back", () => {
+    provenIn(321, WEB_TUTORIAL_ACCOUNT_SYNC_TEST, WEB_TUTORIAL_PROGRESS_TEST, WEB_PRACTICE_ROUTE_TEST);
+  });
+
+  // Proved by apps/web tutorial/TutorialPath.test.tsx "R322 …": Hide and Show, focus, touch size.
+  it("R322 lets the player hide the lesson path while a lesson is still to do, and show it again", () => {
+    provenIn(322, WEB_TUTORIAL_PATH_TEST);
   });
 
   // Proved by apps/web auth/pkce.test.ts (the verifier, its challenge and where it is kept),

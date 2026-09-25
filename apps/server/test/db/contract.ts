@@ -29,6 +29,8 @@ import type {
   SavedTrio,
   SeriesRow,
   Store,
+  TutorialMergeOutcome,
+  TutorialProgressRow,
 } from "../../src/api/ports";
 import type { StoreHarness } from "./harness";
 
@@ -706,6 +708,106 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(await store.trios.remove(other.id, trio.id)).toBe(false);
         expect(await store.trios.remove(owner.id, trio.id)).toBe(true);
         expect(await store.trios.get(trio.id)).toBeNull();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Tutorial progress on the account (SPEC §9.10, R320)
+    // -----------------------------------------------------------------------
+
+    describe("tutorial", () => {
+      /** A whole-millisecond instant, as the handler hands the store (and as Postgres keeps it). */
+      function instant(offset = 0): number {
+        return Math.floor(harness.now()) + offset;
+      }
+
+      function merged(outcome: TutorialMergeOutcome): TutorialProgressRow {
+        if (outcome.kind !== "merged") throw new Error(`expected merged, got ${outcome.kind}`);
+        return outcome.progress;
+      }
+
+      it("R320 holds no row before the first write, and the first write makes one", async () => {
+        const profile = await activeProfile();
+        expect(await store.tutorial.get(profile.id)).toBeNull();
+
+        const progress = merged(
+          await store.tutorial.merge(
+            { profileId: profile.id, completed: ["spells", "basics"], hiddenChoice: null, at: instant() },
+            32,
+          ),
+        );
+        // Each id once, in code-point order, whatever order they were sent in.
+        expect(progress).toEqual({ profileId: profile.id, completed: ["basics", "spells"], hiddenChoice: null });
+        expect(await store.tutorial.get(profile.id)).toEqual(progress);
+      });
+
+      it("R320 unions the lessons: a write never removes one, and the same write twice changes nothing", async () => {
+        const profile = await activeProfile();
+        const write = (completed: string[]) =>
+          store.tutorial.merge({ profileId: profile.id, completed, hiddenChoice: null, at: instant() }, 32);
+
+        merged(await write(["basics", "spells"]));
+        // A stale device that has won only lesson 1, or nothing at all, takes nothing away.
+        expect(merged(await write(["basics"])).completed).toEqual(["basics", "spells"]);
+        expect(merged(await write([])).completed).toEqual(["basics", "spells"]);
+        // Another device's lesson joins them; a repeat of it is the same row.
+        expect(merged(await write(["traps"])).completed).toEqual(["basics", "spells", "traps"]);
+        expect(merged(await write(["traps", "traps"])).completed).toEqual(["basics", "spells", "traps"]);
+        // An id no lesson of this client has is kept all the same: the server does not know the lessons.
+        expect(merged(await write(["lesson-from-a-newer-client"])).completed).toEqual([
+          "basics",
+          "lesson-from-a-newer-client",
+          "spells",
+          "traps",
+        ]);
+        expect(must(await store.tutorial.get(profile.id), "the row").completed).toHaveLength(4);
+      });
+
+      it("R320 keeps the newest Hide/Show choice: an older one never replaces it, and a tie keeps the stored", async () => {
+        const profile = await activeProfile();
+        const t0 = instant();
+        const choose = (hidden: boolean, at: number) =>
+          store.tutorial.merge({ profileId: profile.id, completed: [], hiddenChoice: { hidden, at }, at: t0 }, 32);
+
+        expect(merged(await choose(true, t0)).hiddenChoice).toEqual({ hidden: true, at: t0 });
+        // "Show" made later, on another device, wins.
+        expect(merged(await choose(false, t0 + 5_000)).hiddenChoice).toEqual({ hidden: false, at: t0 + 5_000 });
+        // An older "Hide" arriving afterwards does not undo it.
+        expect(merged(await choose(true, t0 + 1_000)).hiddenChoice).toEqual({ hidden: false, at: t0 + 5_000 });
+        // The same instant is not newer: the stored choice stays.
+        expect(merged(await choose(true, t0 + 5_000)).hiddenChoice).toEqual({ hidden: false, at: t0 + 5_000 });
+        // A write with no choice leaves the choice alone, and lessons alone move nothing else.
+        const lessonsOnly = merged(
+          await store.tutorial.merge(
+            { profileId: profile.id, completed: ["basics"], hiddenChoice: null, at: t0 + 9_000 },
+            32,
+          ),
+        );
+        expect(lessonsOnly).toEqual({
+          profileId: profile.id,
+          completed: ["basics"],
+          hiddenChoice: { hidden: false, at: t0 + 5_000 },
+        });
+      });
+
+      it("R320 refuses a union past the cap and writes nothing, and keeps each profile's row apart", async () => {
+        const [owner, other] = [await activeProfile(), await activeProfile()];
+        const write = (profileId: string, completed: string[]) =>
+          store.tutorial.merge({ profileId, completed, hiddenChoice: null, at: instant() }, 3);
+
+        merged(await write(owner.id, ["basics", "spells"]));
+        expect(await write(owner.id, ["traps", "advanced"])).toEqual({ kind: "limit" });
+        expect(must(await store.tutorial.get(owner.id), "the owner's row").completed).toEqual(["basics", "spells"]);
+        // At the cap exactly is fine.
+        expect(merged(await write(owner.id, ["traps"])).completed).toEqual(["basics", "spells", "traps"]);
+
+        expect(await store.tutorial.get(other.id)).toBeNull();
+        expect(merged(await write(other.id, ["advanced"])).completed).toEqual(["advanced"]);
+        expect(must(await store.tutorial.get(owner.id), "the owner's row").completed).toEqual([
+          "basics",
+          "spells",
+          "traps",
+        ]);
       });
     });
 

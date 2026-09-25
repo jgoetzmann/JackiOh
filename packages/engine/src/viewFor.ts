@@ -452,7 +452,7 @@ function sideView(state: GameState, player: PlayerId, viewer: PlayerId): SideVie
     // else. R310–R312: the viewer's own is a list without order as well, of what they were shown
     // going in (`ownLibrary.ts`), with no instance id or position in it.
     libraryCount: side.library.length,
-    ...(player === viewer ? { library: ownLibraryView(state, player) } : {}),
+    ...(player === viewer ? { ownLibrary: ownLibraryView(state, player) } : {}),
     graveyard: side.graveyard.map((card) => cardView(state, card)),
     exile: side.exile.map((card) => cardView(state, card)),
     // §10.5 step 4, R98: a Spell between its play and its graveyard. Playing it was public.
