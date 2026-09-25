@@ -24,7 +24,10 @@ import type { CardInstance } from "../state";
 import { stateCheck } from "../stateCheck";
 import { exitMark } from "../stays";
 import { playOutTurn } from "../subsystems/aiPolicy";
+import { SETTLE_PASS_CAP, dispatchPending, runQueuedTrigger, type SettleSink } from "../triggers";
+import { paused } from "../work";
 import { activeUnitsOf } from "../zones";
+import { destroy } from "./destroy";
 import { playerOf, resolveTarget, type PlayerSpec, type TargetSpec } from "./targets";
 
 /** Which side's units are compelled. "any" is both, in R68's order (active side first). */
@@ -143,8 +146,15 @@ export function forcedAttacks(args: { attackers: ForcedAttackerFilter; target: F
  *
  * R121: a forced attack opens no window and writes no `declaredAttack`, so this can never cancel
  * one. That is the rule, not an omission (see `combat.forceAttack`).
+ *
+ * `destroyAttacker` (R283, Radiant #96) destroys the attacker of the attack this cancels, as part of
+ * the cancel: an ordinary §6.3 destroy of the unit the declaration names, on the stay it declared
+ * from (R174), so an Indestructible attacker is knocked down at the next check (R46) and a Reborn
+ * one comes back. Tied to the cancel, it happens only where the cancel does — inside the window, on
+ * an attack not yet cancelled — so a My Pawn fused onto a My Pawn, whose second half runs once the
+ * first has played the turn out and the window has closed (R102), destroys nothing a second time.
  */
-export function cancelAttack(): Effect {
+export function cancelAttack(args: { destroyAttacker?: boolean } = {}): Effect {
   return {
     kind: "cancelAttack",
     apply(ctx): void {
@@ -160,6 +170,7 @@ export function cancelAttack(): Effect {
         targetId: open.targetId,
         byInstanceId: self.id,
       });
+      if (args.destroyAttacker === true) destroy({ target: { of: "instance", instanceId: open.attackerId } }).apply(ctx);
     },
   };
 }
@@ -178,15 +189,18 @@ export function cancelAttack(): Effect {
  * new afterwards, so no effect after this one may hold a `CardInstance` it read before it — `#96`'s
  * list ends here for that reason.
  *
- * `settleFirst` (R283, R59) runs the state check once the lockout is set and before the AI's first
+ * `settleFirst` (R283, R59) settles the board once the lockout is set and before the AI's first
  * action. `destroy` only marks (§6.3), and the check that collects a mark runs after each whole
  * effect (R59) — which, for a list that ends in this effect, is inside the playout's first
  * `reduce`, after the AI has already chosen from a board that still holds the marked unit. Radiant
- * #96 destroys the attacker it stopped and then hands the turn over, and R283 has the check collect
- * that attacker "before the AI takes the turn", so its face asks for the check here; the destroy
- * before this effect is whole, so this is R59's check between two effects, never one between the
- * hits of one. A check that ends the game ends the effect with it. Off by default, so every other
- * list, base #96's included, plays out exactly as before.
+ * #96 destroys the attacker it stopped and then hands the turn over, and R283 has the AI take over a
+ * settled board, so its face asks for `settleBeforePlayout` here: the check collects the attacker,
+ * the traps answer what it said, and the ordinary triggers it woke resolve — a #89 Corpse Eater in
+ * the AI's hand eats the attacker before the AI can play it (R212 would have it answer nothing
+ * once it has moved). The destroy before this effect is whole, so this is R59's check between two
+ * effects, never one between the hits of one. A check that ends the game ends the effect with it,
+ * and a question it opens leaves the AI turn to `playOutTurn`, which owes it behind the answer.
+ * Off by default, so every other list, base #96's included, plays out exactly as before.
  *
  * IMPORT CYCLE, deliberately static: this module → `../subsystems/aiPolicy` → `../reduce` →
  * `./playSteps` → `./effects` (the barrel) → this module. It is safe as written because the only
@@ -206,10 +220,33 @@ export function aiPlaysOutTurn(args: { player?: PlayerSpec; settleFirst?: boolea
       if (ctx.state.active !== player || ctx.state.result !== null) return;
       ctx.state.players[player].aiTurn = true;
       if (args.settleFirst === true) {
-        stateCheck(ctx);
+        settleBeforePlayout(ctx);
         if (ctx.state.result !== null) return;
       }
       playOutTurn(ctx, player);
     },
   };
+}
+
+/**
+ * R283: what the list before an AI turn has done, settled before the AI acts — the state check, the
+ * traps' answers to its events, and the ordinary triggers those events woke, each followed by the
+ * check again (§10.3, §4.5, R59) — as the loop settles between two actions of a turn, which the AI's
+ * are. Only the triggers woken here run: whatever the enclosing action had queued before this list
+ * keeps its place and waits for that action's own loop (R117). Stops at a question or a result.
+ */
+function settleBeforePlayout(ctx: EffectContext): void {
+  const sink: SettleSink = ctx;
+  const waiting = new Set(ctx.state.triggerQueue.map((entry) => entry.id));
+  for (let pass = 0; pass < SETTLE_PASS_CAP; pass += 1) {
+    stateCheck(sink);
+    if (ctx.state.result !== null || paused(sink)) return;
+    dispatchPending(sink);
+    if (ctx.state.result !== null || paused(sink)) return;
+    const at = ctx.state.triggerQueue.findIndex((entry) => !waiting.has(entry.id));
+    if (at < 0) return;
+    const [woken] = ctx.state.triggerQueue.splice(at, 1);
+    if (woken !== undefined) runQueuedTrigger(sink, woken);
+  }
+  throw new Error(`the board before the AI turn did not settle in ${SETTLE_PASS_CAP} passes (R283)`);
 }

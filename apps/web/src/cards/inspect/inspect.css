@@ -404,8 +404,7 @@
 /* R277 on a dark panel: the same gold, bold, underlined mark as on the face, in the bright gold
    (13:1 on these panels) over a fainter band. */
 .inspect-rules .cf-mark,
-.inspect-printed .cf-mark,
-.inspect-refs .cf-mark {
+.inspect-printed .cf-mark {
   color: var(--mark-ink-on-dark);
   text-decoration-color: var(--mark-ink-on-dark);
   background: linear-gradient(transparent 60%, rgb(255 210 74 / 0.22) 60%);

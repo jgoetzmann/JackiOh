@@ -496,6 +496,31 @@ describe("#50 Kpop Fanatic radiant — R282 the rider lands only on a card the s
   });
 });
 
+describe("#50 Kpop Fanatic — R282 the rider is the face its Cry ran", () => {
+  it("R282 a base Kpop Fanatic made Radiant after its Cry steals without the rider", () => {
+    // The delayed steal carries the face the Cry resolved with (§10.6, R126): the base face's steal
+    // has no rider, whatever the Fanatic is by the time it fires. (A Radiant one that has died since
+    // still applies its rider: "radiant: Divine Shield eats the first hit …" above.)
+    const g = scenario({
+      p1: { hand: [KPOP, { def: "core-029", radiant: true }, FILLER], library: [...LIBRARY], mana: 20 },
+      p2: { hand: [FILLER], field: [{ def: SEVEN_SEVEN, lane: 2 }], library: [...LIBRARY] },
+    });
+    const prey = g.unit("p2", 2);
+    if (prey === null) throw new Error("setup: p2 should hold the 7/7 in lane 2");
+    g.play(KPOP, { targets: [{ pick: "instance", instanceId: prey.id }] });
+    // Radiant GIGA Glowy Jelly Bean makes every permanent p1 controls Radiant, the Fanatic included.
+    g.play("core-029");
+    expect(g.card(KPOP).radiant).toBe(true);
+
+    untilActive(g, "p2");
+    untilActive(g, "p1");
+
+    expect(g.card(prey).controller).toBe("p1");
+    expect(g.card(prey).radiant).toBe(false);
+    expect(radiantSetOn(g, prey.id)).toBe(false);
+  });
+});
+
 const SAINTESS = "core-081";
 const SURGERY = "core-063";
 

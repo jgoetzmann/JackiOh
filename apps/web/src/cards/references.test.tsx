@@ -3,6 +3,7 @@
 // named card's printed face in a tooltip; and the hover preview lists the named faces beside it.
 
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CATALOG } from "@jackioh/cards";
@@ -131,7 +132,14 @@ describe("R279 a reference that is a control opens the card it names", () => {
     expect(screen.queryByTestId(REF_TOOLTIP_TESTID)).toBeNull();
   });
 
-  it("R279 a tap opens it and a second tap closes it, and the tap goes no further", () => {
+  function maskRef(container: HTMLElement): HTMLElement {
+    const ref = container.querySelector<HTMLElement>('.cf-ref[data-ref="core-065-1"]');
+    if (ref === null) throw new Error("no Spikey Pillow reference");
+    return ref;
+  }
+
+  it("R279 a tap opens it and a second tap closes it, the press's focus included, and the tap goes no further", async () => {
+    const user = userEvent.setup();
     const outer = vi.fn();
     const { container } = render(
       <div onClick={outer}>
@@ -142,13 +150,40 @@ describe("R279 a reference that is a control opens the card it names", () => {
         </CardDefsProvider>
       </div>,
     );
-    const ref = container.querySelector<HTMLElement>('.cf-ref[data-ref="core-065-1"]');
-    if (ref === null) throw new Error("no Spikey Pillow reference");
-    fireEvent.click(ref);
+    const ref = maskRef(container);
+    // A real tap: pointerdown, the focus it gives, pointerup, click — the focus opening it must not
+    // be undone by the click that ends the same press.
+    await user.pointer({ keys: "[TouchA]", target: ref });
     expect(screen.getByTestId(REF_TOOLTIP_TESTID)).toHaveAttribute("data-ref", "core-065-1");
-    fireEvent.click(ref);
+    await user.pointer({ keys: "[TouchA]", target: ref });
     expect(screen.queryByTestId(REF_TOOLTIP_TESTID)).toBeNull();
     expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("R279 a mouse click opens it and leaves it open; a press anywhere else closes it", async () => {
+    const user = userEvent.setup();
+    const { container } = renderInteractive("core-065", false);
+    await user.click(maskRef(container));
+    expect(screen.getByTestId(REF_TOOLTIP_TESTID)).toHaveAttribute("data-ref", "core-065-1");
+    await user.pointer({ keys: "[MouseLeft]", target: document.body });
+    expect(screen.queryByTestId(REF_TOOLTIP_TESTID)).toBeNull();
+  });
+
+  it("R279 Escape closes an open tooltip and leaves the detail view open; the next Escape closes the view", () => {
+    const onClose = vi.fn();
+    render(
+      <CardDefsProvider defs={CATALOG}>
+        <CardDetail def={def("core-090")} onClose={onClose} />
+      </CardDefsProvider>,
+    );
+    const ref = screen.getByTestId(INSPECT_DETAIL).querySelector<HTMLElement>('.cf-ref[data-ref="core-090-1"]');
+    act(() => ref?.focus());
+    expect(screen.getByTestId(REF_TOOLTIP_TESTID)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId(REF_TOOLTIP_TESTID)).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("R279 the collection's detail view makes its references controls", () => {
@@ -192,8 +227,8 @@ describe("R279 the hover preview lists the named cards beside the face", () => {
       entry.getAttribute("data-ref"),
       entry.getAttribute("data-ref-face"),
     ]);
+    // The card itself ("cast a random Call to Chaos") is left out: the preview already shows it.
     expect(named).toEqual([
-      ["core-095", "base"],
       ["core-t-rush", "radiant"],
       ["core-095-1", "base"],
     ]);

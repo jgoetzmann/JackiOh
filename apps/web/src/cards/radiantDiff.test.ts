@@ -14,6 +14,7 @@ import type { CardDef } from "@jackioh/shared";
 
 import { CardFace } from "./CardFace.tsx";
 import { faceModel } from "./model.ts";
+import { CardDefsProvider } from "./refContext.tsx";
 import { markedText, radiantMarks } from "./radiantDiff.ts";
 
 afterEach(cleanup);
@@ -78,11 +79,15 @@ describe("R277 the word diff", () => {
 });
 
 describe("R277 every Radiant face renders its marks gold, bold and underlined", () => {
-  it("R277 every catalog card's Radiant face shows each marked stretch in a .cf-mark, and its base face none", () => {
+  it("R277 R279 every catalog card's Radiant face shows each marked stretch in a .cf-mark, references and all, and its base face none", () => {
     for (const card of DEFS) {
       const expected = marks(card.base.text, card.radiant.text);
+      // Inside the catalog, so the names its refs link are references and nest with the marks.
       const { container, unmount } = render(
-        createElement(CardFace, { face: faceModel({ defId: card.id, def: card, radiant: true }), layout: "full" }),
+        createElement(CardDefsProvider, {
+          defs: CATALOG,
+          children: createElement(CardFace, { face: faceModel({ defId: card.id, def: card, radiant: true }), layout: "full" }),
+        }),
       );
       const shown = [...container.querySelectorAll(".cf-mark")].map((mark) => mark.textContent);
       expect(shown.join("|"), card.id).toBe(expected.join("|"));

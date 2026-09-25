@@ -4,9 +4,12 @@
 // at (`data-ref`, `data-ref-face`). Where the surface makes references controls (`RefsInteractive`:
 // the collection's detail view, the touch inspect sheet), it is also focusable, and it shows the
 // named card's printed face in a tooltip beside it: after a mouse or pen rests on it for
-// REF_HOVER_DELAY_MS, at once when the keyboard focuses it, and on a tap or a press on a touch
+// REF_HOVER_DELAY_MS, at once when the keyboard focuses it, on a click, and on a tap on a touch
 // screen. The tooltip is a portal at the end of <body> with `role="tooltip"`, and the reference is
-// `aria-describedby` it while it is open. Leaving, blurring, Escape, or tapping again closes it.
+// `aria-describedby` it while it is open. Leaving, blurring, Escape, a press anywhere else, or
+// tapping it again closes it; a scroll or a resize moves it with its reference. Escape closes the
+// tooltip alone: the detail view and the sheet leave their own Escape to an open reference
+// (`inspect/store.ts`).
 //
 // Elsewhere — a face inside a button, the hover preview, a small board face — the mark is all it
 // is, and the hover preview lists the named cards beside the face instead (References.tsx).
@@ -29,6 +32,9 @@ export type CardRefProps = { def: CardDef; radiant: boolean; children: ReactNode
 export const REF_TOOLTIP_TESTID = "card-ref-tooltip";
 
 type Timer = ReturnType<typeof setTimeout>;
+
+/** The press a click belongs to: a touch toggles, anything else opens. */
+type Press = { touch: boolean; wasOpen: boolean };
 
 function rectOf(element: Element): Rect {
   const box = element.getBoundingClientRect();
@@ -64,6 +70,7 @@ export function CardRef({ def, radiant, children }: CardRefProps): ReactElement 
   const tooltipId = useId();
   const ref = useRef<HTMLSpanElement>(null);
   const timer = useRef<Timer | null>(null);
+  const press = useRef<Press | null>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
 
   const clearTimer = (): void => {
@@ -81,22 +88,35 @@ export function CardRef({ def, radiant, children }: CardRefProps): ReactElement 
 
   useEffect(() => clearTimer, []);
 
-  // While open: Escape, a scroll or a resize closes it, since its anchor would have moved.
+  // While open: Escape or a press anywhere else closes it, and a scroll or a resize moves it with
+  // its reference (focusing a reference can scroll the dialog it is in, and must not close it).
+  const isOpen = anchor !== null;
   useLayoutEffect(() => {
-    if (anchor === null) return undefined;
+    if (!isOpen) return undefined;
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") close();
     };
-    const onMove = (): void => close();
+    const onPressElsewhere = (event: PointerEvent): void => {
+      const element = ref.current;
+      if (element !== null && event.target instanceof Node && element.contains(event.target)) return;
+      close();
+    };
+    const onMove = (): void => {
+      const element = ref.current;
+      if (element !== null && element.isConnected) setAnchor(rectOf(element));
+      else close();
+    };
     window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onPressElsewhere, true);
     window.addEventListener("scroll", onMove, true);
     window.addEventListener("resize", onMove);
     return () => {
       window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", onPressElsewhere, true);
       window.removeEventListener("scroll", onMove, true);
       window.removeEventListener("resize", onMove);
     };
-  }, [anchor]);
+  }, [isOpen]);
 
   const common = {
     ref,
@@ -123,14 +143,22 @@ export function CardRef({ def, radiant, children }: CardRefProps): ReactElement 
           if (event.pointerType === "touch") return;
           close();
         }}
+        onPointerDown={(event) => {
+          // Read before the press focuses the reference, which opens it: the click that ends this
+          // press must know whether it was already open.
+          press.current = { touch: event.pointerType === "touch", wasOpen: anchor !== null };
+        }}
         onFocus={open}
         onBlur={close}
         onClick={(event) => {
-          // A tap (or a click with no hover first) opens it; a second one closes it. The click
-          // never reaches a card underneath, which would otherwise take it as a pick.
+          // A click opens it (the press's focus may already have); a tap on a touch screen that
+          // finds it open closes it. The click never reaches a card underneath, which would
+          // otherwise take it as a pick.
           event.stopPropagation();
-          if (anchor === null) open();
-          else close();
+          const pressed = press.current;
+          press.current = null;
+          if (pressed !== null && pressed.touch && pressed.wasOpen) close();
+          else open();
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;

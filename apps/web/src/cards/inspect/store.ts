@@ -182,6 +182,9 @@ export function useModalOverlay(onClose: () => void, focusRef: RefObject<HTMLEle
         return;
       }
       if (event.key !== "Escape") return;
+      // R279: Escape over an open reference's tooltip closes the tooltip alone (CardRef.tsx).
+      const dialog = focusRef.current?.closest('[role="dialog"]') ?? null;
+      if (dialog !== null && dialog.querySelector('[data-ref-open="true"]') !== null) return;
       restoreFocus(restoreRef.current);
       onCloseRef.current();
     };

@@ -29,11 +29,12 @@ import type { CardInstance, GameState } from "./state";
 import { isBuried } from "./zones";
 
 /**
- * R33, §10.8: a backrow Trap or Field Trap is read by its controller alone until it is turned
- * face-up; every other backrow card is public. The same rule `viewFor.backrowIsPublic` shows the
- * card by, restated here so that this module refuses on its own what the view would not show.
+ * §10.8: "traps show as unknown, Field Spells are public". A backrow Trap or Field Trap is readable
+ * by its current controller only until it flips face-up, which is what R33 keys on `controller`.
+ * The one rule both `viewFor` (what a view shows of a backrow card) and this module (what a preview
+ * may be asked about) read, so the two cannot drift apart.
  */
-function readableInBackrow(state: GameState, card: CardInstance, viewer: PlayerId): boolean {
+export function backrowIsPublic(state: GameState, card: CardInstance, viewer: PlayerId): boolean {
   const type = defOf(state, card.defId).type;
   if (type !== "Trap" && type !== "Field Trap") return true;
   return card.faceUp === true || card.controller === viewer;
@@ -45,7 +46,7 @@ function mayPreview(state: GameState, card: CardInstance, viewer: PlayerId, zone
   if (zone === "hand") return at.z === "hand" && at.player === viewer;
   if (at.z !== "field") return false;
   if (at.row === "units") return !isBuried(state, card);
-  return readableInBackrow(state, card, viewer);
+  return backrowIsPublic(state, card, viewer);
 }
 
 /**

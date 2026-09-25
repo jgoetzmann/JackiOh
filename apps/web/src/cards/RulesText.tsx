@@ -10,8 +10,9 @@
 //   and a control where the surface allows one (refContext.tsx); a term inside a name is not bolded,
 //   since the name is the card, not the keyword ("Rush Token");
 // - in play, what the card's formula comes to now (`values`, R280), in braces after its label,
-//   "{7}" (`.cf-value`); entries sharing a label share one pair of braces, "{2/3}", and a label the
-//   text does not print puts its value at the end.
+//   "{7}" (`.cf-value`): the nth entry with a label after the label's nth occurrence (a fused card
+//   prints its ingredients' texts one after the other, R102, and each one's value follows its own
+//   line), and one the text does not print that often at the end.
 //
 // A mark and a reference nest: a mark that holds a whole name holds its reference ("Also add a
 // Lava Golem …"), a mark inside a name sits inside the reference ("Rush Tokens"' marked "Tokens"),
@@ -46,16 +47,20 @@ type Term = { start: number; end: number; term: string };
 type Wrap = { start: number; end: number } & ({ kind: "mark" } | { kind: "ref"; match: RefMatch; def: CardDef });
 
 const NONE: readonly never[] = [];
-/** How several values sharing one label are joined inside one pair of braces. */
-const VALUE_JOIN = "/";
-
-/** R280: each label's values, placed after the label's first occurrence, else at the end. */
+/** R280: each value after its label's nth occurrence for the nth entry with that label, else at the end. */
 function insertsOf(text: string, values: readonly PreviewValue[]): Insert[] {
-  const byLabel = new Map<string, number[]>();
-  for (const entry of values) byLabel.set(entry.label, [...(byLabel.get(entry.label) ?? []), entry.value]);
-  return [...byLabel].map(([label, numbers]) => {
-    const found = label === "" ? -1 : text.indexOf(label);
-    return { at: found < 0 ? text.length : found + label.length, text: numbers.join(VALUE_JOIN), label };
+  const seen = new Map<string, number>();
+  return values.map((entry) => {
+    const nth = seen.get(entry.label) ?? 0;
+    seen.set(entry.label, nth + 1);
+    let found = -1;
+    if (entry.label !== "") {
+      for (let at = 0; at <= nth; at += 1) {
+        found = text.indexOf(entry.label, found + 1);
+        if (found < 0) break;
+      }
+    }
+    return { at: found < 0 ? text.length : found + entry.label.length, text: String(entry.value), label: entry.label };
   });
 }
 
@@ -123,7 +128,7 @@ export function RulesText({ text, marks = NONE, refs = NONE, values = NONE }: Ru
         return (
           <Fragment key={next()}>
             {" "}
-            <span className="cf-value" data-value={insert.text} data-label={insert.label} aria-label={`currently ${insert.text}`}>
+            <span className="cf-value" data-value={insert.text} data-label={insert.label} title={`${insert.label}: currently ${insert.text}`}>
               {`{${insert.text}}`}
             </span>
           </Fragment>

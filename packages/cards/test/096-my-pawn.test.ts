@@ -189,35 +189,10 @@ describe("#96 My Pawn — whose attack it answers", () => {
   });
 });
 
-describe("#96 My Pawn — the body of the trap", () => {
-  it.todo(
-    "R44 cancels the declared attack so no combat resolves and `attackCancelled` is emitted — " +
-      "blocked on a `cancelAttack()` effect, on `GameState.declaredAttack` (§10.1), and on " +
-      "`combat.declareAttack` opening §4.2 step 4's trap window before `resolveCombat`",
-  );
-
-  it.todo(
-    "R44 the attacker's exertion is not given back, so the attack is gone either way — " +
-      "blocked on the same trap window",
-  );
-
-  it.todo(
-    "R44, R84 an AI plays the rest of the opponent's turn with random legal actions, the same " +
-      "actions for the same seed, never `concede`/`offerDraw`/`answerDraw` (AI_SKIPPED_ACTIONS) — " +
-      "blocked on an `aiPlaysOutTurn()` effect over `subsystems/aiPolicy.playOutTurn`",
-  );
-
-  it.todo(
-    "R44 the opponent's client is locked out until end of turn (`aiTurn` on their PlayerState) — " +
-      "blocked on nothing in the engine ever setting `aiTurn` true (`turn.ts` only clears it)",
-  );
-
-  it.todo(
-    "§3.2, R33 the trap is consumed and face-up once it fires, and a non-lethal declaration leaves " +
-      "it armed and face-down — blocked on `reduce`'s `attack` case, which still answers 'combat " +
-      "arrives with M2', so no `attackDeclared` event reaches `traps.fireTrapsFor` in a scenario",
-  );
-});
+// The body of the base trap — R44's cancel with the exertion spent, R84's policy playing the rest of
+// the turn, R152's lockout and the trap going to the graveyard once the turn it gave has ended — is
+// proved where its machinery is: packages/engine/test/effects-combat.test.ts and my-pawn.test.ts,
+// and spec 07 in a browser. The radiant face's addition is proved below.
 
 // ---------------------------------------------------------------------------------------------
 // Radiant: "cancel it, destroy the attacker, and an AI plays the rest of their turn" (R283)
@@ -233,6 +208,10 @@ const JILLIAX = "core-056";
 const STOCKPILE = "core-005";
 const TIMMY = "core-011";
 const GIGA = "core-029";
+/** #3 Right-house defender, 1/1 Taunt, Divine Shield, Reborn: a lethal swing at a 1-health hero. */
+const RIGHT_HOUSE = "core-003";
+/** #89 Corpse Eater: in hand, it gains the attack and max health of each unit that dies (R38). */
+const CORPSE_EATER = "core-089";
 
 /**
  * p1 swings `attacker` from lane 1 at p2's hero, which is at `health` behind a face-down My Pawn of
@@ -325,6 +304,70 @@ describe("#96 My Pawn — radiant (R283)", () => {
     expect(eventsOn(s, attacker.id, "destroyed")).toBe(0);
     s.expectInZone(attacker, "field");
     turnWentOn(s, "p1");
+  });
+
+  it("R283 the attacker's death is answered before the AI takes the turn: a Corpse Eater in the AI's hand eats it first", () => {
+    // #89 in p1's hand, with the mana to play it: the AI may well play it, and R212 would have a card
+    // that has moved since the death answer nothing — so the death has to be dispatched, and the
+    // Eater's hand trigger run, before the AI's first action.
+    const s = scenario({
+      seed: "my-pawn-r283-eater",
+      p1: { field: [SORCERER], hand: [CORPSE_EATER, STOCKPILE], library: [GIGA, GIGA, GIGA], mana: 4 },
+      p2: {
+        health: 5,
+        hand: [STOCKPILE],
+        backrow: [{ def: MY_PAWN, lane: 1, faceUp: false, radiant: true }],
+        library: [GIGA, GIGA],
+      },
+    });
+    const eater = s.card(CORPSE_EATER);
+    const attacker = s.unit("p1", 1);
+    if (attacker === null) throw new Error("p1 should have an attacker in lane 1");
+    s.attack(attacker, "hero");
+
+    // The Sorcerer's 5 attack and 5 max health, gained while the Eater was still in hand (R38, R89).
+    expect(s.card(eater).buffs).toEqual({ attack: 5, health: 5 });
+    const types = s.events.map((event) => event.type);
+    const fed = s.events.findIndex((event) => event.type === "buffed" && event.instanceId === eater.id);
+    const aiActs = s.events.findIndex(
+      (event, at) => at > types.indexOf("attackCancelled") && (event.type === "cardPlayed" || event.type === "turnEnded"),
+    );
+    expect(fed).toBeGreaterThan(types.indexOf("destroyed"));
+    expect(fed).toBeLessThan(aiActs);
+    turnWentOn(s, "p1");
+  });
+
+  it("R283, R174 a Radiant My Pawn fused onto a Radiant My Pawn destroys the attacker once, not its Reborn body again", () => {
+    // p2's My Pawn, set, is fused by p1's #85 onto p1's Radiant My Pawn (R61, R77): one trap with
+    // both texts, whose second half runs after the first has played p2's turn out (R102).
+    const s = scenario({
+      seed: "my-pawn-r283-fused",
+      active: "p2",
+      turn: 10,
+      p1: {
+        health: 1,
+        field: ["core-008"],
+        // A library, so p1's own draw after the AI turn takes no fatigue and the game goes on.
+        library: [GIGA, GIGA],
+        backrow: [
+          { def: MY_PAWN, faceUp: false, radiant: true },
+          { def: "core-085", faceUp: false },
+        ],
+      },
+      p2: { hand: [MY_PAWN], field: [RIGHT_HOUSE], mana: 4 },
+    });
+    s.play(MY_PAWN);
+    expect(s.backrow("p1", 1)?.defId).toMatch(/core-096\+core-096$/);
+
+    const attacker = s.unit("p2", 1);
+    if (attacker === null) throw new Error("p2 should have its Right-house defender in lane 1");
+    s.attack(attacker, "hero");
+
+    // The first half destroyed it and it came back through Reborn; the second half finds the
+    // attacker gone from the stay the declaration named, and leaves the new body alone (R174).
+    expect(eventsOn(s, attacker.id, "destroyed")).toBe(1);
+    s.expectInZone(attacker, "field");
+    expect(s.card(attacker).rebornSpent).toBe(true);
   });
 
   it("the base face does not destroy the attacker: it only cancels and hands the turn over", () => {

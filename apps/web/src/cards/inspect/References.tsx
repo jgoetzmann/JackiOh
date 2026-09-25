@@ -17,9 +17,13 @@ import { RefsInteractive, useDefResolver } from "../refContext.tsx";
 import { findRefs } from "../refs.ts";
 import { INSPECT_REFS } from "./testids.ts";
 
-/** The named cards of a face, in the order its text first names them, each once per face. */
+/**
+ * The named cards of a face, in the order its text first names them, each once per face — the card
+ * itself left out, since the preview already shows it (#3's "base Right-house defender", #95's
+ * "Call to Chaos").
+ */
 export function namedCards(face: FaceModel, resolve: (id: string) => CardDef | undefined): { def: CardDef; radiant: boolean }[] {
-  const defs = face.refs.flatMap((id) => resolve(id) ?? []);
+  const defs = face.refs.filter((id) => id !== face.defId).flatMap((id) => resolve(id) ?? []);
   const seen = new Set<string>();
   const out: { def: CardDef; radiant: boolean }[] = [];
   for (const match of findRefs(face.text.full, defs)) {

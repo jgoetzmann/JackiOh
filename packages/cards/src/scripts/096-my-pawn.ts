@@ -55,20 +55,22 @@
 // `aiPlaysOutTurn` last for a second reason `effects/combat.ts` spells out: the playout replaces
 // every instance in the state, so no effect after it may hold a `CardInstance` read before it.
 //
-// THE RADIANT FACE (R283) puts one effect between the two: "destroy the attacker", after the cancel
-// and before the AI turn. It is an ordinary §6.3 destroy — a mark the state check collects — so an
-// Indestructible attacker is knocked down instead (R46) and a Reborn one comes back, and the attack
-// is cancelled either way (R44). The attacker is named by the id the declaration carries, so the
-// destroy is aimed at the stay it attacked from (R174) and fizzles if it has somehow left since.
+// THE RADIANT FACE (R283) adds "destroy the attacker", after the cancel and before the AI turn. It is
+// an ordinary §6.3 destroy — a mark the state check collects — so an Indestructible attacker is
+// knocked down instead (R46) and a Reborn one comes back, and the attack is cancelled either way
+// (R44). It rides on the cancel (`cancelAttack({ destroyAttacker })`), which names the attacker of
+// the declaration it cancels, on the stay it declared from (R174), and happens only where the cancel
+// does: a Radiant My Pawn fused onto a Radiant My Pawn runs its second half once the first has played
+// the turn out and the window has closed (R102), and so destroys the Reborn body of nothing.
 // R283 has the state check collect it before the AI takes the turn: the destroy is in its place in
 // the list, and `aiPlaysOutTurn`'s `settleFirst` runs the check before the playout's first action,
 // so the AI acts from a board the attacker has already left. The base face has nothing to settle
 // and keeps the playout exactly as it was.
 
-import type { Effect, Script, TrapTrigger } from "@jackioh/engine";
+import type { Script, TrapTrigger } from "@jackioh/engine";
 import { attackTargetOf, findInstance, subsystems } from "@jackioh/engine";
-import { aiPlaysOutTurn, cancelAttack, destroy } from "@jackioh/engine/effects";
-import { opponentOf, type GameEvent } from "@jackioh/shared";
+import { aiPlaysOutTurn, cancelAttack } from "@jackioh/engine/effects";
+import { opponentOf } from "@jackioh/shared";
 import { cardDef } from "../catalog-data";
 
 export const def = cardDef("core-096");
@@ -99,12 +101,6 @@ const wouldBeLethal: NonNullable<TrapTrigger["when"]> = (ctx) => {
   return subsystems.isLethal(ctx.state, attacker, target);
 };
 
-/** R283: the radiant face's "destroy the attacker", aimed at the declaration's attacker by id. */
-function destroyTheAttacker(event: GameEvent): Effect[] {
-  if (event.type !== "attackDeclared") return [];
-  return [destroy({ target: { of: "instance", instanceId: event.attackerId } })];
-}
-
 /** `destroysAttacker` is the whole of the radiant text (R283). */
 function myPawn(destroysAttacker: boolean): TrapTrigger {
   return {
@@ -113,9 +109,8 @@ function myPawn(destroysAttacker: boolean): TrapTrigger {
     when: wouldBeLethal,
     // §8.5's clauses in its order. `player: "enemy"` is the attacker's side relative to the trap's
     // controller, which the predicate above has already established.
-    run: (ctx) => [
-      cancelAttack(),
-      ...(destroysAttacker ? destroyTheAttacker(ctx.event) : []),
+    run: () => [
+      cancelAttack(destroysAttacker ? { destroyAttacker: true } : {}),
       aiPlaysOutTurn({ player: "enemy", ...(destroysAttacker ? { settleFirst: true } : {}) }),
     ],
   };

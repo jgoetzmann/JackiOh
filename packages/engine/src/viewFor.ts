@@ -73,7 +73,7 @@ import {
 } from "./state";
 import { syncFusedScripts } from "./subsystems/fuse";
 import { powerCostOf, powerOf, usedThisTurn } from "./subsystems/heroPower";
-import { previewOf } from "./preview";
+import { backrowIsPublic, previewOf } from "./preview";
 import { returnedAwaitingShuffle } from "./setup";
 import { isReserved, slotsOf } from "./zones";
 
@@ -103,17 +103,6 @@ export const HIDDEN_OPTION_LABEL = "Face-down card";
 // ---------------------------------------------------------------------------
 // Visibility
 // ---------------------------------------------------------------------------
-
-/**
- * §10.8: "traps show as unknown, Field Spells are public". A backrow Trap or Field Trap is readable
- * by its current controller only until it flips face-up, which is what R33 keys on `controller`.
- */
-function backrowIsPublic(state: GameState, card: CardInstance, viewer: PlayerId): boolean {
-  const type = defOf(state, card.defId).type;
-  if (type !== "Trap" && type !== "Field Trap") return true;
-  if (card.faceUp === true) return true;
-  return card.controller === viewer;
-}
 
 /** §10.8, R33: a card in the backrow that this viewer sees only as a face-down card. */
 function isFaceDownTo(state: GameState, card: CardInstance, viewer: PlayerId): boolean {

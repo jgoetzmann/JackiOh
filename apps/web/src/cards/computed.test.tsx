@@ -16,7 +16,7 @@ import Board from "../game/Board.tsx";
 import { CatalogContext, lookupFromDefs } from "../game/catalog.ts";
 import { testid } from "../game/contract.ts";
 import { __resetSettingsForTests } from "../settings/store.ts";
-import { baseView, card, emptySide, faceUpBackrow, unit } from "../test/fixtures.ts";
+import { baseView, card, emptySide, faceUpBackrow, fusedDef, unit } from "../test/fixtures.ts";
 import { CardFace } from "./CardFace.tsx";
 import { CardDetail } from "./inspect/CardDetail.tsx";
 import { HOVER_DELAY_MS } from "./inspect/constants.ts";
@@ -101,7 +101,7 @@ describe("R280 what a formula comes to now", () => {
     expect(values(hand)).toEqual(["{2}"]);
     expect(hand.querySelector(".card-text")?.textContent).toContain("Deal Fib(cost+1) {2} damage to a target");
     const value = hand.querySelector(".cf-value");
-    expect(value).toHaveAttribute("aria-label", "currently 2");
+    expect(value).toHaveAttribute("title", "Fib(cost+1): currently 2");
     expect(value).toHaveAttribute("data-label", "Fib(cost+1)");
     // Its hover preview prints the same.
     expect(values(hover(hand))).toEqual(["{2}"]);
@@ -117,24 +117,27 @@ describe("R280 what a formula comes to now", () => {
     expect(echoes.querySelector(".card-text")?.textContent).toContain("equal to twice the cards in your exile {6}");
   });
 
-  it("R280 values that share a label share one pair of braces, and a label the text lacks goes at the end", () => {
+  it("R280 R102 a fused card's values follow their own lines: the nth entry with a label after its nth occurrence", () => {
+    // #85 fusing a Fed Fauci onto a Fed Fauci: one text per ingredient, and one value each.
+    const fused = fusedDef([def("core-091"), def("core-091")]);
     const face = faceModel({
-      defId: "core-092",
-      def: def("core-092"),
+      defId: fused.id,
+      def: fused,
       radiant: false,
       inPlay: {
         preview: [
-          { label: "the combined stats of all your Felinors", value: 2 },
-          { label: "the combined stats of all your Felinors", value: 3 },
+          { label: "+1 mana per Plague Token", value: 2 },
+          { label: "+1 mana per Plague Token", value: 3 },
           { label: "not on this card", value: 9 },
         ],
       },
     });
     const { container } = render(<CardFace face={face} layout="full" />);
-    expect(values(container)).toEqual(["{2/3}", "{9}"]);
-    const text = container.querySelector(".card-text")?.textContent ?? "";
-    expect(text).toContain("the combined stats of all your Felinors {2/3}");
-    expect(text.endsWith("{9}")).toBe(true);
+    expect(values(container)).toEqual(["{2}", "{3}", "{9}"]);
+    const lines = (container.querySelector(".card-text")?.textContent ?? "").split("\n");
+    expect(lines[0]).toContain("+1 mana per Plague Token {2}");
+    expect(lines[1]).toContain("+1 mana per Plague Token {3}");
+    expect(lines[1]?.endsWith("{9}")).toBe(true);
   });
 
   it("R280 the collection prints no value, and a face in play with no preview prints none", () => {
