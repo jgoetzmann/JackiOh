@@ -42,7 +42,7 @@ function reasonText(outcome: PracticeOutcome, reason: GameOverReason): string {
     case "turn-cap":
       return "The turn limit was reached.";
     case "draw-accepted":
-      return "A draw was agreed.";
+      return "Game drawn by agreement.";
     case "disconnect":
     case "match-ceiling":
       return "The game has ended.";

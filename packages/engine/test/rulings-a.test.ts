@@ -559,21 +559,30 @@ describe("SPEC §11 rulings R1–R42 (M3 gate)", () => {
   });
 
   it("R9 draws the mulligan replacements before the returned cards are shuffled back in", () => {
+    // p2's mulligan, so p1's turn-1 draw leaves the hand under test alone. The answers are sealed
+    // until both are in (R265), so p1 keeps its hand to let p2's resolve.
     const state = beginGame(game("r9")).state;
-    const hand = state.players.p1.hand;
+    const hand = state.players.p2.hand;
     const returned = at(hand, 0);
     const keep = hand.slice(1).map((card) => card.id);
-    const replacement = at(state.players.p1.library, 0);
+    const replacement = at(state.players.p2.library, 0);
 
-    const result = reduce(state, { type: "mulligan", keep, playerId: "p1", nonce: "r9-mull" });
+    const sealed = reduce(state, { type: "mulligan", keep, playerId: "p2", nonce: "r9-mull" });
+    expect(sealed.error).toBeUndefined();
+    const result = reduce(sealed.state, {
+      type: "mulligan",
+      keep: state.players.p1.hand.map((card) => card.id),
+      playerId: "p1",
+      nonce: "r9-keep",
+    });
     expect(result.error).toBeUndefined();
 
-    const newHand = result.state.players.p1.hand.map((card) => card.id);
+    const newHand = result.state.players.p2.hand.map((card) => card.id);
     expect(newHand).toHaveLength(hand.length);
     // The replacement came off the top, before the returned card went back, so it cannot be redrawn.
     expect(newHand).toContain(replacement.id);
     expect(newHand).not.toContain(returned.id);
-    expect(result.state.players.p1.library.some((card) => card.id === returned.id)).toBe(true);
+    expect(result.state.players.p2.library.some((card) => card.id === returned.id)).toBe(true);
   });
 
   it("R10 gives the first player their turn-1 draw", () => {

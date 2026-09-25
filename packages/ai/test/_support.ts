@@ -23,6 +23,7 @@ import {
   subsystems,
   type CardInstance,
   type GameState,
+  seatToAct,
 } from "@jackioh/engine";
 import { registerAll } from "@jackioh/cards";
 import { scenario, type ScenarioOptions } from "../../cards/test/_harness";
@@ -195,7 +196,7 @@ export function randomPolicyStates(seed: string, every: number, maxActions = 150
   const policy = createRng(`ai-test-policy:${seed}`);
   const states: GameState[] = [state];
   for (let n = 0; state.result === null && n < maxActions; n += 1) {
-    const player = state.pending?.playerId ?? state.active;
+    const player = seatToAct(state);
     const chosen = subsystems.chooseAction(state, player, policy);
     if (chosen === null) break;
     const result = reduce(state, { ...chosen, playerId: player, nonce: `rp-${n}` } as Action);

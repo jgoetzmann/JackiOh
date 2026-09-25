@@ -1,4 +1,5 @@
-// BUILD M5-T3, tested against a scripted `EnginePort`.
+// BUILD M5-T3, tested against a scripted `EnginePort` — and, at the end, against the real one for
+// the questions that move the device: the concurrent mulligan (R265) and a draw offer (R36).
 //
 // What this file owns is the LOOP — nonces, the log, the seat, the subscription — not the rules,
 // so the port below is a fake: a turn counter with a settable pending choice. Every assertion is
@@ -16,7 +17,10 @@ import { describe, expect, it } from "vitest";
 import type { Action, ActionBody, CardDef, CardDefs, GameEvent, PlayerId, PlayerView } from "@jackioh/shared";
 
 import { DECK_SIZE, byIndex, printedCost, resolveDeck, resolveDecks } from "./decks.ts";
+import { fold } from "@jackioh/engine";
+
 import type { EnginePort, EngineState, ReduceResult } from "./engine.ts";
+import { enginePort } from "./engine.real.ts";
 import { createHotseat } from "./hotseat.ts";
 import { baseView, emptySide } from "../test/fixtures.ts";
 
@@ -25,7 +29,7 @@ import { baseView, emptySide } from "../test/fixtures.ts";
 // ---------------------------------------------------------------------------------------------
 
 /** What the fake keeps. Not an `EngineState`: the session may not read it, so it is cast at the seam. */
-type FakeState = { turn: number; active: PlayerId; pendingFor: PlayerId | null };
+type FakeState = { turn: number; active: PlayerId; pendingFor: PlayerId | null; drawOfferBy?: PlayerId | null };
 
 type FakeEngine = {
   port: EnginePort;
@@ -130,6 +134,8 @@ function makeEngine(options: { pendingAfterBegin?: PlayerId | null; beginError?:
             : held.pendingFor === player
               ? { forYou: true, choiceId: "ch1", kind: "target", options: [], min: 1, max: 1, prompt: "Choose" }
               : { forYou: false, pendingFor: held.pendingFor },
+        // R269: the standing offer is on both seats' views.
+        ...(held.drawOfferBy === undefined || held.drawOfferBy === null ? {} : { drawOffer: { by: held.drawOfferBy } }),
       });
       return view;
     },
@@ -364,6 +370,71 @@ describe("seat switching", () => {
   });
 });
 
+describe("a draw offer hands the device over (§2.5, R36)", () => {
+  it("an offer from the seat holding the device hands it to the other seat, to answer", () => {
+    const fake = makeEngine();
+    const live = session(fake);
+    fake.nextEffect = (state) => {
+      state.drawOfferBy = "p1";
+    };
+    live.dispatch({ type: "offerDraw" });
+    expect(live.seat).toBe("p2");
+    expect(live.view().drawOffer).toEqual({ by: "p1" });
+  });
+
+  it("the answer hands it back to the player whose turn it is, accepted or declined", () => {
+    for (const accept of [false, true]) {
+      const fake = makeEngine();
+      const live = session(fake);
+      fake.nextEffect = (state) => {
+        state.drawOfferBy = "p1";
+      };
+      live.dispatch({ type: "offerDraw" });
+      fake.nextEffect = (state) => {
+        state.drawOfferBy = null;
+      };
+      live.dispatch({ type: "answerDraw", accept });
+      expect(live.log().at(-1)).toEqual(expect.objectContaining({ type: "answerDraw", accept, playerId: "p2" }));
+      expect(live.seat, `after ${accept ? "an acceptance" : "a decline"}`).toBe("p1");
+    }
+  });
+
+  it("an offer the other seat made does not move the device, and a manual switch is left alone", () => {
+    const fake = makeEngine();
+    const live = session(fake);
+    fake.nextEffect = (state) => {
+      state.drawOfferBy = "p2";
+    };
+    live.dispatch({ type: "endTurn" });
+    expect(live.seat, "the offer is p1's to answer, and p1 holds the device").toBe("p1");
+
+    // The answering seat may hand the device back to the offerer before answering.
+    fake.nextEffect = (state) => {
+      state.drawOfferBy = "p1";
+    };
+    live.dispatch({ type: "offerDraw" });
+    expect(live.seat).toBe("p2");
+    live.setSeat("p1");
+    expect(live.seat).toBe("p1");
+    // Only the offer hands the device over: the offerer plays on with the offer still standing,
+    // and the device stays put until the players pass it themselves (R269: it lapses with the turn).
+    fake.nextEffect = () => undefined;
+    live.dispatch({ type: "switchPosition", instanceId: "u1" });
+    expect(live.seat, "a later move by the offerer keeps the device").toBe("p1");
+  });
+
+  it("a prompt outranks an offer: the device goes to the seat the prompt waits on", () => {
+    const fake = makeEngine();
+    const live = session(fake);
+    fake.nextEffect = (state) => {
+      state.drawOfferBy = "p1";
+      state.pendingFor = "p1";
+    };
+    live.dispatch({ type: "offerDraw" });
+    expect(live.seat).toBe("p1");
+  });
+});
+
 describe("view() and legal()", () => {
   it("always ask for the seat holding the device, never a hardcoded p1", () => {
     const fake = makeEngine();
@@ -438,6 +509,121 @@ describe("state()", () => {
     live.dispatch({ type: "endTurn" });
     expect(live.state()).toBe(fake.current() as unknown as EngineState);
     expect(live.hash()).toBe(JSON.stringify(fake.current()));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// the real engine: the concurrent mulligan (R265) in either order, and a draw offer
+// ---------------------------------------------------------------------------------------------
+
+describe("with the real engine", () => {
+  const port = enginePort();
+  const catalog = port.catalog?.() ?? {};
+  const resolved = resolveDecks("first20", "cheap20", catalog);
+  if (!("decks" in resolved)) throw new Error(resolved.error);
+  const decks = resolved.decks;
+
+  function real(seed: string) {
+    return createHotseat({ seed, decks, engine: port, catalog });
+  }
+
+  /** The whole hand, kept (R9: `keep` names the cards kept). */
+  function keepAll(view: PlayerView): ActionBody {
+    const pending = view.pending;
+    if (pending === null || !pending.forYou || pending.kind !== "mulligan") throw new Error(`no mulligan for ${view.viewer}`);
+    return { type: "mulligan", keep: pending.options.map((option) => option.key) };
+  }
+
+  /** `log()` folded from scratch reaches the session's own hash (BUILD M5-T3). */
+  function expectFolds(live: ReturnType<typeof real>, seed: string): void {
+    const replayed = fold({ seed, decks, log: [...live.log()] });
+    expect(replayed.errors).toEqual([]);
+    expect(port.hashState(replayed.state as unknown as EngineState)).toBe(live.hash());
+  }
+
+  function hands(live: ReturnType<typeof real>): { p1: unknown; p2: unknown } {
+    const seat = live.seat;
+    live.setSeat("p1");
+    const p1 = live.view().you.hand;
+    live.setSeat("p2");
+    const p2 = live.view().you.hand;
+    live.setSeat(seat);
+    return { p1, p2 };
+  }
+
+  it("R265 p1 answers first: the device goes to p2, whose picker says p1 is ready, and p2's answer starts the game", () => {
+    const seed = "hotseat-r265-p1-first";
+    const live = real(seed);
+    expect(live.seat).toBe("p1");
+    expect(live.view().mulligan).toEqual({ youReady: false, opponentReady: false });
+
+    live.dispatch(keepAll(live.view()));
+    expect(live.seat, "p1's answer hands the device to p2").toBe("p2");
+    expect(live.view().mulligan).toEqual({ youReady: false, opponentReady: true });
+
+    live.dispatch(keepAll(live.view()));
+    const view = live.view();
+    expect(view.mulligan).toBeUndefined();
+    expect([view.turn, view.phase, view.active]).toEqual([1, "main", "p1"]);
+    expect(live.log().map((action) => action.playerId)).toEqual(["p1", "p2"]);
+    expectFolds(live, seed);
+  });
+
+  it("R265 p2 answers first after a manual hand-over: the device goes to p1, and p1's answer starts the game", () => {
+    const seed = "hotseat-r265-p2-first";
+    const live = real(seed);
+    live.setSeat("p2");
+    live.dispatch(keepAll(live.view()));
+    expect(live.seat, "p2's answer hands the device to p1, who still owes one").toBe("p1");
+    expect(live.view().mulligan).toEqual({ youReady: false, opponentReady: true });
+
+    live.dispatch(keepAll(live.view()));
+    const view = live.view();
+    expect(view.mulligan).toBeUndefined();
+    expect([view.turn, view.phase, view.active, live.seat]).toEqual([1, "main", "p1", "p1"]);
+    expect(live.log().map((action) => action.playerId)).toEqual(["p2", "p1"]);
+    expectFolds(live, seed);
+  });
+
+  it("R265 either order deals the same hands", () => {
+    const seed = "hotseat-r265-either";
+    const p1First = real(seed);
+    p1First.dispatch(keepAll(p1First.view()));
+    p1First.dispatch(keepAll(p1First.view()));
+
+    const p2First = real(seed);
+    p2First.setSeat("p2");
+    p2First.dispatch(keepAll(p2First.view()));
+    p2First.dispatch(keepAll(p2First.view()));
+
+    expect(hands(p2First)).toEqual(hands(p1First));
+    expectFolds(p1First, seed);
+    expectFolds(p2First, seed);
+  });
+
+  it("R36 a draw offer goes to the other seat to answer, and a decline hands the device back to the offerer", () => {
+    const seed = "hotseat-draw-offer";
+    const live = real(seed);
+    live.dispatch(keepAll(live.view()));
+    live.dispatch(keepAll(live.view()));
+    live.setSeat("p1");
+    expect(live.legal()).toContainEqual({ type: "offerDraw" });
+
+    live.dispatch({ type: "offerDraw" });
+    expect(live.seat).toBe("p2");
+    expect(live.view().drawOffer).toEqual({ by: "p1" });
+    expect(live.legal()).toEqual(expect.arrayContaining([
+      { type: "answerDraw", accept: true },
+      { type: "answerDraw", accept: false },
+    ]));
+
+    live.dispatch({ type: "answerDraw", accept: false });
+    expect(live.seat).toBe("p1");
+    const view = live.view();
+    expect(view.drawOffer).toBeUndefined();
+    expect(view.events.at(-1)).toEqual({ type: "drawAnswered", player: "p2", accept: false });
+    expect(view.result).toBeNull();
+    expectFolds(live, seed);
   });
 });
 

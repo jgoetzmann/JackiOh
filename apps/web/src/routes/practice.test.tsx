@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
+import { AI_GATE_BUDGET } from "@jackioh/ai";
 import { opponentOf } from "@jackioh/shared";
 import type { ActionBody, CardDefs, PlayerId } from "@jackioh/shared";
 
@@ -39,7 +40,7 @@ import {
   deckChoiceValue,
   type PracticeSavedDeck,
 } from "../practice/decks.ts";
-import type { PracticeHost } from "../practice/host.ts";
+import { createPracticeHost, type PracticeHost } from "../practice/host.ts";
 import type {
   PracticeDebug,
   PracticeRequestBody,
@@ -316,6 +317,15 @@ function deckOptions(): string[] {
 
 function savedOptions(): string[] {
   return deckOptions().filter((value) => value.startsWith("saved:"));
+}
+
+/**
+ * The board's Concede control asks "Concede this game?" first (game/ConfirmConcede.tsx); only the
+ * dialog's Concede sends the action.
+ */
+function concedeOnBoard(): void {
+  fireEvent.click(screen.getByTestId("concede"));
+  fireEvent.click(screen.getByTestId("concede-confirm"));
 }
 
 /** Let the route's effects and the fake host's promises run. */
@@ -944,6 +954,27 @@ describe("B33 starting renders the game under the practice HUD", () => {
     });
   });
 
+  it("the board's Concede asks first: Keep playing sends nothing, and only the dialog's Concede concedes", async () => {
+    visit("?seed=concede1&difficulty=easy&deck=random&seat=p1");
+    const host = routeHost();
+    renderRoute(host);
+    await screen.findByTestId(T.hud);
+    const concedes = (): PracticeRequestBody[] =>
+      host.requests.filter((body) => body.type === "act" && body.action.type === "concede");
+
+    fireEvent.click(screen.getByTestId("concede"));
+    expect(screen.getByTestId("concede-dialog")).toHaveAttribute("role", "alertdialog");
+    fireEvent.click(screen.getByTestId("concede-cancel"));
+    await settle();
+    expect(screen.queryByTestId("concede-dialog")).toBeNull();
+    expect(concedes(), "Keep playing sent nothing").toEqual([]);
+    expect(screen.queryByTestId(T.result)).toBeNull();
+
+    concedeOnBoard();
+    await screen.findByTestId(T.result);
+    expect(concedes()).toEqual([{ type: "act", action: { type: "concede" } }]);
+  });
+
   it("B33 the HUD shows the think indicator while the AI owes an action, and drops it once it does not", async () => {
     visit("?seed=think1&difficulty=easy&deck=random&seat=p1");
     const host = routeHost({ aiToAct: true, holdAiSteps: true });
@@ -1162,7 +1193,7 @@ describe("B33 starting renders the game under the practice HUD", () => {
     const host = routeHost();
     renderRoute(host);
     await screen.findByTestId(T.hud);
-    fireEvent.click(screen.getByTestId("concede"));
+    concedeOnBoard();
     await screen.findByTestId(T.result);
 
     fireEvent.click(screen.getByTestId(T.newGame));
@@ -1189,7 +1220,7 @@ describe("B33 starting renders the game under the practice HUD", () => {
     visit("?seed=menu2&difficulty=easy&deck=random&seat=p1");
     renderRoute(routeHost());
     await screen.findByTestId(T.hud);
-    fireEvent.click(screen.getByTestId("concede"));
+    concedeOnBoard();
     await screen.findByTestId(T.result);
 
     fireEvent.click(screen.getByTestId(T.menu));
@@ -1215,7 +1246,7 @@ describe("B33 starting renders the game under the practice HUD", () => {
     await screen.findByTestId(T.hud);
     expect(unloadIsCancelled(), "a game in progress").toBe(true);
 
-    fireEvent.click(screen.getByTestId("concede"));
+    concedeOnBoard();
     await screen.findByTestId(T.result);
     expect(unloadIsCancelled(), "a finished game").toBe(false);
     cleanup();
@@ -1235,7 +1266,7 @@ describe("the result dialog", () => {
     await screen.findByTestId(T.hud);
     expect(screen.queryByTestId(T.result)).toBeNull();
     expect(screen.queryByTestId(T.outcome)).toBeNull();
-    fireEvent.click(screen.getByTestId("concede"));
+    concedeOnBoard();
     await screen.findByTestId(T.result);
     return host;
   }
@@ -1516,7 +1547,7 @@ describe("practice plays on the full board, with sound and settings", () => {
     visit("?seed=over9&difficulty=easy&deck=random&seat=p1");
     renderRoute(routeHost(), { pacing });
     await screen.findByTestId(T.hud);
-    fireEvent.click(screen.getByTestId("concede"));
+    concedeOnBoard();
     await screen.findByTestId(T.outcome);
   }
 
@@ -1595,5 +1626,91 @@ describe("practice plays on the full board, with sound and settings", () => {
     expect(screen.getByTestId("fx-layer"), "task 1's effects").toHaveAttribute("data-fx", "on");
     expect(screen.getByTestId("audio-toggle"), "task 2's sound").toBeInTheDocument();
     expect(screen.getByTestId("settings-open-game"), "task 7's settings").toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R265: both mulligans are open at once, against the real core
+// ---------------------------------------------------------------------------------------------
+
+describe("R265 the practice mulligan: the human and the AI answer in either order", () => {
+  /** The real engine, cards and AI in this thread, at the quality gates' budget and a frozen clock. */
+  function realHost(): PracticeHost {
+    return createPracticeHost({ forceInThread: true, env: { now: () => 0, budget: AI_GATE_BUDGET } });
+  }
+
+  const BOOT = { timeout: 20_000 };
+
+  async function mulliganPicker(): Promise<HTMLElement> {
+    return screen.findByTestId("prompt-modal", {}, BOOT);
+  }
+
+  async function gameBegun(): Promise<void> {
+    await waitFor(() => {
+      expect(screen.getByTestId("board")).toHaveAttribute("data-phase", "main");
+    }, BOOT);
+    expect(screen.queryByTestId("mulligan-waiting")).toBeNull();
+    expect(screen.queryByTestId("prompt-modal")).toBeNull();
+  }
+
+  it("R265 the AI answers its own mulligan while the human is still choosing, and the human's Ready then starts the game", { timeout: 60_000 }, async () => {
+    // The human is seated first, so the old order would have made the AI wait for it.
+    visit("?seed=r265-ai-first&difficulty=easy&deck=random&seat=p1");
+    render(
+      <PracticeRoute
+        hostFactory={realHost}
+        pacing={PRACTICE_PACING_FAST}
+        account={ANONYMOUS}
+        loadDecks={vi.fn(() => Promise.reject(new Error("no saved decks")))}
+      />,
+    );
+    const picker = await mulliganPicker();
+    expect(picker).toHaveAttribute("data-prompt-kind", "mulligan");
+
+    // The AI's step goes out without waiting on the human, and the human's picker says so.
+    await screen.findByTestId("mulligan-opponent-ready", {}, BOOT);
+    expect(screen.getByTestId("mulligan-opponent-status")).toHaveAttribute("data-ready", "true");
+    expect(screen.getByTestId("prompt-modal")).toHaveAttribute("data-prompt-kind", "mulligan");
+    expect(screen.getByTestId("prompt-submit")).toHaveTextContent("Ready");
+
+    fireEvent.click(screen.getByTestId("prompt-submit"));
+    await gameBegun();
+    expect(screen.queryByTestId(T.error)).toBeNull();
+  });
+
+  it("R265 the human answers first, waits with its hand marked, and the AI's answer starts the game", { timeout: 60_000 }, async () => {
+    visit("?seed=r265-human-first&difficulty=easy&deck=random&seat=p2");
+    // A voice line holds the AI's step (the route's data-speaking hold), so the human is first for sure.
+    document.body.setAttribute("data-speaking", "held-for-the-test");
+    render(
+      <PracticeRoute
+        hostFactory={realHost}
+        pacing={{ firstActionMs: 0, actionGapMs: 0, promptAnswerMs: 0 }}
+        account={ANONYMOUS}
+        loadDecks={vi.fn(() => Promise.reject(new Error("no saved decks")))}
+      />,
+    );
+    const picker = await mulliganPicker();
+    expect(picker).toHaveAttribute("data-prompt-kind", "mulligan");
+    expect(screen.getByTestId("mulligan-opponent-status")).toHaveAttribute("data-ready", "false");
+    expect(screen.queryByTestId("mulligan-opponent-ready")).toBeNull();
+
+    // Send the first card back, keep the rest, and say Ready.
+    const options = screen.getAllByTestId(/^prompt-option-/);
+    const first = options[0];
+    if (first === undefined) throw new Error("the mulligan offered no card");
+    const returned = first.getAttribute("data-testid")?.slice("prompt-option-".length) ?? "";
+    fireEvent.click(first);
+    fireEvent.click(screen.getByTestId("prompt-submit"));
+
+    const waiting = await screen.findByTestId("mulligan-waiting", {}, BOOT);
+    expect(waiting).toHaveTextContent("Waiting for your opponent…");
+    expect(waiting).toHaveAttribute("data-returning", "1");
+    expect(screen.getByTestId(`mulligan-waiting-card-${returned}`)).toHaveAttribute("data-verdict", "redraw");
+    expect(screen.queryByTestId("prompt-submit"), "nothing left to answer").toBeNull();
+
+    document.body.removeAttribute("data-speaking");
+    await gameBegun();
+    expect(screen.queryByTestId(`hand-card-${returned}`), "the returned card went back").toBeNull();
   });
 });

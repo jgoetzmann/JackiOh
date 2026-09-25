@@ -174,6 +174,11 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
   // `PlayerView.clockMs` because they carry the server's `now`, which is what makes a countdown
   // immune to this tab's wall-clock skew (`protocol.ts`).
   const turnMs = clock === null ? view.clockMs : remainingMs(clock.clocks.turnDeadline, clock);
+  // R265, R268: while both mulligans are open one deadline runs for both seats, reported as the
+  // prompt deadline (and as each seat's `clockMs`), so both sides show it — the seat that has
+  // already answered included, since it is waiting on it.
+  const inMulligan = view.mulligan !== undefined;
+  const mulliganMs = clock === null ? view.clockMs : remainingMs(clock.clocks.promptDeadline, clock);
   const opponent: PlayerId = view.opponent.player;
   const graceMs = {
     you: clock === null ? null : remainingMs(clock.clocks.graceDeadline[view.viewer], clock),
@@ -213,9 +218,14 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
           <code data-testid={matchTestid.status}>{match.connection}</code>
         </span>
         <Clock
-          youMs={activeIsYou ? turnMs : null}
-          opponentMs={activeIsYou ? null : turnMs}
+          youMs={inMulligan ? mulliganMs : activeIsYou ? turnMs : null}
+          opponentMs={inMulligan ? mulliganMs : activeIsYou ? null : turnMs}
           graceMs={graceMs}
+          mulligan={inMulligan}
+          // R268: the mulligan window can pass with no frame between its opening and its expiry,
+          // so the readout counts down off the frame's own deadline rather than waiting for one.
+          frame={inMulligan ? clock : null}
+          viewer={view.viewer}
         />
       </header>
       <SeriesBanner series={series} matchId={matchId} gameOver={view.result !== null} />

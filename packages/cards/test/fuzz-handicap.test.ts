@@ -27,6 +27,8 @@ import {
   reduce,
   subsystems,
   type Handicap,
+  seatToAct,
+  mulliganOwed,
 } from "@jackioh/engine";
 import { CATALOG, registerAll } from "../src/index";
 
@@ -88,11 +90,14 @@ function playSeed(seed: number): Outcome {
     registerAll();
     let state = beginGame(createGame({ seed: gameSeed, decks, handicaps })).state;
     const policy = createRng(`jackioh-fuzz-handicap-policy-${seed}`);
+    // R265: while both mulligans are open either seat may answer first; a stream of its own picks
+    // which, so the fuzz plays both orders (the game is the same either way, R265).
+    const order = createRng(`jackioh-fuzz-handicap-policy-order-${seed}`);
     const log: Action[] = [];
 
     while (state.result === null) {
       if (log.length >= MAX_ACTIONS_PER_GAME) return fail(`no ending within ${MAX_ACTIONS_PER_GAME} actions`);
-      const player: PlayerId = state.pending?.playerId ?? state.active;
+      const player: PlayerId = mulliganOwed(state).length === 2 && order.coin() ? "p2" : seatToAct(state);
       const chosen: ActionBody | null = subsystems.chooseAction(state, player, policy);
       if (chosen === null) return fail(`no legal action for ${player} on turn ${state.turn}`);
       const action = { ...chosen, playerId: player, nonce: `fuzz-${log.length}` } as Action;

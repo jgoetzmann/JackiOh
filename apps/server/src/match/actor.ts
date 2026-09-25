@@ -10,6 +10,8 @@
  *  - The clock lives behind `deps.createClock` (R79). Every expiry comes back as a `ClockExpiry`
  *    and is dispatched as a *server action* through the same path a client action takes, because
  *    "(seed, log) reconstructs any match" (§9.3) — a timeout that skipped the log would break that.
+ *    The mulligan clock (R268) is the one expiry that becomes more than one action: a `timeout` for
+ *    each seat still owing its mulligan, in seat order, each its own row.
  *  - The results row lives behind `deps.recordResult` (§9.5, M7-T2).
  *  - The only per-player payload is `deps.engine.viewFor(state, player)` (§9.1, §10.8). No socket
  *    ever sees a state, the other hand, library order, or the other seat's view.
@@ -21,7 +23,7 @@
 import type { Action, ActionBody, PlayerId, PlayerView } from "@jackioh/shared";
 import { MATCH_ACTIONS_PER_SECOND } from "../config";
 import type { MatchActionRow, MatchClocks, MatchRow, MatchSeat } from "../api/ports";
-import type { ActorDeps, ClockExpiry, MatchClock, Socket } from "./contracts";
+import type { ActorDeps, ClockExpiry, ClockView, MatchClock, Socket } from "./contracts";
 import type { EngineState, MatchSnapshot } from "./engine";
 import {
   ackMessage,
@@ -31,6 +33,7 @@ import {
   parseClientMessage,
   promptForOpponent,
   promptForYou,
+  SERVER_NONCE_PREFIX,
   viewMessage,
   type AckMessage,
   type ServerMessage,
@@ -117,7 +120,10 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
   let finished = match.status === "finished";
   let stopped = false;
   let persistedClocks = match.clocks;
-  let lastPendingFor: PlayerId | null = deps.engine.snapshot(state).pendingFor;
+  const opening = deps.engine.snapshot(state);
+  let lastPendingFor: PlayerId | null = opening.pendingFor;
+  /** R265: which seats owed a mulligan at the last push, so a `prompt` frame goes out on a change. */
+  let lastMulliganOwed = mulliganWindow(opening).join(",");
 
   // ---------------------------------------------------------------------
   // The serialized queue: one task at a time, so nothing interleaves
@@ -202,48 +208,57 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
 
   /**
    * R79, exactly: the turn clock ends the active player's turn; a prompt clock answers only that
-   * prompt; grace becomes a loss; the ceiling becomes a draw. Each one is a real action, appended
-   * to the log like any other, because `(seed, log)` must reconstruct the match (§9.3).
+   * prompt; grace becomes a loss; the ceiling becomes a draw. R268 adds the mulligan clock, which
+   * times out every seat still owing its mulligan. Each one is a real action, appended to the log
+   * like any other, because `(seed, log)` must reconstruct the match (§9.3).
    */
-  function serverActionFor(expiry: ClockExpiry): { player: PlayerId; body: ActionBody } {
+  function serverActionsFor(expiry: ClockExpiry): { player: PlayerId; body: ActionBody }[] {
     const snapshot = deps.engine.snapshot(state);
     switch (expiry.kind) {
       case "turn":
       case "prompt":
-        return { player: expiry.player, body: { type: "timeout" } };
+        return [{ player: expiry.player, body: { type: "timeout" } }];
+      case "mulligan":
+        // R268: one clock for both seats, so on expiry every seat still owing is timed out — read
+        // when the expiry runs, since a seat may have answered between the alarm and this task — in
+        // seat order, each stamped with its own seat (R146: a timeout belongs to the player whose
+        // clock ran out). What a timed-out mulligan keeps is the engine's business (R268: the whole
+        // hand); a seat that has already answered is owed nothing and gets no row.
+        return mulliganWindow(snapshot).map((player) => ({ player, body: { type: "timeout" } }));
       case "grace":
         // SPEC §11 R146: "a disconnect timeout belongs to the player who disconnected, because the
         // loss is theirs". `disconnectExpired` names the player in its body (§10.2), so the seat
         // the action is *stamped* with would otherwise be free; R146 fixes it so folding the log
         // reads one seat rather than "whoever happened to be active".
-        return { player: expiry.player, body: { type: "disconnectExpired", player: expiry.player } };
+        return [{ player: expiry.player, body: { type: "disconnectExpired", player: expiry.player } }];
       case "ceiling":
         // SPEC §11 R146: reaching the turn ceiling "belongs to neither and is stamped with the
         // active seat as a convention", so a fold never has to guess. R79 makes it a draw and R112
         // covers the reaper's version of the same ending.
-        return { player: snapshot.active, body: { type: "ceilingReached" } };
+        return [{ player: snapshot.active, body: { type: "ceilingReached" } }];
     }
   }
 
   async function onExpire(expiry: ClockExpiry): Promise<void> {
     if (stopped || finished) return;
-    const { player, body } = serverActionFor(expiry);
-    deps.log.info("match.clock.expired", { matchId: match.id, kind: expiry.kind, player });
-    // The nonce is derived from the seq this action will occupy: unique, and stable across a
-    // rebuild, so a rebuilt actor cannot collide with a nonce already in the log.
-    await applyAction(player, `srv-${expiry.kind}-${String(nextSeq)}`, body);
+    for (const { player, body } of serverActionsFor(expiry)) {
+      // `stop()` sets `stopped` from outside the queue, so it can land between two of R268's
+      // timeouts; nothing is dispatched into an actor that is going away or a match that is over.
+      if (stopped || finished) return;
+      deps.log.info("match.clock.expired", { matchId: match.id, kind: expiry.kind, player });
+      // The nonce is derived from the seq this action will occupy: unique, and stable across a
+      // rebuild, so a rebuilt actor cannot collide with a nonce already in the log. Its prefix is
+      // one no client may send (R270), so no client can pre-empt it.
+      await applyAction(player, `${SERVER_NONCE_PREFIX}${expiry.kind}-${String(nextSeq)}`, body);
+    }
   }
 
-  function clockViewFor(snapshot: MatchSnapshot): {
-    turn: number;
-    active: PlayerId;
-    pendingFor: PlayerId | null;
-    over: boolean;
-  } {
+  function clockViewFor(snapshot: MatchSnapshot): ClockView {
     return {
       turn: snapshot.turn,
       active: snapshot.active,
       pendingFor: snapshot.pendingFor,
+      mulliganOwed: snapshot.mulliganOwed,
       over: snapshot.result !== null || snapshot.phase === "over",
     };
   }
@@ -274,22 +289,49 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
     await persistClocks();
 
     for (const player of PLAYERS) pushView(player);
+    pushPrompts(snapshot);
+    for (const player of PLAYERS) pushClock(player);
+
+    if (snapshot.result !== null) await onTerminal(snapshot);
+  }
+
+  /**
+   * The `prompt` frames for a change in who owes an answer. Each is built off that seat's own
+   * `viewFor`, so a frame never carries more than the view it travels with (§10.8).
+   */
+  function pushPrompts(snapshot: MatchSnapshot): void {
+    const deadline = clock.snapshot().promptDeadline;
+
+    // R265, R266: while both mulligans are open neither seat holds `pending`, and each is sent the
+    // frame that fits it — a seat that owes its mulligan its own prompt, a seat that has answered
+    // only that the other seat still owes one. The sealed answer is in neither: R266 makes that a
+    // seat is ready public and what it kept private, and the opponent's frame names no choice.
+    const owed = mulliganWindow(snapshot);
+    const owedKey = owed.join(",");
+    if (owed.length > 0 && owedKey !== lastMulliganOwed) {
+      for (const player of PLAYERS) {
+        if (!owed.includes(player)) {
+          send(player, promptForOpponent(other(player), deadline));
+          continue;
+        }
+        const view = deps.engine.viewFor(state, player);
+        if (view.pending !== null && view.pending.forYou) {
+          send(player, promptForYou(player, view.pending.choiceId, view.pending.kind, deadline));
+        }
+      }
+    }
+    lastMulliganOwed = owedKey;
 
     // §10.6: one prompt at a time; the player who does not hold it learns only that it is open.
     const pendingFor = snapshot.pendingFor;
     if (pendingFor !== null && pendingFor !== lastPendingFor) {
       const view = deps.engine.viewFor(state, pendingFor);
-      const deadline = clock.snapshot().promptDeadline;
       if (view.pending !== null && view.pending.forYou) {
         send(pendingFor, promptForYou(pendingFor, view.pending.choiceId, view.pending.kind, deadline));
       }
       send(other(pendingFor), promptForOpponent(pendingFor, deadline));
     }
     lastPendingFor = pendingFor;
-
-    for (const player of PLAYERS) pushClock(player);
-
-    if (snapshot.result !== null) await onTerminal(snapshot);
   }
 
   /** §9.5: "Every ending records a result and clears both players' in-match state." Once. */
@@ -547,4 +589,13 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
 
 function other(player: PlayerId): PlayerId {
   return player === "p1" ? "p2" : "p1";
+}
+
+/**
+ * R265: the seats that owe a mulligan while the window is open — both mulligans open and no other
+ * prompt in front of them — and nothing otherwise. The engine never reports both at once; the
+ * clock (`clock.ts`) reads the window the same way.
+ */
+function mulliganWindow(snapshot: MatchSnapshot): readonly PlayerId[] {
+  return snapshot.pendingFor === null && snapshot.result === null ? snapshot.mulliganOwed : [];
 }

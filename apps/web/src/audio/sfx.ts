@@ -659,8 +659,19 @@ const poof: SfxRecipe = (ctx, out, at) => {
   return len;
 };
 
-/** A notice: two rising blips. */
-const notify: SfxRecipe = (ctx, out, at) => {
+/**
+ * A notice: two rising blips. An `urgent` one — a question the viewer has to answer, the other
+ * seat's draw offer — is a doorbell instead: a bright bell struck twice, a falling major third
+ * apart, so it is never taken for the routine blips.
+ */
+const notify: SfxRecipe = (ctx, out, at, params) => {
+  if (params.urgent === true) {
+    const len = 0.29;
+    const k = kit(ctx, out, at, len);
+    fmBell(k, out, 1319, 3.5, 260, 0, 0.004, 0.34, 0.2);
+    fmBell(k, out, 1047, 3.5, 260, 0.11, 0.004, 0.38, len);
+    return len;
+  }
   const len = 0.28;
   const k = kit(ctx, out, at, len);
   tone(k, out, "sine", 880, 0, 0.005, 0.4, 0.14);

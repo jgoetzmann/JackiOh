@@ -95,26 +95,37 @@ export function createHotseat(options: HotseatOptions): HotseatSession {
   /**
    * "Prompts for the non-active player switch seats automatically" (BUILD M5-T3).
    *
-   * Only a prompt moves the device by itself. A change of ACTIVE player does not: BUILD gives the
+   * Only a question moves the device by itself. A change of ACTIVE player does not: BUILD gives the
    * hotseat a manual seat-switch button precisely so that ending a turn hands the device over
-   * deliberately, with the board hidden in between. A prompt is different — the other player is
-   * being asked a question mid-resolution and the game cannot continue until they answer, so
-   * waiting for a button press would deadlock the loop.
+   * deliberately, with the board hidden in between. A question is different — the other player is
+   * being asked something and the game waits on the answer, so waiting for a button press as well
+   * would deadlock the loop. There are two kinds:
    *
-   * Whose prompt it is comes from the VIEW, never from the state: `view().pending` is either
-   * `{ forYou: true, … }` or `{ forYou: false, pendingFor }` (SPEC §10.8), and `EngineState` is
-   * opaque to this file.
+   *  - a prompt the other seat holds. The opening mulligans are both seats' at once (R265): each
+   *    seat still owing one sees its own prompt, and a seat that has answered sees the other's as
+   *    pending, so the device goes to whichever seat has not answered yet, in either order;
+   *  - a draw offer the seat holding the device has just made (§2.5, R36): the other seat answers
+   *    it, and its answer hands the device back to the player whose turn it is (`dispatch`). Only
+   *    the offer itself hands the device over: if the players pass it back unanswered with the seat
+   *    switch, the offerer's next moves keep it, and the offer lapses with the turn (R269).
+   *
+   * Whose question it is comes from the VIEW, never from the state: `view().pending` is either
+   * `{ forYou: true, … }` or `{ forYou: false, pendingFor }` and `view().drawOffer` names the
+   * offerer (SPEC §10.8), and `EngineState` is opaque to this file.
    */
-  function followPrompt(): void {
-    const pending = engine.viewFor(state, seat).pending;
-    if (pending === null || pending.forYou) return;
-    if (pending.pendingFor === seat) return;
-    seat = pending.pendingFor;
+  function followQuestion(offered = false): void {
+    const view = engine.viewFor(state, seat);
+    const pending = view.pending;
+    if (pending !== null) {
+      if (!pending.forYou && pending.pendingFor !== seat) seat = pending.pendingFor;
+      return;
+    }
+    if (offered && view.result === null && view.drawOffer?.by === seat) seat = opponentOf(seat);
   }
 
-  // The opening mulligan (§2.1, R9) belongs to one seat; if it is not the seat holding the device,
-  // the same rule applies before the first render.
-  followPrompt();
+  // The opening mulligans (§2.1, R9, R265) are open for both seats; p1 holds the device and answers
+  // first unless the prompt says otherwise, and the same rule applies before the first render.
+  followQuestion();
 
   const session: HotseatSession = {
     seed: options.seed,
@@ -154,7 +165,10 @@ export function createHotseat(options: HotseatOptions): HotseatSession {
       state = result.state;
       nonceCount += 1;
       actions.push(action);
-      followPrompt();
+      // The answer to a draw offer goes back to the player whose turn it is — the offerer — with
+      // "declined" (or the drawn game) on its own screen.
+      if (body.type === "answerDraw") seat = engine.viewFor(state, seat).active;
+      followQuestion(body.type === "offerDraw");
       notify();
       return { events: result.events };
     },

@@ -184,12 +184,12 @@ describe("B37 without a Worker, the host answers exactly as the core does", () =
   it("B37 a request sequence gets the same answers, in the same order, as createPracticeCore(...).handle", { timeout: 120_000 }, async () => {
     vi.stubGlobal("Worker", undefined);
 
-    // Found once from the core itself: p1's mulligan, kept whole (R9), so the sequence has a real
-    // act and a real AI step in it.
+    // Found once from the core itself: the human's (p1's) mulligan, kept whole (R9), so the sequence
+    // has a real act and a real AI step in it. Both mulligans are open at once (R265).
     const probe = createPracticeCore(ENV).handle({ id: 1, type: "start", config: CONFIG });
     if (probe.type !== "started") throw new Error(`the core refused to start: ${JSON.stringify(probe)}`);
     const pending = probe.snapshot.view.pending;
-    if (pending === null || !pending.forYou) throw new Error("p1 holds the first mulligan (§2.1)");
+    if (pending === null || !pending.forYou) throw new Error("the human's own mulligan is open from the start (R265)");
     const keep = pending.options.map((option) => option.key);
 
     const bodies: PracticeRequestBody[] = [

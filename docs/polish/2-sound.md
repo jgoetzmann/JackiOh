@@ -495,8 +495,8 @@ export function cuesFor(event: GameEvent, ctx: CueContext): readonly SoundCue[];
 | turnAutoEnded | notify | `notify` |
 | promptOpened | notify | `player === view.viewer`: `notify`; else none |
 | promptAnswered | null | silent: the answering click already ticked |
-| drawOffered | notify | `player !== view.viewer`: `notify`; else none |
-| drawAnswered | notify | `notify` |
+| drawOffered | notify | `player !== view.viewer`: `notify` with `urgent: true` (a doorbell: the seat that must answer, R269); else none |
+| drawAnswered | cancel | the offerer, on a decline: `cancel`; else none (an accept is sounded by the `gameOver` that follows) |
 | gameOver | victory | winner === viewer: `victory`; winner === "draw": `notify`; else `defeat` |
 
 ### `apps/web/src/audio/director.ts` (slice 2)

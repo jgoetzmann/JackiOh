@@ -7,11 +7,17 @@
 //
 // The pacing loop. After every snapshot whose `aiToAct` is true (and the game is not over),
 // `thinking` goes true, the controller waits one gap and then sends one `aiStep`, and repeats. The
-// gap is `promptAnswerMs` when the view shows a prompt waiting on the AI, `firstActionMs` for the
-// AI's first step since `view.turn` changed, and `actionGapMs` otherwise. `thinking` goes false as
+// gap is `promptAnswerMs` when the view shows a prompt waiting on the AI — its own opening mulligan
+// included, which is open at the same time as the human's (R265), so the AI answers it at once
+// rather than after the turn's longer first pause — `firstActionMs` for the AI's first step since
+// `view.turn` changed, and `actionGapMs` otherwise. `thinking` goes false as
 // soon as a snapshot has `aiToAct === false`. Every request — the human's actions, the AI's steps,
 // `debug` — goes through one queue, so at most one is ever in flight, and a human action sent while
 // the AI is mid-step waits behind it.
+//
+// Nothing here ever waits on the human. During the mulligan both seats owe an answer: the AI's step
+// goes out on its own gap, and the human's Ready goes out whenever it is pressed — before the AI's
+// step, queued behind it, or after it — and neither answer changes the other (R266).
 //
 // The gap starts when the board has caught up. The board holds each new view back while its
 // events animate (BUILD M5-T4), so a timer alone runs the AI ahead of what the player can see:
@@ -198,6 +204,8 @@ export function createPracticeController(options: PracticeControllerOptions): Pr
   function gapFor(view: PlayerView): number {
     const pending = view.pending;
     if (pending !== null && !pending.forYou && pending.pendingFor === state.aiSeat) return pacing.promptAnswerMs;
+    // R265: the AI's mulligan is still open while the human looks at its own.
+    if (view.mulligan !== undefined && !view.mulligan.opponentReady) return pacing.promptAnswerMs;
     if (lastStepTurn !== view.turn) return pacing.firstActionMs;
     return pacing.actionGapMs;
   }

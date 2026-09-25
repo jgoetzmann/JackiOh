@@ -18,6 +18,7 @@ import {
   type GameState,
   type Handicap,
   type Rng,
+  seatToAct,
 } from "@jackioh/engine";
 import { greedyAction, randomAction } from "./baselines";
 import { AI_BUDGET } from "./config";
@@ -107,7 +108,7 @@ function playedDefId(state: GameState, seat: PlayerId, action: ActionBody): stri
 }
 
 /**
- * Deterministic: createGame+beginGame, then while no result: actor = pending?.playerId ?? active;
+ * Deterministic: createGame+beginGame, then while no result: actor = seatToAct(state) (R265);
  * controller rng = createRng(`${seed}:ctl:${seat}`); nonce `m${log.length}`. A refused action is
  * recorded in `rejected` and replaced by endTurn (or the first legal answer); a throw is recorded
  * and ends the match.
@@ -132,7 +133,7 @@ export function playMatch(config: MatchConfig, hooks: MatchHooks = {}): MatchRec
   let nodes = 0;
 
   while (state.result === null && log.length < maxActions) {
-    const seat: PlayerId = state.pending?.playerId ?? state.active;
+    const seat: PlayerId = seatToAct(state);
     const controller = config.controllers[seat];
     const rng = rngs[seat];
     const current = state;

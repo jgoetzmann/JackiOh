@@ -11,7 +11,16 @@
 
 import type { PlayerId } from "@jackioh/shared";
 import { PLAYER_IDS, opponentOf } from "@jackioh/shared";
-import { cloneState, findDef, handicapOf, subsystems, type CardInstance, type GameState } from "@jackioh/engine";
+import {
+  SETUP_WORK,
+  cloneState,
+  findDef,
+  handicapOf,
+  mulliganPromptFor,
+  subsystems,
+  type CardInstance,
+  type GameState,
+} from "@jackioh/engine";
 
 export const HIDDEN_DEF_ID = "ai:hidden";
 
@@ -81,7 +90,7 @@ export function hiddenInstanceIds(state: GameState, seat: PlayerId): Set<string>
     if (n >= low && n <= high) hidden.add(card.id);
   }
 
-  const pending = state.pending;
+  const pending = state.pending ?? mulliganPromptFor(state, seat);
   if (pending !== null && pending.playerId === seat) {
     for (const option of pending.options) {
       if (option.selection.pick === "instance") hidden.delete(option.selection.instanceId);
@@ -146,6 +155,35 @@ function scrubResume<T>(entry: T, hidden: ReadonlySet<string>): T {
   } as T;
 }
 
+/**
+ * R266, R185: setup's owed mulligan item (R224, R265) carries two things the seat may not read: the
+ * sealed answers of the seats still to resolve (`rest`), and, while a seat's own resolution waits on
+ * a cast's question, the cards it returned (`returned`, full instances until they go back). The
+ * opponent's sealed answer becomes "keeps everything it was offered", which says nothing, and its
+ * returned cards become placeholders.
+ */
+function scrubOwedMulligan<T extends { resume: { hook: string; data: Loose } }>(item: T, opp: PlayerId): T {
+  if (item.resume.hook !== SETUP_WORK) return item;
+  const owed: unknown = item.resume.data.owed;
+  if (owed === null || typeof owed !== "object") return item;
+  const copy: Loose = { ...(owed as Loose) };
+  if (Array.isArray(copy.rest)) {
+    copy.rest = copy.rest.map((entry: unknown) => {
+      const seat = entry as { player?: unknown; offered?: unknown };
+      if (seat.player !== opp || !Array.isArray(seat.offered)) return entry;
+      return { ...(entry as Loose), keep: [...(seat.offered as unknown[])] };
+    });
+  }
+  if (copy.player === opp && Array.isArray(copy.returned)) {
+    copy.returned = copy.returned.map((card: unknown) => {
+      const hidden = JSON.parse(JSON.stringify(card)) as CardInstance;
+      toPlaceholder(hidden);
+      return hidden;
+    });
+  }
+  return { ...item, resume: { ...item.resume, data: { ...item.resume.data, owed: copy } } };
+}
+
 /** R185: the state as `seat` may know it. Pure; the input is not mutated. */
 export function redact(state: GameState, seat: PlayerId): GameState {
   const opp = opponentOf(seat);
@@ -180,7 +218,7 @@ export function redact(state: GameState, seat: PlayerId): GameState {
       if (index < next.workCursor) cursor -= 1;
       return;
     }
-    keptWork.push(scrubResume(item, hidden));
+    keptWork.push(scrubOwedMulligan(scrubResume(item, hidden), opp));
   });
   next.work = keptWork;
   next.workCursor = Math.max(0, Math.min(cursor, keptWork.length));
@@ -217,9 +255,16 @@ export function redact(state: GameState, seat: PlayerId): GameState {
       .map((defId) => [defId, transient[defId] as (typeof next.transientDefs)[string]]),
   );
 
-  // Step 7: the opponent's prompt shows that it is open and whose it is, nothing more (R81).
+  // Step 7: the opponent's prompt shows that it is open and whose it is, nothing more (R81). The
+  // same goes for its mulligan while both are open (R265, R266): that it has answered is public,
+  // and what it was offered and what it kept are not.
   if (next.pending !== null && next.pending.playerId === opp) {
     next.pending = { ...next.pending, options: [] };
+  }
+  const open = next.mulligan;
+  if (open !== undefined) {
+    const theirs = open[opp];
+    open[opp] = { prompt: { ...theirs.prompt, options: [], max: 0 }, keep: theirs.keep === null ? null : [] };
   }
 
   return next;
@@ -239,10 +284,14 @@ export function unansweredDrawOffer(state: GameState, seat: PlayerId): boolean {
   );
 }
 
-/** Whether `seat` owes an action: its prompt, its main phase, or an unanswered draw offer. */
+/**
+ * Whether `seat` owes an action: its prompt, its own mulligan while both are open (R265) — which it
+ * answers without waiting for the other seat's — its main phase, or an unanswered draw offer.
+ */
 export function aiToAct(state: GameState, seat: PlayerId): boolean {
   if (state.result !== null) return false;
   if (state.pending !== null && state.pending.playerId === seat) return true;
+  if (state.pending === null && mulliganPromptFor(state, seat) !== null) return true;
   if (state.pending === null && state.active === seat && state.phase === "main") return true;
   return unansweredDrawOffer(state, seat);
 }

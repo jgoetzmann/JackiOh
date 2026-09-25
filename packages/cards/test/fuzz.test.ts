@@ -48,6 +48,8 @@ import {
   reduce,
   subsystems,
   type GameState,
+  seatToAct,
+  mulliganOwed,
 } from "@jackioh/engine";
 import { CATALOG, registerAll } from "../src/index";
 import { createInvariantMonitor } from "./_invariants";
@@ -214,6 +216,9 @@ function playGame(seed: number): GameRun {
 
   let state = beginGame(createGame({ seed: gameSeed, decks })).state;
   const policy = createRng(`jackioh-fuzz-policy-${seed}`);
+  // R265: while both mulligans are open either seat may answer first; a stream of its own picks
+  // which, so the fuzz plays both orders (the game is the same either way, R265).
+  const order = createRng(`jackioh-fuzz-policy-order-${seed}`);
   const log: Action[] = [];
   const monitor = createInvariantMonitor(state);
 
@@ -229,7 +234,7 @@ function playGame(seed: number): GameRun {
     }
 
     // With a prompt open only its holder may act (§9.3); otherwise it is the active player's turn.
-    const player: PlayerId = state.pending?.playerId ?? state.active;
+    const player: PlayerId = mulliganOwed(state).length === 2 && order.coin() ? "p2" : seatToAct(state);
     const chosen: ActionBody | null = subsystems.chooseAction(state, player, policy);
     if (chosen === null) {
       throw new FuzzFailure(
