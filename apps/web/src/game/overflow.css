@@ -12,9 +12,15 @@
 
 /* ---- on a library pile: "Fatigue N" and "Library full" ------------------------------------ */
 
-/* The pile carries its notice above its neighbours while it has one; `relative` moves nothing. */
+/* The pile carries its notice above its neighbours while it has one; `relative` moves nothing. The
+   seat is lifted with it: the active seat is translated, which makes it a stacking context of its
+   own, and the backrow cards beside the pile would otherwise sit on the notice. */
 .pile:has(> .pile-notice) {
   position: relative;
+  z-index: 18;
+}
+
+.seat:has(.pile-notice) {
   z-index: 18;
 }
 
@@ -98,16 +104,19 @@
   position: relative;
   display: block;
   flex: 0 0 auto;
-  height: 58px;
+  /* Readable on a wide board (72 px at 1280), never smaller than a phone's 58. */
+  height: clamp(58px, 5.6vw, 84px);
   aspect-ratio: 5 / 7;
   opacity: 0;
 }
 
 /* ---- over a hand: "Hand full" and the card it burned ------------------------------------------ */
 
-/* The hand carries its notice's box while it has one; `relative` moves nothing. */
+/* The hand carries its notice's box while it has one, above the field beside it; `relative` moves
+   nothing. */
 .hand:has(> .burn-notice) {
   position: relative;
+  z-index: 18;
 }
 
 /* Centred on the hand and standing up from its lower edge, so the card rises over the fan. The
