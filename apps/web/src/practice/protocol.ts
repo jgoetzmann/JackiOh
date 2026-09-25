@@ -21,6 +21,13 @@ export type PracticeStartConfig = {
   difficulty: Difficulty;
   humanSeat: PlayerId;
   deck: PracticeDeckChoice;
+  /**
+   * SPEC §9.10, R291: a tutorial lesson, by id (`tutorial/lessons.ts`). When set, the lesson's own
+   * two decks and the tutorial handicap (`AI_TUTORIAL`, R290) replace `deck`, the AI's dealt deck
+   * and `difficulty`'s handicap. The seed and the seat are still this config's: the tutorial passes
+   * the lesson's own, and a test may pass others.
+   */
+  lesson?: string;
 };
 
 /** Rule 7: everything the main thread ever gets about the game. */
@@ -45,6 +52,8 @@ export type PracticeDebug = {
   hash: string;
   difficulty: Difficulty;
   humanSeat: PlayerId;
+  /** The tutorial lesson this game is, when it is one (§9.10). */
+  lesson?: string;
 };
 
 export type PracticeRequest =

@@ -396,6 +396,12 @@
   font-size: 10px;
 }
 
+/* A board pick's hint (Prompt.tsx `BoardHint`): shown only where the picker folds to a bar with no
+   options in it (the phone block below); everywhere else the options are the hint. */
+.prompt-board-hint {
+  display: none;
+}
+
 /* A card picker on a big screen (a mulligan, a Discover, a card from your hand) shows its cards at
    hand size, and the modal wraps them instead of leaving half of itself empty. */
 @media (min-width: 761px) and (min-height: 501px) {
@@ -596,11 +602,37 @@
       [data-prompt-kind="target"],
       [data-prompt-kind="tribute"]
     ) {
-    flex-flow: row nowrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title actions"
+      "hint actions";
     align-items: center;
-    gap: 8px;
+    gap: 0 8px;
     padding-top: 6px;
     padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  /* With no options in the bar, a new player did not know to tap the board: a small line under the
+     title says where the answers are. Title and hint share the height of the buttons beside them,
+     so the bar is no taller for it. */
+  .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
+      [data-prompt-kind="zone"],
+      [data-prompt-kind="target"],
+      [data-prompt-kind="tribute"]
+    )
+    > .prompt-board-hint {
+    display: block;
+    grid-area: hint;
+    align-self: start;
+    max-width: none;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(
@@ -618,7 +650,8 @@
       [data-prompt-kind="tribute"]
     )
     > .prompt-title {
-    flex: 1 1 auto;
+    grid-area: title;
+    align-self: end;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -631,7 +664,8 @@
       [data-prompt-kind="tribute"]
     )
     > .prompt-actions {
-    flex: 0 0 auto;
+    grid-area: actions;
+    margin: 0;
   }
 
   .game:has(> .board[data-drag="on"]) .prompt[data-prompt-source="play"]:is(

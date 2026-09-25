@@ -24,6 +24,8 @@ e2e/
   cypress/e2e/20-mulligan-concede-draw.cy.ts  networked, like 06: both seats mulligan at once in either order (R265–R268), Concede's confirmation, and a draw offer declined and then accepted (R36, R269), asserted on the browser's DOM and on seat 2's socket alike
   cypress/e2e/21-radiant-marks.cy.ts  the Radiant pass (SPEC §10.10, R277, R279, R280): a hand card's computed value "{n}", a reference's face beside the preview and its tooltip in the touch sheet, and a card made Radiant in hand printing its change in gold, on /dev/hotseat
   cypress/component/radiant-marks.cy.tsx  the Radiant pass: the gold mark's weight, underline and contrast on both backgrounds, a reference's tooltip in the detail view, and a computed value inside its rules box
+  cypress/e2e/22-tutorial-lesson-one.cy.ts  SPEC §9.10: lesson 1 played to a win by doing, through the UI, what the coach asks; progress saved; the log replays with the tutorial handicap
+  cypress/e2e/23-tutorial-path.cy.ts  SPEC §9.10: the lesson path (locked, open, completed), progress seeded, reloaded and corrupt, Skip and Exit, a later lesson's fixed deal, the phone layout
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   fixtures/decks/*.json    scenario decks, named for the spec that uses them
@@ -35,6 +37,8 @@ e2e/
     testids.ts             every selector the suite uses, in one file
     ux.ts                  polish 7: the pointer-drag gesture (spec 16) and the drag, glow and
                            settings selectors it reads
+    tutorial.ts            specs 22 and 23: the lesson URL, seeded progress, the practice and
+                           tutorial dev handles, and the driver that follows the coach by clicking
     config.ts              routes, endpoints, fixture accounts, the session key, timeouts,
                            SPEC constants
     cards.ts               SPEC §8 index -> name -> `core-NNN` catalog id, and the 9 Tokens
@@ -45,7 +49,10 @@ e2e/
       wsPlayer.ts          `cy.task("wsPlayer")`: the second player, driven from Node (specs 05, 06, 19), and
                            the one-task connect-and-concede `cy.concedeAs` uses
       replay.ts            `cy.task("replayHash")`: fold the recorded log (and spec 13's handicaps) outside the browser
-      replay-runner.ts     runs under the repo's tsx; the only file here that imports packages/*
+      replay-runner.ts     runs under the repo's tsx; imports packages/* to fold the log
+      lessons.ts           `cy.task("tutorialLessons")`: the lessons, seeds and decks as apps/web states them
+      lessons-runner.ts    runs under the repo's tsx; reads apps/web/src/tutorial/lessons.ts, AI_TUTORIAL and
+                           the catalog's Quickdraw tag (excluded from tsconfig.json, like replay-runner.ts)
   scripts/check-fixtures.mjs  pre-flight for the deck fixtures; needs no browser and no client
   artifacts/               recorded logs, screenshots, videos (git-ignored)
 ```
@@ -196,6 +203,8 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 18 | TASK 1 (R250–R252, R255, R256): the `E2E=1` server and a `build:e2e` client. "Unreachable" is `cy.intercept` failing `PUT /api/decks/*` at the network; a second, pass-through intercept is "the server answers again", and the workshop's own retry (`DECK_AUTOSAVE_RETRY_SECONDS`) does the rest. |
 | 19 | TASK 1 (R257–R264): the `E2E=1` server and a `build:e2e` client. The browser (`e2e-p1`) queues and picks through `/play` and `/series/<id>`; `e2e-p2` queues, picks and joins over HTTP (every body seeded, R143) and plays over `wsPlayer`. Its four tests keep the two accounts' ratings level (two rated wins and two losses each), so re-runs against one server keep pairing at once; the pairing waits still allow for §9.5's full window widening. |
 | 20 | M6 + M7-T1 and a `build:e2e` client, like 05 and 06: a room-code match per case with seat 2 on `cy.task("wsPlayer")`, spec 06's decks, and one seed per case; the selectors are `support/testids.ts` block A16. The draw offer's sound is asserted in `window.__jackiohAudio`'s log, as spec 15 asserts its voice lines. |
+| 22 | SPEC §9.10 (the tutorial) on `/practice`, against `build:e2e` with no server. It follows the coach through lesson 1 by clicking what `window.__jackiohTutorial.suggested` names (never dispatching), with reduced motion so every view is drawn as it arrives, and folds the log with the tutorial handicap (R290). It names no card or step, so the lesson's content may change under it. |
+| 23 | SPEC §9.10 on `/practice`, against `build:e2e` with no server: the lesson path and its progress in `localStorage["jackioh.tutorial.v1"]` (R294), Skip and Exit, a lesson's seed, decks and handicap (R290, R291) compared with `apps/web/src/tutorial/lessons.ts` through `cy.task("tutorialLessons")`, and a 390x844 smoke. Rebuild the client after a lesson changes, or the task and the bundle disagree. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

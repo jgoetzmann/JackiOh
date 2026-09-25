@@ -1016,6 +1016,14 @@
   line-height: 1;
 }
 
+/* A switch that cannot be pressed (every enemy unit's, and yours while switching is not legal)
+   lets the pointer through to its card. A disabled <button> swallows a click, so a tap that landed
+   on it did nothing, where the player meant the card under it: an enemy unit picked as a target,
+   or your own unit picked to attack. */
+.board .switch-button:disabled {
+  pointer-events: none;
+}
+
 /* ----------------------------------------------------------------------- animation layers --- */
 
 .pop-layer {
@@ -1577,13 +1585,30 @@
   }
 
   /* The switch (⟳) stays a small glyph in the card's corner, but a finger gets a hit area round
-     it: 14px of the card to its left and below. The card clips it (`overflow: hidden`), so it is
-     about 32x32 in all; a bigger one would take most of a phone tile, and the rest of the tile is
-     the card's own tap (attack) and drag. */
+     it: up to 16 px of the card to its left and below (the card clips it, `overflow: hidden`, so
+     it is about 32x32 on a tablet's tile). The rest of the tile is the card's own tap (attack, or
+     pick it as a target) and drag, and the middle above all. A fixed 16 px reached a phone tile's
+     middle (45x59 with a lesson's coach above the board, 72x59 held sideways, smaller on a short
+     phone), so a tap on your unit to attack switched it to Defense instead. So the reach is
+     measured against the tile: a unit's card is a size container, and the hit area stops
+     `--switch-clear` short of its centre lines. In `::before` a percentage is of the button, its
+     containing block, so `50cq* - 100% - 3px` is the room between the glyph (2 px in, inside a
+     1 px border) and the card's centre line. At most the switch takes the tile's top-right
+     quarter; on a tile too small for any reach the glyph alone takes the tap, and the middle is
+     always the card's. A switch that cannot be pressed takes no tap at all (above). */
+  .board .zone > .card-unit {
+    container-type: size;
+  }
+
   .board .switch-button::before {
+    --switch-clear: 6px;
+    --switch-reach: 16px;
     content: "";
     position: absolute;
-    inset: -2px -2px -16px -16px;
+    top: -2px;
+    right: -2px;
+    bottom: calc(-1 * clamp(0px, 50cqh - 100% - 3px - var(--switch-clear), var(--switch-reach)));
+    left: calc(-1 * clamp(0px, 50cqw - 100% - 3px - var(--switch-clear), var(--switch-reach)));
   }
 }
 

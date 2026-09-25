@@ -9,8 +9,11 @@ import { useEffect, useId, useRef, type ReactElement } from "react";
 import { practiceTestid } from "./testids.ts";
 import "./practice.css";
 
-/** Where leaving goes: back to the setup ("New game") or out to the main menu ("Menu"). */
-export type PracticeLeaveTo = "setup" | "menu";
+/**
+ * Where leaving goes: back to the setup ("New game"), out to the main menu ("Menu"), or from a
+ * tutorial lesson back to the lesson path ("Exit tutorial").
+ */
+export type PracticeLeaveTo = "setup" | "menu" | "lessons";
 
 type PracticeLeaveProps = {
   to: PracticeLeaveTo;
@@ -21,6 +24,7 @@ type PracticeLeaveProps = {
 const LEAVE_BODY: Record<PracticeLeaveTo, string> = {
   setup: "It ends here and you go back to choosing a difficulty and a deck.",
   menu: "It ends here and you go back to the main menu.",
+  lessons: "It ends here and you go back to the lessons. You can start it again any time.",
 };
 
 export function PracticeLeave({ to, onStay, onLeave }: PracticeLeaveProps): ReactElement {

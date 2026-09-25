@@ -140,6 +140,12 @@ export type Handicap = {
   readonly extraOpeningCards: number;
   /** R183: separate draws after DRAWS_PER_TURN at each start of turn. */
   readonly extraDrawsPerTurn: number;
+  /**
+   * R290: the health this seat's hero starts the game with, in place of HERO_HEALTH. Absent means
+   * HERO_HEALTH, which is why the three practice tiers never set it and hash exactly as before the
+   * field existed. Only the tutorial's handicap (`AI_TUTORIAL`) sets it, and only lower.
+   */
+  readonly heroHealth?: number;
 };
 
 /** R180: this spec's own resources. A seat with no handicap plays with these. */
@@ -164,4 +170,20 @@ export const AI_DIFFICULTY: Readonly<Record<Difficulty, Handicap>> = {
   easy: HUMAN_HANDICAP,
   medium: { deckSize: 25, manaBonus: 1, manaCap: 5, extraOpeningCards: 1, extraDrawsPerTurn: 0 },
   hard: { deckSize: 30, manaBonus: 1, manaCap: 7, extraOpeningCards: 1, extraDrawsPerTurn: 1 },
+};
+
+/**
+ * §9.10, R290: the tutorial opponent's handicap, the one below Easy. It is a handicap like the
+ * three tiers (R180) and lowers the AI seat's resources instead of raising them: a 12-card deck
+ * (each lesson's own list, R291, so it runs out and fatigues sooner), at most 3 mana crystals, and
+ * a hero that starts at 20 health. The AI's search, evaluation and budget are the ones every tier
+ * plays with. It is not in `DIFFICULTIES`: nobody picks it, the tutorial deals it.
+ */
+export const AI_TUTORIAL: Handicap = {
+  deckSize: 12,
+  manaBonus: 0,
+  manaCap: 3,
+  extraOpeningCards: 0,
+  extraDrawsPerTurn: 0,
+  heroHealth: 20,
 };

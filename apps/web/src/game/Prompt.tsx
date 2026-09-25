@@ -526,6 +526,23 @@ function PickerTitle(props: { title: string; sourceDefId: string | undefined }) 
   );
 }
 
+/**
+ * A board pick's hint. On a phone held upright, with drag to play on, a play's zone, target and
+ * Tribute picks fold to a bar with no options in it (prompt.css, polish task 7): the answers glow on
+ * the board and are tapped there, and this line says so. Every other layout lists the options, and
+ * the stylesheet hides it there.
+ */
+const BOARD_HINTS: Partial<Record<PromptKind, string>> = {
+  zone: "Tap a highlighted zone on the board.",
+  target: "Tap a highlighted target on the board.",
+  tribute: "Tap a highlighted unit on the board.",
+};
+
+function BoardHint(props: { chrome: PromptKind }) {
+  const hint = BOARD_HINTS[props.chrome];
+  return hint === undefined ? null : <p className="prompt-board-hint">{hint}</p>;
+}
+
 function PromptModal(props: {
   picker: Picker;
   /** Which route opened it: an engine prompt (`view.pending`) or a play still being built (R81). */
@@ -741,6 +758,8 @@ function PromptModal(props: {
         {picker.chrome === "target" && props.boardTestids.length > 0 ? (
           <p className="prompt-board-note">Highlighted on the board as well.</p>
         ) : null}
+        {/* Shown only where the picker folds to a bar with no options in it (prompt.css). */}
+        {props.source === "play" ? <BoardHint chrome={picker.chrome} /> : null}
         <div className="prompt-actions">
           <button
             type="button"

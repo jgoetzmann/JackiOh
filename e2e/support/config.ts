@@ -75,6 +75,29 @@ export function deckMirrorKey(profileId: string): string {
   return `jackioh.decks.v1.${profileId}`;
 }
 
+/**
+ * SPEC §9.10, R294: where the tutorial keeps which lessons this device has completed, as
+ * `{ v: TUTORIAL_PROGRESS_VERSION, completed: string[] }` (`TUTORIAL_PROGRESS_KEY` and
+ * `TUTORIAL_PROGRESS_VERSION` in apps/web/src/tutorial/config.ts). Specs 22 and 23 seed it in
+ * `onBeforeLoad` and read it back; this is the one place the suite spells it.
+ */
+export const TUTORIAL_PROGRESS_KEY = "jackioh.tutorial.v1";
+export const TUTORIAL_PROGRESS_VERSION = 1;
+
+/**
+ * R290: the tutorial opponent's handicap, `AI_TUTORIAL` in packages/engine/src/config.ts. Spec 23
+ * asserts a lesson's AI seat carries exactly this and that the engine's own constant still says
+ * the same (read through `cy.task("tutorialLessons")`), so a change to the ruling fails here first.
+ */
+export const TUTORIAL_HANDICAP = {
+  deckSize: 12,
+  manaBonus: 0,
+  manaCap: 3,
+  extraOpeningCards: 0,
+  extraDrawsPerTurn: 0,
+  heroHealth: 20,
+} as const;
+
 /** A6: one fixture account. `token` is the ready-made access token `cy.signIn` installs. */
 export type E2EAccount = { email: string; password: string; token: string };
 

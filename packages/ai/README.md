@@ -39,6 +39,10 @@ both seats asks the engine's `seatToAct(state)` which one the game waits on firs
 
 The difficulty tiers change the AI seat's resources only (`AI_DIFFICULTY` in the engine's
 `config.ts`, R180). Nothing in this package reads a difficulty or a handicap to decide what to do.
+The tutorial's opponent (SPEC §9.10) is the same AI on one more handicap, `AI_TUTORIAL` (R290): a
+12-card deck, a mana cap of 3 and a hero that starts at 20 health, the tier below Easy. Its deck is
+the lesson's fixed list rather than `buildAiDeck`'s draw (R291), and its budget is `AI_BUDGET`, as
+at every tier. `test/tutorial-tier.test.ts` plays the greedy baseline against it.
 
 ## Search and the opponent's reply
 

@@ -1,5 +1,6 @@
 // Node-side tasks. Registered from cypress.config.ts's setupNodeEvents.
 
+import { tutorialLessons } from "./lessons.ts";
 import { onlineReset } from "./onlineReset.ts";
 import { replayHash, type ReplayHashPayload } from "./replay.ts";
 import { wsPlayer, type WsPlayerCommand } from "./wsPlayer.ts";
@@ -16,6 +17,10 @@ export function registerTasks(
     /** Spec 01: fold the recorded log through the engine and compare state hashes. */
     replayHash(payload: ReplayHashPayload) {
       return replayHash(config.projectRoot, payload);
+    },
+    /** Specs 22 and 23: the tutorial's lessons, seeds and decks as apps/web's source states them. */
+    tutorialLessons() {
+      return tutorialLessons(config.projectRoot);
     },
     /**
      * 99-online-smoke only: clear queue and match state so the spec is re-runnable. Inert unless
