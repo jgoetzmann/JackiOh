@@ -111,7 +111,7 @@ describe("R279 a reference opens the card it names", () => {
         <CardDetail def={def("core-041")} onClose={() => undefined} />
       </CardDefsProvider>,
     );
-    cy.get('[data-testid="inspect-face-radiant"] .cf-ref[data-ref="core-055"]').first().trigger("pointerenter", { pointerType: "mouse" });
+    cy.get('[data-testid="inspect-face-radiant"] .cf-ref[data-ref="core-055"]').first().trigger("pointerover", { pointerType: "mouse" });
     cy.get('[data-testid="card-ref-tooltip"]').should("be.visible").find(".card-name").should("have.text", "Lava Golem");
   });
 });
