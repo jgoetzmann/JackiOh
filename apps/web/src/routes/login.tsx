@@ -14,7 +14,13 @@
 //   - `/login?mode=forgot`: straight onto the forgot-password form (the reset screen's way back).
 //   - From an emailed link (R193). `main.tsx` reads the tokens and scrubs them from the address bar
 //     at boot, before anything renders, and sends a link that landed on any other path here;
-//     `consumeAuthRedirect` hands this screen the cached reading.
+//     `consumeAuthRedirect` hands this screen the cached reading. A link comes back with a one-time
+//     PKCE code (R323), which this screen exchanges for the link's session with the verifier this
+//     browser kept when it asked for the link, and then treats exactly as an implicit-flow link's
+//     session (below), which a link mailed before the switch still is (R324). A code this browser
+//     holds no verifier for was asked for on another device or browser: the provider confirmed the
+//     address before it sent the player here, so the screen says so and asks for a sign-in, never
+//     an error (R324).
 //
 // A LINK'S ADDRESS IS CHECKED BEFORE IT IS TRUSTED. The address in a link's token is only a claim:
 // its payload is readable, not verified, and anyone can write a link whose token names any address
@@ -100,12 +106,14 @@ import {
   AUTH_NOTICES,
   AuthError,
   adoptSession,
+  exchangeAuthCode,
   refreshSession,
   requestPasswordReset,
   resendConfirmation,
   revokeSignedOutSession,
   signIn,
   signUp,
+  type CodeExchange,
 } from "../net/auth.ts";
 import { loginModeOf, loginReasonOf, navigate, paths } from "../net/navigate.ts";
 import { takeReturnTo } from "../net/return-to.ts";
@@ -132,15 +140,23 @@ export { loginTestid };
 type Mode = "signIn" | "signUp" | "forgot" | "claimReset";
 
 /** An emailed link that carries a session, waiting for the server to say whose it is. */
-type PendingLink =
+type SessionLink =
   | { kind: "session"; session: Session; linkType: SessionLinkType }
   | { kind: "recovery"; session: Session };
+
+/** An emailed link: a session, or (R323) a PKCE code still to exchange for one. */
+type PendingLink = SessionLink | { kind: "code"; code: string };
 
 /**
  * The link's session while this screen still answers for it: the link's own until it is renewed,
  * then the renewal. `session` is null once it has been held for the reset screen or revoked.
  */
-type LinkState = { session: Session | null; renewed: boolean };
+type LinkState = {
+  session: Session | null;
+  renewed: boolean;
+  /** R323: the one exchange of a link's code, shared by StrictMode's two runs (a code works once). */
+  exchange?: Promise<CodeExchange>;
+};
 
 /** What renewing a link's session on arrival found. */
 type LinkRenewal =
@@ -169,6 +185,20 @@ async function renewLinkOnce(state: LinkState): Promise<LinkRenewal> {
   } catch (cause) {
     return cause instanceof AuthError && cause.failure === "sessionEnded" ? "spent" : "kept";
   }
+}
+
+/**
+ * R323: the link's code for its session, once. The session never passed through a URL, so there is
+ * no copy in history to spend: it counts as renewed already.
+ */
+async function exchangeLinkOnce(state: LinkState, code: string): Promise<CodeExchange> {
+  state.exchange ??= exchangeAuthCode(code);
+  const exchange = await state.exchange;
+  if (exchange.kind === "session" && !state.renewed && state.session === null) {
+    state.session = exchange.session;
+    state.renewed = true;
+  }
+  return exchange;
 }
 
 /** The link's session is not kept: revoke it (see A LINK'S SESSION THAT IS NOT KEPT). */
@@ -260,6 +290,11 @@ function readEntry(): Entry {
       entry.mode = "signIn";
       entry.link = { kind: "recovery", session: link.session };
       break;
+    case "code":
+      // Exchanged once mounted (R323), then decided like any other link.
+      entry.mode = "signIn";
+      entry.link = { kind: "code", code: link.code };
+      break;
     case "error":
       // `linkExpired` and `linkDenied` read the same sentence; the ways forward are the same too.
       entry.mode = "signIn";
@@ -336,7 +371,10 @@ export default function LoginRoute(): ReactElement {
   /** Bumped by "Try again" on a recovery link that could not be checked. */
   const [checkRound, setCheckRound] = useState(0);
   /** The emailed link's session while this screen answers for it (see `LinkState`). */
-  const linkState = useRef<LinkState>({ session: entry.link?.session ?? null, renewed: false });
+  const linkState = useRef<LinkState>({
+    session: entry.link === null || entry.link.kind === "code" ? null : entry.link.session,
+    renewed: false,
+  });
   /** The checked address of a recovery link asked for elsewhere (`claimReset`). Never shown. */
   const claimAddress = useRef<string | null>(null);
   const mounted = useRef(false);
@@ -379,11 +417,49 @@ export default function LoginRoute(): ReactElement {
   // first run's answer is dropped, and both share one renewal. The cached reading is released when
   // the screen really unmounts.
   useEffect(() => {
-    const link = entry.link;
+    const pending = entry.link;
     const state = linkState.current;
     let cancelled = false;
     const run = async (): Promise<void> => {
-      if (link === null) return;
+      if (pending === null) return;
+      let link: SessionLink;
+      if (pending.kind === "code") {
+        // R323: the code for the link's session first, with the verifier this browser kept.
+        let exchange: CodeExchange;
+        try {
+          exchange = await exchangeLinkOnce(state, pending.code);
+        } catch {
+          // The provider could not answer. The code is still good, but this screen says what it says
+          // of any link it could not check.
+          if (cancelled || acted.current) return;
+          setLinkOutcome("unchecked");
+          setResendOffered(true);
+          return;
+        }
+        if (cancelled) {
+          // The screen went for good while the code was exchanged: nobody holds the session now.
+          if (!mounted.current) revokeLink(state);
+          return;
+        }
+        if (exchange.kind === "elsewhere") {
+          // R324: asked for on another device or browser. The address is confirmed; sign in.
+          if (!acted.current) setLinkOutcome("confirmed");
+          return;
+        }
+        if (exchange.kind === "refused") {
+          if (acted.current) return;
+          setLinkOutcome("none");
+          setLinkError(true);
+          setResendOffered(true);
+          return;
+        }
+        link =
+          exchange.flow === "recovery"
+            ? { kind: "recovery", session: exchange.session }
+            : { kind: "session", session: exchange.session, linkType: "signup" };
+      } else {
+        link = pending;
+      }
       const renewal = await renewLinkOnce(state);
       if (cancelled) return;
       const session = state.session;

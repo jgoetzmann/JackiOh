@@ -1,9 +1,17 @@
-// Emailed auth links, read once and scrubbed (R193).
+// Emailed auth links, read once and scrubbed (R193, R323, R324).
 //
-// A confirmation or recovery email links to `/login` (`authRedirectUrl`), and GoTrue's implicit
-// flow appends the session to the URL FRAGMENT: `#access_token=…&refresh_token=…&expires_at=…&
-// type=signup`. A link that failed (mail scanners prefetch links and spend one-time tokens) comes
-// back with `error`, `error_code` and `error_description`, in the fragment, the query, or both.
+// A confirmation or recovery email links to `/login` (`authRedirectUrl`). The mailers send a PKCE
+// challenge (R323, `auth/pkce.ts`), so a link comes back with a one-time `?code=…` in the QUERY,
+// which `/login` exchanges for a session with the verifier this browser kept (`net/auth.ts`
+// `exchangeAuthCode`). A link mailed before that switch, or to a browser that could not hash, still
+// comes back the implicit flow's way, with the session in the URL FRAGMENT: `#access_token=…&
+// refresh_token=…&expires_at=…&type=signup`, and is read as before (R324). A link that failed (mail
+// scanners prefetch links and spend one-time tokens) comes back with `error`, `error_code` and
+// `error_description`, in the fragment, the query, or both.
+//
+// `code` is an auth parameter only on the two paths a link can land on: `/login`, where
+// `redirect_to` points, and `/`, the project's Site URL, which the provider falls back to when a
+// `redirect_to` misses its allow-list. Anywhere else a `code` in the query is some other page's.
 //
 // Before this module the client ignored all of it and left the tokens in the address bar and in
 // history. Now:
@@ -27,7 +35,8 @@
 // accepted the token (see `routes/login.tsx`). Nothing here chooses a destination either; every
 // navigation after an auth link goes to a `paths` value.
 
-import { revokeSignedOutSession } from "../net/auth.ts";
+import { isAuthCode, revokeSignedOutSession } from "../net/auth.ts";
+import { paths } from "../net/navigate.ts";
 import type { Session } from "../net/session.ts";
 
 /** The session-bearing link types GoTrue sends besides `recovery`. */
@@ -37,6 +46,8 @@ export type AuthRedirect =
   | { kind: "none" }
   | { kind: "session"; session: Session; email: string | null; linkType: SessionLinkType }
   | { kind: "recovery"; session: Session; email: string | null }
+  /** R323: a PKCE link's one-time code, for `/login` to exchange. Never a session by itself. */
+  | { kind: "code"; code: string }
   | { kind: "error"; failure: "linkExpired" | "linkDenied" };
 
 /** Every parameter GoTrue's implicit flow may put on a link. Any of them present means scrub. */
@@ -51,6 +62,16 @@ const AUTH_PARAMETERS: readonly string[] = [
   "error_code",
   "error_description",
 ];
+
+/** R323: the PKCE link's code, read from the query on `CODE_PATHS` only. */
+const CODE_PARAMETER = "code";
+
+/** Where a link's `code` can land: `/login` (`redirect_to`) and `/` (the Site URL fallback). */
+const CODE_PATHS: ReadonlySet<string> = new Set([paths.login, paths.landing]);
+
+function codeCounts(url: URL): boolean {
+  return CODE_PATHS.has(url.pathname) && url.searchParams.has(CODE_PARAMETER);
+}
 
 const SESSION_TYPES: ReadonlySet<string> = new Set<SessionLinkType>(["signup", "invite", "magiclink", "email_change"]);
 
@@ -159,12 +180,21 @@ function readParams(params: URLSearchParams): AuthRedirect {
 
 /**
  * Pure (bar `Date.now()` for an `expires_in`-only link). Reads the fragment and then the query: the
- * first of the two that yields anything decides.
+ * first of the two that yields anything decides. An error outranks a code beside it, and a code
+ * (R323) is read on `/login` and `/` only; one that is not an auth code's shape is no link at all.
  */
 export function parseAuthRedirect(url: URL): AuthRedirect {
   const fromFragment = readParams(fragmentParams(url));
   if (fromFragment.kind !== "none") return fromFragment;
-  return readParams(url.searchParams);
+  const fromQuery = readParams(url.searchParams);
+  if (fromQuery.kind !== "none" || !codeCounts(url)) return fromQuery;
+  const code = url.searchParams.get(CODE_PARAMETER) ?? "";
+  return isAuthCode(code) ? { kind: "code", code } : NONE;
+}
+
+/** Whether the URL carries anything this module reads, and so scrubs. */
+function carriesAuth(url: URL): boolean {
+  return hasAuthParameter(fragmentParams(url)) || hasAuthParameter(url.searchParams) || codeCounts(url);
 }
 
 let consumed: AuthRedirect | null = null;
@@ -179,7 +209,7 @@ export function consumeAuthRedirect(): AuthRedirect {
   if (consumed !== null) return consumed;
 
   const url = new URL(window.location.href);
-  if (!hasAuthParameter(fragmentParams(url)) && !hasAuthParameter(url.searchParams)) return NONE;
+  if (!carriesAuth(url)) return NONE;
 
   const result = parseAuthRedirect(url);
   try {
@@ -209,7 +239,7 @@ export function clearConsumedAuthRedirect(): void {
 export function adoptAuthRedirect(loginPathname: string): boolean {
   if (typeof window === "undefined") return false;
   const url = new URL(window.location.href);
-  if (!hasAuthParameter(fragmentParams(url)) && !hasAuthParameter(url.searchParams)) return false;
+  if (!carriesAuth(url)) return false;
   consumeAuthRedirect();
   if (url.pathname === loginPathname) return false; // already scrubbed; `/login` reads the cache
   try {

@@ -249,6 +249,11 @@ const CARD_TESTS_R311 = [
   "../../cards/test/042-eugenics.test.ts",
 ] as const;
 const CARD_TESTS_R312 = ["../../cards/test/087-pocket-chaos.test.ts", "../../cards/test/083-transmogulate.test.ts"] as const;
+/** R323 and R324's proofs: PKCE for the emailed links. */
+const WEB_PKCE_TEST = "../../../apps/web/src/auth/pkce.test.ts";
+const WEB_AUTH_FLOWS_TEST = "../../../apps/web/src/net/auth-flows.test.ts";
+const WEB_REDIRECT_TEST = "../../../apps/web/src/auth/redirect.test.ts";
+const WEB_LOGIN_FLOWS_TEST = "../../../apps/web/src/routes/login-flows.test.tsx";
 /** The migrations R105, R110, R111 and R112 live in (BUILD M6-T2, M7-T2). */
 const SERVER_INVITES_SQL = "../../../apps/server/src/db/migrations/0001_profiles_and_invites.sql";
 const SERVER_COLLECTION_SQL = "../../../apps/server/src/db/migrations/0002_collection.sql";
@@ -2349,6 +2354,19 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // and routes/practice-tutorial.test.tsx "R314 …" (no Skip step on the page; Got it and Exit are).
   it("R314 has no Skip step in the tutorial, and nothing that strands the player", () => {
     provenIn(314, WEB_TUTORIAL_COACH_TEST, WEB_PRACTICE_TUTORIAL_TEST);
+  });
+
+  // Proved by apps/web auth/pkce.test.ts (the verifier, its challenge and where it is kept),
+  // net/auth-flows.test.ts (the mailers' challenge, the exchange), auth/redirect.test.ts (the code
+  // read on /login and / only, and scrubbed) and routes/login-flows.test.tsx (a code on the screen).
+  it("R323 sends a PKCE challenge with every mailer and exchanges a returning code for the link's session", () => {
+    provenIn(323, WEB_PKCE_TEST, WEB_AUTH_FLOWS_TEST, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST);
+  });
+
+  // Proved by the same files' "R324 …" tests: no verifier here, a refused code, a browser that
+  // cannot hash, and an implicit-flow link mailed before the switch.
+  it("R324 confirms a link opened elsewhere without an error, and still reads a link from before", () => {
+    provenIn(324, WEB_AUTH_FLOWS_TEST, WEB_REDIRECT_TEST, WEB_LOGIN_FLOWS_TEST);
   });
 });
 

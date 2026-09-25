@@ -25,6 +25,7 @@ import {
   SIGN_UP_FAILED_MESSAGE,
   authRedirectUrl,
   classifyProviderRefusal,
+  exchangeAuthCode,
   refreshSession,
   requestPasswordReset,
   resendConfirmation,
@@ -37,6 +38,7 @@ import {
   type AuthEndpoint,
   type AuthFailure,
 } from "./auth.ts";
+import { challengeFor, challengeForRequest, storedVerifiers } from "../auth/pkce.ts";
 import { paths } from "./navigate.ts";
 import {
   E2E_SESSION_STORAGE_KEY,
@@ -50,6 +52,9 @@ import {
 const URL_ = "https://project.supabase.co";
 const KEY = "sb_publishable_test";
 const EMAIL = "player@example.com";
+
+/** R323: every mailer sends a PKCE challenge beside the address. */
+const PKCE_FIELDS = { code_challenge: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u), code_challenge_method: "s256" };
 const PASSWORD = "x".repeat(AUTH_PASSWORD_MIN_LENGTH);
 const ACCESS = "access-token-1";
 
@@ -607,7 +612,7 @@ describe("the requests", () => {
     expect(call.method).toBe("POST");
     expect(`${call.url.origin}${call.url.pathname}`).toBe(`${URL_}/auth/v1/resend`);
     expect(call.url.searchParams.get("redirect_to")).toBe(`${window.location.origin}/login`);
-    expect(call.body).toEqual({ type: "signup", email: EMAIL });
+    expect(call.body).toEqual({ type: "signup", email: EMAIL, ...PKCE_FIELDS });
     expectPublishableHeaders(call);
     expect(call.headers.get("authorization")).toBe(`Bearer ${KEY}`);
   });
@@ -621,7 +626,7 @@ describe("the requests", () => {
     expect(call.method).toBe("POST");
     expect(`${call.url.origin}${call.url.pathname}`).toBe(`${URL_}/auth/v1/recover`);
     expect(call.url.searchParams.get("redirect_to")).toBe(`${window.location.origin}/login`);
-    expect(call.body).toEqual({ email: EMAIL });
+    expect(call.body).toEqual({ email: EMAIL, ...PKCE_FIELDS });
     expectPublishableHeaders(call);
     expect(call.headers.get("authorization")).toBe(`Bearer ${KEY}`);
   });
@@ -1081,5 +1086,84 @@ describe("B25 a provider request that never answers", () => {
 
     expect(error.failure).toBe("network");
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("R323 R324 PKCE: the mailers' challenge and the code's exchange", () => {
+  const CODE = "3f9c6c1e-5a6b-4c2d-9e8f-0a1b2c3d4e5f";
+
+  it("R323 sign-up, resend and recover each send an s256 challenge of a verifier kept on this device", async () => {
+    const calls = serve(200, {});
+    await signUp(EMAIL, PASSWORD);
+    await resendConfirmation(EMAIL);
+    await requestPasswordReset(EMAIL);
+    const [signup, resend, recover] = calls.map((call) => call.body as { code_challenge?: string; code_challenge_method?: string });
+    for (const body of [signup, resend, recover]) expect(body?.code_challenge_method).toBe("s256");
+    // The resend reuses the sign-up's verifier, so the first email's link still exchanges.
+    expect(resend?.code_challenge).toBe(signup?.code_challenge);
+    const kept = Object.fromEntries(storedVerifiers().map((entry) => [entry.flow, entry.verifier]));
+    expect(await challengeFor(kept.signup ?? "")).toBe(signup?.code_challenge);
+    expect(await challengeFor(kept.recovery ?? "")).toBe(recover?.code_challenge);
+  });
+
+  it("R324 a browser that cannot hash still mails the link, the implicit flow's way", async () => {
+    const calls = serve(200, {});
+    vi.stubGlobal("crypto", { getRandomValues: (bytes: Uint8Array) => bytes, subtle: undefined });
+    await requestPasswordReset(EMAIL);
+    expect(calls[0]?.body).toEqual({ email: EMAIL });
+    expect(storedVerifiers()).toEqual([]);
+  });
+
+  it("R323 the code is exchanged at grant_type=pkce with auth_code and code_verifier, and its verifier forgotten", async () => {
+    await challengeForRequest("recovery");
+    const [kept] = storedVerifiers();
+    const calls = serve(200, TOKEN_BODY);
+    const exchange = await exchangeAuthCode(CODE);
+
+    expect(exchange).toEqual({
+      kind: "session",
+      flow: "recovery",
+      session: { accessToken: "access-new", refreshToken: "refresh-new", expiresAt: expect.any(Number) as unknown as number },
+    });
+    const call = calls[0] as Call;
+    expect(call.method).toBe("POST");
+    expect(`${call.url.origin}${call.url.pathname}`).toBe(`${URL_}/auth/v1/token`);
+    expect(call.url.searchParams.get("grant_type")).toBe("pkce");
+    expect(call.body).toEqual({ auth_code: CODE, code_verifier: kept?.verifier });
+    expect(call.headers.get("apikey")).toBe(KEY);
+    expect(storedVerifiers()).toEqual([]);
+  });
+
+  it("R324 with no verifier on this device the exchange is 'elsewhere', and nothing is sent", async () => {
+    const calls = serve(200, TOKEN_BODY);
+    expect(await exchangeAuthCode(CODE)).toEqual({ kind: "elsewhere" });
+    expect(calls).toEqual([]);
+  });
+
+  it("R324 a verifier that is not the code's is 'elsewhere' once none is left, and is kept for its own link", async () => {
+    await challengeForRequest("signup");
+    serve(400, { error_code: "bad_code_verifier", msg: PROVIDER_TEXT[0] });
+    expect(await exchangeAuthCode(CODE)).toEqual({ kind: "elsewhere" });
+    expect(storedVerifiers().map((entry) => entry.flow)).toEqual(["signup"]);
+  });
+
+  it("R323 a spent or expired code is 'refused'; a provider that cannot answer throws, keeping the verifier", async () => {
+    await challengeForRequest("signup");
+    serve(404, { error_code: "flow_state_not_found" });
+    expect(await exchangeAuthCode(CODE)).toEqual({ kind: "refused" });
+    serve(403, { error_code: "flow_state_expired" });
+    expect(await exchangeAuthCode(CODE)).toEqual({ kind: "refused" });
+    serve(500, {});
+    expect((await refusal(exchangeAuthCode(CODE))).failure).toBe("service");
+    unreachable();
+    expect((await refusal(exchangeAuthCode(CODE))).failure).toBe("network");
+    expect(storedVerifiers()).toHaveLength(1);
+  });
+
+  it("R323 a code that is not an auth code's shape is refused without a request", async () => {
+    await challengeForRequest("signup");
+    const calls = serve(200, TOKEN_BODY);
+    expect(await exchangeAuthCode("../../token?x=1")).toEqual({ kind: "refused" });
+    expect(calls).toEqual([]);
   });
 });

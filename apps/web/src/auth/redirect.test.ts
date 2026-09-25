@@ -1,4 +1,4 @@
-// Emailed auth links (docs/polish/5-sign-in.md, B29, B30, R193).
+// Emailed auth links (docs/polish/5-sign-in.md, B29, B30, R193; PKCE codes, R323, R324).
 //
 // `parseAuthRedirect` is pure over a URL; `consumeAuthRedirect` reads jsdom's location once, scrubs
 // the address bar when any auth parameter is present, and caches its answer until cleared. A
@@ -405,5 +405,61 @@ describe("R193 B30 the recovery session", () => {
   it("R193 may be held without an address", () => {
     holdRecoverySession(SESSION, null);
     expect(recoverySession()).toEqual({ session: SESSION, email: null });
+  });
+});
+
+describe("R323 R324 a PKCE link's code", () => {
+  const CODE = "3f9c6c1e-5a6b-4c2d-9e8f-0a1b2c3d4e5f";
+
+  it("R323 a code in the query on /login or / is a code, never a session", () => {
+    for (const path of ["/login", "/"]) {
+      expect(parseAuthRedirect(new URL(`${ORIGIN}${path}?code=${CODE}`)), path).toEqual({ kind: "code", code: CODE });
+    }
+  });
+
+  it("R323 a code on any other page is that page's, and is neither read nor scrubbed", () => {
+    expect(parseAuthRedirect(new URL(`${ORIGIN}/practice?code=${CODE}`))).toEqual({ kind: "none" });
+    window.history.replaceState(null, "", `/practice?code=${CODE}`);
+    expect(consumeAuthRedirect()).toEqual({ kind: "none" });
+    expect(adoptAuthRedirect("/login")).toBe(false);
+    expect(window.location.search).toBe(`?code=${CODE}`);
+  });
+
+  it("R323 an error beside a code outranks it, and a code that is not an auth code's shape is no link", () => {
+    expect(parseAuthRedirect(new URL(`${ORIGIN}/login?code=${CODE}&error=access_denied&error_code=otp_expired`))).toEqual({
+      kind: "error",
+      failure: "linkExpired",
+    });
+    for (const code of ["", "<script>", "a".repeat(200), "code with spaces"]) {
+      expect(parseAuthRedirect(new URL(`${ORIGIN}/login?${params({ code })}`)), code).toEqual({ kind: "none" });
+    }
+  });
+
+  it("R323 consumeAuthRedirect reads the code and drops it from the address bar", () => {
+    window.history.replaceState(null, "", `/login?code=${CODE}`);
+    expect(consumeAuthRedirect()).toEqual({ kind: "code", code: CODE });
+    expect(window.location.pathname).toBe("/login");
+    expect(window.location.search).toBe("");
+    expect(window.location.href).not.toContain(CODE);
+  });
+
+  it("R323 a code that landed on the Site URL is moved to /login, scrubbed", () => {
+    window.history.replaceState(null, "", `/?code=${CODE}`);
+    expect(adoptAuthRedirect("/login")).toBe(true);
+    expect(window.location.pathname).toBe("/login");
+    expect(window.location.search).toBe("");
+    expect(consumeAuthRedirect()).toEqual({ kind: "code", code: CODE });
+  });
+
+  it("R324 an implicit-flow link, tokens in the fragment, is still read as before", () => {
+    expect(parseAuthRedirect(new URL(`${ORIGIN}/login#${params(tokenParams("signup"))}`))).toMatchObject({
+      kind: "session",
+      linkType: "signup",
+      email: EMAIL,
+    });
+    expect(parseAuthRedirect(new URL(`${ORIGIN}/login#${params(tokenParams("recovery"))}`))).toMatchObject({
+      kind: "recovery",
+      email: EMAIL,
+    });
   });
 });
