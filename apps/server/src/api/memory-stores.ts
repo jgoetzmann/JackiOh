@@ -1,5 +1,5 @@
 /**
- * The in-memory halves of the stores R250–R263 added — saved decks, saved trios and the Best-of-3
+ * The in-memory halves of the stores R250–R263 added — saved decks, saved trios and the Conquest
  * series — shared by the two in-memory `Store`s: `src/api/e2e-store.ts` (the end-to-end server)
  * and `test/fakes/store.ts` (the unit tests). One implementation, so the two cannot answer an
  * upsert or a compare-and-set differently while only one of them runs under `test/db/contract.ts`.

@@ -58,7 +58,7 @@ const DECKABLE_COUNT = 100;
 /** A collection owning every deckable card once. */
 const COLLECTION: Record<string, number> = Object.fromEntries(DECKABLE.map((def) => [def.id, 1]));
 
-/** Three disjoint decks of 20, in catalog order, and a trio of them: a legal Best-of-3 choice. */
+/** Three disjoint decks of 20, in catalog order, and a trio of them: a legal Conquest choice. */
 const DECK_SIZE = 20;
 const SAVED_AT = 0;
 const DECK_IDS = [
@@ -100,6 +100,7 @@ function mountWorkshop(decks: readonly (readonly string[])[]): void {
     deleteDeck: cy.stub().resolves({}),
     putTrio: cy.stub().resolves({}),
     deleteTrio: cy.stub().resolves({}),
+    importTrio: cy.stub().resolves({}),
   };
   cy.mount(
     <DeckWorkshop

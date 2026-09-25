@@ -215,9 +215,15 @@ describe("the networked board", () => {
 });
 
 describe("the series banner on a series game (R259)", () => {
-  /** A Best-of-3 game's series, as `GET /api/matches/:id/series` answers it. */
+  /** A Conquest game's series, as `GET /api/matches/:id/series` answers it. */
   function seriesAnswer(over: boolean): Record<string, unknown> {
-    const decks = [0, 1, 2].map((slot) => ({ slot, name: `Deck ${String(slot + 1)}`, cards: [], played: slot === 0 }));
+    const decks = [0, 1, 2].map((slot) => ({
+      slot,
+      name: `Deck ${String(slot + 1)}`,
+      cards: [],
+      won: over && slot === 0,
+      games: slot === 0 ? 1 : 0,
+    }));
     return {
       series: {
         id: "series-1",
@@ -228,8 +234,8 @@ describe("the series banner on a series game (R259)", () => {
         pickDeadline: null,
         now: 0,
         currentMatchId: over ? null : "m-1",
-        you: { seat: "p1", wins: over ? 1 : 0, trioName: "Main trio", decks, pick: null },
-        opponent: { wins: 0, decks: decks.map(({ slot, played }) => ({ slot, played })), picked: false },
+        you: { seat: "p1", wins: over ? 1 : 0, trioName: "Main trio", decks, pick: null, autoPick: false },
+        opponent: { wins: 0, decks: decks.map(({ slot }) => ({ slot, won: false })), picked: false },
         games: [],
         result: null,
       },

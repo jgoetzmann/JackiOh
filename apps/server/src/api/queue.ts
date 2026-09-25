@@ -7,10 +7,10 @@
  * every 10 s from ±100 and is uncapped after 60 s; both tickets are claimed in one atomic
  * statement. The client shows the queue population instead of an endless spinner."
  *
- * R257 adds the mode: Best of 1 (one saved deck), Best of 3 (a trio, played as a series, R259) and
+ * R257 adds the mode: Best of 1 (one saved deck), Conquest (a trio, played as a series, R330) and
  * All Random (R258). A ticket pairs only with a ticket of its own mode; inside a mode the window
  * and R166's order are exactly as before. What a pair becomes depends on the mode: a Best-of-1
- * match on the two frozen decks, an All Random match on two dealt ones, or a Best-of-3 series whose
+ * match on the two frozen decks, an All Random match on two dealt ones, or a Conquest series whose
  * first game waits for both players to pick (`series.ts`).
  *
  * Three pieces, in that order: the three endpoints, one pairing sweep (`tryPair`), and the
@@ -211,14 +211,14 @@ function qualifies(a: Ticket, b: Ticket, now: number): boolean {
   return gap <= windowFor(a, now) && gap <= windowFor(b, now);
 }
 
-/** A Best-of-3 ticket's frozen trio; one without is a store that lost a column, not a player. */
+/** A Conquest ticket's frozen trio; one without is a store that lost a column, not a player. */
 function trioOf(ticket: Ticket): FrozenTrio {
-  if (ticket.trio === null) throw new Error(`Best-of-3 ticket ${ticket.id} holds no trio`);
+  if (ticket.trio === null) throw new Error(`Conquest ticket ${ticket.id} holds no trio`);
   return ticket.trio;
 }
 
 /**
- * R259: a Best-of-3 pair becomes a series, not a match. Its first game's match id is the one
+ * R259: a Conquest pair becomes a series, not a match. Its first game's match id is the one
  * `claimPair` just reserved (R263), and nobody is put in a match yet: the series opens on a pick
  * phase, and `series.ts` starts game 1 once both players have chosen a deck. Series seat p1 is the
  * older ticket, who goes first in odd games.
@@ -253,7 +253,7 @@ async function startPairedSeries(
 }
 
 /**
- * Creates the paired match — or, for Best of 3, the series. Called only with two tickets this
+ * Creates the paired match — or, for Conquest, the series. Called only with two tickets this
  * process has already claimed, which is what makes it safe to write: the claim is the mutual
  * exclusion.
  *
@@ -450,7 +450,7 @@ export function createQueueRoutes(): Route[] {
       await tryPair(deps);
       const current = await deps.store.tickets.get(ticket.id);
       const status = current?.status ?? ticket.status;
-      // A paired Best-of-3 ticket's `matchId` is game 1's reserved id, which is not a match anyone
+      // A paired Conquest ticket's `matchId` is game 1's reserved id, which is not a match anyone
       // can open yet: the player goes to the series to pick a deck, so it answers with that.
       const paired = status === "matched";
       const seriesId =

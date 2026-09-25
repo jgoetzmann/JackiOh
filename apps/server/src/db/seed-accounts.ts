@@ -89,7 +89,7 @@ async function createOrFindUser(
 
 /**
  * Three legal decks and a trio of them, so a seeded account can queue immediately in any mode —
- * Best of 1 with any of the decks, Best of 3 with the trio (SPEC §9.5, R257) — instead of building
+ * Best of 1 with any of the decks, Conquest with the trio (SPEC §9.5, R257) — instead of building
  * 60 cards by hand before it can play once.
  *
  * Saved through `app.upsert_deck` and `app.upsert_trio` (migration 0007) rather than by writing

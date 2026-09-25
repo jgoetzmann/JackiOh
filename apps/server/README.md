@@ -1,7 +1,7 @@
 # `apps/server` — the JackiOh server runtime
 
 The authority for everything that is not presentation. It owns identity and the invite gate, the
-collection ledger, saved decks and trios, matchmaking in three modes, the Best-of-3 series, and the
+collection ledger, saved decks and trios, matchmaking in three modes, the Conquest series, and the
 match itself: one actor per match holding the
 `GameState` in memory, one WebSocket per player, `reduce` on every action and `viewFor` pushed to
 each player after every change (SPEC §9.1–§9.5, §10.8).
@@ -149,15 +149,16 @@ top of every handler:
 | `PUT` | `/api/decks/:id` | active | Create or replace one deck by the id the client minted (R256); D1–D4 only, a draft may be incomplete |
 | `DELETE` | `/api/decks/:id` | active | Idempotent; empties every trio slot that held the deck |
 | `PUT` | `/api/trios/:id` | active | Create or replace one trio (T1–T3); a slot may be empty, decks may share cards |
+| `POST` | `/api/trios/import` | active | A trio code's decks and the trio naming them, all or nothing (R341): the catalog version, D1–D4 per deck and T1–T3 checked, both caps checked with the slots it needs in `details` (R340), one transaction; the same ids again are a retry |
 | `DELETE` | `/api/trios/:id` | active | Idempotent |
 | `POST` | `/api/queue` | active | Enqueue in a mode (R257): `{ mode: "bo1", deckId }`, `{ mode: "bo3", trioId }` or `{ mode: "random" }`; the deck or trio is validated (R253) and frozen into the ticket |
 | `DELETE` | `/api/queue` | active | Leave the queue |
 | `GET` | `/api/queue/population` | user | §9.5: the open tickets, in total and per mode |
 | `POST` | `/api/rooms` | active | Create a room in a mode (R264); returns a 6-character code |
 | `POST` | `/api/rooms/:code/join` | active | Claim it in the room's mode. Atomic: a race produces one match (or series) and one 409 |
-| `GET` | `/api/series/:id` | active | A Best-of-3 series as its player may see it: never the other side's pick or decks (R259) |
-| `POST` | `/api/series/:id/pick` | active | Pick the next game's deck from the frozen trio; the game starts when both have picked |
-| `POST` | `/api/series/:id/forfeit` | active | Leave the series between games; the other side wins it (R261) |
+| `GET` | `/api/series/:id` | active | A Conquest series as its player may see it: both sides' won decks, never the other side's pick or deck names (R336) |
+| `POST` | `/api/series/:id/pick` | active | Seal the next game's deck from the frozen trio, one that has not won (R330, R331); final once in, the same slot again answers 200; the game starts when both have picked |
+| `POST` | `/api/series/:id/forfeit` | active | Leave the series between games; the other side wins it (R334) |
 | `GET` | `/api/matches/:id/series` | active | The series a match is a game of, for the board's banner |
 
 ## WebSocket surface
@@ -266,8 +267,8 @@ identical timing; the collection ledger's two-table transaction; saved decks and
 with client-minted ids, and the queue-time check against the shared validator; the match actor,
 protocol, nonce dedupe, action log and log-folding recovery; room codes, in all three modes; the
 clock; results and Elo; matchmaking in three modes with frozen decks, opportunistic pairing, a
-sweeper, the widening window and the atomic claim; All Random's seeded decks; the Best-of-3 series,
-its pick clock, its one rating move and its recovery after a restart; the catalog loader against the
+sweeper, the widening window and the atomic claim; All Random's seeded decks; the Conquest series,
+its sealed picks and pick clock, its one rating move and its recovery after a restart; trio imports; the catalog loader against the
 real 110-entry `catalog.json`.
 
 Stubbed or pending, and why:

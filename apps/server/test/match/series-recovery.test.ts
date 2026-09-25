@@ -276,8 +276,35 @@ describe("R263 — a series survives a restart", () => {
     });
     expect(b.deps.matches.started[0]?.seats[0]?.profileId).toBe(BOB);
 
+    // Alice wins again: her last deck is picked for her (R332), and that pick is in the row, so a
+    // third process finds it there and only waits for Bob's.
     await finishGame(b, ALICE);
-    expect(await row(b.deps.store)).toMatchObject({ status: "over", winner: "p1", endReason: "decided" });
+    const c = boot("c", b);
+    const aliceSees = await readJson<SeriesView>(
+      await c.router(jsonRequest("GET", `/api/series/${SERIES_ID}`, undefined, { token: c.tokens.alice })),
+    );
+    expect(aliceSees.you).toMatchObject({ pick: 2, autoPick: true });
+    expect((await pick(c, c.tokens.bob, 0)).status).toBe(200);
+    expect(c.deps.matches.started[0]?.seats.map((seat) => seat.deck[0])).toEqual(["alice-card-2a", "bob-card-0a"]);
+    await finishGame(c, ALICE);
+    expect(await row(c.deps.store)).toMatchObject({ status: "over", winner: "p1", endReason: "decided" });
+  });
+
+  it("R331 a pick made before a restart is kept by the next process, and still sealed and hidden", async () => {
+    const a = boot("a");
+    await begin(a);
+    expect((await pick(a, a.tokens.alice, 2)).status).toBe(200);
+
+    const b = boot("b", a);
+    const bobSees = await readJson<SeriesView>(
+      await b.router(jsonRequest("GET", `/api/series/${SERIES_ID}`, undefined, { token: b.tokens.bob })),
+    );
+    expect(bobSees.opponent.picked).toBe(true);
+    expect(JSON.stringify(bobSees)).not.toMatch(/alice/u);
+    // Sealed across the restart too: Alice cannot change it in the new process.
+    expect((await pick(b, b.tokens.alice, 1)).status).toBe(409);
+    expect((await pick(b, b.tokens.bob, 1)).status).toBe(200);
+    expect(b.deps.matches.started[0]?.seats.map((seat) => seat.deck[0])).toEqual(["alice-card-2a", "bob-card-1a"]);
   });
 
   it("R263 a store failure inside the result's transaction rolls back the series advance with the result", async () => {
@@ -310,20 +337,23 @@ describe("R263 — a series survives a restart", () => {
     await pickBoth(a, [0, 0]);
     await finishGame(a, ALICE);
     await pickBoth(a, [1, 1]);
+    await finishGame(a, ALICE);
+    // Alice's last deck is picked for her (R332); Bob's pick starts the deciding game.
+    expect((await pick(a, a.tokens.bob, 0)).status).toBe(200);
     const deciding = await row(a.deps.store);
 
     a.deps.store.onCall = (method) => {
       if (method === "profiles.setRating") throw new Error("the connection dropped");
     };
     await expect(finishGame(a, ALICE)).rejects.toThrow(/connection dropped/u);
-    expect(a.deps.store.tables.results).toHaveLength(1);
+    expect(a.deps.store.tables.results).toHaveLength(2);
     expect(await row(a.deps.store)).toEqual(deciding);
     expect((await a.deps.store.profiles.getById(ALICE))?.rating).toBe(1000);
 
     a.deps.store.onCall = null;
     await finishGame(a, ALICE);
     const expected = eloUpdate(1000, 1000, 1);
-    expect(a.deps.store.tables.results).toHaveLength(2);
+    expect(a.deps.store.tables.results).toHaveLength(3);
     expect((await a.deps.store.profiles.getById(ALICE))?.rating).toBe(expected.a);
     expect(await row(a.deps.store)).toMatchObject({ status: "over", ratingAfter: [expected.a, expected.b] });
   });

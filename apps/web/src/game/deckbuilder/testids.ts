@@ -57,7 +57,7 @@ export const TRIO_CAP = "trio-cap";
 export const TRIO_NEW = "trio-new";
 export const TRIO_CAP_REASON = "trio-cap-reason";
 
-/** One saved trio in the list: `data-ready="true|false"` (R253's Best-of-3 verdict). */
+/** One saved trio in the list: `data-ready="true|false"` (R253's Conquest verdict). */
 export function trioRowId(trioId: string): string {
   return `trio-row-${trioId}`;
 }
@@ -173,7 +173,7 @@ export function trioOpenDeckId(slot: number): string {
   return `trio-open-${String(slot)}`;
 }
 
-/** R253's Best-of-3 verdict (`data-ready`): "Ready for Best of 3", or `loadout-errors`. */
+/** R253's Conquest verdict (`data-ready`): "Ready for Conquest", or `loadout-errors`. */
 export const TRIO_VERDICT = "trio-verdict";
 
 /** The trio's three decks side by side. */
@@ -190,6 +190,10 @@ export function trioCardId(slot: number, cardId: string): string {
 export const TRIO_DELETE = "trio-delete";
 export const TRIO_DELETE_CONFIRM = "trio-delete-confirm";
 export const TRIO_DELETE_CANCEL = "trio-delete-cancel";
+
+/** R339: "Copy trio code", and the read-only field the code is shown in once copied. */
+export const TRIO_COPY_CODE = "trio-copy-code";
+export const TRIO_CODE_OUTPUT = "trio-code-output";
 
 // ---------------------------------------------------------------------------------------------
 // Import (R255)
@@ -215,6 +219,46 @@ export const DECK_IMPORT_PREVIEW = "deck-import-preview";
 export const DECK_IMPORT_SUBMIT = "deck-import-submit";
 export const DECK_IMPORT_CAP_REASON = "deck-import-cap-reason";
 export const DECK_IMPORT_CANCEL = "deck-import-cancel";
+
+// ---------------------------------------------------------------------------------------------
+// Import a trio (R339–R341)
+// ---------------------------------------------------------------------------------------------
+
+/** Opens the trio import panel from the rail's Trios group. */
+export const TRIO_IMPORT_OPEN = "trio-import-open";
+
+/** The trio import panel itself. */
+export const TRIO_IMPORT = "trio-import";
+
+/** Where the trio code is pasted. */
+export const TRIO_IMPORT_INPUT = "trio-import-input";
+
+/**
+ * The live read of the pasted trio code, `data-ok="true|false"`: the trio's name, each slot's deck
+ * (`trio-import-slot-<n>`), the cards the decks share (`trio-import-shared`), or the reason the
+ * code cannot be read.
+ */
+export const TRIO_IMPORT_PREVIEW = "trio-import-preview";
+
+/** Slot `n` of the preview, 1-based: `data-empty="true|false"`, and `data-count` for a deck. */
+export function trioImportSlotId(slot: number): string {
+  return `trio-import-slot-${String(slot)}`;
+}
+
+/** The cards two or more of the code's decks share (`data-count`): kept, and flagged. */
+export const TRIO_IMPORT_SHARED = "trio-import-shared";
+
+/**
+ * "Import as new trio": off until the code reads, and while the caps leave too little room, with
+ * `trio-import-cap-reason` saying exactly how many deck and trio slots it needs (R340;
+ * `data-decks-short`, `data-trios-short`).
+ */
+export const TRIO_IMPORT_SUBMIT = "trio-import-submit";
+export const TRIO_IMPORT_CAP_REASON = "trio-import-cap-reason";
+export const TRIO_IMPORT_CANCEL = "trio-import-cancel";
+
+/** The server's refusal of an import, in its own words: nothing was made. */
+export const TRIO_IMPORT_ERROR = "trio-import-error";
 
 // ---------------------------------------------------------------------------------------------
 // Browse: filters, sort, the pool grid and its inspect control (docs/polish/6-cards.md, Surface D).

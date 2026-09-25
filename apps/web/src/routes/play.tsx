@@ -4,7 +4,7 @@
 // IT ENFORCES NOTHING (CLAUDE.md rule 7). The three modes, what each needs and whether a choice may
 // be queued are the server's: `POST /api/queue` and the room routes freeze the choice and run the
 // shared validator on it (R253), and this screen relays what they said. The lobby does run the same
-// validator (`validateDeck` for Best of 1, `validateTrio` for Best of 3) over the same collection,
+// validator (`validateDeck` for Best of 1, `validateTrio` for Conquest) over the same collection,
 // but only to say "Ready" or why not before the player presses anything. It never blocks a button:
 // a verdict here is UX, and a 422 `loadout_invalid` from the server shows the validator's sentences
 // exactly as the server relayed them.
@@ -28,7 +28,7 @@ import {
   type LoadoutResult,
 } from "@jackioh/validator";
 
-import { SERIES_MAX_GAMES, SERIES_POLL_SECONDS, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
+import { SERIES_POLL_SECONDS, SERIES_WINS_NEEDED } from "../../../server/src/config.ts";
 import {
   ApiRequestError,
   createRoom,
@@ -74,14 +74,14 @@ export const playTestid = {
   modeBo1: "play-mode-bo1",
   modeBo3: "play-mode-bo3",
   modeRandom: "play-mode-random",
-  /** Best of 1's deck `<select>`, and Best of 3's trio `<select>`. */
+  /** Best of 1's deck `<select>`, and Conquest's trio `<select>`. */
   deckSelect: "play-deck-select",
   trioSelect: "play-trio-select",
   /** The client's verdict on the choice (`data-ready`): UX only, the server's is law (R253). */
   verdict: "play-choice-verdict",
   /** The queue's population per mode (`data-bo1`, `data-bo3`, `data-random`). */
   population: "play-population",
-  /** The way to `/decks` when there is no deck (Best of 1) or no trio (Best of 3) to pick. */
+  /** The way to `/decks` when there is no deck (Best of 1) or no trio (Conquest) to pick. */
   decksLink: "play-decks-link",
   /** The way to the series a refusal said the player is still in. */
   seriesLink: "play-series-link",
@@ -104,10 +104,13 @@ export function playModeTestid(mode: QueueMode): string {
   return MODE_TESTID[mode];
 }
 
-/** What each mode is called on every screen (the lobby, the room code, the series screen). */
+/**
+ * What each mode is called on every screen (the lobby, the room code, the series screen). The trio
+ * mode keeps its wire name `bo3` and is called Conquest since R330.
+ */
 export const MODE_LABEL: Readonly<Record<QueueMode, string>> = {
   bo1: "Best of 1",
-  bo3: `Best of ${String(SERIES_MAX_GAMES)}`,
+  bo3: "Conquest",
   random: "All Random",
 };
 
@@ -115,8 +118,8 @@ export const MODE_LABEL: Readonly<Record<QueueMode, string>> = {
 export const MODE_HINT: Readonly<Record<QueueMode, string>> = {
   bo1: "One game with one of your decks.",
   bo3:
-    `First to ${String(SERIES_WINS_NEEDED)} wins; you play each deck of a trio at most once; ` +
-    "picks are hidden until both players pick.",
+    `Win a game with each of your trio's ${String(SERIES_WINS_NEEDED)} decks; a deck that wins is locked. ` +
+    "Both players pick a deck before each game, hidden until both have picked.",
   random: "Both players get a fresh random deck, dealt with a sensible mana curve.",
 };
 
@@ -496,7 +499,7 @@ function DeckSummary({ deck }: { deck: SavedDeck }): ReactElement {
   );
 }
 
-/** Best of 3's pick at a glance: the trio's three decks, or which slots are empty. */
+/** Conquest's pick at a glance: the trio's three decks, or which slots are empty. */
 function TrioSummary({ trio, decks }: { trio: SavedTrio; decks: readonly SavedDeck[] }): ReactElement {
   return (
     <ul className="play-trio-decks" aria-label={`Decks in ${trio.name}`}>

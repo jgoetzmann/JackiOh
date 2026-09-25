@@ -17,7 +17,7 @@
  *
  * R264: a room is created in a mode, and a joiner plays that mode or is refused with it named. A
  * Best-of-1 join starts the match on the two frozen decks; an All Random join deals both decks
- * (R258) and starts the match; a Best-of-3 join makes the series (R259), whose first game starts
+ * (R258) and starts the match; a Conquest join makes the series (R259), whose first game starts
  * once both players have picked a deck.
  */
 
@@ -94,7 +94,7 @@ function takeSeedForRoom(code: string, joinerSeed: string | null): string | null
  */
 const MODE_REFUSAL: Readonly<Record<QueueMode, string>> = {
   bo1: "This room plays Best of 1: pick one of your decks.",
-  bo3: "This room plays Best of 3: pick one of your trios.",
+  bo3: "This room plays Conquest: pick one of your trios.",
   random: "This room plays All Random: join it without a deck.",
 };
 
@@ -222,7 +222,7 @@ export function createRoomRoutes(): Route[] {
 
   /**
    * POST /api/rooms/:code/join — claim the room and start its game (§9.5, R264): the match for
-   * Best of 1 and All Random, the series for Best of 3.
+   * Best of 1 and All Random, the series for Conquest.
    */
   const join = route("POST", "/api/rooms/:code/join", "active", async (req, deps) => {
     const profileId = profileOf(req);
@@ -260,7 +260,7 @@ export function createRoomRoutes(): Route[] {
     if (frozen.mode === "bo3") {
       // R259, R263: the series, with the host as series p1 and the id the claim reserved as game
       // 1's. Nobody is in a match yet: the series opens on its pick phase.
-      if (claimed.hostTrio === null) throw new Error(`Best-of-3 room ${claimed.code} holds no trio`);
+      if (claimed.hostTrio === null) throw new Error(`Conquest room ${claimed.code} holds no trio`);
       const series = await startSeries(deps, {
         seriesId: deps.ids.uuid(),
         firstMatchId: matchId,

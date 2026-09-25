@@ -11,7 +11,7 @@
  *
  * R253 picks the rule set by what is being queued, and the port's `scope` carries that choice:
  * `"deck"` is a Best-of-1 deck (`validateDeck`: L2, L3, L5, L6) and `"trio"`, the default, is a
- * Best-of-3 trio (`validateLoadout`: L1–L6). `names` are the saved decks' own names, so a refusal
+ * Conquest trio (`validateLoadout`: L1–L6). `names` are the saved decks' own names, so a refusal
  * says "Aggro has 19 cards" rather than "Deck 1 has 19 cards" (§9.4: "a queue-time failure names
  * the deck and the card").
  *
@@ -24,11 +24,12 @@ import { validateDeck, validateLoadout, type LoadoutDeck, type LoadoutResult } f
 import type { LoadoutIssue, LoadoutValidateInput, LoadoutValidator } from "./ports";
 
 /**
- * The draft rules, the name normaliser and the trio's size, passed through so the rest of the
- * server (`src/api/decks.ts`, `src/db/seed-accounts.ts`) reaches the shared module through this
- * file too: the grep in `test/validator-single-source.test.ts` holds the server to one importer.
+ * The draft rules, the name normaliser, the trio's size and R340's room check for an imported trio,
+ * passed through so the rest of the server (`src/api/decks.ts`, `src/db/seed-accounts.ts`) reaches
+ * the shared module through this file too: the grep in `test/validator-single-source.test.ts` holds
+ * the server to one importer.
  */
-export { checkDeckDraft, checkTrioDraft, normalizeName, TRIO_DECKS } from "@jackioh/validator";
+export { checkDeckDraft, checkImportRoom, checkTrioDraft, normalizeName, TRIO_DECKS } from "@jackioh/validator";
 
 /** One deck as the validator reads it: its cards, and its saved name when there is one. */
 function deckAt(input: LoadoutValidateInput, index: number): LoadoutDeck {

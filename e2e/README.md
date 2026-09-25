@@ -1,4 +1,4 @@
-# `e2e/` — the twenty-five specs: BUILD M8's seventeen and `18`–`25`
+# `e2e/` — the twenty-six specs: BUILD M8's seventeen and `18`–`26`
 
 Cypress runs against `apps/web` in `E2E=1` mode: the `/dev/hotseat` route for the local specs and
 a test server with fixture accounts for the networked ones. BUILD M8's house rules hold
@@ -16,17 +16,18 @@ everywhere in here:
 ```
 e2e/
   cypress.config.ts        specPattern cypress/e2e, fixturesFolder fixtures, supportFile support/e2e.ts
-  cypress/e2e/*.cy.ts      the twenty-five specs (`99-online-smoke` is skipped unless enabled)
+  cypress/e2e/*.cy.ts      the twenty-six specs (`99-online-smoke` is skipped unless enabled)
   cypress/e2e/15-audio.cy.ts  polish 2 (SPEC §10.11): the first click unlocks audio, a unit played from hand logs its play line, mute survives a reload
   cypress/e2e/17-card-showcase-and-hovers.cy.ts  the opponent's played card held up for about a second (a back for a face-down set), a log line's card on hover and click, and a graveyard browsed on hover and in a dialog, on /dev/hotseat and /practice
   cypress/e2e/18-deck-workshop.cy.ts  TASK 1 (R250–R252, R255, R256): an incomplete deck saves and survives a reload, an edit made while `PUT /api/decks/:id` fails at the network is kept on the device and saved once it answers, a copied deck code imports as a new deck and a damaged one is refused with a sentence, a trio marks the cards two decks share and is ready once they share none, and the deck cap
-  cypress/e2e/19-queue-modes-and-series.cy.ts  TASK 1 (R257–R264): Best of 1 queues the chosen deck, All Random needs no saved deck, a Best-of-3 series between the browser and `wsPlayer` (hidden picks, the picked decks, a concede loses a game, two wins end it and rate it once), and a Best-of-3 room refusing a Best-of-1 joiner
+  cypress/e2e/19-queue-modes-and-series.cy.ts  TASK 1 (R257–R264, R330–R338): Best of 1 queues the chosen deck, All Random needs no saved deck, a Conquest series between the browser and `wsPlayer` (sealed picks chosen and locked in, the picked decks, a won deck locked and a lost one picked again, the last deck picked for you, a concede loses a game, three wins with three decks end it and rate it once), and a Conquest room refusing a Best-of-1 joiner
   cypress/e2e/20-mulligan-concede-draw.cy.ts  networked, like 06: both seats mulligan at once in either order (R265–R268), Concede's confirmation, and a draw offer declined and then accepted (R36, R269), asserted on the browser's DOM and on seat 2's socket alike
   cypress/e2e/21-radiant-marks.cy.ts  the Radiant pass (SPEC §10.10, R277, R279, R280): a hand card's computed value "{n}", a reference's face beside the preview and its tooltip in the touch sheet, and a card made Radiant in hand printing its change in gold, on /dev/hotseat
   cypress/component/radiant-marks.cy.tsx  the Radiant pass: the gold mark's weight, underline and contrast on both backgrounds, a reference's tooltip in the detail view, and a computed value inside its rules box
   cypress/e2e/22-tutorial-lesson-one.cy.ts  SPEC §9.10: lesson 1 played to a win by doing, through the UI, what the coach asks; progress saved; the log replays with the tutorial handicap
   cypress/e2e/23-tutorial-path.cy.ts  SPEC §9.10: the lesson path (locked, open, completed), progress seeded, reloaded and corrupt, Skip and Exit, a later lesson's fixed deal, the phone layout
   cypress/e2e/25-overflow-animations.cy.ts  R315–R318 on /dev/hotseat: "Fatigue N" on a library pile and the hit on the hero, "Hand full" over a hand with the burned card's face, and "Library full" with the refused card's face and outcome, each on the seat whose action caused it and on the owner's own device, gone once the board catches up; the games are handicapped fixtures (R180), and `--expose shots=1` adds screenshots of each notice at 1280x720 and 390x844
+  cypress/e2e/26-trio-codes.cy.ts  R339–R341, networked: Copy trio code on `e2e-p2`'s trio, Import trio into `e2e-p1` as three new decks and a trio the server holds card for card, and with too little room the import says how many slots it needs, the server refuses the same import, and nothing is made
   cypress/component/audio-recipes.cy.tsx  polish 2: every SFX recipe rendered in Chrome's OfflineAudioContext is finite, audible and quiet after its length, impact grows with damage, and through the real mix each effect sits in its band against the shipped voice lines
   cypress/component/audio-toggle.cy.tsx   polish 2: inside .app-shell the mute toggle is a 44 px circle with a 22 px icon
   cypress/component/deckbuilder-layout.cy.tsx  B39/B29/B38 on the deck workshop (`DeckWorkshop`, a full deck open): no overflow at 390x844 and 1280x720, two pool columns on the phone, two whole pool rows at 1280x720, the first pool row on a phone's first screen, the verdict in the sidebar
@@ -81,7 +82,7 @@ pnpm check:fixtures     # every deck fixture obeys L2/L3/L6 before a browser is 
 # 1. the client, in E2E mode
 E2E=1 pnpm --dir apps/web dev                  # must serve http://localhost:5173
 
-# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10, 18, 19
+# 2. the server, in E2E mode, for specs 05, 06, 07(networked path), 09, 10, 18, 19, 20, 26
 E2E=1 pnpm --dir apps/server dev               # http://localhost:8787 and ws://…/ws/match (WS_PATH)
 
 # 3. the suite
@@ -216,11 +217,12 @@ waiting helpers (`settled`, `expectAnimating`, `waitForPrompt`, `noPrompt`):
 | 16 | Polish 7 (§10.8, R195): drag to play on `/dev/hotseat` with spec 04's decks and seed, M4 + M5, no server. The gestures are real pointer events from `support/ux.ts`, and the settings panel turns drag to play off. |
 | 17 | M4 + M5 and polish 3 (`/practice`), against `build:e2e` with no server: the opponent's-play showcase, the log's card lines and the pile browser (§10.8, §10.10, R97, R202, R227), with the selectors in `support/testids.ts` block A15. It uses spec 01's and spec 03's decks and seeds, and plays `/practice` at normal pacing, because `?pace=fast` releases the AI without waiting for the showcase. How long the showcase stood is read off a MutationObserver recorder in the page, never off a fixed wait. |
 | 18 | TASK 1 (R250–R252, R255, R256): the `E2E=1` server and a `build:e2e` client. "Unreachable" is `cy.intercept` failing `PUT /api/decks/*` at the network; a second, pass-through intercept is "the server answers again", and the workshop's own retry (`DECK_AUTOSAVE_RETRY_SECONDS`) does the rest. |
-| 19 | TASK 1 (R257–R264): the `E2E=1` server and a `build:e2e` client. The browser (`e2e-p1`) queues and picks through `/play` and `/series/<id>`; `e2e-p2` queues, picks and joins over HTTP (every body seeded, R143) and plays over `wsPlayer`. Its four tests keep the two accounts' ratings level (two rated wins and two losses each), so re-runs against one server keep pairing at once; the pairing waits still allow for §9.5's full window widening. |
+| 19 | TASK 1 (R257–R264, R330–R338): the `E2E=1` server and a `build:e2e` client. The browser (`e2e-p1`) queues and picks through `/play` and `/series/<id>` (choose a deck, lock it in); `e2e-p2` queues, picks and joins over HTTP (every body seeded, R143) and plays over `wsPlayer`. The Conquest test plays three games, seat two conceding each. Its four tests keep the two accounts' ratings level (two rated wins and two losses each), so re-runs against one server keep pairing at once; the pairing waits still allow for §9.5's full window widening. |
 | 20 | M6 + M7-T1 and a `build:e2e` client, like 05 and 06: a room-code match per case with seat 2 on `cy.task("wsPlayer")`, spec 06's decks, and one seed per case; the selectors are `support/testids.ts` block A16. The draw offer's sound is asserted in `window.__jackiohAudio`'s log, as spec 15 asserts its voice lines. |
 | 22 | SPEC §9.10 (the tutorial) on `/practice`, against `build:e2e` with no server. It follows the coach through lesson 1 by clicking what `window.__jackiohTutorial.suggested` names (never dispatching), with reduced motion so every view is drawn as it arrives, and folds the log with the tutorial handicap (R290). It names no card or step, so the lesson's content may change under it. |
 | 23 | SPEC §9.10 on `/practice`, against `build:e2e` with no server: the lesson path and its progress in `localStorage["jackioh.tutorial.v1"]` (R294), Skip and Exit, a lesson's seed, decks and handicap (R290, R291) compared with `apps/web/src/tutorial/lessons.ts` through `cy.task("tutorialLessons")`, and a 390x844 smoke. Rebuild the client after a lesson changes, or the task and the bundle disagree. |
 | 25 | R315–R318 on `/dev/hotseat`, against `build:e2e` with no server: the board's overflow notices (A18) in three handicapped games (fixture `handicap`, A1, A9). Each notice is asserted with a retried `should` inside the action's `during`, then gone after `cy.settled()`; a MutationObserver in the page records every state a notice was drawn in, which is how "Fatigue 2" is shown to come before "Fatigue 3". The screenshot pass (`--expose shots=1`) runs the three games again at 1280x720 and 390x844 at half effects speed. |
+| 26 | R339–R341: the `E2E=1` server and a `build:e2e` client. The code is read off the trio editor's read-only field, not the clipboard, which a Cypress browser may refuse. `e2e-p1` is cleared before each test, so the import is the only thing that could have made what `GET /api/decks` lists. |
 
 Spec 14 (`14-landing-and-sign-in.cy.ts`) never submits to the auth provider, because a `build:e2e`
 bundle has no `VITE_SUPABASE_URL`. So it runs against a static preview with nothing else started:

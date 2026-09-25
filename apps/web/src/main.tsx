@@ -396,7 +396,7 @@ export function App(): ReactElement {
       );
     }
 
-    // R259: the Best-of-3 series screen, behind the same gate as the board it leads to.
+    // R338: the Conquest series screen, behind the same gate as the board it leads to.
     const seriesId = seriesIdOf(path);
     if (seriesId !== null) {
       return <Gated key={path}>{(account) => <SeriesRoute seriesId={seriesId} token={account.token} />}</Gated>;

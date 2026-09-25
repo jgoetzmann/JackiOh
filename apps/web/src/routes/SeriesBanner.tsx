@@ -1,11 +1,13 @@
-// The board's series banner: which Best-of-3 series this game belongs to, the score, and once the
-// game is over the way on to the next one (SPEC §9.5, R259).
+// The board's series banner: which Conquest series this game belongs to, the score, each side's
+// decks that have won (and are locked, R330, R336), and once the game is over the way on to the next
+// one (SPEC §9.5).
 //
 // `/match/<id>` knows only its match. `GET /api/matches/:id/series` answers the series that match
 // is a game of (or null), as the caller's own projection, so the banner reads it once when the
 // board opens and again when the game ends (the score has moved), then every `SERIES_POLL_SECONDS`
 // while the series is still going: right after a game the server is opening the next pick phase,
-// and game 3's picks are made for both players, so the next game may already be running. A match
+// and when both sides are down to their last deck those picks are made for them (R332), so the next
+// game may already be running. A match
 // that is not a series game makes one request and shows nothing. Nothing here is a rule (CLAUDE.md
 // rule 7): every word comes from the view.
 
@@ -30,7 +32,16 @@ export const seriesBannerTestid = {
   result: "series-banner-result",
   /** The same way on, as the first action of the board's result panel. */
   panelContinue: "result-series-continue",
+  /** One pip per deck, `data-won="true"` once it has won (R330): yours, then the opponent's. */
+  yourDeck: (slot: number): string => `series-banner-you-deck-${String(slot)}`,
+  opponentDeck: (slot: number): string => `series-banner-opponent-deck-${String(slot)}`,
 } as const;
+
+/** "2 of 3 decks have won": what a row of pips says to assistive technology. */
+function wonWords(decks: readonly { won: boolean }[]): string {
+  const won = decks.filter((deck) => deck.won).length;
+  return `${String(won)} of ${String(decks.length)} decks have won`;
+}
 
 type SeriesResult = NonNullable<SeriesView["result"]>;
 
@@ -130,14 +141,43 @@ function WayOn({ series, matchId, testid }: { series: SeriesView; matchId: strin
 
 export type SeriesBannerProps = { series: SeriesView | null; matchId: string; gameOver: boolean };
 
-/** "Best of 3 · You 1 – 0 Opponent", and once this game is over the way on or the result. */
+/**
+ * "Conquest · You 1 – 0 Opponent", each side's decks as pips filled once they have won, and once this
+ * game is over the way on or the result.
+ */
 export function SeriesBanner({ series, matchId, gameOver }: SeriesBannerProps): ReactElement | null {
   if (series === null) return null;
   const result = series.result;
+  const yours = [...series.you.decks].sort((a, b) => a.slot - b.slot);
+  const theirs = [...series.opponent.decks].sort((a, b) => a.slot - b.slot);
   return (
     <div className="series-banner" data-testid={seriesBannerTestid.banner} data-series-id={series.id}>
       <span className="series-banner__score">
-        Best of {String(series.maxGames)} · You {String(series.you.wins)} – {String(series.opponent.wins)} Opponent
+        Conquest · You {String(series.you.wins)} – {String(series.opponent.wins)} Opponent
+      </span>
+      <span className="series-banner__decks" aria-label={`Your decks: ${wonWords(yours)}`}>
+        You
+        {yours.map((deck) => (
+          <span
+            key={deck.slot}
+            className="series-banner__pip"
+            data-testid={seriesBannerTestid.yourDeck(deck.slot)}
+            data-won={deck.won ? "true" : "false"}
+            title={`${deck.name}: ${deck.won ? "won" : "not won yet"}`}
+          />
+        ))}
+      </span>
+      <span className="series-banner__decks" aria-label={`Their decks: ${wonWords(theirs)}`}>
+        Them
+        {theirs.map((deck) => (
+          <span
+            key={deck.slot}
+            className="series-banner__pip"
+            data-testid={seriesBannerTestid.opponentDeck(deck.slot)}
+            data-won={deck.won ? "true" : "false"}
+            title={`Deck ${String(deck.slot + 1)}: ${deck.won ? "won" : "not won yet"}`}
+          />
+        ))}
       </span>
       {gameOver && result !== null ? (
         <span data-testid={seriesBannerTestid.result} data-outcome={result.outcome}>

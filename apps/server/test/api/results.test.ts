@@ -300,7 +300,7 @@ describe("results (M7-T2)", () => {
     });
   });
 
-  describe("a game of a Best-of-3 series (R262, R263)", () => {
+  describe("a game of a Conquest series (R262, R263)", () => {
     const SERIES_ID = "series-1";
 
     function trio(owner: string): FrozenTrio {
@@ -314,15 +314,36 @@ describe("results (M7-T2)", () => {
       return series;
     }
 
-    /** Both picks, one compare-and-set each, then the game started as the pick route starts it. */
+    /**
+     * The picks a side still owes, one compare-and-set each, then the game started as the pick
+     * route starts it. A side whose last deck was picked for it (R332) is not asked.
+     */
     async function playNext(deps: TestDeps, slots: [number, number]): Promise<SeriesRow> {
       const now = deps.timers.now();
-      const one = pickDeck(await seriesRow(deps), "p1", slots[0], now);
-      await deps.store.series.update(one);
-      const both = pickDeck(one, "p2", slots[1], now);
-      await deps.store.series.update(both);
-      await ensureSeriesGame(deps, both);
-      return both;
+      let row = await seriesRow(deps);
+      for (const [index, seat] of (["p1", "p2"] as const).entries()) {
+        if (row.status !== "picking" || row.sides[index]?.pick !== null) continue;
+        const next = pickDeck(row, seat, slots[index] ?? 0, now);
+        await deps.store.series.update(next);
+        row = next;
+      }
+      await ensureSeriesGame(deps, row);
+      return row;
+    }
+
+    /** The game in play ends with `winner` (a profile, or a draw), reported with the match's own seats. */
+    async function finish(deps: TestDeps, winner: string | "draw"): Promise<void> {
+      const series = await seriesRow(deps);
+      const started = deps.matches.started.find((input) => input.matchId === series.nextMatchId);
+      if (started === undefined) throw new Error(`${series.nextMatchId} was never started`);
+      const seat = started.seats.find((candidate) => candidate.profileId === winner);
+      await createRecordResult(deps)({
+        matchId: series.nextMatchId,
+        seats: started.seats,
+        outcome: { winner: winner === "draw" ? "draw" : (seat?.player ?? "p1"), reason: winner === "draw" ? "draw-accepted" : "hero-death" },
+        turns: 3,
+        at: deps.timers.now(),
+      });
     }
 
     /** A in series seat p1 at 1200, B in p2 at 1000, game 1 (match `MATCH_ID`) being played. */
@@ -372,25 +393,34 @@ describe("results (M7-T2)", () => {
       });
     });
 
-    it("R263 the reaper's ceiling draw counts for neither side, and the game 3 it leaves is started", async () => {
+    it("R263 the reaper's ceiling draw counts for neither side, and a next game both sides' last decks begin is started (R332)", async () => {
       const deps = await seriesScenario();
-      await record(deps, [{ type: "concede", playerId: "p2" }]);
-      const game2 = await playNext(deps, [1, 1]);
-      const game2Id = game2.nextMatchId;
+      await finish(deps, A);
+      await playNext(deps, [1, 0]);
+      await finish(deps, B);
+      await playNext(deps, [1, 1]);
+      await finish(deps, A);
+      await playNext(deps, [2, 1]);
+      await finish(deps, B);
+      // Two wins each: game 5 began by itself, on each side's last deck.
+      const game5 = await seriesRow(deps);
+      expect(game5.status).toBe("playing");
+      const game5Id = game5.nextMatchId;
+      expect(game5.games[4]).toMatchObject({ gameNo: 5, slots: [2, 2] });
 
-      // The fake directory's rows carry a ceiling of 0, so game 2 is long past it.
-      expect(await reapStuckMatches(deps)).toEqual([game2Id]);
-      const reaped = deps.store.tables.results.find((result) => result.matchId === game2Id);
-      expect(reaped).toMatchObject({ reason: "match-ceiling", turns: 0, ratingBefore: [1000, 1200], ratingAfter: [1000, 1200] });
+      // The fake directory's rows carry a ceiling of 0, so game 5 is long past it.
+      expect(await reapStuckMatches(deps)).toEqual([game5Id]);
+      const reaped = deps.store.tables.results.find((result) => result.matchId === game5Id);
+      expect(reaped).toMatchObject({ reason: "match-ceiling", turns: 0, ratingBefore: [1200, 1000], ratingAfter: [1200, 1000] });
 
       const series = await seriesRow(deps);
-      expect(series.sides.map((side) => side.wins)).toEqual([1, 0]);
-      expect(series.games[1]).toMatchObject({ winner: "draw", reason: "match-ceiling" });
+      expect(series.sides.map((side) => side.wins)).toEqual([2, 2]);
+      expect(series.games[4]).toMatchObject({ winner: "draw", reason: "match-ceiling" });
       expect(series.status).toBe("playing");
-      expect(series.games[2]).toMatchObject({ gameNo: 3, slots: [2, 2], first: "p1" });
-      const game3 = deps.matches.started.find((input) => input.matchId === series.nextMatchId);
-      expect(game3).toMatchObject({ seed: "seed:3" });
-      expect(game3?.seats.map((seat) => seat.profileId)).toEqual([A, B]);
+      expect(series.games[5]).toMatchObject({ gameNo: 6, slots: [2, 2], first: "p2" });
+      const game6 = deps.matches.started.find((input) => input.matchId === series.nextMatchId);
+      expect(game6).toMatchObject({ seed: "seed:6" });
+      expect(game6?.seats.map((seat) => seat.profileId)).toEqual([B, A]);
       expect((await deps.store.profiles.getById(B))?.inMatchId).toBe(series.nextMatchId);
       expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
         1200, 1000,
@@ -400,18 +430,13 @@ describe("results (M7-T2)", () => {
     it("R262 the game that ends the series moves both ratings once, from where the series began", async () => {
       const deps = await seriesScenario();
       await record(deps, [{ type: "concede", playerId: "p2" }]);
-      const game2 = await playNext(deps, [1, 1]);
-      // Game 2: B is the match's p1. A wins it, and the series, 2–0.
-      await createRecordResult(deps)({
-        matchId: game2.nextMatchId,
-        seats: [
-          { profileId: B, player: "p1", deck: [] },
-          { profileId: A, player: "p2", deck: [] },
-        ],
-        outcome: { winner: "p2", reason: "hero-death" },
-        turns: 3,
-        at: deps.timers.now(),
-      });
+      await playNext(deps, [1, 1]);
+      // Game 2: B is the match's p1. A wins it.
+      await finish(deps, A);
+      // Game 3: A's last deck is picked for A (R332); B picks, and A wins with every deck.
+      const game3 = await playNext(deps, [2, 2]);
+      expect(game3.games[2]?.slots).toEqual([2, 2]);
+      await finish(deps, A);
       const expected = eloUpdate(1200, 1000, 1);
       expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
         expected.a,
@@ -424,7 +449,8 @@ describe("results (M7-T2)", () => {
         ratingBefore: [1200, 1000],
         ratingAfter: [expected.a, expected.b],
       });
-      // Both game rows are unrated.
+      // Every game row is unrated.
+      expect(deps.store.tables.results).toHaveLength(3);
       for (const result of deps.store.tables.results) expect(result.ratingAfter).toEqual(result.ratingBefore);
     });
   });
