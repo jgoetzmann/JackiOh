@@ -10,7 +10,7 @@
 //
 // The route is NOT gated. It asks for the account only to offer an active player's saved decks, and
 // an anonymous visitor makes no request at all: no session means no `/api/auth/me`, and no
-// account means no `/api/loadout`.
+// account means no `/api/decks`.
 //
 // URL params, all optional and dropped when invalid:
 //   ?seed=<string>        the practice seed; otherwise 8 random hex characters per game
@@ -39,7 +39,7 @@ import Game from "../game/Game.tsx";
 import { reducedMotionNow } from "../game/animations.ts";
 import { getFxSettings } from "../fx/settings.ts";
 import { CatalogContext, lookupFromDefs } from "../game/catalog.ts";
-import { getLoadout, type LoadoutResponse } from "../net/api.ts";
+import { getDecks, type DecksResponse } from "../net/api.ts";
 import { useAccount, type Account } from "../net/gate.ts";
 import { navigate, paths } from "../net/navigate.ts";
 import { BackLink } from "./nav.tsx";
@@ -226,22 +226,20 @@ function autostartConfig(params: PracticeParams): PracticeStartConfig | null {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * What the account offers the deck picker: an active account's saved loadout decks, or why there
- * are none (`SavedDecks`), so the setup never tells a signed-in player to sign in.
+ * What the account offers the deck picker: an active account's saved decks (`GET /api/decks`, by
+ * name and oldest first, R250), or why there are none (`SavedDecks`), so the setup never tells a
+ * signed-in player to sign in.
  */
-function useSavedDecks(
-  account: Account,
-  loadLoadout: (token: string) => Promise<LoadoutResponse>,
-): SavedDecks {
+function useSavedDecks(account: Account, loadDecks: (token: string) => Promise<DecksResponse>): SavedDecks {
   const [loaded, setLoaded] = useState<{ token: string; saved: SavedDecks } | null>(null);
   const token = account.kind === "ready" && account.me.profile.status === "active" ? account.token : null;
-  const load = useRef(loadLoadout);
-  load.current = loadLoadout;
+  const load = useRef(loadDecks);
+  load.current = loadDecks;
 
   useEffect(() => {
     if (token === null) return;
     let cancelled = false;
-    let pending: Promise<LoadoutResponse>;
+    let pending: Promise<DecksResponse>;
     try {
       pending = load.current(token);
     } catch (cause) {
@@ -250,10 +248,11 @@ function useSavedDecks(
     pending.then(
       (response) => {
         if (cancelled) return;
-        const decks = response.loadout?.decks;
-        const saved: SavedDecks = Array.isArray(decks)
-          ? { kind: "ready", decks: decks.map((deck) => [...deck]) }
-          : { kind: "none" };
+        const decks = response.decks;
+        const saved: SavedDecks =
+          Array.isArray(decks) && decks.length > 0
+            ? { kind: "ready", decks: decks.map((deck) => ({ name: deck.name, cards: [...deck.cards] })) }
+            : { kind: "none" };
         setLoaded({ token, saved });
       },
       () => {
@@ -432,8 +431,8 @@ export type PracticeRouteProps = {
   pacing?: PracticePacing;
   /** default useAccount() */
   account?: Account;
-  /** default getLoadout */
-  loadLoadout?: (token: string) => Promise<LoadoutResponse>;
+  /** default getDecks */
+  loadDecks?: (token: string) => Promise<DecksResponse>;
   /** default the lessons' own coach scripts (`tutorial/scripts`) */
   coachScript?: (lessonId: string) => LessonScript | undefined;
 };
@@ -453,9 +452,9 @@ function Shell({ variant, children }: { variant: "lobby" | "game"; children: Rea
   return <div className={`${shell} practice practice--${variant}`}>{children}</div>;
 }
 
-function PracticeScreen({ account, hostFactory, pacing, loadLoadout, coachScript }: ScreenProps): ReactElement {
+function PracticeScreen({ account, hostFactory, pacing, loadDecks, coachScript }: ScreenProps): ReactElement {
   const params = useMemo(() => readPracticeParams(window.location.search), []);
-  const saved = useSavedDecks(account, loadLoadout ?? getLoadout);
+  const saved = useSavedDecks(account, loadDecks ?? getDecks);
 
   const initial = useMemo(() => {
     const stored = readStoredSetup();

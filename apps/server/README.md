@@ -1,7 +1,8 @@
 # `apps/server` — the JackiOh server runtime
 
 The authority for everything that is not presentation. It owns identity and the invite gate, the
-collection ledger, loadouts, matchmaking, and the match itself: one actor per match holding the
+collection ledger, saved decks and trios, matchmaking in three modes, the Best-of-3 series, and the
+match itself: one actor per match holding the
 `GameState` in memory, one WebSocket per player, `reduce` on every action and `viewFor` pushed to
 each player after every change (SPEC §9.1–§9.5, §10.8).
 
@@ -42,8 +43,9 @@ in `src/api/ports.ts` is the contract between this half of the server and `src/d
    every per-player payload is a `viewFor`.
 2. `src/api/catalog.ts` — reads `packages/cards/catalog.json` (110 entries) and derives
    `CatalogInfo`, including the catalog version §9.4 checks at save and at queue.
-3. `src/api/loadout-validator.ts` — the only path to `@jackioh/validator`. Rules L1–L6 live there
-   and are never restated here.
+3. `src/api/loadout-validator.ts` — the only path to `@jackioh/validator` for the queue rules
+   (L1–L6 for a trio, L2, L3, L5 and L6 for a Best-of-1 deck, R253), and `src/api/decks.ts` calls
+   the same package's draft checks (D1–D4, T1–T3, R250, R252). No rule is restated here.
 
 ## Running it against a Supabase project
 
@@ -143,13 +145,20 @@ top of every handler:
 | `GET` | `/api/auth/me` | user | Profile status, and whether an invite code is still needed |
 | `POST` | `/api/codes/redeem` | user | The six-step redemption of §9.4 |
 | `GET` | `/api/collection` | active | The entitlement ledger. There is deliberately no write route |
-| `GET` | `/api/loadout` | active | The three decks and the version they were validated against |
-| `PUT` | `/api/loadout` | active | `saveLoadout`: all three decks in one transaction or nothing |
-| `POST` | `/api/queue` | active | Enqueue with the chosen deck frozen into the ticket |
+| `GET` | `/api/decks` | active | The profile's saved decks and trios, oldest first, and the caps (R250, R252) |
+| `PUT` | `/api/decks/:id` | active | Create or replace one deck by the id the client minted (R256); D1–D4 only, a draft may be incomplete |
+| `DELETE` | `/api/decks/:id` | active | Idempotent; empties every trio slot that held the deck |
+| `PUT` | `/api/trios/:id` | active | Create or replace one trio (T1–T3); a slot may be empty, decks may share cards |
+| `DELETE` | `/api/trios/:id` | active | Idempotent |
+| `POST` | `/api/queue` | active | Enqueue in a mode (R257): `{ mode: "bo1", deckId }`, `{ mode: "bo3", trioId }` or `{ mode: "random" }`; the deck or trio is validated (R253) and frozen into the ticket |
 | `DELETE` | `/api/queue` | active | Leave the queue |
-| `GET` | `/api/queue/population` | none | §9.5: a number, so the client shows a population instead of an endless spinner |
-| `POST` | `/api/rooms` | active | Create a room; returns a 6-character code |
-| `POST` | `/api/rooms/:code/join` | active | Claim it. Atomic: a race produces one match and one 409 |
+| `GET` | `/api/queue/population` | user | §9.5: the open tickets, in total and per mode |
+| `POST` | `/api/rooms` | active | Create a room in a mode (R264); returns a 6-character code |
+| `POST` | `/api/rooms/:code/join` | active | Claim it in the room's mode. Atomic: a race produces one match (or series) and one 409 |
+| `GET` | `/api/series/:id` | active | A Best-of-3 series as its player may see it: never the other side's pick or decks (R259) |
+| `POST` | `/api/series/:id/pick` | active | Pick the next game's deck from the frozen trio; the game starts when both have picked |
+| `POST` | `/api/series/:id/forfeit` | active | Leave the series between games; the other side wins it (R261) |
+| `GET` | `/api/matches/:id/series` | active | The series a match is a game of, for the board's banner |
 
 ## WebSocket surface
 
@@ -215,11 +224,13 @@ There is no test database and no network in the suite. The doubles in `test/fake
 ## What is real and what is stubbed
 
 Real: the ports and the gate; invite codes and the six-step redemption with its identical error and
-identical timing; the collection ledger's two-table transaction; loadout save and the queue-time
-re-check against the shared validator; the match actor, protocol, nonce dedupe, action log and
-log-folding recovery; room codes; the clock; results and Elo; matchmaking with frozen decks,
-opportunistic pairing, a sweeper, the widening window and the atomic claim; the catalog loader
-against the real 110-entry `catalog.json`.
+identical timing; the collection ledger's two-table transaction; saved decks and trios as drafts
+with client-minted ids, and the queue-time check against the shared validator; the match actor,
+protocol, nonce dedupe, action log and log-folding recovery; room codes, in all three modes; the
+clock; results and Elo; matchmaking in three modes with frozen decks, opportunistic pairing, a
+sweeper, the widening window and the atomic claim; All Random's seeded decks; the Best-of-3 series,
+its pick clock, its one rating move and its recovery after a restart; the catalog loader against the
+real 110-entry `catalog.json`.
 
 Stubbed or pending, and why:
 

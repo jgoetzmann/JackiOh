@@ -222,81 +222,183 @@ export const PROMPT_MODAL = "prompt-modal";
 export const PROMPT_SCRIM = "prompt-scrim";
 
 // ---------------------------------------------------------------------------------------------
-// A11: the deckbuilder (BUILD M6-T3, SPEC §9.4). BUILD names no testid for this screen, so these
-// were a contract with whoever built `/decks` — and they now mirror, name for name,
-// `apps/web/src/game/deckbuilder/testids.ts`, which is the screen's own vocabulary. Keep the two
-// files identical: that file says so too.
+// A11: the deck workshop (`/decks`, SPEC §9.4, R250–R256). BUILD names no testid for this screen,
+// so these mirror, name for name, `apps/web/src/game/deckbuilder/testids.ts`, which is the screen's
+// own vocabulary. Keep the two files identical: that file says so too.
+//
+// The workshop replaced the three-deck loadout editor, and with it every per-deck name
+// (`deck-tab-<n>`, `deck-drop-<n>`, `deck-count-<n>`, `deck-card-<n>-<id>`, `loadout-save`, …): one
+// deck is open at a time, so its elements carry no number. There is no Save button either: an edit
+// saves `DECK_AUTOSAVE_DEBOUNCE_MS` after the last one, so a spec waits on `SYNC_STATUS`'s
+// `data-state="saved"` (R256).
 // ---------------------------------------------------------------------------------------------
 
-/** The screen itself, so a spec can wait for it rather than for a route. */
-export const DECKBUILDER = "deckbuilder";
-/** Rendered instead of the builder while its three reads are in flight, or when one failed. */
-export const DECKBUILDER_LOADING = "deckbuilder-loading";
-export const DECKBUILDER_ERROR = "deckbuilder-error";
+/** The workshop's root, whatever is open; `data-view="list|editor"` says which half a phone shows. */
+export const WORKSHOP = "workshop";
+/** The save status line, always on screen: `data-state="saved|saving|offline|error"` (R256). */
+export const SYNC_STATUS = "sync-status";
+/** On a phone only (≤1100 px), the editor's way back to the list. */
+export const WORKSHOP_BACK = "workshop-back";
+/** The main column when nothing is open. */
+export const WORKSHOP_EMPTY = "workshop-empty";
 
-/** The card pool a deck is built from. */
+/** The list of saved decks, and its "n/10" (`data-count`, `data-limit`). */
+export const DECK_LIST = "deck-list";
+export const DECK_CAP = "deck-cap";
+
+/** One saved deck in the list: `data-count`, `data-status`, `data-unsynced`, `aria-current`. */
+export function deckRowId(deckId: string): string {
+  return `deck-row-${deckId}`;
+}
+
+/** Makes a deck and opens it. Disabled at the cap (R250), with `DECK_CAP_REASON` saying why. */
+export const DECK_NEW = "deck-new";
+export const DECK_CAP_REASON = "deck-cap-reason";
+
+/** The list of saved trios, its "n/5", and New trio (disabled at the cap, with its reason). */
+export const TRIO_LIST = "trio-list";
+export const TRIO_CAP = "trio-cap";
+export const TRIO_NEW = "trio-new";
+export const TRIO_CAP_REASON = "trio-cap-reason";
+
+/** One saved trio in the list: `data-ready="true|false"` (R253's Best-of-3 verdict). */
+export function trioRowId(trioId: string): string {
+  return `trio-row-${trioId}`;
+}
+
+/**
+ * The card pool a deck is built from, and one entry per card in it: `card-pool-<id>` carries
+ * `data-legal`, `data-in-deck="true"` when the open deck holds it, and `data-unavailable="true"`
+ * with `data-held-by="<deck name>"` when a compared deck does (R251). The workshop's file lists
+ * these with the browse names; they sit here because `card-pool-` starts with `card-`, which A14's
+ * block promises none of its names does (a pool entry is never on the board, so
+ * `cy.fieldCardByName` cannot meet one).
+ */
 export const CARD_POOL = "card-pool";
 
-/** A11: one card in the pool, keyed by catalog id (`card-pool-core-001`). */
-export function cardPoolId(catalogCardId: string): string {
+export function poolCardId(catalogCardId: string): string {
   return `${CARD_POOL}-${catalogCardId}`;
 }
 
-/** A11: the tab that selects deck `oneBased` of the three L1 wants (1..DECKS_PER_LOADOUT). */
-export function deckTabId(oneBased: number): string {
-  return `deck-tab-${String(oneBased)}`;
-}
-
-/** A11: the drop region of deck `oneBased`. `cy.dragCardToDeck` falls back to the tab itself. */
-export function deckDropId(oneBased: number): string {
-  return `deck-drop-${String(oneBased)}`;
-}
-
-/** A11: the list inside that region. A drop on it bubbles to the region, so either works. */
-export function deckListId(oneBased: number): string {
-  return `deck-list-${String(oneBased)}`;
-}
-
-/** A11: how many cards deck `oneBased` holds, for L2's "exactly DECK_SIZE". */
-export function deckCountId(oneBased: number): string {
-  return `deck-count-${String(oneBased)}`;
-}
-
-/** A11: the control for one card already in a deck, so a drag can be asserted to have landed. */
-export function deckCardId(oneBased: number, catalogCardId: string): string {
-  return `deck-card-${String(oneBased)}-${catalogCardId}`;
-}
-
-/** A11: its row. The screen renders both spellings; this is the container of `deckCardId`. */
-export function deckCardRowId(oneBased: number, catalogCardId: string): string {
-  return `deck-${String(oneBased)}-card-${catalogCardId}`;
-}
+/** The open deck's editor: `data-deck` is its id. */
+export const DECK_EDITOR = "deck-editor";
+/** The open deck's name. */
+export const DECK_NAME_INPUT = "deck-name-input";
+/** The open deck's card count against `DECK_SIZE`, in `data-count`. */
+export const DECK_COUNT = "deck-count";
+/** The open deck's drop region: a card dragged from the pool lands here. */
+export const DECK_DROP = "deck-drop";
+/** The open deck's list of tiles. */
+export const DECK_CARDS = "deck-cards";
 
 /**
- * A11: the payload `cy.dragCardToDeck` puts on the `DataTransfer`, alongside a `text/plain` copy
- * of the same catalog id. The board's own drag uses `application/x-jackioh-target` for a click
- * target (apps/web/src/game/Card.tsx); a deckbuilder drag carries a catalog id, which is a
- * different thing, so it gets its own type.
+ * One card in the open deck: a tile whose click takes it out. `data-conflict="true"` and
+ * `data-conflict-with="<deck name>"` when a compared deck holds it too (shown, never removed).
  */
-export const DECK_DRAG_MIME = "application/x-jackioh-card";
+export function deckCardId(catalogCardId: string): string {
+  return `deck-card-${catalogCardId}`;
+}
 
-/** A11: §9.4's save — one `saveLoadout` for all three decks, never a per-deck save. */
-export const LOADOUT_SAVE = "loadout-save";
-/** Shown after a 200 from `PUT /api/loadout`. */
-export const LOADOUT_SAVED = "loadout-saved";
-/** The list every L1–L6 sentence is rendered into, carrying `data-count`. */
-export const LOADOUT_ERRORS = "loadout-errors";
-/** A refusal that is not a rule failure (a stale catalog, a 403, …). */
-export const LOADOUT_SAVE_ERROR = "loadout-save-error";
+/** The open deck's mana curve: one `.db-bar[data-bucket][data-count]` per cost bucket. */
+export const DECK_CURVE = "deck-curve";
+/** On a phone, the toggle that folds the curve and the tiles away (`aria-expanded`). */
+export const DECK_FOLD = "deck-fold";
+/** The polite line naming the last add, removal or refusal (a refusal names the deck holding it). */
+export const DECK_STATUS = "deck-status";
+/** The server's refusal of this deck's last save, verbatim (R256). */
+export const DECK_SAVE_ERROR = "deck-save-error";
+
+/** Copies the deck's code (R255) and shows it in `DECK_CODE_OUTPUT`, a read-only field. */
+export const DECK_COPY_CODE = "deck-copy-code";
+export const DECK_CODE_OUTPUT = "deck-code-output";
+
+/** Delete, then the confirm that really deletes, or the one that keeps the deck. */
+export const DECK_DELETE = "deck-delete";
+export const DECK_DELETE_CONFIRM = "deck-delete-confirm";
+export const DECK_DELETE_CANCEL = "deck-delete-cancel";
 
 /**
- * A11: one marker per rule, carrying that rule's sentence and nothing else. There may be several
- * with the same testid — the validator reports every failure — so each also carries `data-rule`
+ * "Compare with" (R251): option values `trio:<trioId>` (a trio holding this deck: its other decks),
+ * `deck:<deckId>` (another deck) and `none`. Each compared deck is then a chip, `deckCompareChipId`.
+ */
+export const DECK_COMPARE_SELECT = "deck-compare-select";
+
+export function deckCompareChipId(deckId: string): string {
+  return `deck-compare-${deckId}`;
+}
+
+/** How many of the open deck's cards a compared deck also holds, in `data-count`. */
+export const DECK_CONFLICTS = "deck-conflicts";
+
+/** The Best-of-1 verdict under the deck (`data-ready`), around `LOADOUT_ERRORS`. */
+export const DECK_VERDICT = "deck-verdict";
+
+/** The list every L1–L6 sentence is rendered into, in a deck's verdict and in a trio's (`data-count`). */
+export const LOADOUT_ERRORS = "loadout-errors";
+
+/**
+ * One marker per failure, carrying the validator's sentence and nothing else. Several may share a
+ * testid (the validator reports every failure), so each also carries `data-rule`, `data-source`
  * and, where the validator named them, `data-deck` and `data-card`.
  */
 export function loadoutErrorId(rule: string): string {
   return `loadout-error-${rule}`;
 }
+
+/** Rendered instead of the workshop while the route's reads are in flight, or when one failed. */
+export const DECKBUILDER_LOADING = "deckbuilder-loading";
+export const DECKBUILDER_ERROR = "deckbuilder-error";
+
+/**
+ * The MIME a pool drag carries the catalog id on, beside a `text/plain` copy. The board's own drag
+ * uses `application/x-jackioh-target` for a click target (apps/web/src/game/Card.tsx); a workshop
+ * drag carries a catalog id, which is a different thing, so it gets its own type.
+ */
+export const DECK_DRAG_MIME = "application/x-jackioh-card";
+
+/** The open trio's editor: `data-trio` is its id. */
+export const TRIO_EDITOR = "trio-editor";
+export const TRIO_NAME_INPUT = "trio-name-input";
+
+/** Slot `n`'s deck `<select>`, 1-based: the value `""` is Empty, else a deck id. */
+export function trioSlotId(slot: number): string {
+  return `trio-slot-${String(slot)}`;
+}
+
+/** Opens slot `n`'s deck in the deck editor. */
+export function trioOpenDeckId(slot: number): string {
+  return `trio-open-${String(slot)}`;
+}
+
+/** R253's Best-of-3 verdict (`data-ready`), around `LOADOUT_ERRORS`. */
+export const TRIO_VERDICT = "trio-verdict";
+/** The trio's three decks side by side. */
+export const TRIO_COMPARE = "trio-compare";
+
+/**
+ * Card `cardId` in slot `n`'s column (1-based): `data-conflict="true|false"` and, for a card another
+ * slot's deck holds too, `data-conflict-with="<deck name>"` (names joined with ", ").
+ */
+export function trioCardId(slot: number, catalogCardId: string): string {
+  return `trio-card-${String(slot)}-${catalogCardId}`;
+}
+
+export const TRIO_DELETE = "trio-delete";
+export const TRIO_DELETE_CONFIRM = "trio-delete-confirm";
+export const TRIO_DELETE_CANCEL = "trio-delete-cancel";
+
+/** Opens the import panel from the rail (R255). */
+export const DECK_IMPORT_OPEN = "deck-import-open";
+/** The import panel. */
+export const DECK_IMPORT = "deck-import";
+/** Where the code is pasted. */
+export const DECK_IMPORT_INPUT = "deck-import-input";
+/** The live read of the pasted code, `data-ok="true|false"`: what it holds, or why it cannot be read. */
+export const DECK_IMPORT_PREVIEW = "deck-import-preview";
+/** "Import as new deck": off until the code reads, and at the deck cap. */
+export const DECK_IMPORT_SUBMIT = "deck-import-submit";
+export const DECK_IMPORT_CAP_REASON = "deck-import-cap-reason";
+export const DECK_IMPORT_CANCEL = "deck-import-cancel";
 
 // ---------------------------------------------------------------------------------------------
 // A13: the invite code screen (BUILD M6-T1, SPEC §9.4). Like A11's deckbuilder block, BUILD names
@@ -555,23 +657,10 @@ export function addPoolId(catalogCardId: string): string {
   return `db-add-${catalogCardId}`;
 }
 
-/** A14: the polite status line naming the last add or removal and the deck's count. */
-export const DB_DECK_STATUS = "db-deck-status";
-
-/** A14: the detail view's "Add to Deck N". */
+/** A14: the detail view's "Add to <deck name>". */
 export const DB_DETAIL_ADD = "db-detail-add";
-/** A14: the deck sidebar: tabs, the open deck and the save control. */
+/** A14: the open deck's sidebar: its name, count, curve, tiles, comparison, verdict and actions. */
 export const DB_SIDEBAR = "db-sidebar";
-
-/** A14: deck `oneBased`'s list toggle: on a phone the open deck's curve and tiles fold behind it. */
-export function deckFoldId(oneBased: number): string {
-  return `deck-fold-${oneBased}`;
-}
-
-/** A14: deck `oneBased`'s mana curve, one `.db-bar[data-bucket][data-count]` per bucket. */
-export function deckCurveId(oneBased: number): string {
-  return `deck-curve-${oneBased}`;
-}
 
 // ---------------------------------------------------------------------------------------------
 // A15: the opponent's-play showcase, the log's card lines and the pile browser. These mirror, name
@@ -611,3 +700,84 @@ export const INSPECT_LIST_MORE = "inspect-list-more";
 export const INSPECT_LIST_DETAIL = "inspect-list-detail";
 /** A15: back from a face opened large to the whole list. */
 export const INSPECT_LIST_BACK = "inspect-list-back";
+
+// ---------------------------------------------------------------------------------------------
+// A16: the lobby, the Best-of-3 series screen and the board's series banner (SPEC §9.5,
+// R257–R264). Like A11 and A13 these mirror, name for name, the screens' own vocabulary:
+// `playTestid` / `playModeTestid` in `apps/web/src/routes/play.tsx`, `seriesTestid` in
+// `apps/web/src/routes/series.tsx` and `seriesBannerTestid` in `apps/web/src/routes/SeriesBanner.tsx`.
+// Keep the files identical.
+// ---------------------------------------------------------------------------------------------
+
+/** R257: the three queue modes, as the lobby's radios and the API spell them. */
+export type QueueMode = "bo1" | "bo3" | "random";
+
+/** "Find a match" (`POST /api/queue` with the chosen mode, deck or trio). */
+export const PLAY_QUEUE = "play-queue";
+export const PLAY_LEAVE_QUEUE = "play-leave-queue";
+export const PLAY_CREATE_ROOM = "play-create-room";
+/** The created room's code, as text. */
+export const PLAY_ROOM_CODE = "play-room-code";
+/** The created room's mode, in `data-mode` (R264). */
+export const PLAY_ROOM_MODE = "play-room-mode";
+export const PLAY_JOIN_INPUT = "play-join-code";
+export const PLAY_JOIN_SUBMIT = "play-join-submit";
+/** "In the … queue", "Give your opponent this code": what the lobby is waiting on. */
+export const PLAY_STATUS = "play-status";
+/** A refusal, in the server's words (a 422's validator sentences as a list). */
+export const PLAY_ERROR = "play-error";
+/** Best of 1's deck `<select>`: one option per saved deck, its value the deck id. */
+export const PLAY_DECK_SELECT = "play-deck-select";
+/** Best of 3's trio `<select>`: one option per saved trio, its value the trio id. */
+export const PLAY_TRIO_SELECT = "play-trio-select";
+/** The client's verdict on the choice (`data-ready`): UX only, the server's is law (R253). */
+export const PLAY_VERDICT = "play-choice-verdict";
+
+/** One mode radio (R257). */
+export function playModeId(mode: QueueMode): string {
+  return `play-mode-${mode}`;
+}
+
+/** The series screen (`data-status="picking|playing|over"`). */
+export const SERIES_SCREEN = "series-screen";
+/** A refusal or a failed read, in the server's words. */
+export const SERIES_ERROR = "series-error";
+/** The game wins so far, in `data-you` and `data-opponent`. */
+export const SERIES_SCORE = "series-score";
+/** "Opponent is choosing…" / "Opponent has picked." (`data-picked`), and never what (R259). */
+export const SERIES_OPPONENT_STATUS = "series-opponent-status";
+/** The pick clock's whole seconds left, in `data-seconds` (R260). */
+export const SERIES_PICK_CLOCK = "series-pick-clock";
+/** While a game is on: the way to its board. */
+export const SERIES_OPEN_MATCH = "series-open-match";
+export const SERIES_FORFEIT = "series-forfeit";
+export const SERIES_FORFEIT_CONFIRM = "series-forfeit-confirm";
+/** Once over: `data-outcome="win|loss|draw|abandoned"`. */
+export const SERIES_RESULT = "series-result";
+
+/** One of your three decks (0-based trio slot): `data-played`, `data-picked`. */
+export function seriesDeckId(slot: number): string {
+  return `series-deck-${String(slot)}`;
+}
+
+/** Its Pick button: rendered only while picking, and only for a deck not yet played. */
+export function seriesPickId(slot: number): string {
+  return `series-pick-${String(slot)}`;
+}
+
+/** One of the opponent's slots: `data-played` and nothing else (R259). */
+export function seriesOpponentDeckId(slot: number): string {
+  return `series-opponent-deck-${String(slot)}`;
+}
+
+/** One game of the history: `data-result="win|loss|draw|pending"`. */
+export function seriesGameId(gameNo: number): string {
+  return `series-game-${String(gameNo)}`;
+}
+
+/** The board's series banner (`data-series-id`), on a series game only. */
+export const SERIES_BANNER = "series-banner";
+/** Once the game is over: the way on to the next game, or to the series screen to pick for it. */
+export const SERIES_BANNER_CONTINUE = "series-banner-continue";
+/** Once the series is over: its result, in `data-outcome`. */
+export const SERIES_BANNER_RESULT = "series-banner-result";

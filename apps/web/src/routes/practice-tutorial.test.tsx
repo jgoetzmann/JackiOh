@@ -153,7 +153,7 @@ function renderRoute(host: RouteHost): ReturnType<typeof render> {
       hostFactory={host.factory}
       pacing={PRACTICE_PACING_FAST}
       account={ANONYMOUS}
-      loadLoadout={vi.fn(() => Promise.reject(new Error("an anonymous page has no loadout")))}
+      loadDecks={vi.fn(() => Promise.reject(new Error("an anonymous page has no decks")))}
       coachScript={() => FAKE_SCRIPT}
     />,
   );

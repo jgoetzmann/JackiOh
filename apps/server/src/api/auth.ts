@@ -716,9 +716,13 @@ export function createAuthRoutes(): Route[] {
       });
     }),
 
-    route("GET", "/api/auth/me", "user", async (req) => {
+    route("GET", "/api/auth/me", "user", async (req, deps) => {
       const { profile, user } = req;
       if (profile === null || user === null) throw new ApiError("unauthorized", "sign in first");
+      // R259, R264: the Best-of-3 series this profile is in, while it is not over. Between games
+      // `currentMatchId` is null and this is the only way a player who waited — the older ticket,
+      // or the room's host — learns there is a deck to pick. Its own series only, like the match.
+      const series = await deps.store.series.activeFor(profile.id);
       return ok({
         profile: { id: profile.id, status: profile.status, rating: profile.rating },
         // §9.4: "Redeeming an invite code flips pending to active", so only a pending account is
@@ -735,6 +739,7 @@ export function createAuthRoutes(): Route[] {
         // status and rating are already here, and a match id is not a capability — the socket
         // still authenticates and the actor still stamps the seat from the token (§9.3).
         currentMatchId: profile.inMatchId,
+        currentSeriesId: series?.id ?? null,
         // The address this account is tied to, so a player can see WHICH account they are signed
         // in as. Read from the auth provider's user (the same place §9.4 step 1 reads
         // `emailVerified` from), never from the token's user_metadata, which is user-editable.

@@ -47,6 +47,19 @@ insert into public.loadout_decks (profile_id, slot, name)
 values ('22222222-2222-2222-2222-222222222222', 1, 'P2 One');
 insert into public.loadout_deck_cards (profile_id, slot, card_id, count)
 values ('22222222-2222-2222-2222-222222222222', 1, 'core-002', 1);
+-- 0007's decks and trios (R250, R252), one of each for BOTH profiles: profile 2's are the rows
+-- to hide, profile 1's the rows it must still see (it has saved none by this point). Raw
+-- inserts, as superuser, because the point is what RLS shows, not how a row got there.
+insert into public.decks (id, profile_id, name, cards, catalog_version) values
+  ('d1000000-0000-4000-8000-000000000001', '11111111-1111-1111-1111-111111111111', 'P1 Deck',
+   '["core-001"]', 'core-1'),
+  ('d2000000-0000-4000-8000-000000000002', '22222222-2222-2222-2222-222222222222', 'P2 Deck',
+   '["core-002"]', 'core-1');
+insert into public.trios (id, profile_id, name, deck1_id) values
+  ('e1000000-0000-4000-8000-000000000001', '11111111-1111-1111-1111-111111111111', 'P1 Trio',
+   'd1000000-0000-4000-8000-000000000001'),
+  ('e2000000-0000-4000-8000-000000000002', '22222222-2222-2222-2222-222222222222', 'P2 Trio',
+   'd2000000-0000-4000-8000-000000000002');
 
 -- Read as superuser, with RLS bypassed: the totals the client's answers are measured
 -- against. Transaction-local, like the seed rows themselves.
@@ -74,6 +87,14 @@ begin
     (select count(*) from public.loadout_deck_cards where profile_id = caller)::text, true);
   perform set_config('rls1.deck_cards_other',
     (select count(*) from public.loadout_deck_cards where profile_id <> caller)::text, true);
+  perform set_config('rls1.decks_own',
+    (select count(*) from public.decks where profile_id = caller)::text, true);
+  perform set_config('rls1.decks_other',
+    (select count(*) from public.decks where profile_id <> caller)::text, true);
+  perform set_config('rls1.trios_own',
+    (select count(*) from public.trios where profile_id = caller)::text, true);
+  perform set_config('rls1.trios_other',
+    (select count(*) from public.trios where profile_id <> caller)::text, true);
 end $$;
 
 set local role authenticated;
@@ -91,6 +112,9 @@ select count(*) as cards_visible from public.cards;
 select count(*) as loadouts_visible from public.loadouts;
 \echo '-- loadout_deck_cards: must be 1 (own rows only)'
 select count(*) as deck_cards_visible from public.loadout_deck_cards;
+\echo '-- decks, trios: must be 1 each (own rows only)'
+select count(*) as decks_visible from public.decks;
+select count(*) as trios_visible from public.trios;
 
 do $$
 declare
@@ -107,12 +131,21 @@ declare
   loadouts_other   bigint := coalesce(nullif(current_setting('rls1.loadouts_other',   true), ''), '-1')::bigint;
   deck_cards_own   bigint := coalesce(nullif(current_setting('rls1.deck_cards_own',   true), ''), '-1')::bigint;
   deck_cards_other bigint := coalesce(nullif(current_setting('rls1.deck_cards_other', true), ''), '-1')::bigint;
+  decks_own        bigint := coalesce(nullif(current_setting('rls1.decks_own',        true), ''), '-1')::bigint;
+  decks_other      bigint := coalesce(nullif(current_setting('rls1.decks_other',      true), ''), '-1')::bigint;
+  trios_own        bigint := coalesce(nullif(current_setting('rls1.trios_own',        true), ''), '-1')::bigint;
+  trios_other      bigint := coalesce(nullif(current_setting('rls1.trios_other',      true), ''), '-1')::bigint;
   seen             bigint;
 begin
   -- Without this the whole check is theatre: a superuser reads every row and passes.
   if current_user <> 'authenticated' then
     raise exception 'FAIL (CHECK 1): running as %, not authenticated — SET LOCAL did not take',
       current_user;
+  end if;
+  if decks_own < 1 or trios_own < 1 or decks_other < 1 or trios_other < 1 then
+    raise exception
+      'FAIL (CHECK 1): decks/trios have nothing to measure — own % / %, foreign % / % (each must be at least 1)',
+      decks_own, trios_own, decks_other, trios_other;
   end if;
 
   -- Vacuity guards. Every count below is of the form "exactly my own rows"; each one is
@@ -175,6 +208,21 @@ begin
       seen, deck_cards_own, deck_cards_other;
   end if;
 
+  -- R250, R252 (0007): a player's saved decks and trios are its own, exactly as its loadout
+  -- was. A saved decklist is SPEC §9.8's hidden information like any other.
+  select count(*) into seen from public.decks;
+  if seen <> decks_own or exists (select 1 from public.decks where profile_id <> caller) then
+    raise exception
+      'FAIL (CHECK 1): decks showed % rows, expected % own — % belong to another profile; a saved decklist leaked',
+      seen, decks_own, decks_other;
+  end if;
+
+  select count(*) into seen from public.trios;
+  if seen <> trios_own or exists (select 1 from public.trios where profile_id <> caller) then
+    raise exception 'FAIL (CHECK 1): trios showed % rows, expected % own — % belong to another profile',
+      seen, trios_own, trios_other;
+  end if;
+
   -- SPEC §9.4: the catalog is public to a logged-in user, so hiding it is a failure too.
   select count(*) into seen from public.cards;
   if seen <> cards_total then
@@ -182,9 +230,10 @@ begin
       seen, cards_total;
   end if;
 
-  raise notice 'OK (CHECK 1): profile 1 sees 1 profile, % collection, % grants, % loadouts, % deck cards, % cards — and % foreign rows stayed hidden',
-    collection_own, grants_own, loadouts_own, deck_cards_own, cards_total,
-    collection_other + grants_other + loadouts_other + deck_cards_other + (profiles_total - 1);
+  raise notice 'OK (CHECK 1): profile 1 sees 1 profile, % collection, % grants, % loadouts, % deck cards, % decks, % trios, % cards — and % foreign rows stayed hidden',
+    collection_own, grants_own, loadouts_own, deck_cards_own, decks_own, trios_own, cards_total,
+    collection_other + grants_other + loadouts_other + deck_cards_other + decks_other + trios_other
+      + (profiles_total - 1);
 end $$;
 
 reset role;
@@ -195,7 +244,15 @@ begin;
 
 -- Profile 2 really does own nothing here, so every "must be 0" below is measured
 -- against profile 1's real rows: those are what RLS has to withhold, and the assertion
--- block refuses to conclude anything unless they exist.
+-- block refuses to conclude anything unless they exist. Profile 1 has saved no deck or
+-- trio by this point, so one of each is written for it here and rolled back at the end.
+insert into public.decks (id, profile_id, name, cards, catalog_version) values
+  ('d1000000-0000-4000-8000-000000000001', '11111111-1111-1111-1111-111111111111', 'P1 Deck',
+   '["core-001"]', 'core-1');
+insert into public.trios (id, profile_id, name, deck1_id) values
+  ('e1000000-0000-4000-8000-000000000001', '11111111-1111-1111-1111-111111111111', 'P1 Trio',
+   'd1000000-0000-4000-8000-000000000001');
+
 do $$
 declare
   caller constant uuid := '22222222-2222-2222-2222-222222222222';
@@ -210,6 +267,10 @@ begin
     (select count(*) from public.loadouts where profile_id <> caller)::text, true);
   perform set_config('rls2.deck_cards_other',
     (select count(*) from public.loadout_deck_cards where profile_id <> caller)::text, true);
+  perform set_config('rls2.decks_other',
+    (select count(*) from public.decks where profile_id <> caller)::text, true);
+  perform set_config('rls2.trios_other',
+    (select count(*) from public.trios where profile_id <> caller)::text, true);
 end $$;
 
 set local role authenticated;
@@ -225,6 +286,9 @@ select count(*) as grants_visible from public.collection_grants;
 select count(*) as loadouts_visible from public.loadouts;
 \echo '-- loadout_deck_cards: must be 0'
 select count(*) as deck_cards_visible from public.loadout_deck_cards;
+\echo '-- decks, trios: must be 0'
+select count(*) as decks_visible from public.decks;
+select count(*) as trios_visible from public.trios;
 
 do $$
 declare
@@ -234,6 +298,8 @@ declare
   grants_other     bigint := coalesce(nullif(current_setting('rls2.grants_other',     true), ''), '-1')::bigint;
   loadouts_other   bigint := coalesce(nullif(current_setting('rls2.loadouts_other',   true), ''), '-1')::bigint;
   deck_cards_other bigint := coalesce(nullif(current_setting('rls2.deck_cards_other', true), ''), '-1')::bigint;
+  decks_other      bigint := coalesce(nullif(current_setting('rls2.decks_other',      true), ''), '-1')::bigint;
+  trios_other      bigint := coalesce(nullif(current_setting('rls2.trios_other',      true), ''), '-1')::bigint;
   seen             bigint;
   seen_id          uuid;
 begin
@@ -289,8 +355,22 @@ begin
       seen;
   end if;
 
-  raise notice 'OK (CHECK 2): profile 2 sees only its own profile row; % foreign rows across collection/grants/loadouts/deck cards stayed hidden',
-    collection_other + grants_other + loadouts_other + deck_cards_other;
+  if decks_other < 1 or trios_other < 1 then
+    raise exception 'FAIL (CHECK 2): nothing to hide — % foreign decks, % foreign trios', decks_other, trios_other;
+  end if;
+  select count(*) into seen from public.decks;
+  if seen <> 0 then
+    raise exception
+      'FAIL (CHECK 2): decks showed % row(s) to a profile that has saved none — another profile''s decklist leaked',
+      seen;
+  end if;
+  select count(*) into seen from public.trios;
+  if seen <> 0 then
+    raise exception 'FAIL (CHECK 2): trios showed % row(s) to a profile that has saved none', seen;
+  end if;
+
+  raise notice 'OK (CHECK 2): profile 2 sees only its own profile row; % foreign rows across collection/grants/loadouts/deck cards/decks/trios stayed hidden',
+    collection_other + grants_other + loadouts_other + deck_cards_other + decks_other + trios_other;
 end $$;
 
 reset role;
@@ -308,7 +388,7 @@ declare
   t text;
   missing text := '';
 begin
-  foreach t in array array['invite_codes', 'code_attempts', 'matches', 'match_actions'] loop
+  foreach t in array array['invite_codes', 'code_attempts', 'matches', 'match_actions', 'series'] loop
     if to_regclass('public.' || t) is null then
       missing := missing || t || ' ';
     end if;
@@ -320,7 +400,9 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
 do $$
 declare
-  forbidden constant text[] := array['invite_codes', 'code_attempts', 'matches', 'match_actions'];
+  -- `series` (0009, R263): both sides' frozen trios and both current picks, which R259 keeps
+  -- hidden until both have picked — the same reason `matches` is here.
+  forbidden constant text[] := array['invite_codes', 'code_attempts', 'matches', 'match_actions', 'series'];
   missing   text := coalesce(current_setting('rls3.missing', true), 'unknown');
   t         text;
   n         bigint;
@@ -393,6 +475,16 @@ begin
      where id = '22222222-2222-2222-2222-222222222222';
     insert into public.loadout_deck_cards (profile_id, slot, card_id, count)
     values ('11111111-1111-1111-1111-111111111111', 2, 'core-002', 1);
+    insert into public.decks (id, profile_id, name, cards, catalog_version)
+    values ('d2000000-0000-4000-8000-000000000009', '22222222-2222-2222-2222-222222222222',
+            'Planted', '[]', 'core-1');
+    update public.trios set name = 'Renamed';
+    delete from public.decks;
+    insert into public.series (id, p1_profile_id, p2_profile_id, status, next_match_id, version,
+                               catalog_version, state)
+    values ('f2000000-0000-4000-8000-000000000009', '22222222-2222-2222-2222-222222222222',
+            '11111111-1111-1111-1111-111111111111', 'picking',
+            'f2000000-0000-4000-8000-00000000000a', 1, 'core-1', '{}');
     -- Undo the control by aborting this subtransaction; everything above is discarded.
     raise exception 'owner-control-rollback';
   exception when others then
@@ -409,8 +501,14 @@ begin
   if to_regprocedure('app.save_loadout(uuid, text, jsonb)') is null then
     raise exception 'FAIL (CHECK 4): app.save_loadout(uuid, text, jsonb) does not exist';
   end if;
+  if to_regprocedure('app.upsert_deck(uuid, uuid, text, jsonb, text, timestamptz, int)') is null then
+    raise exception 'FAIL (CHECK 4): app.upsert_deck(uuid, uuid, text, jsonb, text, timestamptz, int) does not exist';
+  end if;
+  if to_regprocedure('app.upsert_trio(uuid, uuid, text, uuid, uuid, uuid, timestamptz, int)') is null then
+    raise exception 'FAIL (CHECK 4): app.upsert_trio(uuid, uuid, text, uuid, uuid, uuid, timestamptz, int) does not exist';
+  end if;
 
-  raise notice 'OK (CHECK 4 preflight): the owner can run all three writes, and both app.* functions exist';
+  raise notice 'OK (CHECK 4 preflight): the owner can run all seven writes, and all four app.* functions exist';
 end $$;
 
 set local role authenticated;
@@ -536,14 +634,69 @@ begin
         sqlerrm, sqlstate;
   end;
 
-  -- Nothing above may have landed. The five probes all ran in this one transaction, so a
+  -- 0007 and 0009 (R250, R252, R263): a deck, a trio and a series are written by the server
+  -- alone. Each statement below is one the owner ran in the preflight, so a refusal here is
+  -- the privilege system and nothing else. The deck INSERT plants a row for profile 2 from
+  -- profile 2's own session — refused all the same: there is no client write path at all, not
+  -- merely none into another profile's rows.
+  declare
+    probe  text;
+    probes constant text[][] := array[
+      ['decks INSERT',
+       $q$insert into public.decks (id, profile_id, name, cards, catalog_version)
+          values ('d2000000-0000-4000-8000-000000000009', '22222222-2222-2222-2222-222222222222',
+                  'Planted', '[]', 'core-1')$q$,
+       'decks'],
+      ['trios UPDATE', $q$update public.trios set name = 'Renamed'$q$, 'trios'],
+      ['decks DELETE', $q$delete from public.decks$q$, 'decks'],
+      ['series INSERT',
+       $q$insert into public.series (id, p1_profile_id, p2_profile_id, status, next_match_id,
+                                     version, catalog_version, state)
+          values ('f2000000-0000-4000-8000-000000000009', '22222222-2222-2222-2222-222222222222',
+                  '11111111-1111-1111-1111-111111111111', 'picking',
+                  'f2000000-0000-4000-8000-00000000000a', 1, 'core-1', '{}')$q$,
+       'series'],
+      ['app.upsert_deck',
+       $q$select app.upsert_deck('22222222-2222-2222-2222-222222222222',
+                                 'd2000000-0000-4000-8000-000000000009', 'Mine', '[]', 'core-1',
+                                 now(), 10)$q$,
+       'upsert_deck'],
+      ['app.upsert_trio',
+       $q$select app.upsert_trio('22222222-2222-2222-2222-222222222222',
+                                 'e2000000-0000-4000-8000-000000000009', 'Mine', null, null, null,
+                                 now(), 5)$q$,
+       'upsert_trio']];
+    i int;
+  begin
+    for i in 1 .. array_length(probes, 1) loop
+      probe := probes[i][1];
+      begin
+        execute probes[i][2];
+        raise exception 'FAIL (CHECK 4): % succeeded as a client — decks, trios and series are written by the server alone',
+          probe;
+      exception
+        when insufficient_privilege then
+          if sqlerrm not like '%' || probes[i][3] || '%' then
+            raise exception 'FAIL (CHECK 4): % was refused by "%" (%), which does not name %',
+              probe, sqlerrm, sqlstate, probes[i][3];
+          end if;
+          raise notice 'OK (CHECK 4): % refused — % (%)', probe, sqlerrm, sqlstate;
+        when others then
+          if sqlerrm like 'FAIL%' then raise; end if;
+          raise exception 'FAIL (CHECK 4): % raised "%" (%), not insufficient_privilege',
+            probe, sqlerrm, sqlstate;
+      end;
+    end loop;
+  end;
+
+  -- Nothing above may have landed. The eleven probes all ran in this one transaction, so a
   -- write that slipped through is still visible here.
   if (select count(*) from public.collection) <> readable then
     raise exception 'FAIL (CHECK 4): the collection this session can see changed from % rows — a client write landed',
       readable;
   end if;
 
-  raise notice 'OK (CHECK 4): 3 table writes and 2 app.* calls all refused with insufficient_privilege';
+  raise notice 'OK (CHECK 4): 7 table writes and 4 app.* calls all refused with insufficient_privilege';
 end $$;
 
 reset role;

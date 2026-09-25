@@ -24,8 +24,9 @@
  *  - `results.insert` refuses a second row for the same match (§9.5);
  *  - `tickets.insert` refuses a second open ticket for one profile (`tickets_profile_queued_key`,
  *    which `queue.ts` relies on as the race-proof half of "not already queued");
- *  - `loadouts.replace` refuses a card id that appears in two decks (`loadout_card_unique`, §9.4
- *    L4, "also enforced by a unique index on `(profile_id, card_id)`").
+ *  - `decks`, `trios` and `series` are `src/api/memory-stores.ts`, shared with the unit-test fake:
+ *    the deck and trio caps, the owner check and `series.update`'s compare-and-set are one
+ *    implementation for both in-memory stores (R250, R252, R263).
  *
  * R111 IS A DATABASE TRIGGER, so it is implemented here rather than in a handler. SPEC §11 R111:
  * "Becoming `active` grants one copy of every non-token card, written by a trigger on the
@@ -48,6 +49,7 @@ import {
   CODE_ATTEMPT_WINDOW_SECONDS,
 } from "../config";
 import { LAUNCH_COPIES, LAUNCH_GRANT_REASON } from "./collection";
+import { createMemoryDeckStores, type DeckTables } from "./memory-stores";
 import type {
   CatalogInfo,
   CodeAttempt,
@@ -60,10 +62,10 @@ import type {
   ProfileStatus,
   RedeemInviteCodeInput,
   RedeemResult,
+  QueueMode,
   ResultRow,
   Room,
   Store,
-  StoredLoadout,
   Ticket,
 } from "./ports";
 
@@ -75,13 +77,12 @@ type Tables = {
   attempts: CodeAttempt[];
   collection: CollectionRow[];
   grants: CollectionGrant[];
-  loadouts: { profileId: string; loadout: StoredLoadout }[];
   matches: MatchRow[];
   matchActions: MatchActionRow[];
   rooms: Room[];
   tickets: Ticket[];
   results: ResultRow[];
-};
+} & DeckTables;
 
 function emptyTables(): Tables {
   return {
@@ -90,7 +91,9 @@ function emptyTables(): Tables {
     attempts: [],
     collection: [],
     grants: [],
-    loadouts: [],
+    decks: [],
+    trios: [],
+    series: [],
     matches: [],
     matchActions: [],
     rooms: [],
@@ -514,36 +517,13 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
   };
 
   // -------------------------------------------------------------------------
-  // Loadouts (§9.4)
+  // Saved decks, trios and the Best-of-3 series (R250–R263): shared with the unit-test fake.
   // -------------------------------------------------------------------------
 
-  store.loadouts = {
-    get: async (profileId) => {
-      const row = tables.loadouts.find((entry) => entry.profileId === profileId);
-      return row === undefined ? null : clone(row.loadout);
-    },
-    replace: async (profileId, catalogVersion, decks, at) => {
-      // §9.4 L4 is "also enforced by a unique index on `(profile_id, card_id)`", so a bypassed
-      // application check still fails here.
-      const seen = new Set<string>();
-      for (const deck of decks) {
-        for (const cardId of deck) {
-          if (seen.has(cardId)) {
-            throw new Error(`loadout_card_unique: (${profileId}, ${cardId}) appears twice`);
-          }
-          seen.add(cardId);
-        }
-      }
-      const loadout: StoredLoadout = {
-        catalogVersion,
-        decks: decks.map((deck) => [...deck]),
-        updatedAt: at,
-      };
-      const row = tables.loadouts.find((entry) => entry.profileId === profileId);
-      if (row === undefined) tables.loadouts.push({ profileId, loadout });
-      else row.loadout = loadout;
-    },
-  };
+  const deckStores = createMemoryDeckStores(() => tables);
+  store.decks = deckStores.decks;
+  store.trios = deckStores.trios;
+  store.series = deckStores.series;
 
   // -------------------------------------------------------------------------
   // Matches (§9.3, §9.5)
@@ -586,6 +566,9 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
       row.finishedAt = at;
     },
     live: async () => tables.matches.filter((match) => match.status === "live").map(clone),
+    // No `open` rows here: a reserved match id is only an id until the registry creates it (R263).
+    discardOpen: async (_matchId) => {
+    },
   };
 
   // -------------------------------------------------------------------------
@@ -642,6 +625,13 @@ export function createE2EStore(options: E2EStoreOptions): E2EStore {
         .sort((a, b) => a.enqueuedAt - b.enqueuedAt)
         .map(clone),
     countOpen: async () => tables.tickets.filter((ticket) => ticket.status === "open").length,
+    countOpenByMode: async () => {
+      const counts: Record<QueueMode, number> = { bo1: 0, bo3: 0, random: 0 };
+      for (const ticket of tables.tickets) {
+        if (ticket.status === "open") counts[ticket.mode] += 1;
+      }
+      return counts;
+    },
     // §9.5: "both tickets are claimed in one atomic statement".
     claimPair: async (aId, bId, matchId, _at) => {
       if (aId === bId) return false;
