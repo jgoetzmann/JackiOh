@@ -128,10 +128,13 @@ function signInThroughForm(email: string): void {
           expect(res.status).to.eq(200);
           expect(res.body.entries, "cards owned").to.have.length.greaterThan(0);
         });
-      cy.request({ url: `${SERVER}/api/loadout`, headers: { Authorization: `Bearer ${token}` } })
+      // R254: migration 0007 turned the seeded loadout into three saved decks and one trio. The
+      // queue bodies below still say `deckIndex: 1`, R257's legacy form: position 1 of this list.
+      cy.request({ url: `${SERVER}/api/decks`, headers: { Authorization: `Bearer ${token}` } })
         .then((res) => {
           expect(res.status).to.eq(200);
-          expect(res.body.loadout, "a saved loadout").to.not.eq(null);
+          expect(res.body.decks, "the saved decks").to.have.length.at.least(3);
+          expect(res.body.trios, "and a trio").to.have.length.at.least(1);
         });
     });
   });

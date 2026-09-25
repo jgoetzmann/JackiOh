@@ -533,7 +533,7 @@ Cypress runs against `apps/web` in `E2E=1` mode (hotseat route and a test server
 | `06-room-code.cy.ts` | Create room, second player joins via `cy.task("wsPlayer")` | both see the board; actions round-trip; game ends and both are queue-eligible |
 | `07-my-pawn-ai.cy.ts` | P2 has My Pawn; P1 declares lethal | attack cancelled; P1's controls disabled; AI actions animate; turn ends |
 | `08-turn-cap-draw.cy.ts` | Two do-nothing decks, seed with no lethal | after the 30th player-turn the overlay says Draw |
-| `09-deckbuilder.cy.ts` | The deck workshop and the queue's rules (§9.4, R250–R253) | each of L1–L6 shows its message, in the builder's verdict and in the queue's refusal; a card a compared deck holds is refused; a legal deck and trio queue |
+| `09-deckbuilder.cy.ts` | The deck workshop and the queue's rules (§9.4, R250–R253) | each of L1–L6 shows its message in the builder's verdict; the queue refuses L1, L2 and L4 (with L5) in the same words; a deck breaking L3 or L6 is refused at save (D3, D4) and so never reaches the queue; a card a compared deck holds is refused; a legal deck and trio queue |
 | `10-invite-gate.cy.ts` | Pending account | code screen shown; bad code error identical for three failure kinds; good code activates |
 | `11-radiant.cy.ts` | Glowy Jelly Bean on a hand card, Knockoff Temu on a field unit | glow animation; stats swap on the field card keeping damage |
 | `12-rotation-and-swaps.cy.ts` | Silly Silas, Pocket Chaos board swap | every card testid moves one lane; board swap flips sides |

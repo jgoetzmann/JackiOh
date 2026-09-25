@@ -1,0 +1,27 @@
+{
+  "id": "19-modes-a",
+  "spec": "19-queue-modes-and-series.cy.ts",
+  "description": "The browser player's deck in spec 19, saved as Deck 2 (deck index 1) so that the Best-of-1 game proves the lobby queues the deck the player CHOSE rather than the first one, and picked as trio slot 1 for game 1 of the series. SPEC \u00a78 cards #61-#80: twenty distinct non-Token Core ids (L2, L3, L6). No card is ever played: the spec reads the opening hand and concedes, so what matters is only that every card the hand can hold is a card of this deck. Nothing here puts a non-Token card into a hand at the opening (no Discover or copy on draw; #65's Quickdraw only guarantees itself), so any hand card that is not a Token (The Coin, R245) must come from this list.",
+  "cards": [
+    "core-061",
+    "core-062",
+    "core-063",
+    "core-064",
+    "core-065",
+    "core-066",
+    "core-067",
+    "core-068",
+    "core-069",
+    "core-070",
+    "core-071",
+    "core-072",
+    "core-073",
+    "core-074",
+    "core-075",
+    "core-076",
+    "core-077",
+    "core-078",
+    "core-079",
+    "core-080"
+  ]
+}

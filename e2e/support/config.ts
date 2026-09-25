@@ -37,6 +37,8 @@ export const routes = {
   play: () => env("playRoute", "/play"),
   /** A networked match; the room-code screen lives here too. */
   match: (matchId: string) => `${env("matchRoute", "/match")}/${matchId}`,
+  /** A Best-of-3 series between its games (R259): `paths.series` in apps/web/src/net/navigate.ts. */
+  series: (seriesId: string) => `${env("seriesRoute", "/series")}/${seriesId}`,
 };
 
 /**
@@ -60,6 +62,18 @@ export const server = {
  * this is the one place to change it.
  */
 export const SESSION_STORAGE_KEY = "jackioh.e2e.session";
+
+/**
+ * A17: where the deck workshop mirrors unsynced drafts on this device (R256): `mirrorKey` in
+ * `apps/web/src/game/deckbuilder/sync.ts`, `jackioh.decks.v1.<profileId>`, holding
+ * `{ v: 1, decks: [{ item, dirty }], trios: [{ item, dirty }], deletedDecks, deletedTrios }`. Spec 09
+ * seeds it with drafts a save would refuse, which is the only way a browser meets L3 and L6; spec 18
+ * reads nothing from it directly, only what the workshop restores. Spelled here, not imported,
+ * because `support/` type-checks without `apps/*` (e2e/tsconfig.json).
+ */
+export function deckMirrorKey(profileId: string): string {
+  return `jackioh.decks.v1.${profileId}`;
+}
 
 /** A6: one fixture account. `token` is the ready-made access token `cy.signIn` installs. */
 export type E2EAccount = { email: string; password: string; token: string };

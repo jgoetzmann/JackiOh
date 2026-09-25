@@ -18,6 +18,7 @@ import {
 import {
   ANIMATING,
   DECK_DRAG_MIME,
+  DECK_DROP,
   END_TURN,
   OFFER_DRAW,
   POWER,
@@ -27,13 +28,10 @@ import {
   RESULT_OVERLAY,
   SEAT_SWITCH,
   cardId,
-  cardPoolId,
-  deckDropId,
-  deckListId,
-  deckTabId,
   handCardId,
   heroId,
   animating,
+  poolCardId,
   promptOf,
   promptOptionId,
   switchPositionId,
@@ -70,6 +68,18 @@ export type SeedGameOptions = {
 };
 
 export type PromptStep = PromptAnswer & { kind?: PromptKind };
+
+/** `cy.saveDeck`'s input: `PUT /api/decks/:id`'s body, and the id (minted when omitted). */
+export type SaveDeckInput = {
+  id?: string;
+  name: string;
+  cards: readonly string[];
+  /** The catalog version to save against; read from `GET /api/decks` when omitted. */
+  catalogVersion?: string;
+};
+
+/** `cy.saveTrio`'s input: `PUT /api/trios/:id`'s body, and the id (minted when omitted). */
+export type SaveTrioInput = { id?: string; name: string; deckIds: (string | null)[] };
 
 /**
  * Every acting command ends by draining `data-animating` (`cy.settled()`), which is what keeps the
@@ -119,6 +129,8 @@ export type WsPlayerCommand =
   | { action: "view"; name: string }
   | { action: "messages"; name: string }
   | { action: "disconnect"; name: string }
+  /** Connect as `token`, concede `matchId` and close, in one task (see `cy.concedeAs`). */
+  | { action: "concede"; name: string; url?: string; token: string; matchId: string; seat?: PlayerId }
   | { action: "reset" };
 
 /** What `awaitView` waits for. Every field is `AND`ed; an omitted one is not looked at. */
@@ -677,7 +689,7 @@ const carrySession = (originalFn: (...args: unknown[]) => unknown, ...args: unkn
 Cypress.Commands.overwrite("visit", carrySession as never);
 
 // ---------------------------------------------------------------------------------------------
-// Loadouts (A12) and the deckbuilder (A11)
+// Saved decks and trios (A12) and the deck workshop (A11)
 // ---------------------------------------------------------------------------------------------
 
 function api(path: string): string {
@@ -689,10 +701,10 @@ function bearer(token: string): Record<string, string> {
 }
 
 /**
- * A12: one scenario deck, padded into the loadout §9.4 will accept.
+ * A12: one scenario deck, padded into a trio R253's Best of 3 will accept.
  *
  * L1 wants exactly `DECKS_PER_LOADOUT` decks and L4 wants no card in two of them, so a one-deck
- * scenario fixture cannot be saved on its own. The padding is the next `DECK_SIZE * 2` Core ids
+ * scenario fixture cannot make a trio on its own. The padding is the next `DECK_SIZE * 2` Core ids
  * the fixture did not use, which keeps all three decks disjoint and — with R111's one copy of
  * every non-token card — inside L5.
  */
@@ -709,13 +721,137 @@ export function loadoutFrom(deck: readonly string[], deckIndex = 0): string[][] 
   return decks;
 }
 
+/** `GET /api/decks` (`DecksResponse` in apps/web/src/net/api.ts), as far as the suite reads it. */
+export type SavedDecksBody = {
+  catalogVersion: string;
+  decks: { id: string; name: string; cards: string[]; catalogVersion: string; createdAt: number; updatedAt: number }[];
+  trios: { id: string; name: string; deckIds: (string | null)[]; createdAt: number; updatedAt: number }[];
+  limits: { decks: number; trios: number; nameLength: number };
+};
+
+/** What `cy.installLoadout` saved: three decks, oldest first, and the trio that holds them. */
+export type InstalledLoadout = {
+  /**
+   * The three deck ids in saved order, which is `GET /api/decks` order (oldest first, ties on id)
+   * and therefore R257's legacy order: `deckIds[n]` is the deck a `{ deckIndex: n }` body names.
+   */
+  deckIds: [string, string, string];
+  /** The trio ("E2E trio") holding `deckIds` in slot order. */
+  trioId: string;
+  /** The cards of each deck, in the same order; `decks[deckIndex]` is the fixture's. */
+  decks: string[][];
+  /** The catalog version the decks were saved against. */
+  catalogVersion: string;
+};
+
+/** The deck names `cy.installLoadout` saves, in order. */
+export const INSTALLED_DECK_NAMES = ["Deck 1", "Deck 2", "Deck 3"] as const;
+/** The trio name `cy.installLoadout` saves. */
+export const INSTALLED_TRIO_NAME = "E2E trio";
+
 /**
- * Install a fixture deck as one of an account's three decks. §9.4: `saveLoadout` is the only
- * authority, and it "writes all three decks in one transaction or nothing", so the whole loadout
- * goes in one PUT — against the `catalogVersion` the server is serving right now, because a stale
- * one gets "update required" rather than a save.
+ * R256: a deck or trio id, minted by the client exactly as the workshop mints one. The fallback is
+ * a version-4 UUID built by hand, for a runner whose spec frame is not a secure context.
+ */
+export function mintId(): string {
+  const webCrypto = globalThis.crypto as Crypto | undefined;
+  if (webCrypto !== undefined && typeof webCrypto.randomUUID === "function") return webCrypto.randomUUID();
+  const hex = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16));
+  hex[12] = 4;
+  hex[16] = ((hex[16] ?? 0) & 0x3) | 0x8;
+  const text = hex.map((digit) => digit.toString(16)).join("");
+  return `${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
+}
+
+/**
+ * `count` fresh ids in ascending order. `GET /api/decks` lists oldest first and breaks a
+ * `createdAt` tie on the id (`memory-stores.ts`, and Postgres orders a `uuid` the way its lower-case
+ * text sorts), and three saves in a row can land in one millisecond — so decks saved in the order
+ * of these ids list in that order whatever the clock did.
+ */
+export function mintIds(count: number): string[] {
+  return Array.from({ length: count }, mintId)
+    .map((id) => id.toLowerCase())
+    .sort();
+}
+
+Cypress.Commands.add("savedDecks", (account: E2EAccount) => {
+  return cy
+    .request<SavedDecksBody>({ method: "GET", url: api("/api/decks"), headers: bearer(account.token) })
+    .then((response) => {
+      expect(response.status, "GET /api/decks").to.eq(200);
+      return response.body;
+    });
+});
+
+/**
+ * Delete every trio and every deck an account has saved, and yield the catalog version the server
+ * is serving (a save needs it: a stale one is 409 `update_required`, R253). Trios go first only for
+ * tidiness: deleting a deck empties the slots that named it anyway (R252).
+ */
+Cypress.Commands.add("clearDecks", (account: E2EAccount) => {
+  return cy.savedDecks(account).then((saved) => {
+    for (const trio of saved.trios) {
+      cy.request({ method: "DELETE", url: api(`/api/trios/${trio.id}`), headers: bearer(account.token) })
+        .its("status")
+        .should("eq", 200);
+    }
+    for (const deck of saved.decks) {
+      cy.request({ method: "DELETE", url: api(`/api/decks/${deck.id}`), headers: bearer(account.token) })
+        .its("status")
+        .should("eq", 200);
+    }
+    return cy.wrap(saved.catalogVersion, { log: false });
+  });
+});
+
+/** One `PUT /api/decks/:id` (R250, R256): a create for a new id, else a replace. Yields the id. */
+Cypress.Commands.add("saveDeck", (account: E2EAccount, deck: SaveDeckInput) => {
+  const id = deck.id ?? mintId();
+  const put = (catalogVersion: string): Cypress.Chainable<string> =>
+    cy
+      .request({
+        method: "PUT",
+        url: api(`/api/decks/${id}`),
+        headers: bearer(account.token),
+        body: { name: deck.name, cards: deck.cards, catalogVersion },
+      })
+      .then((response) => {
+        expect(response.status, `PUT /api/decks/${id} ("${deck.name}")`).to.eq(200);
+        return id;
+      });
+  if (deck.catalogVersion !== undefined) return put(deck.catalogVersion);
+  return cy.savedDecks(account).then((saved) => put(saved.catalogVersion));
+});
+
+/** One `PUT /api/trios/:id` (R252, R256). Yields the id. */
+Cypress.Commands.add("saveTrio", (account: E2EAccount, trio: SaveTrioInput) => {
+  const id = trio.id ?? mintId();
+  return cy
+    .request({
+      method: "PUT",
+      url: api(`/api/trios/${id}`),
+      headers: bearer(account.token),
+      body: { name: trio.name, deckIds: trio.deckIds },
+    })
+    .then((response) => {
+      expect(response.status, `PUT /api/trios/${id} ("${trio.name}")`).to.eq(200);
+      return id;
+    });
+});
+
+/**
+ * Install a fixture deck as saved deck `deckIndex` of an account, beside two padding decks, and a
+ * trio of the three (SPEC §9.4, R250–R253).
  *
- * `deckIndex` defaults to 0, which is the deck a room or a queue ticket freezes (§9.5).
+ * Everything the account had saved is deleted first, so the account holds exactly these three
+ * decks ("Deck 1".."Deck 3", oldest first) and this one trio ("E2E trio", slot order), and a legacy
+ * `{ deckIndex: n }` body (R257) names `deckIds[n]`. The decks go in one at a time, in the order of
+ * ascending ids (`mintIds`), so their saved order is fixed whatever the clock does.
+ *
+ * `deckIndex` defaults to 0, which is the deck a legacy room or queue body with `deckIndex: 0`
+ * freezes (§9.5). Yields the ids, so a spec can queue `{ mode: "bo1", deckId }` or
+ * `{ mode: "bo3", trioId }` with them.
  */
 Cypress.Commands.add(
   "installLoadout",
@@ -725,54 +861,130 @@ Cypress.Commands.add(
       0,
       constants.DECKS_PER_LOADOUT - 1,
     );
-    cy.fixture(`decks/${fixtureId}.json`).then((raw) => {
+    return cy.fixture(`decks/${fixtureId}.json`).then((raw) => {
       const decks = loadoutFrom(asDeck(raw, fixtureId).cards, deckIndex);
-      cy.request<{ catalogVersion: string }>({
-        method: "GET",
-        url: api("/api/loadout"),
-        headers: bearer(account.token),
-      }).then((current) => {
-        cy.request({
-          method: "PUT",
-          url: api("/api/loadout"),
-          headers: bearer(account.token),
-          body: { catalogVersion: current.body.catalogVersion, decks },
-        })
-          .its("status")
-          .should("eq", 200);
+      const ids = mintIds(constants.DECKS_PER_LOADOUT);
+      const [first, second, third] = ids;
+      if (first === undefined || second === undefined || third === undefined) {
+        throw new Error("mintIds(3) did not yield three ids");
+      }
+      return cy.clearDecks(account).then((catalogVersion) => {
+        decks.forEach((cards, at) => {
+          cy.saveDeck(account, {
+            id: ids[at] ?? mintId(),
+            name: INSTALLED_DECK_NAMES[at] ?? `Deck ${String(at + 1)}`,
+            cards,
+            catalogVersion,
+          });
+        });
+        return cy.saveTrio(account, { name: INSTALLED_TRIO_NAME, deckIds: [first, second, third] }).then(
+          (trioId): InstalledLoadout => ({ deckIds: [first, second, third], trioId, decks, catalogVersion }),
+        );
       });
     });
   },
 );
 
-/**
- * A11: drag a card from the pool into a deck, in the deckbuilder.
- *
- * BUILD M8 spec 09's row is "a card dragged into a second deck is refused", and a drag is a
- * multi-event gesture — `dragstart` on the source with a `DataTransfer`, `dragover` and `drop` on
- * the target, `dragend` to let go — that no spec should hand-roll. The `DataTransfer` is built in
- * the app's own window so the events carry the object the page can read.
- *
- * `deckIndex` is 0-based, like `installLoadout`'s and like `POST /api/rooms`'s; the testids are
- * 1-based because that is what the screen shows ("Deck 1", §9.4's `deckLabel`).
- */
-Cypress.Commands.add("dragCardToDeck", (catalogCardId: string, deckIndex: number) => {
-  expect(deckIndex, `a deck index inside L1's ${String(constants.DECKS_PER_LOADOUT)} decks`).to.be.within(
-    0,
-    constants.DECKS_PER_LOADOUT - 1,
-  );
-  const oneBased = deckIndex + 1;
-  const source = ts(cardPoolId(catalogCardId));
-  // The screen's drop handlers sit on the deck region and on the list inside it, and a tab is a
-  // drop target too, so any of the three ends the gesture (apps/web/src/game/deckbuilder).
-  const targets = [ts(deckDropId(oneBased)), ts(deckListId(oneBased)), ts(deckTabId(oneBased))];
+// ---------------------------------------------------------------------------------------------
+// Leaving nothing behind on the E2E server (§9.5, R259–R261)
+// ---------------------------------------------------------------------------------------------
 
+/** `GET /api/auth/me`, as far as the cleanup reads it. */
+type MeBody = { currentMatchId: string | null; currentSeriesId?: string | null };
+
+/** `GET /api/series/:id` (`SeriesView`), as far as the cleanup reads it. */
+type SeriesStatusBody = { status: "picking" | "playing" | "over"; currentMatchId: string | null };
+
+/**
+ * §2.5: concede `matchId` as `account`, from a socket of its own (`wsPlayer`'s `concede`: connect,
+ * concede and close in one task, so the account's browser cannot take the seat back in between).
+ * Yields the task's answer; a match that was already over is not an error.
+ */
+Cypress.Commands.add("concedeAs", (account: E2EAccount, matchId: string) => {
+  return cy
+    .task<WsPlayerResult>(
+      "wsPlayer",
+      { action: "concede", name: `concede-${account.email}`, url: server.ws(), token: account.token, matchId },
+      { timeout: timeouts.task },
+    )
+    .then((result) => {
+      const refused = result.code === "match_over";
+      expect(
+        result.ok || refused,
+        `${account.email} conceded ${matchId}: ${result.code ?? ""} ${result.error ?? "ok"}`,
+      ).to.eq(true);
+      return result;
+    });
+});
+
+/**
+ * How many things `cy.freeAccount` may have to undo: a match, then (in a series) the forfeit that
+ * follows it, with room for a concede the account's own browser raced. Not a rule number: a bound
+ * on a cleanup loop.
+ */
+const FREE_ACCOUNT_STEPS = 8;
+
+/**
+ * Take an account out of everything the E2E server could still hold it in: an open queue ticket
+ * (`DELETE /api/queue`), a live match (a concede, §2.5) and a Best-of-3 series that is not over (a
+ * forfeit between games, a concede of the game being played, R261). The server keeps its state for
+ * its whole life, so a spec that failed half-way — or an earlier run of this one — would otherwise
+ * answer the next `POST /api/queue` with 409 `already_in_match` or `already_queued`.
+ *
+ * Every step is re-read from `/api/auth/me`, and the loop has a budget, so a state this cannot
+ * clear fails loudly here rather than as a misleading 409 later.
+ */
+Cypress.Commands.add("freeAccount", (account: E2EAccount) => {
+  cy.request({ method: "DELETE", url: api("/api/queue"), headers: bearer(account.token), failOnStatusCode: false });
+  const step = (left: number): void => {
+    cy.request<MeBody>({ method: "GET", url: api("/api/auth/me"), headers: bearer(account.token) }).then(
+      (response) => {
+        const matchId = response.body.currentMatchId;
+        const seriesId = response.body.currentSeriesId ?? null;
+        if (matchId === null && seriesId === null) return;
+        expect(left, `${account.email} is out of every match and series in time`).to.be.greaterThan(0);
+        if (matchId !== null) {
+          cy.concedeAs(account, matchId);
+        } else if (seriesId !== null) {
+          cy.request<SeriesStatusBody>({
+            method: "GET",
+            url: api(`/api/series/${seriesId}`),
+            headers: bearer(account.token),
+            failOnStatusCode: false,
+          }).then((series) => {
+            if (series.status !== 200) return;
+            if (series.body.status === "picking") {
+              cy.request({
+                method: "POST",
+                url: api(`/api/series/${seriesId}/forfeit`),
+                headers: bearer(account.token),
+                failOnStatusCode: false,
+              });
+            } else if (series.body.status === "playing" && series.body.currentMatchId !== null) {
+              cy.concedeAs(account, series.body.currentMatchId);
+            }
+          });
+        }
+        step(left - 1);
+      },
+    );
+  };
+  step(FREE_ACCOUNT_STEPS);
+});
+
+/**
+ * A11: drag a card from the pool into the open deck, in the deck workshop.
+ *
+ * A drag is a multi-event gesture — `dragstart` on the source with a `DataTransfer`, `dragover` and
+ * `drop` on the target, `dragend` to let go — that no spec should hand-roll. The `DataTransfer` is
+ * built in the app's own window so the events carry an object the page can read. The workshop has
+ * one deck open at a time, so the target is its one drop region (`DECK_DROP`).
+ */
+Cypress.Commands.add("dragCardToDeck", (catalogCardId: string) => {
+  const source = ts(poolCardId(catalogCardId));
+  const target = ts(DECK_DROP);
   cy.get(source, { timeout: timeouts.view }).should("exist");
-  // A builder that drops straight onto a tab needs no click first, so selecting the deck is
-  // best-effort rather than required.
-  exists(ts(deckTabId(oneBased))).then((tabbed) => {
-    if (tabbed) cy.get(ts(deckTabId(oneBased))).click();
-  });
+  cy.get(target).should("exist");
 
   cy.window({ log: false }).then((win) => {
     const dataTransfer = new win.DataTransfer();
@@ -780,21 +992,13 @@ Cypress.Commands.add("dragCardToDeck", (catalogCardId: string, deckIndex: number
     dataTransfer.setData("text/plain", catalogCardId);
 
     cy.get(source).trigger("dragstart", { dataTransfer, eventConstructor: "DragEvent" });
-    cy.get("body").then(($body) => {
-      const found = targets.find((selector) => $body.find(selector).length > 0);
-      expect(found, `a drop target for deck ${String(oneBased)}: ${targets.join(" | ")}`).to.not.eq(
-        undefined,
-      );
-      const target = found ?? targets[0] ?? "body";
-      cy.get(target).trigger("dragover", { dataTransfer, eventConstructor: "DragEvent" });
-      cy.get(target).trigger("drop", { dataTransfer, eventConstructor: "DragEvent" });
-    });
+    cy.get(target).trigger("dragover", { dataTransfer, eventConstructor: "DragEvent" });
+    cy.get(target).trigger("drop", { dataTransfer, eventConstructor: "DragEvent" });
     // The source may be gone or greyed out after a successful drop, so letting go is best-effort.
     exists(source).then((present) => {
       if (present) cy.get(source).trigger("dragend", { dataTransfer, eventConstructor: "DragEvent" });
     });
   });
-  cy.settled();
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -889,10 +1093,25 @@ declare global {
       signOut(): Chainable<void>;
       /** `cy.signIn(account)` then `cy.visit(path)`, session installed before the page runs. */
       visitAs(account: E2EAccount, path: string, options?: Partial<Cypress.VisitOptions>): Chainable<void>;
-      /** Save a fixture deck as deck `deckIndex` of an account's loadout, padded per L1/L4 (§9.4). */
-      installLoadout(account: E2EAccount, fixtureId: string, options?: { deckIndex?: number }): Chainable<void>;
-      /** Drag a pool card into a deck in the deckbuilder: the whole gesture, not one event (A11). */
-      dragCardToDeck(catalogCardId: string, deckIndex: number): Chainable<void>;
+      /**
+       * Replace an account's saved decks with a fixture deck at `deckIndex` and two padding decks,
+       * plus a trio of the three (§9.4, R250–R253). Yields the ids.
+       */
+      installLoadout(account: E2EAccount, fixtureId: string, options?: { deckIndex?: number }): Chainable<InstalledLoadout>;
+      /** `GET /api/decks` as `account`. */
+      savedDecks(account: E2EAccount): Chainable<SavedDecksBody>;
+      /** Delete every saved trio and deck of `account`; yields the server's catalog version. */
+      clearDecks(account: E2EAccount): Chainable<string>;
+      /** `PUT /api/decks/:id` as `account`; yields the id. */
+      saveDeck(account: E2EAccount, deck: SaveDeckInput): Chainable<string>;
+      /** `PUT /api/trios/:id` as `account`; yields the id. */
+      saveTrio(account: E2EAccount, trio: SaveTrioInput): Chainable<string>;
+      /** Concede `matchId` as `account` from a socket of its own (§2.5). */
+      concedeAs(account: E2EAccount, matchId: string): Chainable<WsPlayerResult>;
+      /** Dequeue, concede a live match and forfeit a series between games (§9.5, R261). */
+      freeAccount(account: E2EAccount): Chainable<void>;
+      /** Drag a pool card into the open deck in the workshop: the whole gesture, not one event (A11). */
+      dragCardToDeck(catalogCardId: string): Chainable<void>;
       jackioh(): Chainable<JackiOhDevHandle>;
       gameState(): Chainable<GameStateLike>;
       dispatchAction(action: ActionInput): Chainable<void>;
