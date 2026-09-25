@@ -1,9 +1,10 @@
-// The per-seat handicap (SPEC §9.9; R180–R184; docs/polish/3-ai.md B1–B8).
+// The per-seat handicap (SPEC §9.9; R180–R184, R290; docs/polish/3-ai.md B1–B8).
 //
 // Practice gives the AI seat more resources than a human: a bigger deck, extra mana crystals up to
-// a higher cap, an extra opening card and, on Hard, a second draw each turn. The human seat always
-// plays with this spec's own numbers, and a game with no handicap must hash and replay exactly as
-// it did before the field existed. Everything here is observed through `createGame`, `beginGame`,
+// a higher cap, an extra opening card and, on Hard, a second draw each turn. The tutorial's
+// opponent (AI_TUTORIAL, R290) gets fewer: a 12-card deck, 3 crystals at most and a hero that
+// starts at 20. The human seat always plays with this spec's own numbers, and a game with no
+// handicap must hash and replay exactly as it did before the field existed. Everything here is observed through `createGame`, `beginGame`,
 // `reduce`, `fold` and the state they return; nothing reads how the rules are implemented.
 //
 // Fixtures: the engine's vanilla catalog (`fx-1`..`fx-40`, every one a 1-cost 2/2), the Hinder and
@@ -16,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { registerCatalog, registeredCatalog } from "../src/catalog";
 import {
   AI_DIFFICULTY,
+  AI_TUTORIAL,
   DECK_SIZE,
   DIFFICULTIES,
   DRAWS_PER_TURN,
@@ -27,6 +29,7 @@ import {
   OPENING_DRAW,
   type Handicap,
 } from "../src/config";
+import { healHero, healHeroUpTo } from "../src/damage";
 import { DRAW_COUNT_WORK, owedDrawCountOf } from "../src/draw";
 import { maxManaFor, refreshMana } from "../src/mana";
 import { openPrompt, resumeSelf } from "../src/prompts";
@@ -40,12 +43,14 @@ import {
   createGame,
   handicapOf,
   newInstance,
+  startingHeroHealth,
   validateDeck,
   validateHandicap,
   type CardInstance,
   type GameState,
 } from "../src/state";
 import { chooseAction } from "../src/subsystems/aiPolicy";
+import { viewFor } from "../src/viewFor";
 import { owedWork } from "../src/work";
 import { tokenDef, vanillaCatalog, vanillaDeck } from "./fixtures/catalog";
 import { eventsOfType, setupCatalog } from "./fixtures/harness";
@@ -201,10 +206,18 @@ function roundTrip(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
-/** A full random-policy game (§10.7) under these handicaps, as fold must reproduce it. */
-function playRandom(seed: string, handicaps: Handicaps): { state: GameState; log: Action[]; decks: [string[], string[]] } {
+/**
+ * A full random-policy game (§10.7) under these handicaps, as fold must reproduce it. `observe`, when
+ * given, sees the dealt state and every state after it.
+ */
+function playRandom(
+  seed: string,
+  handicaps: Handicaps,
+  observe?: (state: GameState) => void,
+): { state: GameState; log: Action[]; decks: [string[], string[]] } {
   const decks = decksFor(handicaps);
   let state = beginGame(game(seed, handicaps, decks)).state;
+  observe?.(state);
   const policy = createRng(`handicap-policy-${seed}`);
   const log: Action[] = [];
   while (state.result === null) {
@@ -217,6 +230,7 @@ function playRandom(seed: string, handicaps: Handicaps): { state: GameState; log
     if (result.error !== undefined) throw new Error(`${seed}: ${action.type} refused: ${result.error}`);
     log.push(action);
     state = result.state;
+    observe?.(state);
   }
   return { state, log, decks };
 }
@@ -974,5 +988,320 @@ describe("R184 deck size for a handicapped seat", () => {
       /p2: deck must hold exactly 30 cards \(its handicap, R184\)/,
     );
     expect(() => validateDeck(vanillaDeck(30, 1), catalog, "p2")).toThrow(/exactly 20 cards \(§2.6 L2\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R290: the tutorial's handicap, the one below Easy.
+// ---------------------------------------------------------------------------
+
+/** The five fields every handicap has; `heroHealth` (R290) is the optional sixth. */
+const FIVE_FIELDS = ["deckSize", "manaBonus", "manaCap", "extraOpeningCards", "extraDrawsPerTurn"] as const;
+
+/** The tutorial hero's starting health, read through the engine's own rule. */
+const TUTORIAL_HEALTH = startingHeroHealth(AI_TUTORIAL);
+
+/** AI_TUTORIAL without its heroHealth: what a fold that forgot the field would be given. */
+function withoutHeroHealth(handicap: Handicap): Handicap {
+  const { heroHealth: _heroHealth, ...rest } = handicap;
+  return rest;
+}
+
+describe("R290 the tutorial handicap (AI_TUTORIAL)", () => {
+  it("R290 AI_TUTORIAL is a 12-card deck, at most 3 mana, a 20-health hero and nothing extra, and a valid handicap", () => {
+    expect(AI_TUTORIAL).toEqual({
+      deckSize: 12,
+      manaBonus: 0,
+      manaCap: 3,
+      extraOpeningCards: 0,
+      extraDrawsPerTurn: 0,
+      heroHealth: 20,
+    });
+    expect(TUTORIAL_HEALTH).toBe(20);
+    expect(() => validateHandicap(AI_TUTORIAL, "p2")).not.toThrow();
+    expect(() => validateHandicap(AI_TUTORIAL, "p1")).not.toThrow();
+  });
+
+  it("R290 AI_TUTORIAL is no practice tier: not in DIFFICULTIES, not a key of AI_DIFFICULTY, equal to none of them", () => {
+    expect([...DIFFICULTIES]).toEqual(["easy", "medium", "hard"]);
+    expect(Object.keys(AI_DIFFICULTY).sort()).toEqual(["easy", "hard", "medium"]);
+    expect(Object.keys(AI_DIFFICULTY)).not.toContain("tutorial");
+    expect(Object.values(AI_DIFFICULTY)).not.toContain(AI_TUTORIAL);
+    for (const difficulty of DIFFICULTIES) {
+      expect(AI_DIFFICULTY[difficulty], difficulty).not.toEqual(AI_TUTORIAL);
+      // The three tiers never set the field, so they start at HERO_HEALTH (SPEC §9.9's table).
+      expect(Object.keys(AI_DIFFICULTY[difficulty]), difficulty).not.toContain("heroHealth");
+      expect(startingHeroHealth(AI_DIFFICULTY[difficulty]), difficulty).toBe(HERO_HEALTH);
+    }
+    expect(Object.keys(HUMAN_HANDICAP)).not.toContain("heroHealth");
+    expect(startingHeroHealth(HUMAN_HANDICAP)).toBe(HERO_HEALTH);
+    expect(startingHeroHealth(undefined)).toBe(HERO_HEALTH);
+  });
+
+  it("R290 AI_TUTORIAL is below a human's resources: every field at or under Easy's, and the three it changes strictly under", () => {
+    expect(AI_TUTORIAL.deckSize).toBeLessThan(DECK_SIZE);
+    expect(AI_TUTORIAL.manaCap).toBeLessThan(MAX_MANA);
+    expect(TUTORIAL_HEALTH).toBeLessThan(HERO_HEALTH);
+    expect(AI_TUTORIAL.manaBonus).toBe(0);
+    expect(AI_TUTORIAL.extraOpeningCards).toBe(0);
+    expect(AI_TUTORIAL.extraDrawsPerTurn).toBe(0);
+
+    const changed: string[] = [];
+    for (const field of FIVE_FIELDS) {
+      expect(AI_TUTORIAL[field], field).toBeLessThanOrEqual(HUMAN_HANDICAP[field]);
+      if (AI_TUTORIAL[field] !== HUMAN_HANDICAP[field]) changed.push(field);
+    }
+    expect(TUTORIAL_HEALTH).toBeLessThanOrEqual(startingHeroHealth(HUMAN_HANDICAP));
+    if (TUTORIAL_HEALTH !== startingHeroHealth(HUMAN_HANDICAP)) changed.push("heroHealth");
+    expect(changed).toEqual(["deckSize", "manaCap", "heroHealth"]);
+    // Easy is a human's resources exactly (R180), so "below a human" is "below Easy".
+    expect(AI_DIFFICULTY.easy).toEqual(HUMAN_HANDICAP);
+  });
+
+  it("R290 createGame: a tutorial p2 takes 12 cards and its hero starts at 20, stored as a copy; p1 keeps HERO_HEALTH", () => {
+    const state = game("r290-create", { p2: AI_TUTORIAL });
+    expect(state.players.p2.library).toHaveLength(AI_TUTORIAL.deckSize);
+    expect(state.players.p1.library).toHaveLength(DECK_SIZE);
+    expect(state.players.p2.hero).toEqual({ health: TUTORIAL_HEALTH, armor: 0 });
+    expect(state.players.p1.hero).toEqual({ health: HERO_HEALTH, armor: 0 });
+
+    expect(state.players.p2.handicap).toEqual(AI_TUTORIAL);
+    expect(state.players.p2.handicap).not.toBe(AI_TUTORIAL);
+    expect(Object.keys(state.players.p1)).not.toContain("handicap");
+    expect(handicapOf(state.players.p2)).toEqual(AI_TUTORIAL);
+    expect(handicapOf(state.players.p1)).toEqual(HUMAN_HANDICAP);
+    // The stored copy survives the JSON round trip a paused or restarted match takes.
+    expect(roundTrip(state).players.p2.handicap).toEqual(AI_TUTORIAL);
+    expect(hashState(roundTrip(state))).toBe(hashState(state));
+
+    // The setup and the mulligans do not reset it, and both seats' views show it.
+    const begun = started("r290-create", { p2: AI_TUTORIAL });
+    expect(begun.players.p2.hero.health).toBe(TUTORIAL_HEALTH);
+    expect(begun.players.p1.hero.health).toBe(HERO_HEALTH);
+    expect(viewFor(begun, "p1").opponent.hero.health).toBe(TUTORIAL_HEALTH);
+    expect(viewFor(begun, "p1").you.hero.health).toBe(HERO_HEALTH);
+    expect(viewFor(begun, "p2").you.hero.health).toBe(TUTORIAL_HEALTH);
+  });
+
+  it("R290 createGame: a tutorial p1 is the same, and the p2 human keeps HERO_HEALTH and its 20 cards", () => {
+    const state = game("r290-create-p1", { p1: AI_TUTORIAL });
+    expect(state.players.p1.library).toHaveLength(AI_TUTORIAL.deckSize);
+    expect(state.players.p2.library).toHaveLength(DECK_SIZE);
+    expect(state.players.p1.hero.health).toBe(TUTORIAL_HEALTH);
+    expect(state.players.p2.hero.health).toBe(HERO_HEALTH);
+    expect(state.players.p1.handicap).toEqual(AI_TUTORIAL);
+    expect(Object.keys(state.players.p2)).not.toContain("handicap");
+  });
+
+  it("R290 a tutorial seat's deck is held to exactly 12 (R184): 20, 11 or 13 cards are refused, and the human is still held to 20", () => {
+    registerAll();
+    for (const size of [DECK_SIZE, AI_TUTORIAL.deckSize - 1, AI_TUTORIAL.deckSize + 1]) {
+      expect(
+        () =>
+          createGame({
+            seed: `r290-deck-${size}`,
+            decks: [vanillaDeck(DECK_SIZE, 1), vanillaDeck(size, 1)],
+            handicaps: { p2: AI_TUTORIAL },
+          }),
+        `${size} cards`,
+      ).toThrow(/p2: deck must hold exactly 12 cards \(its handicap, R184\)/);
+    }
+    expect(() =>
+      createGame({
+        seed: "r290-deck-human",
+        decks: [vanillaDeck(AI_TUTORIAL.deckSize, 1), vanillaDeck(AI_TUTORIAL.deckSize, 1)],
+        handicaps: { p2: AI_TUTORIAL },
+      }),
+    ).toThrow(/p1: deck must hold exactly 20 cards \(§2.6 L2\)/);
+  });
+
+  it("R290 heroHealth absent or equal to HERO_HEALTH stores nothing: a human's handicap with heroHealth 30 hashes like the plain game", () => {
+    const decks = decksFor();
+    const plain = game("r290-human", undefined, decks);
+    const variants: Handicaps[] = [
+      { p2: { ...HUMAN_HANDICAP, heroHealth: HERO_HEALTH } },
+      { p1: { ...HUMAN_HANDICAP, heroHealth: HERO_HEALTH } },
+      { p1: { ...AI_DIFFICULTY.easy, heroHealth: HERO_HEALTH }, p2: { ...HUMAN_HANDICAP, heroHealth: HERO_HEALTH } },
+    ];
+    for (const handicaps of variants) {
+      const label = JSON.stringify(handicaps);
+      const state = game("r290-human", handicaps, decks);
+      for (const player of PLAYER_IDS) {
+        expect(Object.keys(state.players[player]), `${label}: ${player}`).not.toContain("handicap");
+        expect(handicapOf(state.players[player]), `${label}: ${player}`).toEqual(HUMAN_HANDICAP);
+        expect(state.players[player].hero.health, `${label}: ${player}`).toBe(HERO_HEALTH);
+      }
+      expect(hashState(state), label).toBe(hashState(plain));
+      expect(hashState(beginGame(state).state), label).toBe(hashState(beginGame(plain).state));
+    }
+  });
+
+  it("R290 Medium and Hard store the five fields and no heroHealth key, and a heroHealth of 30 added to them changes nothing", () => {
+    for (const difficulty of ["medium", "hard"] as const) {
+      const h = AI_DIFFICULTY[difficulty];
+      const decks = decksFor({ p2: h });
+      const tier = game(`r290-${difficulty}`, { p2: h }, decks);
+      expect(Object.keys(tier.players.p2.handicap ?? {}).sort(), difficulty).toEqual([...FIVE_FIELDS].sort());
+      expect(tier.players.p2.handicap, difficulty).toEqual(h);
+      expect(tier.players.p2.hero.health, difficulty).toBe(HERO_HEALTH);
+
+      const explicit = game(`r290-${difficulty}`, { p2: { ...h, heroHealth: HERO_HEALTH } }, decks);
+      expect(Object.keys(explicit.players.p2.handicap ?? {}).sort(), difficulty).toEqual([...FIVE_FIELDS].sort());
+      expect(explicit.players.p2.handicap, difficulty).toEqual(h);
+      expect(hashState(explicit), difficulty).toBe(hashState(tier));
+      expect(hashState(beginGame(explicit).state), difficulty).toBe(hashState(beginGame(tier).state));
+    }
+  });
+
+  it("R290 a heroHealth other than 30 is stored beside the other fields, even on a handicap that is otherwise a human's", () => {
+    const decks = decksFor();
+    const plain = game("r290-only-health", undefined, decks);
+    const onlyHealth: Handicap = { ...HUMAN_HANDICAP, heroHealth: TUTORIAL_HEALTH };
+    const state = game("r290-only-health", { p2: onlyHealth }, decks);
+    expect(state.players.p2.handicap).toEqual(onlyHealth);
+    expect(state.players.p2.hero.health).toBe(TUTORIAL_HEALTH);
+    expect(hashState(state)).not.toBe(hashState(plain));
+
+    const mediumAt25: Handicap = { ...AI_DIFFICULTY.medium, heroHealth: 25 };
+    const medium = game("r290-medium-25", { p2: mediumAt25 });
+    expect(medium.players.p2.handicap).toEqual(mediumAt25);
+    expect(medium.players.p2.hero.health).toBe(25);
+  });
+
+  it("R290 validateHandicap refuses a heroHealth that is not a positive integer and accepts 1 and 20", () => {
+    const bad: unknown[] = [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, "20", null];
+    for (const heroHealth of bad) {
+      const handicap = { ...AI_TUTORIAL, heroHealth } as unknown as Handicap;
+      expect(() => validateHandicap(handicap, "p2"), String(heroHealth)).toThrow(
+        /p2: handicap heroHealth must be a positive integer \(R290\)/,
+      );
+    }
+    expect(() => validateHandicap({ ...AI_TUTORIAL, heroHealth: 1 }, "p2")).not.toThrow();
+    expect(() => validateHandicap({ ...AI_TUTORIAL, heroHealth: 20 }, "p2")).not.toThrow();
+    expect(() => validateHandicap(withoutHeroHealth(AI_TUTORIAL), "p2")).not.toThrow();
+  });
+
+  it("R290 createGame refuses an invalid heroHealth before it looks at the deck", () => {
+    registerAll();
+    for (const heroHealth of [0, -1, 2.5]) {
+      expect(
+        () =>
+          createGame({
+            seed: "r290-bad-health",
+            // A 20-card p2 deck is wrong for AI_TUTORIAL too; the handicap is named first (R180).
+            decks: [vanillaDeck(DECK_SIZE, 1), vanillaDeck(DECK_SIZE, 1)],
+            handicaps: { p2: { ...AI_TUTORIAL, heroHealth } },
+          }),
+        String(heroHealth),
+      ).toThrow(/p2: handicap heroHealth must be a positive integer \(R290\)/);
+    }
+    expect(() =>
+      createGame({
+        seed: "r290-bad-health-p1",
+        decks: [vanillaDeck(AI_TUTORIAL.deckSize, 1), vanillaDeck(DECK_SIZE, 1)],
+        handicaps: { p1: { ...AI_TUTORIAL, heroHealth: 0 } },
+      }),
+    ).toThrow(/p1: handicap heroHealth/);
+  });
+
+  it("R290 maxManaFor a tutorial seat is min(turns started, 3): it never exceeds 3, and the human's is §2.3's", () => {
+    const state = game("r290-mana-unit", { p2: AI_TUTORIAL });
+    for (let turns = 0; turns <= 12; turns += 1) {
+      state.players.p2.turnsStarted = turns;
+      state.players.p1.turnsStarted = turns;
+      expect(maxManaFor(state.players.p2), `tutorial after ${turns} turns`).toBe(Math.min(turns, AI_TUTORIAL.manaCap));
+      expect(maxManaFor(state.players.p2), `tutorial after ${turns} turns`).toBeLessThanOrEqual(AI_TUTORIAL.manaCap);
+      expect(maxManaFor(state.players.p1), `human after ${turns} turns`).toBe(Math.min(turns, MAX_MANA));
+    }
+  });
+
+  it("R290 a tutorial seat refreshes to 1, 2, 3, 3 on its first four turns, as p2 or p1, while the human reaches 4", () => {
+    const asP2 = maxesByTurn("r290-mana", { p2: AI_TUTORIAL }, 12);
+    expect(asP2.p2).toEqual([1, 2, 3, 3, 3, 3]);
+    expect(asP2.p1).toEqual([1, 2, 3, 4, 4, 4]);
+
+    const asP1 = maxesByTurn("r290-mana-p1", { p1: AI_TUTORIAL }, 12);
+    expect(asP1.p1).toEqual([1, 2, 3, 3, 3, 3]);
+    expect(asP1.p2).toEqual([1, 2, 3, 4, 4, 4]);
+
+    const fourth = advanceTo(started("r290-mana-current", { p2: AI_TUTORIAL }), "p2", 4);
+    expect(fourth.players.p2.mana).toMatchObject({ max: 3, current: 3 });
+  });
+
+  it("R290 fold with AI_TUTORIAL reproduces a tutorial random-policy game, whose tutorial seat never had more than 3 max mana", { timeout: 120_000 }, () => {
+    const cases: [string, Handicaps, PlayerId][] = [
+      ["r290-fold-p2", { p2: AI_TUTORIAL }, "p2"],
+      ["r290-fold-p1", { p1: AI_TUTORIAL }, "p1"],
+    ];
+    for (const [seed, handicaps, seat] of cases) {
+      let highest = 0;
+      const live = playRandom(seed, handicaps, (state) => {
+        highest = Math.max(highest, state.players[seat].mana.max);
+      });
+      expect(highest, `${seed}: the tutorial seat reached its cap`).toBe(AI_TUTORIAL.manaCap);
+      expect(live.decks[seat === "p1" ? 0 : 1], seed).toHaveLength(AI_TUTORIAL.deckSize);
+
+      registerAll();
+      const replayed = fold({ seed, decks: live.decks, log: live.log, handicaps });
+      expect(replayed.errors, seed).toEqual([]);
+      expect(hashState(replayed.state), seed).toBe(hashState(live.state));
+      expect(replayed.state.result, seed).toEqual(live.state.result);
+    }
+  });
+
+  it("R290 the same fold without the handicap throws on the 12-card deck, and without heroHealth it does not reproduce the game", { timeout: 120_000 }, () => {
+    const seed = "r290-fold-missing";
+    const live = playRandom(seed, { p2: AI_TUTORIAL });
+    registerAll();
+    expect(() => fold({ seed, decks: live.decks, log: live.log })).toThrow(/p2: deck must hold exactly 20/);
+
+    const forgot = fold({ seed, decks: live.decks, log: live.log, handicaps: { p2: withoutHeroHealth(AI_TUTORIAL) } });
+    const same = forgot.errors.length === 0 && hashState(forgot.state) === hashState(live.state);
+    expect(same).toBe(false);
+  });
+
+  it("R290 a tutorial hero at 20 dies at 0 like any hero: a 20-point fatigue hit ends the game, a 19-point one leaves it at 1", () => {
+    // p2's library is empty, so its turn-start draw is a fatigue step of fatigueCount + 1 (R183's
+    // fatigue test reads the same rule): fatigueCount 19 makes the hit 20.
+    const lethal = started("r290-death", { p2: AI_TUTORIAL });
+    lethal.players.p2.library = [];
+    lethal.players.p2.fatigueCount = TUTORIAL_HEALTH - 1;
+    const ended = step(lethal, { type: "endTurn", playerId: "p1" });
+    const hits = eventsOfType(ended.events, "damage")
+      .filter((event) => event.targetId === "hero-p2")
+      .map((event) => event.amount);
+    expect(hits).toEqual([TUTORIAL_HEALTH]);
+    expect(ended.state.players.p2.hero.health).toBe(0);
+    expect(ended.state.result).toEqual({ winner: "p1", reason: "hero-death" });
+    expect(eventsOfType(ended.events, "gameOver")).toHaveLength(1);
+
+    const survives = started("r290-death", { p2: AI_TUTORIAL });
+    survives.players.p2.library = [];
+    survives.players.p2.fatigueCount = TUTORIAL_HEALTH - 2;
+    const alive = passTurn(survives).state;
+    expect(alive.players.p2.hero.health).toBe(1);
+    expect(alive.result).toBeNull();
+    expect(alive.active).toBe("p2");
+
+    // The same 20-point hit on a human's hero leaves it at 10: the tutorial hero's 20 is what ended it.
+    const human = started("r290-death", undefined);
+    human.players.p2.library = [];
+    human.players.p2.fatigueCount = TUTORIAL_HEALTH - 1;
+    const humanAfter = passTurn(human).state;
+    expect(humanAfter.players.p2.hero.health).toBe(HERO_HEALTH - TUTORIAL_HEALTH);
+    expect(humanAfter.result).toBeNull();
+  });
+
+  it("R290 20 is where the tutorial hero starts, not a cap: a heal takes it past 20, and a heal up to 30 lifts it to 30", () => {
+    const state = started("r290-heal", { p2: AI_TUTORIAL });
+    const sink = { state, events: [] as GameEvent[] };
+    // §3: a hero has no maximum health, so nothing holds the tutorial hero at its starting 20.
+    expect(healHero(sink, "p2", 5)).toBe(5);
+    expect(state.players.p2.hero.health).toBe(TUTORIAL_HEALTH + 5);
+    // "Heal up to N" (#53 Reno's 30) raises the hero to N whatever it started at.
+    expect(healHeroUpTo(sink, "p2", HERO_HEALTH)).toBe(HERO_HEALTH - TUTORIAL_HEALTH - 5);
+    expect(state.players.p2.hero.health).toBe(HERO_HEALTH);
+    // The stored handicap is untouched by either: its heroHealth records where the hero started.
+    expect(state.players.p2.handicap).toEqual(AI_TUTORIAL);
   });
 });
