@@ -72,7 +72,7 @@ function fakeSource(): FakeSource {
         listeners.delete(fn);
       };
     },
-    setHold: vi.fn(),
+    setHold: vi.fn<(reason: string, held: boolean) => void>(),
     push(snapshot) {
       state = { ...state, snapshot };
       for (const fn of [...listeners]) fn();
@@ -535,7 +535,7 @@ describe("the coach bubble", () => {
       steps: [{ id: "watch", kind: "act", title: "Watch", text: "", done: (ctx) => (seen.push(ctx.fresh), false) }],
       tips: [],
     };
-    const drawn: GameEvent = { type: "cardDrawn", player: "p1", instanceId: "h9" } as GameEvent;
+    const drawn: GameEvent = { type: "drawn", player: "p1", instanceId: "h9", defId: "core-008" };
     source.push(snap(myTurn(1, { events: [drawn] })));
     tracker = createCoachTracker(source, script);
     source.push(snap(myTurn(1, { events: [drawn, { ...drawn, instanceId: "h10" } as GameEvent] })));
