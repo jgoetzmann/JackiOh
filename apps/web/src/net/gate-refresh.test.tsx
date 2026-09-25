@@ -30,6 +30,8 @@ const MARGIN_MS = AUTH_SESSION_REFRESH_MARGIN_SECONDS * 1000;
 
 /** A lazily loaded route plus several round trips can outrun the 1 s default under load. */
 const SLOW = { timeout: 5_000 } as const;
+/** A test that waits `SLOW` more than once needs more than vitest's 5 s default for the whole test. */
+const SLOW_TEST = { timeout: 30_000 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // the stubbed API and provider
@@ -203,6 +205,48 @@ describe("R194 B32 renewal", () => {
     expect((await screen.findByTestId("opened", undefined, SLOW)).textContent).toBe(OLD);
     expect(refreshCalls).toHaveLength(0);
     expect(readSession()?.accessToken).toBe(OLD);
+  });
+
+  it("R194 a renewal timer that comes due before the clock says it should still renews, a moment later", SLOW_TEST, async () => {
+    // Node measures a timer from the event loop's cached clock, which a long task (a render) leaves
+    // behind `Date.now()`, so under load the renewal timer can come due a little before the time it
+    // was set for. It used to return there and renew nothing until the page was next woken: a
+    // renewal that never came, which is what "the gate's own renewal during a match" (in
+    // gate-session-changes.test.tsx) ran into when it timed out on CI.
+    const lead = 300;
+    store({ accessToken: OLD, refreshToken: OLD_REFRESH, expiresAt: Date.now() + MARGIN_MS + lead });
+    const { refreshCalls } = serve({
+      me: () => ({ status: 200, body: meBody("active") }),
+      refresh: () => RENEWED,
+    });
+    const realSetTimeout = window.setTimeout.bind(window);
+    const realNow = Date.now.bind(Date);
+    let early = false;
+    vi.spyOn(window, "setTimeout").mockImplementation(((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+      // The renewal timer is the one set for at most `lead` ms; it runs with the clock 80 ms behind.
+      if (!early && typeof handler === "function" && typeof ms === "number" && ms > 0 && ms <= lead) {
+        early = true;
+        return realSetTimeout(() => {
+          const now = vi.spyOn(Date, "now").mockImplementation(() => realNow() - 80);
+          try {
+            (handler as () => void)();
+          } finally {
+            now.mockRestore();
+          }
+        }, ms);
+      }
+      return realSetTimeout(handler, ms, ...args);
+    }) as typeof window.setTimeout);
+    renderGated();
+
+    expect((await screen.findByTestId("opened", undefined, SLOW)).textContent).toBe(OLD);
+    await waitFor(() => {
+      expect(refreshCalls).toHaveLength(1);
+    }, SLOW);
+    expect(early).toBe(true);
+    await waitFor(() => {
+      expect(readSession()?.accessToken).toBe(NEW);
+    }, SLOW);
   });
 
   it("R194 renews once only: a renewed token that is also refused is not renewed again", async () => {
