@@ -148,6 +148,7 @@ describe("22 — tutorial lesson 1, played to a win by following the coach (§9.
       cy.get(ts(COACH), { timeout: TUTORIAL_BOOT_TIMEOUT })
         .should("be.visible")
         .and("have.attr", "data-coach-mode", "step")
+        .and("have.attr", "data-coach-dock", "float")
         .and("not.have.attr", "data-stale");
       cy.get(ts(COACH)).invoke("attr", "data-coach-step").should("be.a", "string").and("not.be.empty");
       cy.get(ts(TUTORIAL_STEP)).should("contain.text", "Step 1 of");

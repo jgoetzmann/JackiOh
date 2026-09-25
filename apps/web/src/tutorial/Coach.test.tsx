@@ -12,6 +12,7 @@ import { baseView, card, emptySide, resetIds } from "../test/fixtures.ts";
 import { setReducedMotion } from "../test/setup.ts";
 import { Coach } from "./Coach.tsx";
 import type { LessonScript } from "./coach.ts";
+import { COACH_DOCK_QUERY } from "./config.ts";
 import { inHand, myMain } from "./steps.ts";
 import { tutorialTestid } from "./testids.ts";
 import { COACH_HOLD, createCoachTracker, suggestedAction, type CoachSource, type CoachTracker } from "./tracker.ts";
@@ -112,6 +113,57 @@ function boardWith(ids: readonly string[]): HTMLElement {
 
 let tracker: CoachTracker | null = null;
 
+type DockStub = { set(matches: boolean): void; restore(): void };
+let dockStub: DockStub | null = null;
+
+/**
+ * The board's phone layouts, as `window.matchMedia(COACH_DOCK_QUERY)` reports them (jsdom has no
+ * media queries: test/setup.ts's stub answers only reduced motion). `set` flips it the way turning
+ * a phone does, firing the query's `change`.
+ */
+function phoneLayout(matches: boolean): DockStub {
+  const listeners = new Set<() => void>();
+  let now = matches;
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => {
+    if (query !== COACH_DOCK_QUERY) return original(query);
+    return {
+      media: query,
+      get matches() {
+        return now;
+      },
+      onchange: null,
+      addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_type: string, fn: () => void) => listeners.delete(fn),
+      addListener: (fn: () => void) => listeners.add(fn),
+      removeListener: (fn: () => void) => listeners.delete(fn),
+      dispatchEvent: () => false,
+    } as unknown as MediaQueryList;
+  }) as typeof window.matchMedia;
+  dockStub = {
+    set(next) {
+      now = next;
+      for (const fn of [...listeners]) fn();
+    },
+    restore() {
+      window.matchMedia = original;
+    },
+  };
+  return dockStub;
+}
+
+/** jsdom lays nothing out: give the coach's text the heights a clamped (or unclamped) text has. */
+function textHeights(scrollHeight: number, clientHeight: number): void {
+  const text = bubble().querySelector(".coach__text");
+  if (!(text instanceof HTMLElement)) throw new Error("the coach has no text");
+  Object.defineProperty(text, "scrollHeight", { configurable: true, get: () => scrollHeight });
+  Object.defineProperty(text, "clientHeight", { configurable: true, get: () => clientHeight });
+  // The coach re-measures on a resize as well as on its timer.
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
 function mount(source: FakeSource, root: HTMLElement | null): ReturnType<typeof render> {
   tracker = createCoachTracker(source, SCRIPT);
   return render(<Coach tracker={tracker} boardRoot={root} />);
@@ -127,6 +179,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  dockStub?.restore();
+  dockStub = null;
   tracker?.dispose();
   tracker = null;
   document.body.innerHTML = "";
@@ -356,5 +410,132 @@ describe("the coach bubble", () => {
     expect(suggestedAction(SCRIPT, tracker.getState())).toBeNull();
     tracker.ack();
     expect(suggestedAction(SCRIPT, tracker.getState())).toEqual(PLAY);
+  });
+});
+
+describe("the coach on a phone: a panel between the HUD and the board", () => {
+  it("floats beside its anchor on a desktop, and is a panel in the page on the board's phone layouts", () => {
+    phoneLayout(false);
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    const { unmount } = mount(source, boardWith(["hand-you"]));
+    expect(bubble()).toHaveAttribute("data-coach-dock", "float");
+    expect(bubble()).toHaveClass("coach--float");
+    expect(bubble()).toHaveAttribute("data-coach-side");
+    expect(bubble().style.left).not.toBe("");
+    unmount();
+    tracker?.dispose();
+    dockStub?.restore();
+    document.body.innerHTML = "";
+
+    phoneLayout(true);
+    const phone = fakeSource();
+    phone.push(snap(myTurn(1)));
+    mount(phone, boardWith(["hand-you"]));
+    const el = bubble();
+    expect(el).toHaveAttribute("data-coach-dock", "panel");
+    expect(el).toHaveClass("coach--panel");
+    // Laid out by the page: no side, no inline position, never hidden for want of one.
+    expect(el).not.toHaveAttribute("data-coach-side");
+    expect(el.getAttribute("style") ?? "").toBe("");
+    expect(el).toHaveAttribute("data-placed", "true");
+    // The same contract as the bubble: what it says, what it points at, and its buttons.
+    expect(el).toHaveAttribute("data-coach-mode", "step");
+    expect(el).toHaveAttribute("data-coach-step", "welcome");
+    expect(el).toHaveAttribute("data-coach-anchor", "hand-you");
+    expect(el).toHaveAccessibleName("Welcome");
+    expect(el).toHaveTextContent("These cards are your hand.");
+    expect(el).toHaveTextContent("1 / 3");
+    expect(screen.getByTestId(tutorialTestid.coachSkip)).toHaveTextContent("Skip step");
+    // "Got it" still takes the focus, and the ring still marks the anchor on the board.
+    expect(screen.getByTestId(tutorialTestid.coachAck)).toHaveFocus();
+    expect(screen.getByTestId(tutorialTestid.coachRing).style.left).toBe("94px");
+  });
+
+  it("switches live as the phone turns or the window is resized, and keeps the step and the focus", () => {
+    const dock = phoneLayout(false);
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    mount(source, boardWith(["hand-you"]));
+    const ack = screen.getByTestId(tutorialTestid.coachAck);
+    expect(ack).toHaveFocus();
+    expect(bubble()).toHaveAttribute("data-coach-dock", "float");
+
+    act(() => {
+      dock.set(true);
+    });
+    expect(bubble()).toHaveAttribute("data-coach-dock", "panel");
+    expect(bubble()).toHaveAttribute("data-coach-step", "welcome");
+    // The same element, so the focus stays where it was.
+    expect(screen.getByTestId(tutorialTestid.coachAck)).toBe(ack);
+    expect(ack).toHaveFocus();
+
+    act(() => {
+      dock.set(false);
+    });
+    expect(bubble()).toHaveAttribute("data-coach-dock", "float");
+  });
+
+  it("clamps a long text with More, which shows it all and Less folds again; a new step starts folded", () => {
+    phoneLayout(true);
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    mount(source, boardWith(["hand-you", "hand-card-h1"]));
+    expect(bubble()).toHaveAttribute("data-expanded", "false");
+    // Everything fits: no More.
+    textHeights(36, 36);
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+
+    // The text runs past the panel's lines.
+    textHeights(72, 54);
+    const more = screen.getByRole("button", { name: "More" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(more).toHaveAttribute("aria-controls", bubble().querySelector(".coach__text")?.id);
+    fireEvent.click(more);
+    expect(bubble()).toHaveAttribute("data-expanded", "true");
+    const less = screen.getByRole("button", { name: "Less" });
+    expect(less).toBe(more);
+    expect(less).toHaveAttribute("aria-expanded", "true");
+    // Unfolded, the text no longer runs over, and Less stays.
+    textHeights(72, 72);
+    expect(screen.getByRole("button", { name: "Less" })).toBe(more);
+    // Folded, it will run over again (the page clamps it before the coach measures): the same
+    // button says More, so a keyboard user's focus stays on it.
+    textHeights(72, 54);
+    fireEvent.click(less);
+    expect(bubble()).toHaveAttribute("data-expanded", "false");
+    expect(screen.getByRole("button", { name: "More" })).toBe(more);
+
+    // Opened again, then the step changes: the next one starts folded.
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(bubble()).toHaveAttribute("data-expanded", "true");
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachAck));
+    expect(bubble()).toHaveAttribute("data-coach-step", "play");
+    expect(bubble()).toHaveAttribute("data-expanded", "false");
+  });
+
+  it("never offers More on a floating bubble, which shows its whole text", () => {
+    phoneLayout(false);
+    const source = fakeSource();
+    source.push(snap(myTurn(1)));
+    mount(source, boardWith(["hand-you"]));
+    textHeights(72, 54);
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(bubble()).not.toHaveAttribute("data-expanded");
+  });
+
+  it("keeps the waiting line and Skip step in the panel while the AI plays", () => {
+    phoneLayout(true);
+    const source = fakeSource();
+    source.push(snap(myTurn(2, { active: "p2" }), [], true));
+    mount(source, boardWith([]));
+    fireEvent.click(screen.getByTestId(tutorialTestid.coachSkip));
+    const el = bubble();
+    expect(el).toHaveAttribute("data-coach-dock", "panel");
+    expect(el).toHaveAttribute("data-coach-mode", "waiting");
+    expect(el).toHaveClass("coach--slim");
+    expect(el).toHaveTextContent("The AI is taking its turn.");
+    expect(screen.getByTestId(tutorialTestid.coachSkip)).toBeInTheDocument();
+    expect(screen.queryByTestId(tutorialTestid.coachRing)).toBeNull();
   });
 });

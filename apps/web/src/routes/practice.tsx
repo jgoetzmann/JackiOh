@@ -6,7 +6,7 @@
 //
 // The tutorial lives here too (SPEC §9.10): its lesson path tops the lobby, and a lesson is a
 // practice game whose config names it (`tutorial/start.ts`), played under the tutorial's HUD with
-// the coach over the board (`tutorial/`).
+// the coach over the board, or on a phone in a panel above it (`tutorial/`).
 //
 // The route is NOT gated. It asks for the account only to offer an active player's saved decks, and
 // an anonymous visitor makes no request at all: no session means no `/api/auth/me`, and no
@@ -821,6 +821,10 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout, coachScript
           </button>
         </header>
       )}
+      {/* A lesson's coach comes between the HUD and the board: on a phone it is a panel in the page
+          there, and the board takes the height that is left (tutorial/Coach.tsx); elsewhere it
+          floats over the board, and this is only where the keyboard and a screen reader meet it. */}
+      {coached === null ? null : <Coach tracker={coached.tracker} boardRoot={boardRoot} />}
       {/* `practice-table` holds the board and hands it the screen's height (practice.css, "the game
           screen"); the wrapper is also the root `useBoardBusy` watches. */}
       <div
@@ -831,7 +835,6 @@ function PracticeScreen({ account, hostFactory, pacing, loadLoadout, coachScript
       >
         {lookup === null ? board : <CatalogContext.Provider value={lookup}>{board}</CatalogContext.Provider>}
       </div>
-      {coached === null ? null : <Coach tracker={coached.tracker} boardRoot={boardRoot} />}
       {leaveAskedFor !== null && leaveAskedFor.game === game && result === null ? (
         <PracticeLeave
           to={leaveAskedFor.to}

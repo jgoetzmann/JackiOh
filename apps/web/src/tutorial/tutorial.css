@@ -1,7 +1,8 @@
 /* The tutorial's chrome (SPEC §9.10): the lesson path at the top of the practice lobby, the
-   lesson's HUD, the coach's bubble and ring over the board, and the end-of-lesson dialog. The board
-   is practice's, untouched; the HUD and the dialog wear practice.css's look and change only what a
-   lesson needs.
+   lesson's HUD, the coach's bubble and ring over the board (on a phone, its panel above it), and
+   the end-of-lesson dialog. The board is practice's, untouched but for the phone's turn banner,
+   which the coach's panel stands in for; the HUD and the dialog wear practice.css's look and
+   change only what a lesson needs.
 
    The coach has a colour of its own, lavender (`--coach`), because every colour the board already
    uses means something there: green "can act", yellow "condition met", ice blue "selected", blue
@@ -528,6 +529,8 @@
   }
 }
 
+/* The bubble as it floats on a desktop or a tablet (`coach--float`); a phone's panel (below)
+   starts from the same look and changes what a panel in the page needs. */
 .coach {
   position: fixed;
   z-index: 56;
@@ -566,8 +569,8 @@
 
 /* A card in flight (drag.css marks <html data-dragging>): the bubble fades and lets the pointer
    through, so the zones under it show. The drop itself never depended on it (the drag layer reads
-   every element under the pointer, not the topmost). */
-:root[data-dragging] .coach {
+   every element under the pointer, not the topmost). A phone's panel is over nothing. */
+:root[data-dragging] .coach--float {
   opacity: 0.25;
   pointer-events: none;
 }
@@ -579,6 +582,14 @@
 .coach:focus-visible {
   outline: 2px solid var(--coach);
   outline-offset: 2px;
+}
+
+/* The eyebrow and the title, as one block; the bubble's own gap between them. */
+.coach__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .coach__head {
@@ -656,7 +667,7 @@
 
 /* The slim bubble while the coach waits (the AI's turn, a step whose moment has not come): one
    line of what is happening, and Skip step. */
-.coach.coach--slim {
+.coach.coach--float.coach--slim {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
@@ -670,21 +681,17 @@
   gap: 10px;
 }
 
-.app-shell .coach--slim .coach__text {
+.coach--float.coach--slim .coach__body {
   flex: 1 1 auto;
+}
+
+.app-shell .coach--slim .coach__text {
   color: var(--text-dim);
   font-size: 13px;
 }
 
-.coach--slim .coach__actions {
+.coach--float.coach--slim .coach__actions {
   margin: 0 0 0 auto;
-}
-
-/* Docked on a phone, the bubble spans the screen (its width is set inline) and scrolls its own
-   text if the room between its anchor and the edge is short. */
-.coach[data-coach-side="dock-top"],
-.coach[data-coach-side="dock-bottom"] {
-  max-width: none;
 }
 
 @media (max-width: 1024px), (pointer: coarse) {
@@ -694,18 +701,212 @@
   }
 }
 
-@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
-  .coach {
-    padding: 10px 12px;
-    font-size: 13px;
+/* ---- the coach on a phone: a panel between the HUD and the board ---------------------------- */
+
+/* On the board's phone layouts the coach is not over the board at all (Coach.tsx, COACH_DOCK_QUERY):
+   it is a panel in the page's column, between the HUD and the board, and the board is laid out in
+   the height that is left (practice.css, "the game screen"), so nothing on it is ever covered —
+   least of all your hand and End turn, which a bubble docked to the bottom edge used to sit on.
+
+   The panel keeps one height whatever it shows (a step, a tip, the waiting line), so the board does
+   not resize from one step to the next: a row as tall as its buttons (the eyebrow and the title
+   beside Got it and Skip step), then `--coach-lines` lines of text. A longer text is clamped, and
+   More shows the rest (Less folds it again; a new step starts folded). The lines are what a phone
+   can spare while every card keeps its 44 px touch floor (board.css): measured at 360-390 px wide,
+   once the turn banner folds away (below), the board has room above that floor for a 1-line panel
+   on a 640 px-tall screen, 2 lines from about 655 px (an iPhone's Safari with its toolbars is 664)
+   and 3 from about 675. Expanded, the text takes at most what is left above the floor
+   (`--coach-room`, the screen less everything but the text) and scrolls past it. The hand and End
+   turn are at the bottom of the board, so they are the last thing the panel could push off. */
+.coach.coach--panel {
+  --coach-line: 18px;
+  --coach-lines: 3;
+  --coach-room: calc(100vh - 624px);
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "heading actions"
+    "body body";
+  align-items: center;
+  gap: 2px 10px;
+  width: auto;
+  max-width: none;
+  /* The HUD above is sticky, drawn 6px into the column's gap under it. */
+  margin-top: 4px;
+  padding: 4px 6px 6px 12px;
+  overflow: visible;
+  border-radius: 12px;
+  box-shadow:
+    0 10px 22px -14px rgb(0 0 0 / 90%),
+    0 0 22px -12px color-mix(in srgb, var(--coach) 70%, transparent);
+  font-size: 13px;
+  transition: opacity calc(160ms * var(--anim-scale, 1));
+}
+
+@supports (height: 100dvh) {
+  .coach.coach--panel {
+    --coach-room: calc(100dvh - 624px);
+  }
+}
+
+.coach--panel .coach__heading {
+  grid-area: heading;
+  gap: 1px;
+}
+
+.coach--panel .coach__head {
+  justify-content: flex-start;
+}
+
+/* One line: the title shares its row with the buttons, and a second line would make this step's
+   panel taller than the last one's. The heading names the region in full for a screen reader. */
+.app-shell .coach--panel .coach__title {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coach--panel .coach__actions {
+  grid-area: actions;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.app-shell .coach--panel .coach__ack,
+.app-shell .coach--panel .coach__skip {
+  padding-inline: 11px;
+  font-size: 13px;
+}
+
+.coach--panel .coach__body {
+  grid-area: body;
+  position: relative;
+  align-self: start;
+  min-width: 0;
+  min-height: calc(var(--coach-lines) * var(--coach-line));
+}
+
+.app-shell .coach--panel .coach__text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--coach-lines);
+  line-clamp: var(--coach-lines);
+  font-size: 13px;
+  line-height: var(--coach-line);
+}
+
+/* More sits on the end of the last line, over a fade, rather than taking a line of its own. Its
+   hit area reaches the line above and below it. */
+.app-shell .coach__more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  height: var(--coach-line);
+  padding: 0 2px 0 26px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(90deg, transparent, var(--bg-raised) 22px);
+  color: var(--coach);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: var(--coach-line);
+}
+
+.app-shell .coach__more::before {
+  content: "";
+  position: absolute;
+  inset: -13px -6px -10px 0;
+}
+
+.app-shell .coach__more:hover:not(:disabled) {
+  border-color: transparent;
+  background: linear-gradient(90deg, transparent, var(--bg-raised) 22px);
+  color: color-mix(in srgb, var(--coach) 70%, white);
+}
+
+.app-shell .coach__more:focus-visible {
+  outline: 2px solid var(--coach);
+  outline-offset: 1px;
+}
+
+/* Expanded: the whole text, scrolling past the room there is. Less keeps More's place, and the
+   text ends with a blank line for it to sit on. */
+.app-shell .coach--panel[data-expanded="true"] .coach__text {
+  display: block;
+  max-height: max(calc(var(--coach-lines) * var(--coach-line)), var(--coach-room));
+  padding-bottom: var(--coach-line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+
+/* A shorter phone spares fewer lines. */
+@media (max-height: 679px) {
+  .coach.coach--panel {
+    --coach-lines: 2;
+  }
+}
+
+@media (max-height: 655px) {
+  .coach.coach--panel {
+    --coach-lines: 1;
+  }
+}
+
+/* Held upright, the panel stands where the turn banner was: the banner leaves the layout but stays
+   in the accessibility tree (board.css's visually-hidden pattern, as where the turn plate shows),
+   and whose turn it is still shows on the seats' plates, in the HUD while the AI thinks, and in the
+   panel's own waiting line. Its 28 px are what lets a 664 px-tall phone keep two lines of text. */
+@media (max-width: 600px) {
+  .practice--game:has(> .coach--panel) .game > .turn-banner {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
+  }
+}
+
+/* On its side a phone has width and no height: the panel is one row as tall as its buttons, the
+   eyebrow and the title on the left, two lines of text in the middle, the buttons on the right. The
+   board keeps its floor with this row above it down to a 375 px-tall screen; expanded, the text
+   fills the row's height, and takes a line more where the screen has one. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .coach.coach--panel {
+    --coach-line: 17px;
+    --coach-lines: 2;
+    --coach-room: max(44px, calc(100vh - 336px));
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "heading body actions";
+    gap: 0 12px;
+    padding: 2px 4px 2px 12px;
   }
 
-  .app-shell .coach__title {
-    font-size: 15px;
+  @supports (height: 100dvh) {
+    .coach.coach--panel {
+      --coach-room: max(44px, calc(100dvh - 336px));
+    }
   }
 
-  .app-shell .coach__text {
-    font-size: 13px;
+  .coach--panel .coach__heading {
+    max-width: 180px;
+  }
+
+  .coach--panel .coach__body {
+    align-self: center;
+    padding-left: 12px;
+    border-left: 1px solid var(--line);
   }
 }
 

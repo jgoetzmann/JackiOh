@@ -9,8 +9,14 @@
 //    display the board has caught up with, marked stale, so the coach never points at a card the
 //    board has not drawn yet; a press on a stale bubble answers nothing (tracker `expected`).
 //  - It never covers what it points at, and never blocks the board: the ring is `pointer-events:
-//    none`, and the bubble is placed beside its anchor (layout.ts), or docked to the far edge on a
-//    phone. With nothing to point at on screen, the bubble shows without a ring.
+//    none`, and on a desktop or a tablet the bubble floats beside its anchor (layout.ts). On the
+//    board's phone layouts (COACH_DOCK_QUERY, followed live as the phone turns) there is no room
+//    beside anything, and a bubble docked to an edge sat on your hand and End turn: there the coach
+//    is a panel in the page instead, between the HUD and the board (`data-coach-dock="panel"`), and
+//    the board is laid out in the height that is left, so nothing on it is ever covered. The panel
+//    keeps one height whatever it says, so the board does not resize from step to step: its text
+//    is clamped to the lines the screen can spare (tutorial.css), with More and Less when it runs
+//    over. With nothing to point at on screen, the coach shows without a ring.
 //  - It never takes over. "Skip step" is always there while the lesson is on (and Exit tutorial is
 //    in the HUD, which nothing is ever placed over); Escape does not end the tutorial; focus moves
 //    to "Got it" when a step that needs it appears, but never out of an open prompt or dialog.
@@ -71,17 +77,49 @@ function rectOf(element: Element | null): Rect | null {
   return { left: box.left, top: box.top, width: box.width, height: box.height };
 }
 
-function docked(): boolean {
+/** Where the coach sits: a panel in the page on the board's phone layouts, a floating bubble elsewhere. */
+export type CoachDock = "panel" | "float";
+
+function dockQuery(): MediaQueryList | null {
   try {
-    return typeof window.matchMedia === "function" && window.matchMedia(COACH_DOCK_QUERY).matches;
+    return typeof window.matchMedia === "function" ? window.matchMedia(COACH_DOCK_QUERY) : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-type Geometry = { ring: Rect | null; place: BubblePlacement | null };
+function currentDock(): CoachDock {
+  return dockQuery()?.matches === true ? "panel" : "float";
+}
 
-const NO_GEOMETRY: Geometry = { ring: null, place: null };
+function serverDock(): CoachDock {
+  return "float";
+}
+
+/**
+ * The layout switches live when a phone turns or a window is resized. `resize` as well as the
+ * query's own `change`: an old Safari's MediaQueryList has only `addListener`, and a test's stub
+ * fires nothing. Both only prompt a re-read, so hearing a change twice costs nothing.
+ */
+function subscribeDock(onChange: () => void): () => void {
+  const query = dockQuery();
+  window.addEventListener("resize", onChange);
+  if (typeof query?.addEventListener === "function") query.addEventListener("change", onChange);
+  else query?.addListener?.(onChange);
+  return () => {
+    window.removeEventListener("resize", onChange);
+    if (typeof query?.removeEventListener === "function") query.removeEventListener("change", onChange);
+    else query?.removeListener?.(onChange);
+  };
+}
+
+/**
+ * What the coach measured: the ring round its anchor, where the floating bubble goes (null for the
+ * panel, which the page lays out), and whether the panel's text runs past the lines it shows.
+ */
+type Geometry = { ring: Rect | null; place: BubblePlacement | null; clamped: boolean };
+
+const NO_GEOMETRY: Geometry = { ring: null, place: null, clamped: false };
 
 function sameRect(a: Rect | null, b: Rect | null): boolean {
   if (a === null || b === null) return a === b;
@@ -94,7 +132,7 @@ function sameRect(a: Rect | null, b: Rect | null): boolean {
 }
 
 function sameGeometry(a: Geometry, b: Geometry): boolean {
-  if (!sameRect(a.ring, b.ring)) return false;
+  if (!sameRect(a.ring, b.ring) || a.clamped !== b.clamped) return false;
   const p = a.place;
   const q = b.place;
   if (p === null || q === null) return p === q;
@@ -102,7 +140,6 @@ function sameGeometry(a: Geometry, b: Geometry): boolean {
     p.side === q.side &&
     Math.round(p.left) === Math.round(q.left) &&
     Math.round(p.top) === Math.round(q.top) &&
-    p.width === q.width &&
     p.maxHeight === q.maxHeight
   );
 }
@@ -149,17 +186,25 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
   const targets = shown?.targets ?? [];
   const targetKey = targets.join(" ");
   const slim = display?.mode === "waiting";
+  const dock = useSyncExternalStore(subscribeDock, currentDock, serverDock);
+  const panel = dock === "panel";
 
   const bubble = useRef<HTMLElement>(null);
+  const text = useRef<HTMLParagraphElement>(null);
   const ackButton = useRef<HTMLButtonElement>(null);
   /** Focus was inside the bubble when its buttons last changed the display. */
   const refocus = useRef(false);
   const titleId = useId();
+  const textId = useId();
   const [geometry, setGeometry] = useState<Geometry>(NO_GEOMETRY);
+  /** The display whose whole text the panel shows ("More"); a new display starts clamped again. */
+  const [expandedFor, setExpandedFor] = useState<string | null>(null);
+  const expanded = panel && expandedFor === key;
 
   // Measure the anchor and place the bubble, now and every COACH_TRACK_INTERVAL_MS while it shows:
   // the board moves cards as it animates and the hand fans out on hover, and none of that resizes
-  // anything the page could listen to.
+  // anything the page could listen to. The panel is laid out by the page, so there it is only the
+  // ring, and whether the text runs past the panel's lines (a step's text can change as it shows).
   useLayoutEffect(() => {
     if (!visible) {
       setGeometry((prev) => (sameGeometry(prev, NO_GEOMETRY) ? prev : NO_GEOMETRY));
@@ -170,6 +215,16 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
       const found = ids.map((id) => rectOf(byTestid(id))).filter((rect): rect is Rect => rect !== null);
       const union = unionRect(found);
       const ring = union === null ? null : padRect(union, COACH_RING_PAD_PX);
+      if (panel) {
+        // Unfolded, the text runs over nothing; it keeps the answer it had folded, so Less stays.
+        const box = text.current;
+        const over = box !== null && box.scrollHeight > box.clientHeight + 1;
+        setGeometry((prev) => {
+          const next: Geometry = { ring, place: null, clamped: expanded ? prev.clamped : over };
+          return sameGeometry(prev, next) ? prev : next;
+        });
+        return;
+      }
       const own = new Set(ids);
       const avoid = (ring === null ? SOFT_OBSTACLES : [...SOFT_OBSTACLES, ...UNIT_ROWS])
         .filter((id) => !own.has(id))
@@ -181,7 +236,6 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
         anchor: ring,
         bubble: { width: element?.offsetWidth ?? 0, height: element?.offsetHeight ?? 0 },
         viewport: { width: window.innerWidth, height: window.innerHeight },
-        docked: docked(),
         slim,
         insetTop: hud === null ? 0 : hud.top + hud.height,
         avoid,
@@ -189,7 +243,7 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
         margin: COACH_VIEWPORT_MARGIN_PX,
         minHeight: COACH_BUBBLE_MIN_HEIGHT_PX,
       });
-      const next: Geometry = { ring, place };
+      const next: Geometry = { ring, place, clamped: false };
       setGeometry((prev) => (sameGeometry(prev, next) ? prev : next));
     };
     measure();
@@ -201,7 +255,7 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, { capture: true });
     };
-  }, [visible, shown, targetKey, slim]);
+  }, [visible, shown, targetKey, slim, panel, expanded]);
 
   // A step that needs "Got it" takes the focus, unless the player is answering a prompt or a
   // dialog; one that does not hands the focus back to the bubble if its buttons had it.
@@ -230,16 +284,20 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
 
   if (!visible || display === null || shown === null) return null;
 
-  const place = geometry.place;
-  const style: CSSProperties = {
-    left: place?.left ?? 0,
-    top: place?.top ?? 0,
-    ...(place?.width == null ? {} : { width: place.width }),
-    ...(place?.maxHeight == null ? {} : { maxHeight: place.maxHeight }),
-  };
+  // The panel is laid out by the page; only the floating bubble is placed.
+  const place = panel ? null : geometry.place;
+  const style: CSSProperties | undefined = panel
+    ? undefined
+    : {
+        left: place?.left ?? 0,
+        top: place?.top ?? 0,
+        ...(place?.maxHeight == null ? {} : { maxHeight: place.maxHeight }),
+      };
   const count = `${String(display.stepNumber)} / ${String(display.stepCount)}`;
   const countLabel = `Step ${String(display.stepNumber)} of ${String(display.stepCount)}`;
   const full = display.mode === "tip" || display.mode === "step";
+  const className = ["coach", panel ? "coach--panel" : "coach--float", ...(full ? [] : ["coach--slim"])].join(" ");
+  const more = panel && (expanded || geometry.clamped);
 
   return (
     <>
@@ -259,13 +317,15 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
       )}
       <section
         ref={bubble}
-        className={full ? "coach" : "coach coach--slim"}
+        className={className}
         data-testid={tutorialTestid.coach}
         data-coach-mode={display.mode}
         data-coach-step={full ? display.id : undefined}
         data-coach-anchor={targetKey}
+        data-coach-dock={dock}
         data-coach-side={place?.side}
-        data-placed={place === null ? "false" : "true"}
+        data-placed={panel || place !== null ? "true" : "false"}
+        data-expanded={panel ? (expanded ? "true" : "false") : undefined}
         data-stale={stale ? "true" : undefined}
         role="region"
         aria-label={full ? undefined : "Tutorial coach"}
@@ -273,20 +333,37 @@ export function Coach({ tracker, boardRoot }: CoachProps): ReactElement | null {
         tabIndex={-1}
         style={style}
       >
-        <header key="head" className="coach__head">
-          <span className="coach__eyebrow">{display.mode === "tip" ? "Tip" : "Coach"}</span>
-          <span className="coach__count" aria-label={countLabel}>
-            {count}
-          </span>
-        </header>
-        {full ? (
-          <h2 key="title" className="coach__title" id={titleId}>
-            {display.title}
-          </h2>
-        ) : null}
-        <p key="text" className="coach__text" aria-live="polite">
-          {full ? display.text : shown.aiBusy ? "The AI is taking its turn." : ""}
-        </p>
+        <div key="heading" className="coach__heading">
+          <header className="coach__head">
+            <span className="coach__eyebrow">{display.mode === "tip" ? "Tip" : "Coach"}</span>
+            <span className="coach__count" aria-label={countLabel}>
+              {count}
+            </span>
+          </header>
+          {full ? (
+            <h2 className="coach__title" id={titleId}>
+              {display.title}
+            </h2>
+          ) : null}
+        </div>
+        <div key="body" className="coach__body">
+          <p ref={text} id={textId} className="coach__text" aria-live="polite">
+            {full ? display.text : shown.aiBusy ? "The AI is taking its turn." : ""}
+          </p>
+          {more ? (
+            <button
+              type="button"
+              className="coach__more"
+              aria-expanded={expanded}
+              aria-controls={textId}
+              onClick={() => {
+                setExpandedFor(expanded ? null : key);
+              }}
+            >
+              {expanded ? "Less" : "More"}
+            </button>
+          ) : null}
+        </div>
         <div key="actions" className="coach__actions">
           {full && display.ack ? (
             <button

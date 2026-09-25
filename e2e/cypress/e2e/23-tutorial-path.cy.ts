@@ -18,9 +18,9 @@
 //   * a later lesson (traps) deals its fixed opening hand, Quickdraw card included when its deck
 //     has one (a Quickdraw card always starts in the opening hand), and deals the same hand again
 //     when it is started a second time;
-//   * at 390x844 the path lists every lesson with no horizontal scroll, and in a lesson the coach
-//     bubble and End turn are both visible and never overlap, from the first bubble to the player's
-//     first turn.
+//   * at 390x844 the path lists every lesson with no horizontal scroll, and in a lesson the coach is
+//     a panel between the HUD and the board (`data-coach-dock="panel"`), never over End turn or your
+//     hand, and both stay on screen, from the first step to the player's first turn.
 //
 // House rules (BUILD M8): a lesson's seed is its own and a `?seed=` never overrides it; every wait
 // is a retried assertion (`cy.settled()`-style waits live in support/tutorial.ts); every selector
@@ -44,6 +44,7 @@ import {
   TUTORIAL_PATH,
   TUTORIAL_SKIP,
   handCardId,
+  handRegionId,
   healthIs,
   heroId,
   ts,
@@ -218,24 +219,33 @@ function overlapArea(a: Box, b: Box): number {
   return width > 0 && height > 0 ? width * height : 0;
 }
 
-/** The coach bubble and End turn are both on screen and do not overlap. */
+/**
+ * On a phone the coach is a panel in the page above the board, not a bubble over it: it and End
+ * turn are both on screen, and it covers neither End turn nor your hand.
+ */
 function expectCoachClearOfEndTurn(when: string): void {
-  cy.get(ts(COACH)).should("be.visible");
+  cy.get(ts(COACH)).should("be.visible").and("have.attr", "data-coach-dock", "panel");
   cy.get(ts(END_TURN)).should("be.visible");
   cy.document({ log: false }).then((doc) => {
     const coach = doc.querySelector(ts(COACH));
     const endTurn = doc.querySelector(ts(END_TURN));
-    expect(coach, "the coach bubble").to.not.eq(null);
+    const hand = doc.querySelector(ts(handRegionId("you")));
+    expect(coach, "the coach").to.not.eq(null);
     expect(endTurn, "End turn").to.not.eq(null);
-    if (coach === null || endTurn === null) return;
+    expect(hand, "your hand").to.not.eq(null);
+    if (coach === null || endTurn === null || hand === null) return;
     const a = boxOf(coach);
     const b = boxOf(endTurn);
+    const c = boxOf(hand);
     const mark = JSON.stringify(coachMarkIn(doc));
     expect(overlapArea(a, b), `${when}: the coach ${mark} ${JSON.stringify(a)} and End turn ${JSON.stringify(b)} overlap`).to.eq(0);
+    expect(overlapArea(a, c), `${when}: the coach ${mark} ${JSON.stringify(a)} and your hand ${JSON.stringify(c)} overlap`).to.eq(0);
     for (const [name, box] of [["the coach", a], ["End turn", b]] as const) {
       expect(box.left, `${name} inside the screen`).to.be.at.least(0);
       expect(box.right, `${name} inside the screen`).to.be.at.most(PHONE.width);
+      expect(box.bottom, `${name} inside the screen`).to.be.at.most(PHONE.height);
     }
+    expect(c.top, "your hand on screen").to.be.lessThan(PHONE.height);
   });
 }
 

@@ -31,14 +31,16 @@ export const COACH_VIEWPORT_MARGIN_PX = 8;
 export const COACH_TRACK_INTERVAL_MS = 250;
 
 /**
- * The layouts where the coach bubble docks to the top or bottom edge, full width, instead of
- * floating beside what it points at: the board's phone layouts, portrait and landscape
- * (docs/polish/7-mobile-ux.md S7), whose cards leave no room beside them for a bubble.
+ * The layouts where the coach is a panel in the page, between the HUD and the board, instead of a
+ * bubble floating beside what it points at: the board's phone layouts, portrait and landscape
+ * (docs/polish/7-mobile-ux.md S7), whose cards leave no room beside them for a bubble, so any
+ * bubble there sat on the board (Coach.tsx; the panel's lines are tutorial.css's).
  */
 export const COACH_DOCK_QUERY = "(max-width: 600px), (orientation: landscape) and (max-height: 500px)";
 
 /**
- * A docked bubble squeezed between its anchor and the screen's edge still keeps this much height,
- * in CSS pixels (its text scrolls inside it): below this it could not show its title and buttons.
+ * A floating bubble docked between a big anchor and the screen's edge (no side of it had room)
+ * still keeps this much height, in CSS pixels (its text scrolls inside it): below this it could not
+ * show its title and buttons.
  */
 export const COACH_BUBBLE_MIN_HEIGHT_PX = 96;

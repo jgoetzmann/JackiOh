@@ -1,24 +1,28 @@
-// Where the coach bubble goes, as geometry alone (Coach.tsx measures, this decides).
+// Where the floating coach bubble goes, as geometry alone (Coach.tsx measures, this decides).
 //
 // The one hard rule: the bubble never covers the thing it points at. A step that says "play this
 // card" and then sits on the card, or "end your turn" over End turn, would be worse than no coach.
 //
-//  - Floating (desktop and tablet): beside the anchor, `gap` away, on the first side it fits
-//    whole — above or below first (whichever has the anchor's far side of the screen), then right
-//    or left — slid along that side to stay `margin` inside the viewport. A side that also covers a
-//    soft obstacle (an open prompt the step is not about, a unit row) loses to one that does not,
-//    and when every side covers one, the side covering the least of them wins. If no side fits, it
-//    docks as on a phone.
-//  - Docked (the board's phone layouts): full width, against the top or bottom edge, whichever
-//    side of the anchor has more room, and never taller than that room (its text scrolls) unless
-//    the room is under `minHeight`: an anchor that leaves less than that on both sides is the one
-//    case the bubble may overlap it, by as little as it can, rather than shrink past reading.
+//  - Beside the anchor, `gap` away, on the first side it fits whole — above or below first
+//    (whichever has the anchor's far side of the screen), then right or left — slid along that
+//    side to stay `margin` inside the viewport. A side that also covers a soft obstacle (an open
+//    prompt the step is not about, a unit row) loses to one that does not, and when every side
+//    covers one, the side covering the least of them wins.
+//  - If no side fits (a big anchor on a short screen), it docks at its own width, centred on the
+//    anchor, against the top or bottom edge, whichever side of the anchor has more room, and never
+//    taller than that room (its text scrolls) unless the room is under `minHeight`: an anchor that
+//    leaves less than that on both sides is the one case the bubble may overlap it, by as little
+//    as it can, rather than shrink past reading.
 //  - No anchor: an info step floats in the middle of the screen (beside an open prompt that sits
-//    there), or docks to the top on a phone; the slim "waiting" bubble sits in the bottom-right
-//    corner, or docks to the top on a phone.
+//    there), and the slim "waiting" bubble sits in the bottom-right corner.
 //
 // Nothing is ever placed above `insetTop`, the HUD's lower edge, so Skip step and Exit tutorial
 // stay reachable whatever the coach shows.
+//
+// This is desktops and tablets only. On the board's phone layouts the coach does not float at all:
+// it is a panel in the page between the HUD and the board (Coach.tsx, tutorial.css), because a
+// phone's board has no room beside anything and a bubble docked to an edge covered the hand and
+// End turn.
 
 export type Rect = { left: number; top: number; width: number; height: number };
 export type Size = { width: number; height: number };
@@ -29,8 +33,6 @@ export type BubblePlacement = {
   side: BubbleSide;
   left: number;
   top: number;
-  /** A docked bubble spans this width; null keeps its own. */
-  width: number | null;
   /** The most height it may take without reaching its anchor; null for no limit. */
   maxHeight: number | null;
 };
@@ -40,7 +42,6 @@ export type PlaceInput = {
   anchor: Rect | null;
   bubble: Size;
   viewport: Size;
-  docked: boolean;
   /** The slim "waiting" bubble. */
   slim: boolean;
   /** Nothing goes above this (the HUD's lower edge). */
@@ -83,28 +84,24 @@ export function padRect(rect: Rect, pad: number): Rect {
 }
 
 /**
- * Against the top or bottom edge, whichever side of the anchor has more room. On a phone it spans
- * the screen; on a wider one (a desktop with no room round a big anchor) it keeps its own width,
- * centred on the anchor.
+ * Against the top or bottom edge, whichever side of the anchor has more room, at the bubble's own
+ * width, centred on the anchor.
  */
-function dock(input: PlaceInput, anchor: Rect | null): BubblePlacement {
+function dock(input: PlaceInput, anchor: Rect): BubblePlacement {
   const { viewport, bubble, margin, gap, minHeight } = input;
   const topEdge = input.insetTop + margin;
   const bottomEdge = viewport.height - margin;
-  const full = input.docked;
-  const width = full ? Math.max(0, viewport.width - 2 * margin) : null;
-  const centreX = anchor === null ? viewport.width / 2 : anchor.left + anchor.width / 2;
-  const left = full ? margin : clamp(centreX - bubble.width / 2, margin, viewport.width - margin - bubble.width);
-  if (anchor === null) return { side: "dock-top", left, top: topEdge, width, maxHeight: null };
+  const centreX = anchor.left + anchor.width / 2;
+  const left = clamp(centreX - bubble.width / 2, margin, viewport.width - margin - bubble.width);
 
   const roomAbove = anchor.top - gap - topEdge;
   const roomBelow = bottomEdge - (anchor.top + anchor.height + gap);
   if (roomAbove >= roomBelow) {
-    return { side: "dock-top", left, top: topEdge, width, maxHeight: Math.max(minHeight, roomAbove) };
+    return { side: "dock-top", left, top: topEdge, maxHeight: Math.max(minHeight, roomAbove) };
   }
   const maxHeight = Math.max(minHeight, roomBelow);
   const height = Math.min(bubble.height, maxHeight);
-  return { side: "dock-bottom", left, top: bottomEdge - height, width, maxHeight };
+  return { side: "dock-bottom", left, top: bottomEdge - height, maxHeight };
 }
 
 type Candidate = { side: BubbleSide; left: number; top: number; fits: boolean };
@@ -148,7 +145,6 @@ function candidates(input: PlaceInput, anchor: Rect): Candidate[] {
 
 export function placeBubble(input: PlaceInput): BubblePlacement {
   const { anchor, bubble, viewport, margin } = input;
-  if (input.docked) return dock(input, anchor);
 
   if (anchor === null) {
     if (input.slim) {
@@ -156,7 +152,6 @@ export function placeBubble(input: PlaceInput): BubblePlacement {
         side: "corner",
         left: Math.max(margin, viewport.width - margin - bubble.width),
         top: Math.max(input.insetTop + margin, viewport.height - margin - bubble.height),
-        width: null,
         maxHeight: null,
       };
     }
@@ -164,7 +159,6 @@ export function placeBubble(input: PlaceInput): BubblePlacement {
       side: "center",
       left: Math.max(margin, (viewport.width - bubble.width) / 2),
       top: Math.max(input.insetTop + margin, (viewport.height - bubble.height) / 2),
-      width: null,
       maxHeight: null,
     };
     // The middle of the screen is where a prompt opens (the mulligan, a Discover): step beside it.
@@ -196,5 +190,5 @@ export function placeBubble(input: PlaceInput): BubblePlacement {
     if (covered === 0) break;
   }
   if (best === undefined) return dock(input, anchor);
-  return { side: best.side, left: best.left, top: best.top, width: null, maxHeight: null };
+  return { side: best.side, left: best.left, top: best.top, maxHeight: null };
 }

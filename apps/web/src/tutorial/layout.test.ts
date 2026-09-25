@@ -1,12 +1,12 @@
-// Where the coach bubble goes (tutorial/layout.ts): beside its anchor and never over it, inside the
-// viewport, below the HUD, and docked to the far edge on a phone.
+// Where the floating coach bubble goes (tutorial/layout.ts): beside its anchor and never over it,
+// inside the viewport and below the HUD. On a phone the coach does not float (it is a panel in the
+// page, Coach.test.tsx), so nothing here places a bubble on a phone's screen.
 
 import { describe, expect, it } from "vitest";
 
 import { placeBubble, overlapArea, padRect, unionRect, type PlaceInput, type Rect } from "./layout.ts";
 
 const VIEWPORT = { width: 1280, height: 720 };
-const PHONE = { width: 390, height: 844 };
 const BUBBLE = { width: 340, height: 150 };
 
 function input(over: Partial<PlaceInput>): PlaceInput {
@@ -14,7 +14,6 @@ function input(over: Partial<PlaceInput>): PlaceInput {
     anchor: null,
     bubble: BUBBLE,
     viewport: VIEWPORT,
-    docked: false,
     slim: false,
     insetTop: 60,
     gap: 12,
@@ -28,7 +27,7 @@ function bubbleRect(place: ReturnType<typeof placeBubble>, size = BUBBLE): Rect 
   return {
     left: place.left,
     top: place.top,
-    width: place.width ?? size.width,
+    width: size.width,
     height: place.maxHeight === null ? size.height : Math.min(size.height, place.maxHeight),
   };
 }
@@ -111,42 +110,26 @@ describe("the coach bubble's placement", () => {
     expect(inside(bubbleRect(place), VIEWPORT, 8, 60)).toBe(true);
   });
 
-  it("docks full width on a phone, on the side of the anchor with more room, never over it", () => {
-    const hand: Rect = { left: 6, top: 700, width: 378, height: 138 };
-    const top = placeBubble(input({ docked: true, viewport: PHONE, anchor: hand }));
-    expect(top.side).toBe("dock-top");
-    expect(top.left).toBe(8);
-    expect(top.width).toBe(390 - 16);
-    expect(top.top).toBe(60 + 8);
-    expect(overlapArea(bubbleRect(top), hand)).toBe(0);
-
-    const enemy: Rect = { left: 6, top: 64, width: 250, height: 70 };
-    const bottom = placeBubble(input({ docked: true, viewport: PHONE, anchor: enemy }));
-    expect(bottom.side).toBe("dock-bottom");
-    expect(bottom.top + BUBBLE.height).toBe(844 - 8);
-    expect(overlapArea(bubbleRect(bottom), enemy)).toBe(0);
-
-    // Squeezed: the bubble takes the room there is, and scrolls inside it.
-    const big: Rect = { left: 0, top: 130, width: 390, height: 600 };
-    const squeezed = placeBubble(input({ docked: true, viewport: PHONE, anchor: big }));
-    expect(squeezed.maxHeight).toBe(Math.max(96, 844 - 8 - (130 + 600 + 12)));
-    expect(overlapArea(bubbleRect(squeezed), big)).toBe(0);
-  });
-
-  it("on a wide screen with no room round the anchor, it docks at its own width and still clears it", () => {
+  it("with no room round the anchor, it docks at its own width, centred on it, on the side with more room", () => {
     const short = { width: 1280, height: 580 };
+    const bubble = { width: 340, height: 120 };
+    // More room below the prompt than above it: against the bottom edge, as tall as the room.
     const prompt: Rect = { left: 200, top: 130, width: 880, height: 330 };
-    const place = placeBubble(input({ viewport: short, anchor: prompt, bubble: { width: 340, height: 120 } }));
-    expect(place.side).toBe("dock-bottom");
-    expect(place.width).toBeNull();
-    expect(place.left).toBe(640 - 170);
-    expect(overlapArea(bubbleRect(place, { width: 340, height: 120 }), prompt)).toBe(0);
-  });
+    const low = placeBubble(input({ viewport: short, anchor: prompt, bubble }));
+    expect(low.side).toBe("dock-bottom");
+    expect(low.left).toBe(640 - 170);
+    expect(low.maxHeight).toBe(580 - 8 - (130 + 330 + 12));
+    expect(low.top + (low.maxHeight ?? 0)).toBe(580 - 8);
+    expect(overlapArea(bubbleRect(low, bubble), prompt)).toBe(0);
 
-  it("docks to the top, under the HUD, with nothing to point at on a phone", () => {
-    const place = placeBubble(input({ docked: true, viewport: PHONE }));
-    expect(place.side).toBe("dock-top");
-    expect(place.top).toBe(68);
+    // More room above it: under the HUD, never taller than the room (its text scrolls).
+    const sunk: Rect = { left: 100, top: 180, width: 1080, height: 360 };
+    const high = placeBubble(input({ viewport: short, anchor: sunk, bubble }));
+    expect(high.side).toBe("dock-top");
+    expect(high.left).toBe(640 - 170);
+    expect(high.top).toBe(60 + 8);
+    expect(high.maxHeight).toBe(Math.max(96, 180 - 12 - 68));
+    expect(overlapArea(bubbleRect(high, bubble), sunk)).toBe(0);
   });
 
   it("unions and pads the anchor's rectangles", () => {

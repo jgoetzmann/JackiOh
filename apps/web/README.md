@@ -174,7 +174,7 @@ src/tutorial/
   coach.ts                  the coach machine, pure: coachObserve per snapshot, ack, skip, display (R292)
   steps.ts targets.ts       reads of the view and legal actions, step factories, anchors → board testids
   tracker.ts                feeds every controller snapshot to the coach and holds the AI for `holdAi`
-  Coach.tsx layout.ts       the bubble and the ring, placed clear of what they point at, phone docking
+  Coach.tsx layout.ts       the ring, and the bubble placed clear of what it points at (a panel above the board on phones)
   TutorialPath.tsx          the lesson path at the top of the lobby (locked / open / done)
   TutorialHud.tsx TutorialResult.tsx   the lesson's HUD (Skip step, Exit tutorial) and its result dialog
   progress.ts               completed lessons in localStorage `jackioh.tutorial.v1`, try/catch (R294)
