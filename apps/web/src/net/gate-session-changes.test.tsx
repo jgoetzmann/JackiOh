@@ -24,6 +24,10 @@ const URL_ = "https://project.supabase.co";
 const KEY = "sb_publishable_test";
 const API = "http://localhost:8787";
 const SLOW = { timeout: 5_000 } as const;
+// The budget for a test as a whole. Most tests below render the whole <App /> and then wait up to
+// `SLOW` more than once, so vitest's default of 5 s for the entire test was smaller than the waits
+// it holds, and under a loaded CI runner it ran out first.
+const SLOW_TEST = { timeout: 30_000 } as const;
 
 function base64url(text: string): string {
   return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -185,7 +189,7 @@ describe("R194 a renewal the device outlived", () => {
   });
 });
 
-describe("R194 a renewal must hand back the same account", () => {
+describe("R194 a renewal must hand back the same account", SLOW_TEST, () => {
   it("R194 a stored token naming one user and a refresh token owned by another ends the session", async () => {
     // What a forged confirmation link would have left behind: an access token naming the victim,
     // and the attacker's real refresh token, which renews into the attacker's account.
@@ -230,7 +234,7 @@ describe("R194 a renewal must hand back the same account", () => {
   });
 });
 
-describe("R194 a page restored from the back/forward cache", () => {
+describe("R194 a page restored from the back/forward cache", SLOW_TEST, () => {
   it("R194 reads the account again, so a device signed out meanwhile is sent to sign in", async () => {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ accessToken: "fixture-token" }));
     vi.stubGlobal(
@@ -262,7 +266,7 @@ describe("R194 a page restored from the back/forward cache", () => {
   });
 });
 
-describe("R194 the code screen's own status read", () => {
+describe("R194 the code screen's own status read", SLOW_TEST, () => {
   it("R194 a status read the API refuses as unauthorised is renewed and retried, and 'No tries left' is shown", async () => {
     const old = tokenFor("user-p", "old");
     const renewed = tokenFor("user-p", "new");
@@ -297,7 +301,7 @@ describe("R194 the code screen's own status read", () => {
   });
 });
 
-describe("the code screen reads the account once", () => {
+describe("the code screen reads the account once", SLOW_TEST, () => {
   it("inside the app it uses the gate's read, so a slow second read cannot leave Redeem dead", async () => {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ accessToken: "tok" }));
     let meCalls = 0;
@@ -383,7 +387,7 @@ function activeMe(currentMatchId: string | null = "m-1") {
   return { ...me("active"), currentMatchId };
 }
 
-describe("R194 a re-read in the background keeps the open screen", () => {
+describe("R194 a re-read in the background keeps the open screen", SLOW_TEST, () => {
   it("R194 another tab's renewal of the same session does not close and reopen an in-progress match socket", async () => {
     const first = sessionToken("user-x", "session-1", "first");
     const renewed = sessionToken("user-x", "session-1", "renewed");
@@ -566,7 +570,7 @@ describe("R194 a re-read in the background keeps the open screen", () => {
   });
 });
 
-describe("R194 the token an open screen holds is kept fresh", () => {
+describe("R194 the token an open screen holds is kept fresh", SLOW_TEST, () => {
   it("R194 the gate renews before the token expires, so /play's match watch finds the match it was paired into", async () => {
     const old = sessionToken("user-p", "session-1", "old");
     const renewed = sessionToken("user-p", "session-1", "new");
