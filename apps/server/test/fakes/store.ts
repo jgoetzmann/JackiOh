@@ -29,7 +29,9 @@ import {
   createMemoryGameRecordStore,
   createMemoryLastBoardStore,
   createMemoryPlayerSettingsStore,
+  createMemoryRankedStore,
   createMemoryTutorialStore,
+  emptyRankedTables,
   matchModeIn,
   purgeExpiredRows,
   removeProfileRows,
@@ -37,8 +39,10 @@ import {
   type GameRecordTables,
   type LastBoardTables,
   type PlayerSettingsTables,
+  type RankedTables,
   type TutorialTables,
 } from "../../src/api/memory-stores";
+import { RATING_DEVIATION_START, RATING_START, RATING_VOLATILITY_START } from "../../src/config";
 import type {
   CodeAttempt,
   CollectionEntry,
@@ -70,6 +74,7 @@ type Tables = {
 } & DeckTables &
   TutorialTables &
   PlayerSettingsTables &
+  RankedTables &
   LastBoardTables &
   GameRecordTables;
 
@@ -92,6 +97,7 @@ function emptyTables(): Tables {
     playerSettings: [],
     lastBoards: [],
     gameRecords: [],
+    ...emptyRankedTables(),
   };
 }
 
@@ -140,7 +146,9 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
       userId: input.userId ?? `user-${input.id}`,
       email: input.email ?? `${input.id}@example.test`,
       status: input.status ?? "active",
-      rating: input.rating ?? 1000,
+      rating: input.rating ?? RATING_START,
+      ratingDeviation: input.ratingDeviation ?? RATING_DEVIATION_START,
+      ratingVolatility: input.ratingVolatility ?? RATING_VOLATILITY_START,
       inMatchId: input.inMatchId ?? null,
       createdAt: input.createdAt ?? 0,
     };
@@ -210,6 +218,8 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
         email,
         status: "pending",
         rating,
+        ratingDeviation: RATING_DEVIATION_START,
+        ratingVolatility: RATING_VOLATILITY_START,
         inMatchId: null,
         createdAt: at,
       };
@@ -222,6 +232,14 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
       const row = profileOf(profileId);
       if (row === undefined) throw new Error(`no profile ${profileId}`);
       row.status = status;
+    },
+    setGlicko: async (profileId, glicko) => {
+      call("profiles.setGlicko");
+      const row = profileOf(profileId);
+      if (row === undefined) throw new Error(`no profile ${profileId}`);
+      row.rating = glicko.rating;
+      row.ratingDeviation = glicko.deviation;
+      row.ratingVolatility = glicko.volatility;
     },
     setRating: async (profileId, rating) => {
       call("profiles.setRating");
@@ -498,6 +516,10 @@ export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStore
       return row === undefined ? null : clone(row);
     },
   };
+
+  // SPEC §9.12's ranked ladder, shared with `src/api/e2e-store.ts`; `db/store.ts` carries the
+  // same tables since migration 0019.
+  store.ranked = createMemoryRankedStore(() => tables, call);
 
   return store;
 }

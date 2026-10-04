@@ -222,7 +222,7 @@ export async function seedE2EFixtures(
     const profile = await store.profiles.create({
       userId: account.userId,
       email: account.email,
-      rating: deps.config.eloStart,
+      rating: deps.config.ratingStart,
       at: now,
     });
     profiles[account.userId] = profile.id;

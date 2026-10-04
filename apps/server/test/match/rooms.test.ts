@@ -142,6 +142,8 @@ describe("the room-code challenge (§9.5)", () => {
     expect(started?.seats.map((seat) => seat.deck)).toEqual([DECK, DECK]);
     expect(started?.seats.map((seat) => seat.profileId)).toEqual([HOST, GUEST]);
     expect(started?.seats.map((seat) => seat.player)).toEqual(["p1", "p2"]);
+    // R604: a room challenge is never ranked.
+    expect(started?.ranked).toBe(false);
     // R376: the mode its game record is filed under is read off the room.
     expect(await h.deps.store.matches.modeOf(started?.matchId ?? "")).toBe("bo1");
     // §9.5: both ends of the lifecycle read the in-match flag.
@@ -474,6 +476,8 @@ describe("R264 — rooms carry a mode (§9.5, R257)", () => {
     expect(series?.sides.map((side) => side.profileId)).toEqual([HOST, GUEST]);
     expect(series?.sides[0]?.trio).toEqual(room?.hostTrio);
     expect(series?.sides[1]?.trio.name).toBe("guest's trio");
+    // R604: a room's series is never ranked either.
+    expect(series?.ranked).toBe(false);
     // R263: game 1's match id is the one the claim reserved; R143: the host's seed is the base.
     expect(series?.nextMatchId).toBe(h.deps.store.tables.rooms[0]?.matchId);
     expect(series?.seedBase).toBe("room-series");
@@ -523,6 +527,7 @@ describe("R264 — rooms carry a mode (§9.5, R257)", () => {
         { profileId: "someone", trio, wins: 0, pick: null },
       ],
       catalogVersion: h.deps.catalog.version,
+      ranked: false,
       seedBase: "s",
       status: "picking",
       games: [],

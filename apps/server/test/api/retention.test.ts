@@ -20,6 +20,7 @@ function finishedMatch(id: string, finishedAt: number | null): MatchRow {
     players: ["p1", "p2"],
     decks: [[], []],
     catalogVersion: "test-1",
+    ranked: false,
     status: finishedAt === null ? "live" : "finished",
     createdAt: 0,
     finishedAt,

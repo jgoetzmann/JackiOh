@@ -172,7 +172,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
 /** `GET /api/auth/me` (`auth: "user"`): the code screen's own read (§9.4). */
 export type MeResponse = {
-  profile: { id: string; status: "pending" | "active" | "banned"; rating: number };
+  // R612: the hidden rating is never sent, not even to its owner. What the client shows is
+  // `GET /api/ranked`'s visible rank, below.
+  profile: { id: string; status: "pending" | "active" | "banned" };
   needsInviteCode: boolean;
   emailVerified: boolean;
   /** §9.5: the match this profile is in, or null. What `/play` waits on after it queues. */
@@ -192,7 +194,7 @@ export type ProfileResponse = {
   id: string;
   email: string | null;
   status: "pending" | "active" | "banned";
-  rating: number;
+  // R612: no hidden rating here either. The account screen reads the visible rank separately.
   record: { wins: number; losses: number; draws: number };
   /** 0..1, or null when nothing has been played. Computed server-side so the two cannot differ. */
   winRate: number | null;
@@ -566,6 +568,11 @@ export type SeriesView = {
   now: number;
   /** The match to open while `status` is `playing`. */
   currentMatchId: string | null;
+  /**
+   * R604: the queue paired this series, so it is rated; a room's is not. Known from the start —
+   * the player chose the mode — so it rides on the view, not only on `result`.
+   */
+  ranked: boolean;
   you: {
     seat: "p1" | "p2";
     wins: number;
@@ -593,12 +600,14 @@ export type SeriesView = {
     result: "win" | "loss" | "draw" | null;
     reason: GameOverReason | null;
   }[];
-  /** Null until the series is over. */
+  /**
+   * Null until the series is over. `ranked`: the series moved your rank (R604); the rating it
+   * moved is never sent (R612), and the rank it left is `GET /api/ranked`'s.
+   */
   result: {
     outcome: "win" | "loss" | "draw" | "abandoned";
     endReason: SeriesEnd;
-    ratingBefore: number | null;
-    ratingAfter: number | null;
+    ranked: boolean;
   } | null;
 };
 
@@ -609,6 +618,61 @@ export function getSeries(token: string, seriesId: string): Promise<SeriesView> 
 /** `GET /api/matches/:id/series`: the series a match belongs to, for the board's series banner. */
 export function getSeriesForMatch(token: string, matchId: string): Promise<{ series: SeriesView | null }> {
   return apiRequest<{ series: SeriesView | null }>(`/api/matches/${encodeURIComponent(matchId)}/series`, { token });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The ranked ladder (SPEC §9.12, R612). Every shape below is `apps/server/src/api/ranked.ts`'s,
+// and none of them carries the hidden rating — the client shows the visible rank only.
+// ---------------------------------------------------------------------------------------------
+
+export type GrapeTier = "rotten" | "normal" | "large" | "golden" | "mythic";
+
+/** What a player is shown as (R605, R608, R612): never the rating. */
+export type VisibleRank =
+  | { tier: "raisin"; placementsPlayed: number; placementGames: number }
+  | { tier: GrapeTier; division: number; pips: number; pipsPerDivision: number; floor: GrapeTier }
+  | { tier: "jlorious"; position: number };
+
+/** A season's best, as the profile's badge shows it (R607). */
+export type PeakBadge =
+  | { seasonId: string; tier: "jlorious"; position: number }
+  | { seasonId: string; tier: GrapeTier; division: number };
+
+/** `GET /api/ranked`: the caller's own season, tag, rank, streak, record and badges. */
+export type OwnRankResponse = {
+  season: string;
+  tag: string;
+  rank: VisibleRank;
+  streak: number;
+  record: { games: number; wins: number; losses: number; draws: number };
+  badges: PeakBadge[];
+};
+
+export function getOwnRank(token: string): Promise<OwnRankResponse> {
+  return apiRequest<OwnRankResponse>("/api/ranked", { token });
+}
+
+/** `GET /api/leaderboard` (R608, R612): Jlorious #1–#100, then every other tier, then the Raisins. */
+export type LeaderboardResponse = {
+  season: string;
+  jlorious: { position: number; tag: string; you: boolean }[];
+  tiers: { tier: GrapeTier; count: number; players: { tag: string; division: number; pips: number; you: boolean }[] }[];
+  raisins: number;
+  you: VisibleRank;
+};
+
+export function getLeaderboard(token: string): Promise<LeaderboardResponse> {
+  return apiRequest<LeaderboardResponse>("/api/leaderboard", { token });
+}
+
+/** `GET /api/matches/:id/ranks`: both seats' ranks for the match screen (R604, R612). */
+export type MatchRanksResponse = {
+  ranked: boolean;
+  seats: Record<"p1" | "p2", { tag: string; rank: VisibleRank; you: boolean }>;
+};
+
+export function getMatchRanks(token: string, matchId: string): Promise<MatchRanksResponse> {
+  return apiRequest<MatchRanksResponse>(`/api/matches/${encodeURIComponent(matchId)}/ranks`, { token });
 }
 
 /**

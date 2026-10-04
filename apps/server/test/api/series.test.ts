@@ -22,7 +22,14 @@ import {
   sweepSeries,
 } from "../../src/api/series";
 import type { SeriesView } from "../../src/api/series-rules";
-import { SERIES_MAX_GAMES, SERIES_PICK_SECONDS, SERIES_SWEEP_INTERVAL_SECONDS, eloUpdate } from "../../src/config";
+import {
+  RATING_DEVIATION_START,
+  RATING_VOLATILITY_START,
+  SERIES_MAX_GAMES,
+  SERIES_PICK_SECONDS,
+  SERIES_SWEEP_INTERVAL_SECONDS,
+} from "../../src/config";
+import { rateGame, type Score } from "../../src/ranked/glicko2";
 import type { GameOverReason } from "@jackioh/shared";
 import {
   createFakeMatchDirectory,
@@ -57,6 +64,13 @@ function trio(owner: string): FrozenTrio {
   return { name: `${owner}'s trio`, decks: [deck(0), deck(1), deck(2)] };
 }
 
+/** R603: the move one rated game makes between two players new to rating (a series is one, R262). */
+function move(ratingA: number, ratingB: number, scoreA: Score): { a: number; b: number } {
+  const fresh = (rating: number) => ({ rating, deviation: RATING_DEVIATION_START, volatility: RATING_VOLATILITY_START });
+  const next = rateGame(fresh(ratingA), fresh(ratingB), scoreA);
+  return { a: next.a.rating, b: next.b.rating };
+}
+
 function activeProfile(deps: TestDeps, id: string, rating: number): string {
   const userId = `user-${id}`;
   deps.store.seedProfile({ id, userId, status: "active", rating });
@@ -87,6 +101,7 @@ async function harness(ratings: [number, number] = [1000, 1000]): Promise<Harnes
     ],
     seedBase: "seed-base",
     catalogVersion: deps.catalog.version,
+    ranked: true,
   });
   return { deps, router: createRouter(createSeriesRoutes(), deps), tokens, discarded };
 }
@@ -214,6 +229,7 @@ describe("R259 — the series through the API", () => {
         matchId: FIRST_MATCH,
         seed: "seed-base:1",
         catalogVersion: h.deps.catalog.version,
+        ranked: true,
         seats: [
           { profileId: ALICE, player: "p1", deck: ["alice-card-1a", "alice-card-1b"] },
           { profileId: BOB, player: "p2", deck: ["bob-card-2a", "bob-card-2b"] },
@@ -332,6 +348,7 @@ describe("R259 — the series through the API", () => {
       matchId: game2Id,
       seed: "seed-base:2",
       catalogVersion: h.deps.catalog.version,
+      ranked: true,
       seats: [
         { profileId: BOB, player: "p1", deck: ["bob-card-0a", "bob-card-0b"] },
         { profileId: ALICE, player: "p2", deck: ["alice-card-2a", "alice-card-2b"] },
@@ -371,6 +388,7 @@ describe("R259 — the series through the API", () => {
       matchId: series.nextMatchId,
       seed: "seed-base:5",
       catalogVersion: h.deps.catalog.version,
+      ranked: true,
       seats: [
         { profileId: ALICE, player: "p1", deck: ["alice-card-2a", "alice-card-2b"] },
         { profileId: BOB, player: "p2", deck: ["bob-card-2a", "bob-card-2b"] },
@@ -437,7 +455,7 @@ describe("R334 — endings inside a series", () => {
 
     const series = await row(h);
     expect(series).toMatchObject({ status: "over", winner: "draw", endReason: "exhausted" });
-    const expected = eloUpdate(1200, 1000, 0.5);
+    const expected = move(1200, 1000, 0.5);
     expect(await ratings(h)).toEqual([expected.a, expected.b]);
     expect(series.ratingBefore).toEqual([1200, 1000]);
     expect(series.ratingAfter).toEqual([expected.a, expected.b]);
@@ -445,8 +463,7 @@ describe("R334 — endings inside a series", () => {
     expect(view.result).toEqual({
       outcome: "draw",
       endReason: "exhausted",
-      ratingBefore: 1000,
-      ratingAfter: expected.b,
+      ranked: true,
     });
     expect(await inMatch(h)).toEqual([null, null]);
   });
@@ -459,13 +476,12 @@ describe("R334 — endings inside a series", () => {
     const answer = await forfeit(h, h.tokens.bob);
     expect(answer.status).toBe(200);
     const view = await readJson<SeriesView>(answer);
-    const expected = eloUpdate(1000, 1000, 1);
+    const expected = move(1000, 1000, 1);
     expect(view).toMatchObject({ status: "over", currentMatchId: null, pickDeadline: null });
     expect(view.result).toEqual({
       outcome: "loss",
       endReason: "forfeit",
-      ratingBefore: 1000,
-      ratingAfter: expected.b,
+      ranked: true,
     });
     expect(await ratings(h)).toEqual([expected.a, expected.b]);
     // A game was played, so no reserved id is released.
@@ -496,7 +512,7 @@ describe("R334 — endings inside a series", () => {
 });
 
 describe("R262 — how a series is rated", () => {
-  it("R262 a series decided at three wins moves Elo once, from the ratings before game 1; its games are unrated", async () => {
+  it("R262 a series decided at three wins moves the rating once, from the ratings before game 1; its games are unrated", async () => {
     const h = await harness([1200, 1000]);
     await pickBoth(h, [0, 0]);
     await finishGame(h, BOB);
@@ -529,7 +545,7 @@ describe("R262 — how a series is rated", () => {
     expect(h.deps.store.tables.results).toHaveLength(3);
 
     // The series: one move, scored as one match that bob won.
-    const expected = eloUpdate(1200, 1000, 0);
+    const expected = move(1200, 1000, 0);
     expect(await ratings(h)).toEqual([expected.a, expected.b]);
     const series = await row(h);
     expect(series).toMatchObject({
@@ -545,8 +561,7 @@ describe("R262 — how a series is rated", () => {
     expect(alice.result).toEqual({
       outcome: "loss",
       endReason: "decided",
-      ratingBefore: 1200,
-      ratingAfter: expected.a,
+      ranked: true,
     });
     expect(alice.gameNo).toBe(3);
 
@@ -608,8 +623,7 @@ describe("R333 — the pick clock", () => {
     expect(view.result).toEqual({
       outcome: "abandoned",
       endReason: "abandoned",
-      ratingBefore: null,
-      ratingAfter: null,
+      ranked: false,
     });
     // Not active any more: the sweeper leaves it alone from now on.
     expect(await h.deps.store.series.active()).toEqual([]);

@@ -198,7 +198,7 @@ function server(accounts: Record<string, string | null> | "hang", answers: Recor
         }
         return Promise.resolve(
           providerResponse(200, {
-            profile: { id: "profile-1", status: "pending", rating: 1000 },
+            profile: { id: "profile-1", status: "pending" },
             needsInviteCode: true,
             emailVerified: true,
             currentMatchId: null,
@@ -948,7 +948,7 @@ describe("R193 B29 confirmation links", () => {
     });
     answerMe(
       providerResponse(200, {
-        profile: { id: "p", status: "pending", rating: 1000 },
+        profile: { id: "p", status: "pending" },
         needsInviteCode: true,
         emailVerified: true,
         currentMatchId: null,
@@ -1730,7 +1730,7 @@ describe("R193 a link's session that is not kept is revoked at the provider", ()
     fireEvent.click(screen.getByTestId(loginTestid.mode));
     answerMe(
       providerResponse(200, {
-        profile: { id: "p", status: "pending", rating: 1000 },
+        profile: { id: "p", status: "pending" },
         needsInviteCode: true,
         emailVerified: true,
         currentMatchId: null,
@@ -1982,7 +1982,7 @@ describe("R193 a recovery link the server could not check", () => {
           if (!reachable) return Promise.reject(new TypeError("Failed to fetch"));
           return Promise.resolve(
             providerResponse(200, {
-              profile: { id: "p", status: "active", rating: 1000 },
+              profile: { id: "p", status: "active" },
               needsInviteCode: false,
               emailVerified: true,
               currentMatchId: null,

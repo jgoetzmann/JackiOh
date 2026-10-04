@@ -338,7 +338,8 @@ function signInThroughForm(email: string): void {
     cy.get('[data-testid="account-email"]', { timeout: 40_000 }).should("contain.text", P1);
     cy.get('[data-testid="account-status"]').should("have.attr", "data-status", "active");
     // Seeded accounts have played during these runs, so the record is real data off `results`.
-    cy.get('[data-testid="account-rating"]').invoke("text").should("match", /^\d+$/);
+    // R612: the screen shows the visible rank, never the hidden rating.
+    cy.get('[data-testid="account-rank"]').invoke("text").should("match", /Grape|Raisin|Jlorious/);
     cy.get('[data-testid="account-record"]').invoke("text").should("match", /^\d+–\d+–\d+$/);
     cy.get('[data-testid="account-win-rate"]').should("exist");
   });

@@ -68,6 +68,7 @@ async function start(registry: MatchRegistry, matchId: string, seed: string, dec
     matchId,
     seed,
     catalogVersion: TEST_CATALOG_VERSION,
+    ranked: false,
     seats: [
       { profileId: P1, player: "p1", deck: decks[0] },
       { profileId: P2, player: "p2", deck: decks[1] },

@@ -51,7 +51,7 @@ const GOOD_CODE = formatInviteCode(
 
 function meBody(status: "pending" | "active", needsInviteCode: boolean) {
   return {
-    profile: { id: "p", status, rating: 1000 },
+    profile: { id: "p", status },
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,

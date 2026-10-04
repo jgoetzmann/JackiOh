@@ -1,5 +1,5 @@
 #!/bin/sh
-# Apply every migration (0001-0018) to a throwaway Postgres and assert the
+# Apply every migration (0001-0019) to a throwaway Postgres and assert the
 # invariants of SPEC §9.1, §9.4 and §9.5 against a real database.
 #
 #   pnpm test:sql            # or: sh apps/server/test/sql/run.sh
@@ -102,10 +102,11 @@ if ! $PSQL -d jackioh -f /tmp/03b_legacy_loadout_seed.sql; then
   failed=1
 fi
 
-echo "--- migrations 0007-0018 ---"
+echo "--- migrations 0007-0019 ---"
 for f in 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag \
          0011_tutorial_progress 0012_account_deletion 0013_retention_purge 0014_game_records \
-         0015_classic_sets_tags 0016_catalog_growth_grants 0017_last_boards 0018_player_settings; do
+         0015_classic_sets_tags 0016_catalog_growth_grants 0017_last_boards 0018_player_settings \
+         0019_ranked_ladder; do
   apply_migration "$f"
 done
 
@@ -113,7 +114,7 @@ done
 # check ever ran against. Refuse it rather than pass without it.
 for f in "$REPO"/apps/server/src/db/migrations/*.sql; do
   name=$(basename "$f" .sql)
-  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag 0011_tutorial_progress 0012_account_deletion 0013_retention_purge 0014_game_records 0015_classic_sets_tags 0016_catalog_growth_grants 0017_last_boards 0018_player_settings " in
+  case " 0001_profiles_and_invites 0002_collection 0003_loadouts 0004_matches 0005_service_role_reads_auth_users 0006_redeem_ip_lock 0007_decks_and_trios 0008_queue_modes 0009_series 0010_jlockeed_tag 0011_tutorial_progress 0012_account_deletion 0013_retention_purge 0014_game_records 0015_classic_sets_tags 0016_catalog_growth_grants 0017_last_boards 0018_player_settings 0019_ranked_ladder " in
     *" $name "*) ;;
     *) echo "!!! migration $name is not applied by this script; add it above"; failed=1 ;;
   esac
@@ -121,7 +122,7 @@ done
 
 for f in 01_schema_invariants 02_rls_as_client 03_match_lifecycle 04_decks_and_series \
          05_tutorial_progress 06_account_deletion 07_retention_purge 08_game_records 09_catalog_growth \
-         10_last_boards 11_player_settings; do
+         10_last_boards 11_player_settings 12_ranked; do
   echo "--- $f ---"
   status=0
   out=$(docker exec "$CONTAINER" psql -U postgres -q -v ON_ERROR_STOP=1 \

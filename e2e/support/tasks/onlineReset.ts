@@ -22,7 +22,7 @@
 // terminates a match" and which is idempotent by design (§9.5's reaper and a client ending could
 // race). The reason is `match-ceiling` — one of the seven `results_reason_check` allows, and the
 // honest one for a match nobody finished, since §9.5 makes the ceiling a draw. Ratings are passed
-// back unchanged so a reset cannot move anyone's Elo.
+// back unchanged so a reset cannot move anyone's hidden rating.
 //
 // INERT WITHOUT `E2E_DATABASE_URL`. CI sets neither it nor `E2E_ONLINE`, so the spec is skipped
 // there and this task is never called. Nothing here is reachable from the frozen M8 specs.
@@ -71,19 +71,22 @@ export async function onlineReset(): Promise<OnlineResetResult> {
         ended += 1;
         continue;
       }
-      const ratings = await client.query<{ rating: number }>(
-        "select rating from public.profiles where id = any($1::uuid[])",
+      const ratings = await client.query<{ id: string; rating: number }>(
+        "select id, rating from public.profiles where id = any($1::uuid[])",
         [[row.p1, row.p2].filter((id): id is string => id !== null)],
       );
-      const p1Rating = ratings.rows[0]?.rating ?? 1000;
-      const p2Rating = ratings.rows[1]?.rating ?? p1Rating;
+      // Map by id: `any()` promises no order, so a positional rows[0]/rows[1] could hand p1's
+      // rating to p2.
+      const byId = new Map(ratings.rows.map((row2) => [row2.id, row2.rating]));
+      const p1Rating = row.p1 === null ? 1000 : (byId.get(row.p1) ?? 1000);
+      const p2Rating = row.p2 === null ? p1Rating : (byId.get(row.p2) ?? p1Rating);
       // No winner: a draw, so neither rating is meant to move, and passing the current values
-      // back is how `end_match` is told that.
-      await client.query("select app.end_match($1::uuid, null, 'match-ceiling', 0, $2::int, $3::int)", [
-        row.id,
-        p1Rating,
-        p2Rating,
-      ]);
+      // back is how `end_match` is told that. The ratings are doubles since migration 0019
+      // widened the column and the function from int — an ::int cast would refuse a real one.
+      await client.query(
+        "select app.end_match($1::uuid, null, 'match-ceiling', 0, $2::double precision, $3::double precision)",
+        [row.id, p1Rating, p2Rating],
+      );
       ended += 1;
     }
 

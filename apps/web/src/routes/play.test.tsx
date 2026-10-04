@@ -59,7 +59,7 @@ const TOKEN = "token-1";
 
 function me(currentMatchId: string | null, currentSeriesId: string | null = null) {
   return {
-    profile: { id: "p1", status: "active" as const, rating: 1000 },
+    profile: { id: "p1", status: "active" as const },
     needsInviteCode: false,
     emailVerified: true,
     currentMatchId,

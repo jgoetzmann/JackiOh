@@ -27,6 +27,7 @@ function series(overrides: Partial<SeriesView> = {}): SeriesView {
     pickDeadline: null,
     now: 0,
     currentMatchId: MATCH_ID,
+    ranked: true,
     you: {
       seat: "p1",
       wins: 0,
@@ -129,7 +130,7 @@ describe("the series banner", () => {
         gameNo: 2,
         currentMatchId: null,
         you: { ...series().you, wins: SERIES_WINS_NEEDED },
-        result: { outcome: "win", endReason: "decided", ratingBefore: 1000, ratingAfter: 1016 },
+        result: { outcome: "win", endReason: "decided", ranked: true },
       }),
     });
     render(<Harness gameOver />);

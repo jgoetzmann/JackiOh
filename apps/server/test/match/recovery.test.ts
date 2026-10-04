@@ -114,6 +114,7 @@ async function startMatch(options: { engine?: EnginePort; decks?: [string[], str
     matchId: MATCH_ID,
     seed: "seed-recovery",
     catalogVersion: TEST_CATALOG_VERSION,
+    ranked: false,
     seats: [
       { profileId: "profile-1", player: "p1", deck: decks[0] },
       { profileId: "profile-2", player: "p2", deck: decks[1] },

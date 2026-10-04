@@ -65,7 +65,7 @@ function serve(answer: MeAnswer): void {
         }
         return Promise.resolve(
           jsonResponse(200, {
-            profile: { id: "profile-1", status: "active", rating: 1000 },
+            profile: { id: "profile-1", status: "active" },
             needsInviteCode: false,
             emailVerified: true,
             currentMatchId: null,

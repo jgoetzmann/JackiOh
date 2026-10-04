@@ -120,10 +120,11 @@ function corsHeaders(origin: unknown): Record<string, string> {
 
 function meBody(status: "pending" | "active" | "banned", email: string = EMAIL) {
   return {
-    profile: { id: "profile-spec-14", status, rating: 1000 },
+    profile: { id: "profile-spec-14", status },
     needsInviteCode: status === "pending",
     emailVerified: true,
     currentMatchId: null,
+    currentSeriesId: null,
     email,
   };
 }

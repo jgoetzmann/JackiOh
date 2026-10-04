@@ -764,6 +764,7 @@ describe("/api/auth/me reports the caller's own current match (§9.5)", () => {
         { profileId: "rival", trio, wins: 0, pick: null },
       ],
       catalogVersion: deps.catalog.version,
+      ranked: false,
       seedBase: "s",
       status: "picking",
       games: [],
@@ -874,5 +875,15 @@ describe("/api/profile reports identity and the ladder record", () => {
 
     expect(body.record).toEqual({ wins: 1, losses: 1, draws: 1 });
     expect(body.winRate).toBeCloseTo(1 / 3, 5);
+  });
+
+  it("R612 sends no rating, here or in /api/auth/me", async () => {
+    const deps = createTestDeps();
+    const { token } = await activeProfile(deps);
+    const router = createRouter(createAuthRoutes(), deps);
+    for (const path of ["/api/profile", "/api/auth/me"]) {
+      const body = JSON.stringify(await readJson(await router(jsonRequest("GET", path, undefined, { token }))));
+      expect(body, path).not.toMatch(/rating|deviation|volatility/i);
+    }
   });
 });

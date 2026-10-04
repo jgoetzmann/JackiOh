@@ -22,7 +22,13 @@ import type { FrozenTrio, Ids, MatchDirectory, SeriesRow } from "../../src/api/p
 import { createRecordResult } from "../../src/api/results";
 import { createSeriesRoutes, ensureSeriesGame, startSeries, sweepSeries } from "../../src/api/series";
 import { gameEnded, pickDeck, type SeriesView } from "../../src/api/series-rules";
-import { SERIES_START_GIVE_UP_SECONDS, SERIES_START_GRACE_SECONDS, eloUpdate } from "../../src/config";
+import {
+  RATING_DEVIATION_START,
+  RATING_VOLATILITY_START,
+  SERIES_START_GIVE_UP_SECONDS,
+  SERIES_START_GRACE_SECONDS,
+} from "../../src/config";
+import { rateGame } from "../../src/ranked/glicko2";
 import {
   createFakeMatchDirectory,
   createTestDeps,
@@ -91,6 +97,7 @@ async function begin(process: Process): Promise<SeriesRow> {
     ],
     seedBase: "seed-base",
     catalogVersion: process.deps.catalog.version,
+    ranked: true,
   });
 }
 
@@ -175,6 +182,7 @@ describe("R263 — a series survives a restart", () => {
         matchId: FIRST_MATCH,
         seed: "seed-base:1",
         catalogVersion: a.deps.catalog.version,
+        ranked: true,
         seats: [
           { profileId: ALICE, player: "p1", deck: ["alice-card-0a", "alice-card-0b"] },
           { profileId: BOB, player: "p2", deck: ["bob-card-1a", "bob-card-1b"] },
@@ -343,7 +351,7 @@ describe("R263 — a series survives a restart", () => {
     const deciding = await row(a.deps.store);
 
     a.deps.store.onCall = (method) => {
-      if (method === "profiles.setRating") throw new Error("the connection dropped");
+      if (method === "profiles.setGlicko") throw new Error("the connection dropped");
     };
     await expect(finishGame(a, ALICE)).rejects.toThrow(/connection dropped/u);
     expect(a.deps.store.tables.results).toHaveLength(2);
@@ -352,10 +360,13 @@ describe("R263 — a series survives a restart", () => {
 
     a.deps.store.onCall = null;
     await finishGame(a, ALICE);
-    const expected = eloUpdate(1000, 1000, 1);
+    const fresh = { rating: 1000, deviation: RATING_DEVIATION_START, volatility: RATING_VOLATILITY_START };
+    const expected = rateGame(fresh, fresh, 1);
     expect(a.deps.store.tables.results).toHaveLength(3);
-    expect((await a.deps.store.profiles.getById(ALICE))?.rating).toBe(expected.a);
-    expect(await row(a.deps.store)).toMatchObject({ status: "over", ratingAfter: [expected.a, expected.b] });
+    expect((await a.deps.store.profiles.getById(ALICE))?.rating).toBe(expected.a.rating);
+    expect(await row(a.deps.store)).toMatchObject({ status: "over", ratingAfter: [expected.a.rating, expected.b.rating] });
+    // R611: and the series is recorded once, as one rated game.
+    expect(a.deps.store.tables.ratedGames.map((game) => [game.id, game.kind])).toEqual([[SERIES_ID, "series"]]);
   });
 });
 

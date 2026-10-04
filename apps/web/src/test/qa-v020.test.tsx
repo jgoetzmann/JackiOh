@@ -365,7 +365,7 @@ describe("QA v0.2.0, Global Cosmetic", () => {
       limits: { decks: MAX_SAVED_DECKS, trios: MAX_SAVED_TRIOS, nameLength: DECK_NAME_MAX_LENGTH },
     };
     vi.mocked(getMe).mockResolvedValue({
-      profile: { id: "p1", status: "active", rating: 1000 },
+      profile: { id: "p1", status: "active" },
       needsInviteCode: false,
       emailVerified: true,
       currentMatchId: null,

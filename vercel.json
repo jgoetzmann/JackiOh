@@ -19,7 +19,7 @@
   },
   "ignoreCommand": "sh \"$(git rev-parse --show-toplevel)/scripts/vercel-ignore.sh\" && exit 0; exit 1",
   "rewrites": [
-    { "source": "/(login|reset-password|invite|decks|play|account|practice|privacy|terms|accessibility|patch-notes|almanac){/}?", "destination": "/index.html" },
+    { "source": "/(login|reset-password|invite|decks|play|account|practice|privacy|terms|accessibility|patch-notes|almanac|leaderboard){/}?", "destination": "/index.html" },
     { "source": "/(match|series)/([^/]+){/}?", "destination": "/index.html" }
   ],
   "headers": [

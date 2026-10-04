@@ -1,7 +1,7 @@
 // `/account` — who you are signed in as, how you have done, and the way out.
 //
-// NO SPEC DRIVES THIS SCREEN. §9.4 gives an account a status and §9.5 gives it a rating and a
-// results history; none of it was reachable from the client, so a player could not see which
+// NO SPEC DRIVES THIS SCREEN. §9.4 gives an account a status, §9.5 a results history and §9.12
+// a visible rank; none of it was reachable from the client, so a player could not see which
 // address they were signed in as, could not see their record, and — the one that actually traps
 // people — could not sign out at all. `net/session.ts` held the token and nothing ever cleared it.
 //
@@ -27,8 +27,9 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactElement } from "react";
 
 import { AUTH_SIGN_OUT_WAIT_SECONDS } from "../../../server/src/config.ts";
-import { deleteAccount, getProfile, type MeResponse, type ProfileResponse } from "../net/api.ts";
+import { deleteAccount, getOwnRank, getProfile, type MeResponse, type OwnRankResponse, type ProfileResponse } from "../net/api.ts";
 import { revokeSignedOutSession, sessionNearExpiry } from "../net/auth.ts";
+import { badgeWords, rankWords } from "../rank/rank.ts";
 import { paths } from "../net/navigate.ts";
 import { clearSession, forgetPendingAddresses, readSession } from "../net/session.ts";
 import { BackLink, followInApp } from "./nav.tsx";
@@ -40,7 +41,9 @@ export const accountTestid = {
   screen: "account-screen",
   email: "account-email",
   status: "account-status",
-  rating: "account-rating",
+  rank: "account-rank",
+  badges: "account-badges",
+  leaderboard: "account-leaderboard",
   record: "account-record",
   winRate: "account-win-rate",
   signOut: "account-sign-out",
@@ -180,6 +183,7 @@ export default function AccountRoute({ token, me }: AccountRouteProps): ReactEle
   const pending = me !== undefined && me.profile.status === "pending";
   const leaving = useSigningOut();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [rank, setRank] = useState<OwnRankResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -192,6 +196,13 @@ export default function AccountRoute({ token, me }: AccountRouteProps): ReactEle
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
       });
+    // R612: the visible rank, read beside the record. A failure here never hides the record:
+    // the screen shows what it has and says nothing about the rest.
+    getOwnRank(token)
+      .then((next) => {
+        if (!cancelled) setRank(next);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -242,14 +253,32 @@ export default function AccountRoute({ token, me }: AccountRouteProps): ReactEle
           <>
             <AccountIdentity email={profile.email} status={profile.status} />
 
+            <h3 className="account-heading">Rank</h3>
+            {rank !== null ? (
+              <>
+                <p data-testid={accountTestid.rank}>
+                  {rank.tag} · {rankWords(rank.rank)} · Season {rank.season}
+                </p>
+                <p data-testid={accountTestid.badges}>
+                  {rank.badges.length === 0
+                    ? "No season best yet — finish placements to earn one."
+                    : `Season best: ${rank.badges.map((badge) => badgeWords(badge)).join(", ")}`}
+                </p>
+                <div className="account-actions">
+                  <a
+                    className="button-secondary"
+                    href={paths.leaderboard}
+                    data-testid={accountTestid.leaderboard}
+                    onClick={followInApp(paths.leaderboard)}
+                  >
+                    Leaderboard
+                  </a>
+                </div>
+              </>
+            ) : null}
+
             <h3 className="account-heading">Record</h3>
             <div className="stat-row">
-              <div className="stat">
-                <span className="stat-value" data-testid={accountTestid.rating}>
-                  {profile.rating}
-                </span>
-                <span className="stat-label">Rating</span>
-              </div>
               <div className="stat">
                 <span className="stat-value" data-testid={accountTestid.winRate}>
                   {formatWinRate(profile.winRate)}

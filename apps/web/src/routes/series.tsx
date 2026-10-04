@@ -106,12 +106,16 @@ export function endReasonWords(
   }
 }
 
-/** The rating line: "Rating 1000 → 1016", or why nothing moved (R262). */
+/**
+ * Whether the series moved the viewer's rank (R262, R604): a ranked series counts as one rated
+ * game. The hidden rating never reaches the client (R612), so there are no numbers here — the
+ * rank it left is `GET /api/ranked`'s.
+ */
 export function ratingWords(result: SeriesResult): string {
-  if (result.outcome === "abandoned" || result.ratingBefore === null || result.ratingAfter === null) {
+  if (result.outcome === "abandoned" || !result.ranked) {
     return "Unrated: no rating changed.";
   }
-  return `Rating ${String(result.ratingBefore)} → ${String(result.ratingAfter)}`;
+  return "Ranked series: counted as one rated game.";
 }
 
 function messageOf(cause: unknown): string {
@@ -417,7 +421,11 @@ export default function SeriesRoute({ seriesId, token }: SeriesRouteProps): Reac
             <section className="lobby-card play-panel series-panel" aria-label="Leave the series">
               {confirming ? (
                 <div className="row" role="alertdialog" aria-label="Forfeit the series?">
-                  <p>Forfeit the series? Your opponent wins it, and your rating moves as for a loss.</p>
+                  <p>
+                    {view.ranked
+                      ? "Forfeit the series? Your opponent wins it, and your rating moves as for a loss."
+                      : "Forfeit the series? Your opponent wins it."}
+                  </p>
                   <button type="button" data-testid={seriesTestid.forfeitConfirm} disabled={busy} onClick={onForfeit}>
                     Forfeit
                   </button>

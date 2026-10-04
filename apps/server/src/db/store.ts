@@ -1,6 +1,6 @@
 /**
  * The production `Store` (SPEC §9.2's `API functions -> Postgres` edge), implemented over the
- * migrations in `./migrations` (0001-0017) with the `pg` driver already in `apps/server/package.json`.
+ * migrations in `./migrations` (0001-0019) with the `pg` driver already in `apps/server/package.json`.
  *
  * `src/index.ts` finds this module by dynamic import and calls `createPostgresStore({
  * connectionString })`; until it existed the server threw `StoreUnavailableError` and could only
@@ -46,6 +46,7 @@ import { Pool } from "pg";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 
 import type {
+  BotRating,
   CodeAttempt,
   CollectionEntry,
   CollectionGrant,
@@ -61,11 +62,16 @@ import type {
   Profile,
   ProfileStatus,
   QueueMode,
+  RankedStore,
+  RatedGameRow,
+  RatedSide,
   RedeemResult,
   ResultRow,
   Room,
   SavedDeck,
   SavedTrio,
+  Season,
+  SeasonStanding,
   SeriesEnd,
   SeriesGame,
   SeriesRow,
@@ -78,6 +84,9 @@ import type {
   TutorialProgressRow,
   UpsertOutcome,
 } from "../api/ports";
+import type { Glicko } from "../ranked/glicko2";
+import type { SeasonRank, VisibleRank } from "../ranked/ladder";
+import type { ResetPlayer } from "../ranked/season";
 import { parseGameRecord, sourcesOf, type Action } from "@jackioh/shared";
 
 /**
@@ -330,12 +339,15 @@ type ProfileRow = {
   id: string;
   status: string;
   rating: number;
+  rating_deviation: number;
+  rating_volatility: number;
   current_match_id: string | null;
   created_at: Date;
   email: string | null;
 };
 
-const PROFILE_COLUMNS = `p.id, p.status, p.rating, p.current_match_id, p.created_at, u.email`;
+const PROFILE_COLUMNS = `p.id, p.status, p.rating, p.rating_deviation, p.rating_volatility,
+  p.current_match_id, p.created_at, u.email`;
 const PROFILE_FROM = `from public.profiles p left join auth.users u on u.id = p.id`;
 
 function toProfile(row: ProfileRow): Profile {
@@ -352,6 +364,9 @@ function toProfile(row: ProfileRow): Profile {
     email: row.email ?? "",
     status: status satisfies ProfileStatus,
     rating: row.rating,
+    // R603's Glicko triple, carried on the row since migration 0019.
+    ratingDeviation: row.rating_deviation,
+    ratingVolatility: row.rating_volatility,
     inMatchId: row.current_match_id,
     createdAt: msOf(row.created_at),
   };
@@ -375,11 +390,12 @@ type MatchDbRow = {
   ended_at: Date | null;
   p1_last_board: unknown;
   p2_last_board: unknown;
+  ranked: boolean;
 };
 
 const MATCH_COLUMNS = `id, status, seed, p1_profile_id, p2_profile_id, p1_deck, p2_deck,
   catalog_version, turn_deadline_at, prompt_deadline_at, p1_disconnected_at, p2_disconnected_at,
-  ceiling_at, created_at, ended_at, p1_last_board, p2_last_board`;
+  ceiling_at, created_at, ended_at, p1_last_board, p2_last_board, ranked`;
 
 /** R417: a stored board (`last_boards.board`, `matches.p*_last_board`), as migration 0017's CHECK admits it. */
 function lastBoardOf(value: unknown): LastBoardEntry[] {
@@ -416,6 +432,9 @@ function toMatch(row: MatchDbRow): MatchRow {
     },
     // R417: absent when both are empty, as the registry writes it.
     ...(boards[0].length + boards[1].length > 0 ? { lastBoards: boards } : {}),
+    // R604: the flag migration 0019 adds. Absent when false, exactly as `MatchRow` types it —
+    // `results.ts` reads a missing flag the same way (unranked).
+    ...(row.ranked ? { ranked: true } : {}),
   };
 }
 
@@ -659,10 +678,11 @@ type SeriesDbRow = {
   created_at: Date;
   updated_at: Date;
   ended_at: Date | null;
+  ranked: boolean;
 };
 
 const SERIES_COLUMNS = `id, p1_profile_id, p2_profile_id, status, next_match_id, pick_deadline_at, version,
-  catalog_version, winner, state, created_at, updated_at, ended_at`;
+  catalog_version, winner, state, created_at, updated_at, ended_at, ranked`;
 
 function seriesStateOf(row: SeriesRow): SeriesState {
   const side = (index: 0 | 1): SeriesSideState => {
@@ -723,6 +743,178 @@ function toSeries(row: SeriesDbRow): SeriesRow {
     updatedAt: msOf(row.updated_at),
     endedAt: msOrNull(row.ended_at),
     version: row.version,
+    // R604: the flag migration 0019 adds. Absent when false, exactly as `SeriesRow` types it —
+    // `series.ts` reads a missing flag the same way (unranked, so it never rates).
+    ...(row.ranked ? { ranked: true } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The ranked ladder's rows (SPEC §9.12, migration 0019)
+// ---------------------------------------------------------------------------
+
+type SeasonDbRow = { id: string; patch_version: string; started_at: Date };
+
+function toSeason(row: SeasonDbRow): Season {
+  return { id: row.id, patchVersion: row.patch_version, startedAt: msOf(row.started_at) };
+}
+
+type SeasonRankDbRow = {
+  season_id: string;
+  profile_id: string;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  ladder: number | null;
+  floor: number;
+  streak: number;
+  peak_ladder: number | null;
+  peak_jlorious: number | null;
+  updated_at: Date;
+};
+
+function toSeasonRank(row: SeasonRankDbRow): SeasonRank {
+  return {
+    seasonId: row.season_id,
+    profileId: row.profile_id,
+    games: row.games,
+    wins: row.wins,
+    losses: row.losses,
+    draws: row.draws,
+    ladder: row.ladder,
+    floor: row.floor,
+    streak: row.streak,
+    peakLadder: row.peak_ladder,
+    peakJlorious: row.peak_jlorious,
+    updatedAt: msOf(row.updated_at),
+  };
+}
+
+type BotRatingDbRow = {
+  bot_id: string;
+  rating: number;
+  deviation: number;
+  volatility: number;
+  games: number;
+  updated_at: Date;
+};
+
+function toBotRating(row: BotRatingDbRow): BotRating {
+  return {
+    botId: row.bot_id,
+    glicko: { rating: row.rating, deviation: row.deviation, volatility: row.volatility },
+    games: row.games,
+    updatedAt: msOf(row.updated_at),
+  };
+}
+
+type RatedGameDbRow = {
+  id: string;
+  kind: string;
+  season_id: string;
+  patch_version: string;
+  catalog_version: string;
+  p1_profile_id: string | null;
+  p1_bot_id: string | null;
+  p1_pilot: string;
+  p1_before: unknown;
+  p1_after: unknown;
+  p1_rank_before: unknown;
+  p1_rank_after: unknown;
+  p2_profile_id: string | null;
+  p2_bot_id: string | null;
+  p2_pilot: string;
+  p2_before: unknown;
+  p2_after: unknown;
+  p2_rank_before: unknown;
+  p2_rank_after: unknown;
+  winner_side: number | null;
+  reason: string;
+  ended_at: Date;
+};
+
+const RATED_GAME_COLUMNS = `id, kind, season_id, patch_version, catalog_version,
+  p1_profile_id, p1_bot_id, p1_pilot, p1_before, p1_after, p1_rank_before, p1_rank_after,
+  p2_profile_id, p2_bot_id, p2_pilot, p2_before, p2_after, p2_rank_before, p2_rank_after,
+  winner_side, reason, ended_at`;
+
+/**
+ * Advisory lock id for `ranked.lockSeasons` — every season open takes it, so two opens racing
+ * in different transactions (even for different season ids) serialize instead of both
+ * soft-resetting off a seasons list that lacks the other's row. Distinct from migrate.ts's
+ * "jack" id so a deploy and a season open never wait on each other.
+ */
+const SEASON_LOCK_ID = 0x73656173; // "seas"
+
+/** A Glicko triple as `rated_games.p*_before` / `p*_after` jsonb holds it — this file wrote it. */
+function glickoOf(value: unknown): Glicko {
+  const entry = (value ?? {}) as { rating?: unknown; deviation?: unknown; volatility?: unknown };
+  if (
+    typeof entry.rating !== "number" ||
+    typeof entry.deviation !== "number" ||
+    typeof entry.volatility !== "number"
+  ) {
+    throw new Error(`expected a Glicko triple, got ${JSON.stringify(value)}`);
+  }
+  return { rating: entry.rating, deviation: entry.deviation, volatility: entry.volatility };
+}
+
+/** A `VisibleRank` (ladder.ts) as `rated_games.p*_rank_*` jsonb holds it; null for a bot's side. */
+function visibleRankOf(value: unknown): VisibleRank | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object") throw new Error(`expected a VisibleRank, got ${JSON.stringify(value)}`);
+  return value as VisibleRank;
+}
+
+function pilotOf(value: string): RatedSide["pilot"] {
+  if (value === "human" || value === "ai") return value;
+  throw new Error(`expected a pilot, got ${value}`);
+}
+
+function toRatedSide(
+  profileId: string | null,
+  botId: string | null,
+  pilot: string,
+  before: unknown,
+  after: unknown,
+  rankBefore: unknown,
+  rankAfter: unknown,
+): RatedSide {
+  return {
+    profileId,
+    botId,
+    pilot: pilotOf(pilot),
+    before: glickoOf(before),
+    after: glickoOf(after),
+    rankBefore: visibleRankOf(rankBefore),
+    rankAfter: visibleRankOf(rankAfter),
+  };
+}
+
+function toRatedGame(row: RatedGameDbRow): RatedGameRow {
+  if (row.kind !== "match" && row.kind !== "series") {
+    throw new Error(`rated_games.kind holds an unknown value: ${row.kind}`);
+  }
+  if (row.winner_side !== null && row.winner_side !== 0 && row.winner_side !== 1) {
+    throw new Error(`rated_games.winner_side holds an unknown value: ${row.winner_side}`);
+  }
+  const winnerSide: RatedGameRow["winnerSide"] = row.winner_side === null ? null : row.winner_side === 0 ? 0 : 1;
+  return {
+    id: row.id,
+    kind: row.kind,
+    seasonId: row.season_id,
+    patchVersion: row.patch_version,
+    catalogVersion: row.catalog_version,
+    sides: [
+      toRatedSide(row.p1_profile_id, row.p1_bot_id, row.p1_pilot, row.p1_before, row.p1_after, row.p1_rank_before, row.p1_rank_after),
+      toRatedSide(row.p2_profile_id, row.p2_bot_id, row.p2_pilot, row.p2_before, row.p2_after, row.p2_rank_before, row.p2_rank_after),
+    ],
+    winnerSide,
+    // `rated_games_reason_check` (0019) pins the column to the two reason sets, so the cast
+    // restates a database constraint, as `toResult`'s does.
+    reason: row.reason as RatedGameRow["reason"],
+    endedAt: msOf(row.ended_at),
   };
 }
 
@@ -984,7 +1176,7 @@ function buildStore(session: Session): Store {
       session.run(userId, async (q) => {
         await q(
           `insert into public.profiles (id, status, rating, created_at)
-           values ($1::uuid, 'pending', $2::int, ${ts("$3")})`,
+           values ($1::uuid, 'pending', $2::double precision, ${ts("$3")})`,
           [userId, rating, at],
         );
         const { rows } = await q<ProfileRow>(
@@ -1012,11 +1204,31 @@ function buildStore(session: Session): Store {
       if (affected(rowCount) === 0) throw new Error(`no profile ${profileId}`);
     },
 
+    /**
+     * Migration 0004's write, which rated a match by moving `rating` alone. R603's rated path
+     * writes the whole triple through `setGlicko` instead; the port keeps this for the SQL
+     * still serving `app.end_match` (which the e2e `onlineReset` task calls) and for tests
+     * that exercise the column directly.
+     */
     setRating: async (profileId, rating) => {
       const { rowCount } = await session.query(
         profileId,
-        `update public.profiles set rating = $2::int where id = $1::uuid`,
+        `update public.profiles set rating = $2::double precision where id = $1::uuid`,
         [profileId, rating],
+      );
+      if (affected(rowCount) === 0) throw new Error(`no profile ${profileId}`);
+    },
+
+    /** R603: a rated game's whole Glicko triple, one statement. */
+    setGlicko: async (profileId, glicko) => {
+      const { rowCount } = await session.query(
+        profileId,
+        `update public.profiles
+           set rating = $2::double precision,
+               rating_deviation = $3::double precision,
+               rating_volatility = $4::double precision
+         where id = $1::uuid`,
+        [profileId, glicko.rating, glicko.deviation, glicko.volatility],
       );
       if (affected(rowCount) === 0) throw new Error(`no profile ${profileId}`);
     },
@@ -1404,6 +1616,9 @@ function buildStore(session: Session): Store {
           match.finishedAt,
           json(match.lastBoards?.[0] ?? []),
           json(match.lastBoards?.[1] ?? []),
+          // R604: false for a room and for the `open` skeletons this UPDATE turns live — a room
+          // never calls this, and a queue skeleton's own write is what stamps the flag.
+          match.ranked ?? false,
         ];
         const values = `
           $2::text, $3::text, $4::uuid, $5::uuid, $6::jsonb, $7::jsonb, $8::text,
@@ -1416,8 +1631,8 @@ function buildStore(session: Session): Store {
                id, status, seed, p1_profile_id, p2_profile_id, p1_deck, p2_deck, catalog_version,
                turn_deadline_at, prompt_deadline_at, p1_disconnected_at, p2_disconnected_at,
                grace_deadline_at, ceiling_at, created_at, ended_at, p1_last_board, p2_last_board,
-               started_at, last_seq)
-             values ($1::uuid, ${values}, ${ts("$15")}, 0)`,
+               ranked, started_at, last_seq)
+             values ($1::uuid, ${values}, $19::boolean, ${ts("$15")}, 0)`,
             params,
           );
           return;
@@ -1431,7 +1646,7 @@ function buildStore(session: Session): Store {
              p1_disconnected_at = ${nullableTs("$11")}, p2_disconnected_at = ${nullableTs("$12")},
              grace_deadline_at = ${nullableTs("$13")}, ceiling_at = ${ts("$14")},
              created_at = ${ts("$15")}, ended_at = ${nullableTs("$16")}, started_at = ${ts("$15")},
-             p1_last_board = $17::jsonb, p2_last_board = $18::jsonb
+             p1_last_board = $17::jsonb, p2_last_board = $18::jsonb, ranked = $19::boolean
            where id = $1::uuid`,
           params,
         );
@@ -1527,7 +1742,7 @@ function buildStore(session: Session): Store {
      * `src/api/results.ts` already does through `results.insert`, `profiles.setRating`,
      * `profiles.setInMatch` and `tickets.cancel`, inside one `Store.tx` that this call joins. So
      * the ending is still one transaction with the same five writes; calling `app.end_match` here
-     * would do the other four a second time. See the report.
+     * would do the other four a second time.
      */
     finish: async (matchId, at) =>
       session.run(null, async (q) => {
@@ -1705,7 +1920,7 @@ function buildStore(session: Session): Store {
         `insert into public.tickets
            (id, profile_id, rating, mode, frozen_deck, frozen_trio, catalog_version, status,
             enqueued_at, match_id)
-         values ($1::uuid, $2::uuid, $3::int, $4::text, $5::jsonb, $6::jsonb, $7::text, $8::text,
+         values ($1::uuid, $2::uuid, $3::double precision, $4::text, $5::jsonb, $6::jsonb, $7::text, $8::text,
                  ${ts("$9")}, $10::uuid)`,
         [
           ticket.id,
@@ -1865,7 +2080,8 @@ function buildStore(session: Session): Store {
            match_id, p1_profile_id, p2_profile_id, winner_profile_id, reason, turns,
            p1_rating_before, p1_rating_after, p2_rating_before, p2_rating_after, ended_at)
          values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::int,
-                 $7::int, $8::int, $9::int, $10::int, ${ts("$11")})`,
+                 $7::double precision, $8::double precision, $9::double precision,
+                 $10::double precision, ${ts("$11")})`,
         [
           row.matchId,
           row.players[0],
@@ -1918,6 +2134,7 @@ function buildStore(session: Session): Store {
     row.createdAt,
     row.updatedAt,
     row.endedAt,
+    row.ranked ?? false,
   ];
 
   store.series = {
@@ -1927,9 +2144,10 @@ function buildStore(session: Session): Store {
         row.sides[0].profileId,
         `insert into public.series (
            id, p1_profile_id, p2_profile_id, status, next_match_id, pick_deadline_at, version,
-           catalog_version, winner, state, created_at, updated_at, ended_at)
+           catalog_version, winner, state, created_at, updated_at, ended_at, ranked)
          values ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::uuid, ${nullableTs("$6")}, $7::int,
-                 $8::text, $9::text, $10::jsonb, ${ts("$11")}, ${ts("$12")}, ${nullableTs("$13")})`,
+                 $8::text, $9::text, $10::jsonb, ${ts("$11")}, ${ts("$12")}, ${nullableTs("$13")},
+                 $14::boolean)`,
         seriesParams(row),
       );
     },
@@ -1958,7 +2176,8 @@ function buildStore(session: Session): Store {
            p1_profile_id = $2::uuid, p2_profile_id = $3::uuid, status = $4::text,
            next_match_id = $5::uuid, pick_deadline_at = ${nullableTs("$6")}, version = $7::int,
            catalog_version = $8::text, winner = $9::text, state = $10::jsonb,
-           created_at = ${ts("$11")}, updated_at = ${ts("$12")}, ended_at = ${nullableTs("$13")}
+           created_at = ${ts("$11")}, updated_at = ${ts("$12")}, ended_at = ${nullableTs("$13")},
+           ranked = $14::boolean
          where id = $1::uuid and version = $7::int - 1`,
         seriesParams(next),
       );
@@ -2169,6 +2388,265 @@ function buildStore(session: Session): Store {
     },
   };
 
+  // -------------------------------------------------------------------------
+  // Ranked ladder (SPEC §9.12): migration 0019's four tables — `seasons`, `season_ranks`,
+  // `bot_ratings` and `rated_games` — plus the Glicko triple on `profiles`. None of these reaches
+  // an `app.*` function, because none has a rule to hold that one statement does not already hold:
+  // `putRank`/`putBot` are upserts, `createSeason`/`recordGame` are one-statement idempotent
+  // writes, `resetRatings` is one `unnest` update, and the lookups are single selects.
+  // -------------------------------------------------------------------------
+
+  const ranked: RankedStore = {
+    /**
+     * One advisory lock for every season open, transaction-scoped like migrate.ts's LOCK_ID:
+     * two opens — same season or different seasons — run one after the other, so the second
+     * reads a seasons list that already holds the first's row.
+     */
+    lockSeasons: async () => {
+      await session.query(null, `select pg_advisory_xact_lock(${SEASON_LOCK_ID})`, []);
+    },
+
+    /** Every season, oldest first, as `createMemoryRankedStore` answers it. */
+    seasons: async () => {
+      const { rows } = await session.query<SeasonDbRow>(
+        null,
+        `select id, patch_version, started_at from public.seasons order by started_at, id`,
+      );
+      return rows.map(toSeason);
+    },
+
+    /** `on conflict` answers a race to open the same season with `false`, nothing written. */
+    createSeason: async (season) => {
+      const { rowCount } = await session.query(
+        null,
+        `insert into public.seasons (id, patch_version, started_at)
+         values ($1::text, $2::text, ${ts("$3")})
+         on conflict (id) do nothing`,
+        [season.id, season.patchVersion, season.startedAt],
+      );
+      return affected(rowCount) === 1;
+    },
+
+    /**
+     * R609's input: every profile a rated game has touched, with its Glicko triple. The memory
+     * store derives the same set by scanning `ratedGames`; here it is one EXISTS per side, over
+     * `rated_games_p1_profile_idx` / `p2`, and a deleted profile is already gone from
+     * `public.profiles`, so the join needs no liveness check.
+     */
+    ratedPlayers: async () => {
+      const { rows } = await session.query<{
+        id: string;
+        rating: number;
+        rating_deviation: number;
+        rating_volatility: number;
+      }>(
+        null,
+        `select p.id, p.rating, p.rating_deviation, p.rating_volatility
+           from public.profiles p
+          where exists (select 1 from public.rated_games g
+                         where (g.p1_profile_id = p.id and g.p1_bot_id is null)
+                            or (g.p2_profile_id = p.id and g.p2_bot_id is null))
+          order by p.id`,
+      );
+      return rows.map((row): ResetPlayer => ({
+        profileId: row.id,
+        glicko: { rating: row.rating, deviation: row.rating_deviation, volatility: row.rating_volatility },
+      }));
+    },
+
+    /** One statement for the whole reset (`unnest` is how a set of rows arrives as parameters). */
+    resetRatings: async (changes) => {
+      if (changes.length === 0) return;
+      await session.query(
+        null,
+        `update public.profiles p
+            set rating = c.rating, rating_deviation = c.deviation, rating_volatility = c.volatility
+           from unnest($1::uuid[], $2::float8[], $3::float8[], $4::float8[])
+             as c(id, rating, deviation, volatility)
+          where p.id = c.id`,
+        [
+          changes.map((change) => change.profileId),
+          changes.map((change) => change.after.rating),
+          changes.map((change) => change.after.deviation),
+          changes.map((change) => change.after.volatility),
+        ],
+      );
+    },
+
+    /** A season's rows joined to each player's CURRENT rating — what percentiles and Jlorious read. */
+    standings: async (seasonId) => {
+      const { rows } = await session.query<SeasonRankDbRow & { rating: number }>(
+        null,
+        `select r.season_id, r.profile_id, r.games, r.wins, r.losses, r.draws, r.ladder, r.floor,
+                r.streak, r.peak_ladder, r.peak_jlorious, r.updated_at, p.rating
+           from public.season_ranks r
+           join public.profiles p on p.id = r.profile_id
+          where r.season_id = $1::text
+          order by r.profile_id`,
+        [seasonId],
+      );
+      return rows.map((row): SeasonStanding => ({ ...toSeasonRank(row), rating: row.rating }));
+    },
+
+    rank: async (seasonId, profileId) => {
+      const { rows } = await session.query<SeasonRankDbRow>(
+        null,
+        `select season_id, profile_id, games, wins, losses, draws, ladder, floor, streak,
+                peak_ladder, peak_jlorious, updated_at
+           from public.season_ranks
+          where season_id = $1::text and profile_id = $2::uuid`,
+        [seasonId, profileId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toSeasonRank(row);
+    },
+
+    /** A profile's badges (R607), oldest season first, the season itself ordering them. */
+    ranksOf: async (profileId) => {
+      const { rows } = await session.query<SeasonRankDbRow>(
+        null,
+        `select r.season_id, r.profile_id, r.games, r.wins, r.losses, r.draws, r.ladder, r.floor,
+                r.streak, r.peak_ladder, r.peak_jlorious, r.updated_at
+           from public.season_ranks r
+           join public.seasons s on s.id = r.season_id
+          where r.profile_id = $1::uuid
+          order by s.started_at, r.season_id`,
+        [profileId],
+      );
+      return rows.map(toSeasonRank);
+    },
+
+    /** Insert or replace: the primary key is what R262's rate-once bookkeeping is keyed on. */
+    putRank: async (row) => {
+      await session.query(
+        row.profileId,
+        `insert into public.season_ranks
+           (season_id, profile_id, games, wins, losses, draws, ladder, floor, streak,
+            peak_ladder, peak_jlorious, updated_at)
+         values ($1::text, $2::uuid, $3::int, $4::int, $5::int, $6::int, $7::int, $8::int, $9::int,
+                 $10::int, $11::int, ${ts("$12")})
+         on conflict (season_id, profile_id) do update set
+           games = excluded.games, wins = excluded.wins, losses = excluded.losses,
+           draws = excluded.draws, ladder = excluded.ladder, floor = excluded.floor,
+           streak = excluded.streak, peak_ladder = excluded.peak_ladder,
+           -- least() like notePeakJlorious: a bystander's notePeakJlorious can land between
+           -- this tx's rankFor read and this upsert, and an absolute write would lose it.
+           peak_jlorious = least(season_ranks.peak_jlorious, excluded.peak_jlorious),
+           updated_at = excluded.updated_at`,
+        [
+          row.seasonId,
+          row.profileId,
+          row.games,
+          row.wins,
+          row.losses,
+          row.draws,
+          row.ladder,
+          row.floor,
+          row.streak,
+          row.peakLadder,
+          row.peakJlorious,
+          row.updatedAt,
+        ],
+      );
+    },
+
+    /**
+     * R608: `least(a, b)` ignores NULL in Postgres, so a null `peak_jlorious` takes the position
+     * and a recorded one keeps the better (lower) of the two — `Math.min` with the null case the
+     * memory store writes out.
+     */
+    notePeakJlorious: async (seasonId, profileId, position) => {
+      await session.query(
+        profileId,
+        `update public.season_ranks set peak_jlorious = least(peak_jlorious, $3::int)
+          where season_id = $1::text and profile_id = $2::uuid`,
+        [seasonId, profileId, position],
+      );
+    },
+
+    bot: async (botId) => {
+      const { rows } = await session.query<BotRatingDbRow>(
+        null,
+        `select bot_id, rating, deviation, volatility, games, updated_at
+           from public.bot_ratings where bot_id = $1::text`,
+        [botId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toBotRating(row);
+    },
+
+    putBot: async (bot) => {
+      await session.query(
+        null,
+        `insert into public.bot_ratings (bot_id, rating, deviation, volatility, games, updated_at)
+         values ($1::text, $2::float8, $3::float8, $4::float8, $5::int, ${ts("$6")})
+         on conflict (bot_id) do update set
+           rating = excluded.rating, deviation = excluded.deviation,
+           volatility = excluded.volatility, games = excluded.games, updated_at = excluded.updated_at`,
+        [bot.botId, bot.glicko.rating, bot.glicko.deviation, bot.glicko.volatility, bot.games, bot.updatedAt],
+      );
+    },
+
+    /**
+     * R611's row, and R262's rate-once guard: `rated_games_pkey` refuses a second row for the same
+     * match or series id, and `on conflict` turns that refusal into the error the port raises.
+     */
+    recordGame: async (row) => {
+      const { rowCount } = await session.query(
+        null,
+        `insert into public.rated_games (
+           id, kind, season_id, patch_version, catalog_version,
+           p1_profile_id, p1_bot_id, p1_pilot, p1_before, p1_after, p1_rank_before, p1_rank_after,
+           p2_profile_id, p2_bot_id, p2_pilot, p2_before, p2_after, p2_rank_before, p2_rank_after,
+           winner_side, reason, ended_at)
+         values ($1::uuid, $2::text, $3::text, $4::text, $5::text,
+                 $6::uuid, $7::text, $8::text, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb,
+                 $13::uuid, $14::text, $15::text, $16::jsonb, $17::jsonb, $18::jsonb, $19::jsonb,
+                 $20::smallint, $21::text, ${ts("$22")})
+         on conflict (id) do nothing`,
+        [
+          row.id,
+          row.kind,
+          row.seasonId,
+          row.patchVersion,
+          row.catalogVersion,
+          row.sides[0].profileId,
+          row.sides[0].botId,
+          row.sides[0].pilot,
+          json(row.sides[0].before),
+          json(row.sides[0].after),
+          row.sides[0].rankBefore === null ? null : json(row.sides[0].rankBefore),
+          row.sides[0].rankAfter === null ? null : json(row.sides[0].rankAfter),
+          row.sides[1].profileId,
+          row.sides[1].botId,
+          row.sides[1].pilot,
+          json(row.sides[1].before),
+          json(row.sides[1].after),
+          row.sides[1].rankBefore === null ? null : json(row.sides[1].rankBefore),
+          row.sides[1].rankAfter === null ? null : json(row.sides[1].rankAfter),
+          row.winnerSide,
+          row.reason,
+          row.endedAt,
+        ],
+      );
+      if (affected(rowCount) === 0) {
+        throw new Error(`rated_games already holds a row for ${row.id}`);
+      }
+    },
+
+    game: async (gameId) => {
+      if (!isUuid(gameId)) return null;
+      const { rows } = await session.query<RatedGameDbRow>(
+        null,
+        `select ${RATED_GAME_COLUMNS} from public.rated_games where id = $1::uuid`,
+        [gameId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toRatedGame(row);
+    },
+  };
+  store.ranked = ranked;
+
   return store;
 }
 
@@ -2287,10 +2765,12 @@ function fromTicketStatus(status: TicketStatus): string {
 //    again. `e2e-store.ts` keeps no such row, and its `discardOpen` changes nothing; there a
 //    matched ticket keeps the discarded id.
 //  * deleted accounts. Migration 0012 sets a deleted profile's seat on its finished matches,
-//    results and series to NULL, so `matches.get`, `results.getByMatch` and `series.get` can read
-//    back a null where the port types a profile id. The in-memory stores keep the id (they have no
-//    foreign keys). Nothing reads a finished match's seats back, and a live match or series cannot
-//    lose a seat: the delete is refused, by constraint here and by `DELETE /api/account` first.
+//    results and series to NULL, and migration 0019 does the same on `rated_games`' sides while
+//    cascading its `season_ranks` away, so `matches.get`, `results.getByMatch`, `series.get` and
+//    `ranked.game` can read back a null where the port types a profile id. The in-memory stores
+//    keep the id (they have no foreign keys). Nothing reads a finished match's seats back, and a
+//    live match or series cannot lose a seat: the delete is refused, by constraint here and by
+//    `DELETE /api/account` first.
 //  * clocks. `MatchClocks` has a grace deadline per player; `public.matches` has one
 //    `grace_deadline_at` plus two `*_disconnected_at`. The per-player deadlines are stored in the
 //    two `*_disconnected_at` columns and `grace_deadline_at` keeps the nearer of them. A migration

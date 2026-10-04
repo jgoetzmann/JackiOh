@@ -420,7 +420,7 @@ function handCard(state: GameState, defId: string, player: "p1" | "p2" = "p1"): 
   return only(inHand(state, defId, player));
 }
 
-/** R79: the server owns these, in apps/server/src/config.ts (BUILD §2, M7). */
+/** R79: the server owns these, in apps/server/src/config.ts (BUILD §2, M7) — the match lifecycle, and the ranked ladder's R603–R612 numbers. */
 const SERVER_CONSTANTS = [
   "TURN_CLOCK_SECONDS",
   "PROMPT_CLOCK_SECONDS",
@@ -428,8 +428,27 @@ const SERVER_CONSTANTS = [
   "DISCONNECT_GRACE_SECONDS",
   "MATCH_CEILING_MINUTES",
   "ROOM_CODE_LENGTH",
-  "ELO_K",
-  "ELO_START",
+  "RATING_START",
+  "RATING_DEVIATION_START",
+  "RATING_VOLATILITY_START",
+  "GLICKO_TAU",
+  "GLICKO_SCALE",
+  "GLICKO_CONVERGENCE",
+  "GLICKO_MAX_ITERATIONS",
+  "RANK_TIER_PERCENTS",
+  "RANK_DIVISIONS_PER_TIER",
+  "RANK_PIPS_PER_DIVISION",
+  "RANK_PLACEMENT_GAMES",
+  "RANK_WIN_PIPS",
+  "RANK_LOSS_PIPS",
+  "RANK_STREAK_LENGTH",
+  "RANK_STREAK_BONUS_PIPS",
+  "RANK_CONVERGENCE_GAP_PIPS",
+  "RANK_CONVERGENCE_PIPS",
+  "JLORIOUS_SIZE",
+  "PLAYER_TAG_LENGTH",
+  "SEASON_RESET_STRENGTH",
+  "SEASON_RESET_DEVIATION_BOOST",
 ];
 
 describe("SPEC §11 rulings R43–R84 (M3 gate)", () => {
@@ -1536,7 +1555,7 @@ describe("SPEC §11 rulings R43–R84 (M3 gate)", () => {
     expect(viewFor(clean, "p1", 75_000).clockMs).toBe(75_000);
     expect(viewFor(clean, "p1").clockMs).toBeNull();
     expect(Object.keys(engineConfig).filter((key) => SERVER_CONSTANTS.includes(key))).toEqual([]);
-    // M6/M7: apps/server/src/config.ts carries the clock, grace, ceiling, room-code and Elo values.
+    // M6/M7: apps/server/src/config.ts carries the clock, grace, ceiling, room-code and rating values.
   });
 
   it("R80 caps a library at LIBRARY_CAP: a new card is never created and an existing one lands in the graveyard", () => {

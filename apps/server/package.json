@@ -11,6 +11,7 @@
     "release": "pnpm run db:migrate && pnpm run db:seed-catalog",
     "codes:mint": "tsx --env-file-if-exists=.env src/db/mint-code.ts",
     "db:seed-accounts": "tsx --env-file-if-exists=.env src/db/seed-accounts.ts",
+    "db:season-start": "tsx --env-file-if-exists=.env src/db/season-start.ts",
     "stats:cards": "tsx --env-file-if-exists=.env src/db/card-stats.ts",
     "stats:import": "tsx --env-file-if-exists=.env src/db/import-dev-records.ts",
     "typecheck": "tsc -p tsconfig.json",

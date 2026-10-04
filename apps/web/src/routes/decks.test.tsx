@@ -40,7 +40,7 @@ const [ONE = [], TWO = []] = legalDecks();
 
 function meBody(status: "pending" | "active" | "banned", needsInviteCode: boolean) {
   return {
-    profile: { id: PROFILE, status, rating: 1000 },
+    profile: { id: PROFILE, status },
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,
@@ -219,7 +219,7 @@ describe("when another account signs in under an open workshop", () => {
   it("R256 never sends one profile's unsaved work with the next profile's token, and keeps it on this device", async () => {
     vi.mocked(getMe).mockImplementation(async (token) => ({
       ...meBody("active", false),
-      profile: { id: token === OTHER_TOKEN ? OTHER_PROFILE : PROFILE, status: "active", rating: 1000 },
+      profile: { id: token === OTHER_TOKEN ? OTHER_PROFILE : PROFILE, status: "active" },
     }));
     await mount();
     // An edit the debounce has not sent yet: this profile's, and only this profile's.

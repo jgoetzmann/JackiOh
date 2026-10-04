@@ -6,15 +6,15 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getProfile } from "../net/api.ts";
+import { getOwnRank, getProfile, type OwnRankResponse } from "../net/api.ts";
 import { SESSION_STORAGE_KEY, readSession } from "../net/session.ts";
 import AccountRoute, { formatWinRate, resetSigningOutForTests, statusWords } from "./account.tsx";
 
 vi.mock("../net/api.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../net/api.ts")>();
-  return { ...actual, getProfile: vi.fn() };
+  return { ...actual, getProfile: vi.fn(), getOwnRank: vi.fn() };
 });
 
 const TOKEN = "token-1";
@@ -24,12 +24,27 @@ function profileBody(over: Partial<Parameters<typeof Object.assign>[0]> = {}) {
     id: "p1",
     email: "player1@example.com",
     status: "active" as const,
-    rating: 1035,
     record: { wins: 7, losses: 2, draws: 1 },
     winRate: 0.7,
     ...over,
   };
 }
+
+function rankBody(over: Partial<OwnRankResponse> = {}): OwnRankResponse {
+  return {
+    season: "v0.2",
+    tag: "ABC123",
+    rank: { tier: "normal", division: 3, pips: 1, pipsPerDivision: 3, floor: "rotten" },
+    streak: 2,
+    record: { games: 10, wins: 7, losses: 2, draws: 1 },
+    badges: [{ seasonId: "v0.1", tier: "normal", division: 2 }],
+    ...over,
+  };
+}
+
+beforeEach(() => {
+  vi.mocked(getOwnRank).mockResolvedValue(rankBody());
+});
 
 afterEach(() => {
   cleanup();
@@ -55,7 +70,7 @@ describe("the account screen", () => {
       <AccountRoute
         token={TOKEN}
         me={{
-          profile: { id: "p1", status: "pending", rating: 1000 },
+          profile: { id: "p1", status: "pending" },
           needsInviteCode: true,
           emailVerified: true,
           currentMatchId: null,
@@ -90,9 +105,28 @@ describe("the account screen", () => {
     // In a player's words, with the raw status beside it for tests.
     expect(screen.getByTestId("account-status")).toHaveTextContent("Active");
     expect(screen.getByTestId("account-status")).toHaveAttribute("data-status", "active");
-    expect(screen.getByTestId("account-rating")).toHaveTextContent("1035");
     expect(screen.getByTestId("account-win-rate")).toHaveTextContent("70%");
     expect(screen.getByTestId("account-record")).toHaveTextContent("7–2–1");
+  });
+
+  it("shows the visible rank and the season badges, never a rating", async () => {
+    vi.mocked(getProfile).mockResolvedValue(profileBody());
+    render(<AccountRoute token={TOKEN} />);
+
+    expect(await screen.findByTestId("account-rank")).toHaveTextContent(
+      "ABC123 · Normal Grape III · 1/3 pips · Season v0.2",
+    );
+    expect(screen.getByTestId("account-badges")).toHaveTextContent("Season best: Normal Grape II · v0.1");
+    expect(screen.getByTestId("account-leaderboard")).toHaveAttribute("href", "/leaderboard");
+    expect(screen.queryByTestId("account-rating")).toBeNull();
+  });
+
+  it("says so when no season best has been earned yet", async () => {
+    vi.mocked(getProfile).mockResolvedValue(profileBody());
+    vi.mocked(getOwnRank).mockResolvedValue(rankBody({ badges: [] }));
+    render(<AccountRoute token={TOKEN} />);
+
+    expect(await screen.findByTestId("account-badges")).toHaveTextContent(/no season best yet/i);
   });
 
   it("says so plainly when no match has been finished", async () => {
@@ -229,7 +263,7 @@ describe("deleting the account", () => {
       <AccountRoute
         token={TOKEN}
         me={{
-          profile: { id: "p1", status: "pending", rating: 1000 },
+          profile: { id: "p1", status: "pending" },
           needsInviteCode: true,
           emailVerified: true,
           currentMatchId: null,

@@ -17,7 +17,6 @@ import {
   SERIES_MAX_GAMES,
   SERIES_PICK_SECONDS,
   SERIES_WINS_NEEDED,
-  eloUpdate,
 } from "../../src/config";
 import type { FrozenTrio, SeriesRow, SeriesSeat } from "../../src/api/ports";
 import {
@@ -65,6 +64,7 @@ function fresh(now = NOW): SeriesRow {
       ],
       seedBase: "seed-base",
       catalogVersion: "v1",
+      ranked: true,
     },
     now,
   );
@@ -411,12 +411,11 @@ describe("R333 — the pick clock", () => {
       endedAt: NOW + PICK_MS,
     });
     expect(seriesScore(abandoned)).toBeNull();
-    expect(rateSeries(abandoned, [1200, 1000])).toMatchObject({ ratingBefore: null, ratingAfter: null });
+    expect(rateSeries(abandoned, { before: [1200, 1000], after: [1210, 990] })).toMatchObject({ ratingBefore: null, ratingAfter: null });
     expect(viewOf(abandoned, BOB).result).toEqual({
       outcome: "abandoned",
       endReason: "abandoned",
-      ratingBefore: null,
-      ratingAfter: null,
+      ranked: false,
     });
 
     // After a played game it is still abandoned, not a result for the side that won game 1.
@@ -632,6 +631,7 @@ describe("R336 — what each side sees", () => {
         "now",
         "opponent",
         "pickDeadline",
+        "ranked",
         "result",
         "status",
         "winsNeeded",
@@ -645,7 +645,7 @@ describe("R336 — what each side sees", () => {
       ["gameNo", "matchId", "opponentSlot", "reason", "result", "youWentFirst", "yourSlot"].sort(),
     );
     expect(Object.keys(view.result ?? {}).sort()).toEqual(
-      ["endReason", "outcome", "ratingAfter", "ratingBefore"].sort(),
+      ["endReason", "outcome", "ranked"].sort(),
     );
     expect(view).toMatchObject({
       winsNeeded: SERIES_WINS_NEEDED,
@@ -654,6 +654,7 @@ describe("R336 — what each side sees", () => {
       now: NOW,
       currentMatchId: null,
       pickDeadline: null,
+      ranked: true,
     });
   });
 });
@@ -734,22 +735,24 @@ describe("R262 — how a series is rated", () => {
     expect(seriesScore(forfeitSeries(fresh(), "p2", NOW))).toBe(1);
   });
 
-  it("R262 the one move is R79's Elo from the ratings given, recorded without a second write", () => {
+  it("R262 the one move is recorded on the ending row without a second write, and its rating never reaches a player (R612)", () => {
     const decided = play(play(play(fresh(), [0, 0], "p2", "m2"), [1, 1], "p2", "m3"), [2, 2], "p2", "unused");
-    const rated = rateSeries(decided, [1200, 1000]);
-    const expected = eloUpdate(1200, 1000, 0);
+    const rated = rateSeries(decided, { before: [1200, 1000], after: [1180.5, 1019.5] });
     expect(rated.ratingBefore).toEqual([1200, 1000]);
-    expect(rated.ratingAfter).toEqual([expected.a, expected.b]);
+    expect(rated.ratingAfter).toEqual([1180.5, 1019.5]);
     expect(rated.version).toBe(decided.version);
     expect(decided.ratingBefore).toBeNull();
 
-    expect(viewOf(rated, BOB).result).toEqual({
-      outcome: "win",
-      endReason: "decided",
-      ratingBefore: 1000,
-      ratingAfter: expected.b,
-    });
-    expect(viewOf(rated, ALICE).result).toMatchObject({ ratingBefore: 1200, ratingAfter: expected.a });
+    expect(viewOf(rated, BOB).result).toEqual({ outcome: "win", endReason: "decided", ranked: true });
+    expect(viewOf(rated, ALICE).result).toEqual({ outcome: "loss", endReason: "decided", ranked: true });
+    expect(JSON.stringify(viewOf(rated, ALICE))).not.toMatch(/1180\.5|1200|1019\.5/);
+    // R604: a room's series is unranked, and its row records no move.
+    expect(viewOf(rateSeries({ ...decided, ranked: false }, null), BOB).result).toMatchObject({ ranked: false });
+    // The flag rides on the view from the start, not only in `result`, so a mid-series screen
+    // can say whether a forfeit moves the rating.
+    expect(viewOf(fresh(), BOB).ranked).toBe(true);
+    expect(viewOf({ ...fresh(), ranked: false }, BOB).ranked).toBe(false);
+    expect(viewOf({ ...fresh(), ranked: undefined }, BOB).ranked).toBe(false);
   });
 });
 
@@ -790,7 +793,7 @@ describe("R263 — a series is written by compare-and-set", () => {
     pickDeck(series, "p2", 1, NOW);
     forfeitSeries(series, "p1", NOW);
     timeoutPicks(series, NOW + PICK_MS);
-    rateSeries(forfeitSeries(series, "p1", NOW), [1000, 1000]);
+    rateSeries(forfeitSeries(series, "p1", NOW), { before: [1000, 1000], after: [990, 1010] });
     expect(series).toEqual(snapshot);
   });
 });

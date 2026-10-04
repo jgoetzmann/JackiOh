@@ -345,6 +345,7 @@ export function createFakeMatchDirectory(store?: Store): FakeMatchDirectory {
           players: [first.profileId, second.profileId],
           decks: [[...first.deck], [...second.deck]],
           catalogVersion: input.catalogVersion,
+          ranked: input.ranked,
           status: "live",
           createdAt: 0,
           finishedAt: null,
@@ -368,6 +369,9 @@ export function createFakeMatchDirectory(store?: Store): FakeMatchDirectory {
 // Deps
 // ---------------------------------------------------------------------------
 
+/** The game version the test deps run as: season `v0.1` (R609). */
+export const TEST_PATCH_VERSION = "v0.1.1";
+
 /** R79's shape with small numbers, so a fake-timer test does not advance 75 real seconds. */
 export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -377,8 +381,7 @@ export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     disconnectGraceSeconds: 60,
     matchCeilingMinutes: 120,
     roomCodeLength: 6,
-    eloK: 32,
-    eloStart: 1000,
+    ratingStart: 1000,
     ...overrides,
   };
 }
@@ -446,6 +449,9 @@ export function createTestDeps(overrides: Partial<ServerDeps> = {}): TestDeps {
     validateLoadout: permissiveValidator,
     dealRandomDeck: fakeRandomDealer(catalog),
     matches: createFakeMatchDirectory(),
+    // R609: the season the tests rate in. A fixed version, not the repository's newest patch, so a
+    // new patch does not move every test into a new season.
+    patchVersion: TEST_PATCH_VERSION,
     log: createRecordingLogger(),
     // `jsonRequest` writes the `X-Forwarded-For` entry a proxy would, so the tests model the
     // deployed server behind one proxy hop (`render.yaml`). The server's own default is 0 (R190),

@@ -909,6 +909,7 @@ describe("assertNotInSeries (R264)", () => {
         { profileId: OTHER, trio, wins: 0, pick: null },
       ],
       catalogVersion: deps.catalog.version,
+      ranked: false,
       seedBase: "seed",
       status,
       games: [],

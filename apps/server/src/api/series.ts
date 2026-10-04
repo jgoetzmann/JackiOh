@@ -12,10 +12,11 @@
  *    (a pick that arrives after the game began finds `playing`). A pick is persisted in the row
  *    before it is acknowledged, so a restart keeps it, and it leaves the server only in its owner's
  *    projection (R331).
- *  - **The rating move** (R262). When a transition ends the series, its one Elo move is computed
- *    from both players' current ratings and written in the same transaction as the row, which
- *    records it (`ratingBefore`, `ratingAfter`). A game inside a series is never rated
- *    (`results.ts`). An abandoned series is unrated.
+ *  - **The rating move** (R262, R604). When a transition ends a ranked series, it is rated as one
+ *    game (`ranked.ts`, R603): planned from both players' current ratings and ranks, put on the row
+ *    (`ratingBefore`, `ratingAfter`) by the same compare-and-set, and written only once that has
+ *    won, in the same transaction. A game inside a series is never rated (`results.ts`). An
+ *    abandoned series and a room's series are unrated.
  *  - **Starting the game** (R331, R263). When both picks are in, the game in `nextMatchId` is
  *    started through `deps.matches` with the seats and seed `gameSeats` names, and both players'
  *    in-match flags are set. It happens after the commit, because the actor must never run a game
@@ -32,6 +33,7 @@ import {
 import type { TerminalOutcome } from "../match/contracts";
 import { callerProfile } from "./collection";
 import { ApiError, badRequest, ok, route, type ApiRequest, type Route } from "./http";
+import { commitRankedGame, planRankedGame, type RankedPlan } from "./ranked";
 import type { MatchSeat, ServerDeps, SeriesRow, SeriesSeat, Store, Timer } from "./ports";
 import {
   SeriesRefusal,
@@ -135,7 +137,8 @@ async function startSeriesGame(deps: ServerDeps, series: SeriesRow): Promise<boo
   }
 
   try {
-    await deps.matches.start({ matchId, seed, catalogVersion: series.catalogVersion, seats });
+    // A missing flag is unranked (a pre-0019 row, or a room's series): it never rates.
+    await deps.matches.start({ matchId, seed, catalogVersion: series.catalogVersion, ranked: series.ranked ?? false, seats });
   } catch (error) {
     // Another start got there first — a request and the sweeper, or a second process — and wrote
     // the row this one was about to write. That start sets the flags.
@@ -191,17 +194,26 @@ export async function resumeSeries(deps: ServerDeps, series: SeriesRow | null): 
 // Writing a transition
 // ---------------------------------------------------------------------------
 
-/** Both players' current ratings, series p1 first. Games inside a series never move them (R262). */
-async function ratingsOf(t: Store, deps: ServerDeps, series: SeriesRow): Promise<[number, number]> {
+/**
+ * R262, R604: plans a ranked series' one rating move as a game between its two sides, or null for a
+ * series that does not move the rating: unranked, abandoned, or not over.
+ */
+async function planSeriesRating(t: Store, deps: ServerDeps, series: SeriesRow): Promise<RankedPlan | null> {
+  const score = seriesScore(series);
+  if (!series.ranked || score === null || series.endReason === null) return null;
   const [p1, p2] = series.sides;
-  const profiles = await t.profiles.getMany([p1.profileId, p2.profileId]);
-  const rating = (profileId: string): number => {
-    const profile = profiles.find((candidate) => candidate.id === profileId);
-    if (profile !== undefined) return profile.rating;
-    deps.log.alert("series.profile_missing", { seriesId: series.id, profileId });
-    return deps.config.eloStart;
-  };
-  return [rating(p1.profileId), rating(p2.profileId)];
+  return planRankedGame(t, deps, {
+    id: series.id,
+    kind: "series",
+    catalogVersion: series.catalogVersion,
+    sides: [
+      { kind: "player", profileId: p1.profileId },
+      { kind: "player", profileId: p2.profileId },
+    ],
+    winnerSide: score === 0.5 ? null : score === 1 ? 0 : 1,
+    reason: series.endReason,
+    at: series.endedAt ?? deps.timers.now(),
+  });
 }
 
 /**
@@ -217,18 +229,25 @@ async function commitSeries(
   next: SeriesRow,
 ): Promise<SeriesRow | null> {
   const ends = next.status === "over" && before.status !== "over";
-  const row = ends && seriesScore(next) !== null ? rateSeries(next, await ratingsOf(t, deps, next)) : next;
+  // Planned before the compare-and-set and written only after it wins: a lost write must leave no
+  // rating behind, since the caller retries inside this same transaction.
+  const plan = ends ? await planSeriesRating(t, deps, next) : null;
+  const row = ends
+    ? rateSeries(
+        next,
+        plan === null
+          ? null
+          : {
+              before: [plan.row.sides[0].before.rating, plan.row.sides[1].before.rating],
+              after: [plan.row.sides[0].after.rating, plan.row.sides[1].after.rating],
+            },
+      )
+    : next;
 
   if (!(await t.series.update(row))) return null;
   if (!ends) return row;
 
-  if (row.ratingBefore !== null && row.ratingAfter !== null) {
-    for (const index of [0, 1] as const) {
-      if (row.ratingAfter[index] !== row.ratingBefore[index]) {
-        await t.profiles.setRating(row.sides[index].profileId, row.ratingAfter[index]);
-      }
-    }
-  }
+  if (plan !== null) await commitRankedGame(t, plan, row.endedAt ?? deps.timers.now());
   if (row.games.length === 0) await t.matches.discardOpen(row.nextMatchId);
 
   deps.log.info("series.ended", {

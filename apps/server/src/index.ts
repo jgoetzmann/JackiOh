@@ -34,6 +34,7 @@ import { sharedLoadoutValidator } from "./api/loadout-validator";
 import type { Logger, ServerDeps, Store } from "./api/ports";
 import { systemTimers } from "./api/ports";
 import { createQueueRoutes, startMatchmaker } from "./api/queue";
+import { createRankedRoutes, loadPatchVersion, openSeason } from "./api/ranked";
 import { createRecordResult, reapStuckMatches } from "./api/results";
 import { purgeExpired } from "./api/retention";
 import { createSeriesRoutes, startSeriesSweeper } from "./api/series";
@@ -224,6 +225,8 @@ export async function createRuntime(
       has: () => false,
       stop: async () => {},
     },
+    // R375, R609: the game's version names the season and is recorded with every rated game.
+    patchVersion: overrides.patchVersion ?? (await loadPatchVersion()),
     log,
     // R190: how many `X-Forwarded-For` entries, from the right, this deployment's proxies wrote.
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
@@ -257,6 +260,7 @@ export function allRoutes(): Route[] {
     ...createRoomRoutes(),
     ...createSeriesRoutes(),
     ...createTutorialRoutes(),
+    ...createRankedRoutes(),
     ...createSettingsRoutes(),
   ];
 }
@@ -278,6 +282,16 @@ export async function start(env: ServerEnv = loadServerEnv()): Promise<RunningSe
     // R144: reseeded on every start, before the port opens, so no request can land on half a
     // fixture set and so spec 10 is repeatable run after run.
     if (e2eStore !== null) await seedE2EFixtures(deps, e2eStore);
+  }
+
+  // R609: the build's season is open before the first request, with its soft reset if this build
+  // begins one. A failure is loud but not fatal: the first rated game opens it in its own
+  // transaction all the same.
+  try {
+    const opened = await openSeason(deps);
+    deps.log.info("season.current", { seasonId: opened.season.id, opened: opened.opened, reset: opened.reset });
+  } catch (error) {
+    deps.log.alert("season.open_failed", { message: error instanceof Error ? error.message : String(error) });
   }
 
   const origins = browserOrigins(env);

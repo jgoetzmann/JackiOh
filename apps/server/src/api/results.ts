@@ -1,31 +1,35 @@
 /**
- * Results and rating (BUILD M7-T2, SPEC §2.5, §9.5, R79, R112).
+ * Results and rating (BUILD M7-T2, SPEC §2.5, §9.5, §9.12, R79, R112, R603, R604).
  *
  * §9.5: "Every ending records a result and clears both players' in-match state, and a reaper
- * resolves anything past the ceiling. Ratings use an Elo update (K = 32, starting at 1000)."
+ * resolves anything past the ceiling." §9.12: a ranked game moves both players' hidden Glicko-2
+ * ratings and their ranks on the ladder.
  *
  * One function is that sentence: `createRecordResult(deps)` returns the `RecordResult` port the
  * actor calls for every one of §2.5's seven endings — `hero-death`, `both-heroes-dead`,
  * `concede`, `draw-accepted`, `turn-cap`, `disconnect` and `match-ceiling` — and it writes exactly
- * one `results` row, rates both players and clears both in-match flags in one transaction.
+ * one `results` row, rates both players when the match is ranked (R604) and clears both in-match
+ * flags in one transaction.
  *
  * It is idempotent by design, not by luck: the actor and the reaper can both reach the same
  * terminal match (a crashed actor is exactly the case §9.5's reaper exists for), so the first
  * thing the transaction does is look for the row it is about to write.
  *
- * The Elo maths itself is `eloUpdate` in `src/config.ts` (R79's K and starting rating live there
- * and nowhere else). This file only decides the *score*: 1 for the winner, 0 for the loser and
- * 0.5 each for §2.5's draws.
+ * The rating maths is `src/ranked/glicko2.ts` and the ladder `src/ranked/ladder.ts`, reached through
+ * `rateRankedGame` (`ranked.ts`), which also writes the record of the rated game (R611). This file
+ * only decides which side won: §2.5's draws are a draw (0.5 each), and a concede and a disconnect
+ * are a loss like any other.
+ *
+ * A room challenge is unranked (R604): its row records both ratings unchanged.
  *
  * A game of a Conquest series is written the same way with one difference and one addition
- * (R262, R263): its row leaves both ratings unchanged, because a series moves Elo once, when it
+ * (R262, R263): its row leaves both ratings unchanged, because a series moves the rating once, when it
  * ends; and the series' record of the game — and, when the game ends the series, that one rating
  * move — commit in the same transaction as the row (`advanceSeriesInTx` in `series.ts`). When the
  * game leaves the series in its next game already (both sides had one deck left, so both picks were
  * made for them, R332), that game is started after the commit.
  */
 
-import { eloUpdate } from "../config";
 import type {
   MatchRow,
   MatchSeat,
@@ -37,25 +41,26 @@ import type {
 } from "./ports";
 import type { RecordResult, RecordResultInput, TerminalOutcome } from "../match/contracts";
 import { recordLiveGame } from "./game-records";
+import { rateRankedGame } from "./ranked";
 import { advanceSeriesInTx, resumeSeries } from "./series";
 
-/** How a terminal outcome rates. R79 ties the numbers; §2.5's table ties the draws. */
-type Score = 0 | 0.5 | 1;
-
-function scoreForSeat(outcome: TerminalOutcome, seat: MatchSeat): Score {
-  // §2.5: both heroes dead in the same check, an accepted draw offer, the end of the 30th turn
-  // and the hard ceiling are draws; everything else names a winner.
-  if (outcome.winner === "draw") return 0.5;
-  return outcome.winner === seat.player ? 1 : 0;
+/**
+ * The side of the match's two seats that won, or null for a draw. §2.5: both heroes dead in the
+ * same check, an accepted draw offer, the end of the 30th turn and the hard ceiling are draws;
+ * everything else names a winner, a concede and a disconnect included.
+ */
+function winnerSideOf(outcome: TerminalOutcome, seats: readonly [MatchSeat, MatchSeat]): 0 | 1 | null {
+  if (outcome.winner === "draw") return null;
+  return outcome.winner === seats[0].player ? 0 : 1;
 }
 
 /**
  * R112: a reaper-resolved ceiling draw "records `turns = 0` and leaves both ratings unchanged,
  * where the same draw resolved by a live match actor records the real turn count and applies the
- * ordinary Elo move". So the rating move is a parameter of the write, not a property of the
+ * ordinary rating move". So the rating move is a parameter of the write, not a property of the
  * reason: the same `match-ceiling` draw rates differently depending on who resolved it.
  */
-type RatingPolicy = "elo" | "unchanged";
+type RatingPolicy = "rated" | "unchanged";
 
 type WriteInput = RecordResultInput & { ratingPolicy: RatingPolicy };
 
@@ -78,10 +83,22 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
     const already = await t.results.getByMatch(input.matchId);
     if (already !== null) return { row: already, series: null };
 
-    // R262: a game of a Conquest series is recorded but not rated — the series moves Elo once,
-    // when it ends — whoever resolved it.
+    // R262: a game of a Conquest series is recorded but not rated — the series moves the rating
+    // once, when it ends — whoever resolved it. R604: and a match the queue did not pair (a room
+    // challenge) is never rated at all. The match row is what says so; a match whose row is gone
+    // cannot say it was ranked, so it is not rated.
     const series = await t.series.byMatch(input.matchId);
-    const ratingPolicy: RatingPolicy = series === null ? input.ratingPolicy : "unchanged";
+    const match = await t.matches.get(input.matchId);
+    const ratingPolicy: RatingPolicy =
+      series === null && match !== null && match.ranked ? input.ratingPolicy : "unchanged";
+
+    // A ranked series reaches its rating move — and so openSeasonInTx's `lockSeasons` — inside
+    // `advanceSeriesInTx` below, AFTER `results.insert`, `setInMatch` and the rest have already
+    // taken row locks. Take the season lock first: a tx that waits on it while holding profile
+    // locks deadlocks with the season opener holding it, whose `resetRatings` update wants those
+    // very rows. Every other path to `lockSeasons` already takes it before writing, and the
+    // advisory lock is re-entrant, so `openSeasonInTx`'s own take costs nothing here.
+    if (series?.ranked === true) await t.ranked.lockSeasons();
 
     const [seatA, seatB] = input.seats;
     const profiles = await t.profiles.getMany([seatA.profileId, seatB.profileId]);
@@ -95,17 +112,29 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
         matchId: input.matchId,
         profileId: seat.profileId,
       });
-      return deps.config.eloStart;
+      return deps.config.ratingStart;
     };
 
-    const before: [number, number] = [ratingOf(seatA), ratingOf(seatB)];
-    const after: [number, number] =
-      ratingPolicy === "unchanged"
-        ? [before[0], before[1]]
-        : (() => {
-            const next = eloUpdate(before[0], before[1], scoreForSeat(input.outcome, seatA));
-            return [next.a, next.b];
-          })();
+    let before: [number, number] = [ratingOf(seatA), ratingOf(seatB)];
+    let after: [number, number] = [before[0], before[1]];
+    if (ratingPolicy === "rated" && match !== null) {
+      // R603–R611: both hidden ratings, both ranks and the record of the rated game, in this
+      // transaction, so the result and its rating move commit together or not at all.
+      const rated = await rateRankedGame(t, deps, {
+        id: input.matchId,
+        kind: "match",
+        catalogVersion: match.catalogVersion,
+        sides: [
+          { kind: "player", profileId: seatA.profileId },
+          { kind: "player", profileId: seatB.profileId },
+        ],
+        winnerSide: winnerSideOf(input.outcome, input.seats),
+        reason: input.outcome.reason,
+        at: input.at,
+      });
+      before = [rated.sides[0].before.rating, rated.sides[1].before.rating];
+      after = [rated.sides[0].after.rating, rated.sides[1].after.rating];
+    }
 
     const row: ResultRow = {
       matchId: input.matchId,
@@ -130,13 +159,9 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
       }
     }
 
-    const rated: readonly (readonly [MatchSeat, number, number])[] = [
-      [seatA, before[0], after[0]],
-      [seatB, before[1], after[1]],
-    ];
-    for (const [seat, was, next] of rated) {
-      // R112's "leaves both ratings unchanged" is literal: no rating write happens at all.
-      if (next !== was) await t.profiles.setRating(seat.profileId, next);
+    for (const seat of [seatA, seatB]) {
+      // R112's "leaves both ratings unchanged" is literal: no rating write happens at all, and the
+      // rated path above made the only one there is.
       // §9.5: "Every ending records a result and clears both players' in-match state." Both, for
       // every reason — M7-T1's "past grace they have lost and both can queue again".
       await t.profiles.setInMatch(seat.profileId, null);
@@ -147,9 +172,8 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
       if (ticket !== null) await t.tickets.cancel(ticket.id, input.at);
     }
 
-    // The match row may be gone in a test that only cares about rating; a missing match must not
-    // lose the result, so it is checked rather than assumed.
-    const match = await t.matches.get(input.matchId);
+    // The match row may be gone; a missing match must not lose the result, so it is checked rather
+    // than assumed.
     if (match !== null) await t.matches.finish(input.matchId, input.at);
 
     // R263: the series' record of this game, and R262's rating move if it ends the series, in this
@@ -178,12 +202,13 @@ async function writeResult(deps: ServerDeps, input: WriteInput): Promise<Written
 
 /**
  * The `RecordResult` port the actor holds (`ActorDeps.recordResult`). Every terminal reason comes
- * through here, and the rating move is the ordinary Elo one (R79, R112's "live match actor" half).
- * Once the result is in, the game is filed for the card statistics (R376, `game-records.ts`).
+ * through here, and a ranked match gets the ordinary Glicko-2 rating move (R603, R112's
+ * "live match actor" half). Once the result is in, the game is filed for the card statistics
+ * (R376, `game-records.ts`).
  */
 export function createRecordResult(deps: ServerDeps): RecordResult {
   return async (input: RecordResultInput) => {
-    const written = await writeResult(deps, { ...input, ratingPolicy: "elo" });
+    const written = await writeResult(deps, { ...input, ratingPolicy: "rated" });
     // After the commit: a series whose next game began already (R332) gets its match. A
     // failure to start it is the sweeper's to heal (R263), never this result's.
     await resumeSeries(deps, written.series);

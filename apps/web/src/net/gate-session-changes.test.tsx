@@ -53,7 +53,7 @@ function jsonResponse(status: number, body?: unknown): Response {
 
 function me(status: "pending" | "active", email = "player@example.test") {
   return {
-    profile: { id: "profile-1", status, rating: 1000 },
+    profile: { id: "profile-1", status },
     needsInviteCode: status === "pending",
     emailVerified: true,
     currentMatchId: null,

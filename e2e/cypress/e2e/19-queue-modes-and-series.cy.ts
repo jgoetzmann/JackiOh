@@ -152,7 +152,11 @@ type JoinBody = {
 
 type MeBody = { currentMatchId: string | null; currentSeriesId?: string | null };
 
-type ProfileBody = { rating: number; record: { wins: number; losses: number; draws: number } };
+/** R612: the hidden rating never reaches the client, so the spec reads the season's game count instead. */
+type ProfileBody = { record: { wins: number; losses: number; draws: number } };
+
+/** `GET /api/ranked`: the caller's season record — rated games played, won, lost and drawn. */
+type RankBody = { record: { games: number; wins: number; losses: number; draws: number } };
 
 /** `SeriesView` (apps/web/src/net/api.ts). */
 type SeriesView = {
@@ -162,6 +166,7 @@ type SeriesView = {
   winsNeeded: number;
   maxGames: number;
   currentMatchId: string | null;
+  ranked: boolean;
   you: {
     seat: "p1" | "p2";
     wins: number;
@@ -182,8 +187,7 @@ type SeriesView = {
   result: {
     outcome: "win" | "loss" | "draw" | "abandoned";
     endReason: string;
-    ratingBefore: number | null;
-    ratingAfter: number | null;
+    ranked: boolean;
   } | null;
 };
 
@@ -214,6 +218,12 @@ function me(account: E2EAccount): Cypress.Chainable<MeBody> {
 function profile(account: E2EAccount): Cypress.Chainable<ProfileBody> {
   return cy
     .request<ProfileBody>({ method: "GET", url: api("/api/profile"), headers: bearer(account) })
+    .its("body");
+}
+
+function ownRank(account: E2EAccount): Cypress.Chainable<RankBody> {
+  return cy
+    .request<RankBody>({ method: "GET", url: api("/api/ranked"), headers: bearer(account) })
     .its("body");
 }
 
@@ -439,7 +449,8 @@ describe("19 queue modes and series — Best of 1, All Random, Conquest and room
     let theirs: InstalledLoadout | null = null;
     let seriesId = "";
     const matchIds: string[] = [];
-    let before: ProfileBody = { rating: 0, record: { wins: 0, losses: 0, draws: 0 } };
+    let before: ProfileBody = { record: { wins: 0, losses: 0, draws: 0 } };
+    let rankedBefore: RankBody = { record: { games: 0, wins: 0, losses: 0, draws: 0 } };
 
     cy.installLoadout(seatOne, "19-modes-a", { deckIndex: CHOSEN_DECK_INDEX }).then((value) => {
       mine = value;
@@ -449,6 +460,9 @@ describe("19 queue modes and series — Best of 1, All Random, Conquest and room
     });
     profile(seatOne).then((body) => {
       before = body;
+    });
+    ownRank(seatOne).then((body) => {
+      rankedBefore = body;
     });
 
     /** The browser selects `slot` in the picker and locks it in (R331). */
@@ -618,7 +632,9 @@ describe("19 queue modes and series — Best of 1, All Random, Conquest and room
       .should("have.attr", "data-you", String(SERIES_WINS_NEEDED))
       .and("have.attr", "data-opponent", "0");
 
-    // --- the rating moved once: by the series' own Elo move, not by its games (R262) -------------
+    // --- the rating moved once: by the series' own move, not by its games (R262, R604) ---------------
+    // R612: the hidden rating never reaches the client, so the move is read off the series'
+    // `ranked` flag and the season record, not off rating points.
     cy.then(() => {
       seriesAs(seatOne, seriesId).then((view) => {
         expect(view.status).to.eq("over");
@@ -629,13 +645,17 @@ describe("19 queue modes and series — Best of 1, All Random, Conquest and room
         const result = view.result;
         expect(result?.outcome).to.eq("win");
         expect(result?.endReason).to.eq("decided");
-        expect(result?.ratingBefore, "R262: rated from the rating before game 1").to.eq(before.rating);
+        expect(result?.ranked, "a won queue-paired series moved the rating").to.eq(true);
         profile(seatOne).should((after) => {
-          const moved = (result?.ratingAfter ?? 0) - (result?.ratingBefore ?? 0);
-          expect(moved, "a won series moves the rating up").to.be.greaterThan(0);
-          expect(after.rating - before.rating, "R262: the profile moved by exactly the series' move, once").to.eq(moved);
-          expect(after.rating).to.eq(result?.ratingAfter);
           expect(after.record.wins - before.record.wins, "R262: every game is recorded as a win").to.eq(SERIES_WINS_NEEDED);
+        });
+        // Rated once: the series is one rated game (R262), however many games it took.
+        ownRank(seatOne).should((after) => {
+          expect(
+            after.record.games - rankedBefore.record.games,
+            "R262: the series moved the season record by exactly one rated game",
+          ).to.eq(1);
+          expect(after.record.wins - rankedBefore.record.wins, "the series counts as one win").to.eq(1);
         });
       });
     });

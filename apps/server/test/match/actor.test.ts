@@ -29,7 +29,15 @@ import type { ActionBody, PlayerId, PlayerView } from "@jackioh/shared";
 import { loadCatalog } from "../../src/api/catalog";
 import type { MatchClocks, ResultRow } from "../../src/api/ports";
 import { createRecordResult } from "../../src/api/results";
-import { eloUpdate, MATCH_ACTIONS_PER_SECOND } from "../../src/config";
+import { MATCH_ACTIONS_PER_SECOND, RATING_DEVIATION_START, RATING_VOLATILITY_START } from "../../src/config";
+import { rateGame, type Score } from "../../src/ranked/glicko2";
+
+/** R603: the move one ranked game makes between two players new to rating. */
+function move(ratingA: number, ratingB: number, scoreA: Score): { a: number; b: number } {
+  const fresh = (rating: number) => ({ rating, deviation: RATING_DEVIATION_START, volatility: RATING_VOLATILITY_START });
+  const next = rateGame(fresh(ratingA), fresh(ratingB), scoreA);
+  return { a: next.a.rating, b: next.b.rating };
+}
 import type { MatchActor } from "../../src/match/actor";
 import type {
   ActorDeps,
@@ -200,6 +208,8 @@ async function harness(
     matchId: MATCH_ID,
     seed: "seed-actor",
     catalogVersion: TEST_CATALOG_VERSION,
+    // R604: as the queue starts one, so an ending that is rated is rated.
+    ranked: true,
     seats: [
       { profileId: "profile-1", player: "p1", deck: options.p1Deck ?? fakeDeck(["test-prompt-self"]) },
       {
@@ -1238,7 +1248,7 @@ describe("the concurrent mulligan through the actor (R265, R266, R268)", () => {
     expect(errors(p1).at(-1)).toMatchObject({ code: "match_over", nonce: "gg-too" });
     expect(recordResult).toHaveBeenCalledTimes(1);
 
-    const won = eloUpdate(1000, 1000, 1);
+    const won = move(1000, 1000, 1);
     expect(deps.store.tables.results).toEqual([
       expect.objectContaining({
         matchId: MATCH_ID,
@@ -1265,7 +1275,7 @@ describe("the concurrent mulligan through the actor (R265, R266, R268)", () => {
  * practice play them with no server at all. The actor only relays: an offer is an action like any
  * other, its refusal is the reducer's sentence, and an accepted draw is one more ending for the
  * results writer. So these run the real engine — the fake's `offerDraw` is unconditional — and the
- * real results writer over the in-memory store, so "rated 0.5 each" is the real Elo move.
+ * real results writer over the in-memory store, so "rated 0.5 each" is the real rating move.
  */
 describe("draw offers and concede through the actor (R36, R269, §9.5)", () => {
   type DrawHarness = Harness & {
@@ -1353,13 +1363,13 @@ describe("draw offers and concede through the actor (R36, R269, §9.5)", () => {
     expect(lastView(offerer).drawOffer).toBeUndefined();
 
     // §9.5: one result, through the writer every ending goes through, rated as a draw — 0.5 each,
-    // which from unequal ratings is a real move toward each other (R79's Elo).
+    // which from unequal ratings is a real move toward each other (R603).
     expect(recordResult).toHaveBeenCalledTimes(1);
     expect(recordResult.mock.calls[0]?.[0]).toMatchObject({
       matchId: MATCH_ID,
       outcome: { winner: "draw", reason: "draw-accepted" },
     });
-    const drawn = eloUpdate(ratings[0], ratings[1], 0.5);
+    const drawn = move(ratings[0], ratings[1], 0.5);
     expect(drawn.a).toBeLessThan(ratings[0]);
     expect(drawn.b).toBeGreaterThan(ratings[1]);
     expect(deps.store.tables.results).toEqual([
@@ -1444,7 +1454,7 @@ describe("draw offers and concede through the actor (R36, R269, §9.5)", () => {
     expect(errors(p1).at(-1)).toMatchObject({ code: "match_over", nonce: "resign-again" });
 
     expect(recordResult).toHaveBeenCalledTimes(1);
-    const lost = eloUpdate(1000, 1000, 0);
+    const lost = move(1000, 1000, 0);
     expect(deps.store.tables.results).toEqual([
       expect.objectContaining({
         winnerProfileId: "profile-2",
@@ -1643,6 +1653,8 @@ describe("the ws adapter", () => {
         email: "a@example.test",
         status: "active" as const,
         rating: 1000,
+        ratingDeviation: 350,
+        ratingVolatility: 0.06,
         createdAt: 0,
       }),
       inMatchId: "match-1",

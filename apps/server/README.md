@@ -91,6 +91,20 @@ one account per code unless its mint says otherwise). The script loads the *whol
 rather than the two variables it reads, because a `CODE_PEPPER` that differs from the running
 server's mints a well-formed code that nobody can ever redeem, and nothing would report it.
 
+Beside those, one script belongs to a deploy that bumps the game's minor version: R609's season
+open, which the boot path would otherwise run cold on the first request it sees. Ahead of such a
+deploy, run it against a copy of the live data first:
+
+```
+pnpm --filter @jackioh/server db:season-start -- --dry-run
+```
+
+`--dry-run` walks the identical path — open the season, soft-reset every rated player — and rolls
+the transaction back, printing the report a real run would write (season id, players reset, the
+ratings before and after). Without the flag the writes commit, and the next build's boot finds
+the season already open. Re-running it is safe: an already-open season reports `opened: false`
+and writes nothing.
+
 ### Environment
 
 The contract is `ServerEnv` in `src/env.ts`; `loadEnv()` validates it and refuses to start on a
@@ -203,6 +217,9 @@ top of every handler:
 | `POST` | `/api/series/:id/pick` | active | Seal the next game's deck from the frozen trio, one that has not won (R330, R331); final once in, the same slot again answers 200; the game starts when both have picked |
 | `POST` | `/api/series/:id/forfeit` | active | Leave the series between games; the other side wins it (R334) |
 | `GET` | `/api/matches/:id/series` | active | The series a match is a game of, for the board's banner |
+| `GET` | `/api/ranked` | active | The caller's own season, tag, rank, streak, record and season badges; never the hidden rating (R612) |
+| `GET` | `/api/leaderboard` | active | Jlorious #1–#100, then every other placed player by Grape tier, then the placing count (R608, R612) |
+| `GET` | `/api/matches/:id/ranks` | active | Both seats' ranks for the match screen, and whether the game moves them; 404 unless the caller plays it (R604, R612) |
 | `GET` | `/api/tutorial` | active | The account's tutorial progress (R320): completed lesson ids and the newest Hide/Show choice; empty before the first write |
 | `PUT` | `/api/tutorial` | active | Merge a device's progress into the account's (R320): `{ completed, hiddenChoice? }`. The lessons become the union, a choice replaces the stored one only when it is newer (a time after the server's clock counts as now), nothing is ever removed, and the answer is the merged progress. Ids are checked for shape only (lower-case slugs, `TUTORIAL_LESSON_ID_MAX_LENGTH`, at most `TUTORIAL_LESSONS_MAX`); the lessons are the client's |
 | `GET` | `/api/settings` | active | The account's game settings (R633): groups (`gameplay`, `audio`, `fx`, `cards`), each `{ at, values }`; empty before the first write |
@@ -263,8 +280,9 @@ gets the same boards back, never a newer one.
 All of R79's values come from `src/config.ts` and are stated nowhere else: turn clock 75 s, prompt
 clock 30 s, disconnect grace 60 s, match ceiling 120 minutes (`MATCH_CEILING_MINUTES`, since patch
 v0.2.0: the turn cap is 60 player-turns, and 60 turns at a full 75-second clock take 75 minutes,
-R389), Elo K = 32 from 1000. R268's mulligan clock, 45 s (`MULLIGAN_CLOCK_SECONDS`), lives beside
-them.
+R389). R268's mulligan clock, 45 s (`MULLIGAN_CLOCK_SECONDS`), and §9.12's ranked numbers — the
+Glicko-2 start (`RATING_START`, `RATING_DEVIATION_START`, `RATING_VOLATILITY_START`, `GLICKO_TAU`),
+the tier table and the season reset (R603–R609) — live beside them.
 
 The clock lives here, never in the engine: time reaches the engine only as action data (§9.3), so
 an expiry becomes an ordinary server-only action — `timeout`, `disconnectExpired` or
@@ -298,8 +316,8 @@ an expiry becomes an ordinary server-only action — `timeout`, `disconnectExpir
   countdown. The turn clock keeps running while a player is away.
 - Reaching the ceiling is a draw. A reaper resolves anything past it.
 - Every terminal reason — hero death, draw accepted, turn cap, concede, disconnect, ceiling —
-  writes exactly one `results` row, applies the Elo update once and clears both players' in-match
-  state. Writing it twice is a no-op.
+  writes exactly one `results` row, applies the Glicko-2 rating move once when the match is
+  ranked (R604) and clears both players' in-match state. Writing it twice is a no-op.
 
 ### Draw offers and concede (R36, R269)
 
@@ -316,8 +334,8 @@ on both seats' views as `drawOffer: { by }`, so it survives a reconnect.
 An accepted offer ends the match `{ winner: "draw", reason: "draw-accepted" }` and a concede
 `{ winner: <the other seat>, reason: "concede" }` — a concede is open to both seats at all times,
 the mulligan window included. Both go through the one results path (`api/results.ts`,
-`createRecordResult`): one `results` row, Elo scored 0.5 each for a draw and 1/0 for a concede,
-both in-match flags cleared, once.
+`createRecordResult`): one `results` row, the rating move scored 0.5 each for a draw and a loss
+for a concede when the match is ranked (R604), both in-match flags cleared, once.
 
 ## Card statistics (SPEC §9.11, R376–R378)
 
@@ -386,7 +404,7 @@ identical timing; the collection ledger's two-table transaction; saved decks and
 with client-minted ids, and the queue-time check against the shared validator; the tutorial's
 grow-only account copy (R320); the match actor,
 protocol, nonce dedupe, action log and log-folding recovery; room codes, in all three modes; the
-clock; results and Elo; matchmaking in three modes with frozen decks, opportunistic pairing, a
+clock; results and the ranked ladder; matchmaking in three modes with frozen decks, opportunistic pairing, a
 sweeper, the widening window and the atomic claim; All Random's seeded decks; the Conquest series,
 its sealed picks and pick clock, its one rating move and its recovery after a restart; trio imports; the catalog loader against the
 real 317-entry `catalog.json` and the patch snapshots beside it.

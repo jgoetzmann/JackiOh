@@ -29,13 +29,17 @@ import type {
   PlayerSettingsMergeOutcome,
   PlayerSettingsRow,
   Profile,
+  RatedGameRow,
   SavedDeck,
   SavedTrio,
+  Season,
   SeriesRow,
   Store,
   TutorialMergeOutcome,
   TutorialProgressRow,
 } from "../../src/api/ports";
+import type { Glicko } from "../../src/ranked/glicko2";
+import { freshRank, type SeasonRank } from "../../src/ranked/ladder";
 import type { StoreHarness } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -178,6 +182,31 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         // §9.5: "Every ending ... clears both players' in-match state."
         await store.profiles.setInMatch(profile.id, null);
         expect(must(await store.profiles.getById(profile.id), "profile").inMatchId).toBeNull();
+      });
+
+      /** R603: a new profile starts at Glickman's deviation and volatility, and both move with it. */
+      it("R603 round-trips the whole Glicko triple", async () => {
+        const profile = await activeProfile();
+        const created = must(await store.profiles.getById(profile.id), "the new profile");
+        expect(created.rating).toBe(1000);
+        expect(created.ratingDeviation).toBe(350);
+        expect(created.ratingVolatility).toBe(0.06);
+
+        const after: Glicko = { rating: 1016.25, deviation: 330.5, volatility: 0.059995 };
+        await store.profiles.setGlicko(profile.id, after);
+        const moved = must(await store.profiles.getById(profile.id), "the rated profile");
+        expect(moved.rating).toBe(after.rating);
+        expect(moved.ratingDeviation).toBe(after.deviation);
+        expect(moved.ratingVolatility).toBe(after.volatility);
+
+        // setRating stays the rating-only write the old SQL paths use; the other two hold.
+        await store.profiles.setRating(profile.id, 1000);
+        const dropped = must(await store.profiles.getById(profile.id), "the rated profile");
+        expect(dropped.rating).toBe(1000);
+        expect(dropped.ratingDeviation).toBe(after.deviation);
+        expect(dropped.ratingVolatility).toBe(after.volatility);
+
+        await expect(store.profiles.setGlicko(id(), after)).rejects.toThrow();
       });
 
       /**
@@ -1024,6 +1053,17 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(await store.series.get(row.id)).toEqual(picked);
       });
 
+      /** R604: the ranked flag rides along on the version-checked update, same as every field. */
+      it("R604 round-trips the ranked flag", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const row = seriesRow(a.id, b.id, { ranked: true });
+        await store.series.create(row);
+        expect(await store.series.get(row.id)).toEqual(row);
+        const moved = { ...row, version: row.version + 1, ranked: undefined };
+        expect(await store.series.update(moved)).toBe(true);
+        expect(must(await store.series.get(row.id), "the series").ranked).toBeUndefined();
+      });
+
       it("R263 finds a series by the match it is playing, and only while it is playing it", async () => {
         const [a, b] = [await activeProfile(), await activeProfile()];
         const row = seriesRow(a.id, b.id);
@@ -1143,6 +1183,17 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         };
         await store.matches.setClocks(row.id, next);
         expect(must(await store.matches.get(row.id), "the match").clocks).toEqual(next);
+      });
+
+      /** R604: the queue's ranked flag survives the round trip; a room's absence reads unranked. */
+      it("R604 round-trips the ranked flag", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const ranked = { ...matchRow(id(), a.id, b.id, harness, harness.now()), ranked: true };
+        const unranked = matchRow(id(), a.id, b.id, harness, harness.now());
+        await store.matches.create(ranked);
+        await store.matches.create(unranked);
+        expect(must(await store.matches.get(ranked.id), "the ranked match").ranked).toBe(true);
+        expect(must(await store.matches.get(unranked.id), "the unranked match").ranked).toBeUndefined();
       });
 
       it("R263 discards a reserved match id without touching a live match", async () => {
@@ -1562,12 +1613,223 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
     });
 
     // -----------------------------------------------------------------------
-    // Transactions
+    // The ranked ladder (SPEC §9.12, R603–R612)
     // -----------------------------------------------------------------------
 
-    // -----------------------------------------------------------------------
-    // Deleting an account (migration 0012) and the retention purge (0013)
-    // -----------------------------------------------------------------------
+    describe("ranked (SPEC §9.12)", () => {
+      const glicko = (rating = 1000): Glicko => ({ rating, deviation: 350, volatility: 0.06 });
+      const season = (id: string, at: number): Season => ({ id, patchVersion: `${id}.1`, startedAt: at });
+
+      function rankRow(seasonId: string, profileId: string, over: Partial<SeasonRank> = {}): SeasonRank {
+        return { ...freshRank(seasonId, profileId, harness.now()), ...over };
+      }
+
+      function ratedGame(gameId: string, seasonId: string, p1: Profile, p2: Profile, over: Partial<RatedGameRow> = {}): RatedGameRow {
+        return {
+          id: gameId,
+          kind: "match",
+          seasonId,
+          patchVersion: "v0.1.1",
+          catalogVersion: harness.catalogVersion,
+          sides: [
+            {
+              profileId: p1.id,
+              botId: null,
+              pilot: "human",
+              before: glicko(1000),
+              after: glicko(1016),
+              rankBefore: null,
+              rankAfter: { tier: "rotten", division: 3, pips: 2, pipsPerDivision: 5, floor: "rotten" },
+            },
+            {
+              profileId: p2.id,
+              botId: null,
+              pilot: "human",
+              before: glicko(1000),
+              after: glicko(984),
+              rankBefore: null,
+              rankAfter: { tier: "rotten", division: 3, pips: 1, pipsPerDivision: 5, floor: "rotten" },
+            },
+          ],
+          winnerSide: 0,
+          reason: "hero-death",
+          endedAt: harness.now(),
+          ...over,
+        };
+      }
+
+      it("R609 opens a season once and lists every season oldest first", async () => {
+        const now = harness.now();
+        const older = season("v0.1", now);
+        const newer = season("v0.2", now + 1_000);
+        // The open serializer: a no-op where one process owns the store, a real advisory lock
+        // under Postgres — callable either way.
+        await store.ranked.lockSeasons();
+        expect(await store.ranked.createSeason(newer)).toBe(true);
+        expect(await store.ranked.createSeason(older)).toBe(true);
+        // A second opener of the same id writes nothing and answers false.
+        expect(await store.ranked.createSeason({ ...newer, patchVersion: "v0.2.9" })).toBe(false);
+        expect(await store.ranked.seasons()).toEqual([older, newer]);
+      });
+
+      it("R605 keeps one rank row per player per season, putRank replacing it", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+
+        const first = rankRow("v0.1", a.id, { games: 7, wins: 5, losses: 2, ladder: 40, floor: 1, streak: 3, peakLadder: 40 });
+        const other = rankRow("v0.1", b.id, { games: 1, wins: 1 });
+        await store.ranked.putRank(first);
+        await store.ranked.putRank(other);
+
+        expect(await store.ranked.rank("v0.1", a.id)).toEqual(first);
+        expect(await store.ranked.rank("v0.1", b.id)).toEqual(other);
+        expect(await store.ranked.rank("v0.2", a.id)).toBeNull();
+        expect(await store.ranked.rank("v0.1", id())).toBeNull();
+
+        // The second write for the same (season, profile) replaces the first.
+        const moved: SeasonRank = { ...first, games: 8, wins: 6, ladder: 42, streak: 4, updatedAt: now + 1 };
+        await store.ranked.putRank(moved);
+        expect(await store.ranked.rank("v0.1", a.id)).toEqual(moved);
+      });
+
+      it("R605 answers a season's standings with each player's current rating, in profile-id order", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        const rankA = rankRow("v0.1", a.id, { games: 3, wins: 3, ladder: 45 });
+        const rankB = rankRow("v0.1", b.id, { games: 3, losses: 3, ladder: 30 });
+        await store.ranked.putRank(rankA);
+        await store.ranked.putRank(rankB);
+        await store.profiles.setGlicko(a.id, glicko(1123.5));
+        await store.profiles.setGlicko(b.id, glicko(877.25));
+
+        const standings = await store.ranked.standings("v0.1");
+        expect(standings.map((standing) => standing.profileId)).toEqual(sorted([a.id, b.id]));
+        expect(standings.find((standing) => standing.profileId === a.id)).toEqual({ ...rankA, rating: 1123.5 });
+        expect(standings.find((standing) => standing.profileId === b.id)).toEqual({ ...rankB, rating: 877.25 });
+        expect(await store.ranked.standings("v0.2")).toEqual([]);
+      });
+
+      it("R607 lists a profile's badges oldest season first", async () => {
+        const a = await activeProfile();
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        await store.ranked.createSeason(season("v0.2", now + 1_000));
+        await store.ranked.putRank(rankRow("v0.2", a.id, { games: 2 }));
+        await store.ranked.putRank(rankRow("v0.1", a.id, { games: 9, peakLadder: 55 }));
+        expect((await store.ranked.ranksOf(a.id)).map((row) => row.seasonId)).toEqual(["v0.1", "v0.2"]);
+        expect(await store.ranked.ranksOf(id())).toEqual([]);
+      });
+
+      it("R608 keeps the best Jlorious position the season has held", async () => {
+        const a = await activeProfile();
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        await store.ranked.putRank(rankRow("v0.1", a.id));
+        await store.ranked.notePeakJlorious("v0.1", a.id, 17);
+        await store.ranked.notePeakJlorious("v0.1", a.id, 80);
+        await store.ranked.notePeakJlorious("v0.1", a.id, 4);
+        expect(must(await store.ranked.rank("v0.1", a.id), "the rank").peakJlorious).toBe(4);
+        // A player with no season row is noted nowhere — the write is a no-op.
+        await store.ranked.notePeakJlorious("v0.1", id(), 1);
+        await store.ranked.notePeakJlorious("v0.2", a.id, 1);
+
+        // putRank merges the peak rather than replacing it: a rank row the player's own game
+        // wrote cannot undo a better position a bystander's game already recorded, and a null
+        // never erases — but a better position the writer computed still lands.
+        const row = must(await store.ranked.rank("v0.1", a.id), "the rank");
+        await store.ranked.putRank({ ...row, peakJlorious: 90 });
+        expect(must(await store.ranked.rank("v0.1", a.id), "the rank").peakJlorious).toBe(4);
+        await store.ranked.putRank({ ...row, peakJlorious: null });
+        expect(must(await store.ranked.rank("v0.1", a.id), "the rank").peakJlorious).toBe(4);
+        await store.ranked.putRank({ ...row, peakJlorious: 2 });
+        expect(must(await store.ranked.rank("v0.1", a.id), "the rank").peakJlorious).toBe(2);
+      });
+
+      it("R610 keeps each bot's own rating, upserted", async () => {
+        const now = harness.now();
+        expect(await store.ranked.bot("ai-easy")).toBeNull();
+        const rating = { botId: "ai-easy", glicko: { rating: 1050.5, deviation: 300.25, volatility: 0.06 }, games: 3, updatedAt: now };
+        await store.ranked.putBot(rating);
+        expect(await store.ranked.bot("ai-easy")).toEqual(rating);
+        const moved = { ...rating, glicko: { ...rating.glicko, rating: 1036.25 }, games: 4, updatedAt: now + 1 };
+        await store.ranked.putBot(moved);
+        expect(await store.ranked.bot("ai-easy")).toEqual(moved);
+        expect(await store.ranked.bot("ai-hard")).toBeNull();
+      });
+
+      it("R611 records a rated game once and answers it back whole", async () => {
+        const [a, b] = [await activeProfile(), await activeProfile()];
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        const row = ratedGame(id(), "v0.1", a, b);
+        await store.ranked.recordGame(row);
+        expect(await store.ranked.game(row.id)).toEqual(row);
+        expect(await store.ranked.game(id())).toBeNull();
+        // R262's rate-once guard is the row's own id.
+        await expect(store.ranked.recordGame(row)).rejects.toThrow(`rated_games already holds a row for ${row.id}`);
+      });
+
+      it("R611 records a bot side with no profile and no rank", async () => {
+        const a = await activeProfile();
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        const row = ratedGame(id(), "v0.1", a, a, {
+          kind: "series",
+          reason: "decided",
+          winnerSide: 1,
+          sides: [
+            {
+              profileId: a.id,
+              botId: null,
+              pilot: "human",
+              before: glicko(1000),
+              after: glicko(984),
+              rankBefore: null,
+              rankAfter: null,
+            },
+            {
+              profileId: null,
+              botId: "ai-easy",
+              pilot: "ai",
+              before: glicko(1050),
+              after: glicko(1062),
+              rankBefore: null,
+              rankAfter: null,
+            },
+          ],
+        });
+        await store.ranked.recordGame(row);
+        expect(await store.ranked.game(row.id)).toEqual(row);
+      });
+
+      it("R609's reset input is everyone a rated game touched, and resetRatings writes it", async () => {
+        const [a, b, c] = [await activeProfile(), await activeProfile(), await activeProfile()];
+        const now = harness.now();
+        await store.ranked.createSeason(season("v0.1", now));
+        await store.ranked.recordGame(ratedGame(id(), "v0.1", a, b));
+
+        const players = await store.ranked.ratedPlayers();
+        expect(players.map((player) => player.profileId)).toEqual(sorted([a.id, b.id]));
+        expect(players.map((player) => player.glicko)).toEqual([glicko(1000), glicko(1000)]);
+
+        // The soft reset's output lands on exactly the same profiles.
+        const softA = glicko(1075.5);
+        const softB = glicko(1037.75);
+        await store.ranked.resetRatings([
+          { profileId: a.id, before: glicko(1000), after: softA },
+          { profileId: b.id, before: glicko(1000), after: softB },
+        ]);
+        expect(must(await store.profiles.getById(a.id), "a").rating).toBe(softA.rating);
+        expect(must(await store.profiles.getById(a.id), "a").ratingDeviation).toBe(softA.deviation);
+        expect(must(await store.profiles.getById(b.id), "b").rating).toBe(softB.rating);
+        // A player no rated game touched is untouched.
+        expect(must(await store.profiles.getById(c.id), "c").rating).toBe(1000);
+        // And an empty reset is legal (the first season's input can be empty).
+        await store.ranked.resetRatings([]);
+      });
+    });
 
     describe("profiles.remove (account deletion)", () => {
       it("removes the profile and its own rows, and keeps the other player's finished match", async () => {
@@ -1620,6 +1882,23 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         });
         await store.matches.finish(matchId, now);
 
+        // R611's record of the same match (R611 keeps it for good, like `results`).
+        await store.ranked.createSeason({ id: "v0.1", patchVersion: "v0.1.1", startedAt: now - 1 });
+        await store.ranked.recordGame({
+          id: matchId,
+          kind: "match",
+          seasonId: "v0.1",
+          patchVersion: "v0.1.1",
+          catalogVersion: harness.catalogVersion,
+          sides: [
+            { profileId: gone.id, botId: null, pilot: "human", before: { rating: 1000, deviation: 350, volatility: 0.06 }, after: { rating: 1016, deviation: 340, volatility: 0.06 }, rankBefore: null, rankAfter: null },
+            { profileId: other.id, botId: null, pilot: "human", before: { rating: 1000, deviation: 350, volatility: 0.06 }, after: { rating: 984, deviation: 340, volatility: 0.06 }, rankBefore: null, rankAfter: null },
+          ],
+          winnerSide: 0,
+          reason: "concede",
+          endedAt: now,
+        });
+
         expect(await store.profiles.remove(gone.id)).toBe(true);
         expect(await store.profiles.remove(gone.id)).toBe(false);
 
@@ -1639,6 +1918,12 @@ export function runStoreContract(make: () => Promise<StoreHarness>): void {
         expect(await store.results.getByMatch(matchId)).not.toBeNull();
         expect(await store.results.recordFor(other.id)).toEqual({ wins: 0, losses: 1, draws: 0 });
         expect(await store.profiles.getById(other.id)).not.toBeNull();
+
+        // The rated-game record stays whole too (R611): Postgres empties the deleted side's seat
+        // (`on delete set null`) while the memory store keeps the id — KNOWN DIVERGENCES — so only
+        // the record's survival and the other side are asserted across both.
+        const kept = must(await store.ranked.game(matchId), "the rated-game record");
+        expect(kept.sides[1].profileId).toBe(other.id);
       });
     });
 

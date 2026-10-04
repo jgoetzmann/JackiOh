@@ -1,0 +1,16 @@
+/* `/leaderboard`'s lists (routes/leaderboard.tsx): the page wears the tavern like the account
+   screen, and the lists read as ledgers — one row per player, the caller's own marked. */
+
+.tavern.app-shell .leaderboard-heading {
+  margin-top: 18px;
+}
+
+.tavern.app-shell .leaderboard-screen ol,
+.tavern.app-shell .leaderboard-screen ul {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.tavern.app-shell .leaderboard-screen li[data-you="you"] {
+  font-weight: 700;
+}

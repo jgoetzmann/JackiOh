@@ -10,7 +10,7 @@
  *
  * Every rule of a series lives here and nowhere else: who may pick what and when, when a game
  * begins and which seat goes first, what a finished game does to the score, when the series is
- * over and how it scores for Elo, and what each player is allowed to see of it. `series.ts` reads
+ * over and how it scores for the rating, and what each player is allowed to see of it. `series.ts` reads
  * a row, applies one of these, and writes the result back by compare-and-set; `results.ts` does the
  * same inside the game result's transaction. Nothing here reads a clock, a store or an id minter:
  * time and the next match id arrive as parameters, so the same inputs always give the same row and
@@ -33,12 +33,7 @@
 
 import type { GameOverReason } from "@jackioh/shared";
 
-import {
-  SERIES_MAX_GAMES,
-  SERIES_PICK_SECONDS,
-  SERIES_WINS_NEEDED,
-  eloUpdate,
-} from "../config";
+import { SERIES_MAX_GAMES, SERIES_PICK_SECONDS, SERIES_WINS_NEEDED } from "../config";
 import type {
   FrozenTrio,
   MatchSeat,
@@ -82,6 +77,11 @@ export type SeriesView = {
   now: number;
   /** The match to open while `status` is `playing`. */
   currentMatchId: string | null;
+  /**
+   * R604: the queue paired this series, so it is rated; a room's is not. Always known — the
+   * player chose the mode — so it is projected from the start, not only in `result`.
+   */
+  ranked: boolean;
   you: {
     seat: SeriesSeat;
     wins: number;
@@ -109,12 +109,14 @@ export type SeriesView = {
     result: "win" | "loss" | "draw" | null;
     reason: GameOverReason | null;
   }[];
-  /** Null until the series is over. */
+  /**
+   * Null until the series is over. `ranked`: the series moved your rank (R604); the rating it moved
+   * is never sent (R612), and the rank it left is `GET /api/ranked`'s.
+   */
   result: {
     outcome: "win" | "loss" | "draw" | "abandoned";
     endReason: SeriesEnd;
-    ratingBefore: number | null;
-    ratingAfter: number | null;
+    ranked: boolean;
   } | null;
 };
 
@@ -238,7 +240,7 @@ function automaticPick(series: SeriesRow, seat: SeriesSeat): number | null {
 }
 
 /**
- * R262: series `p1`'s Elo score once the series is over — 1 for a series win, 0 for a loss, 0.5
+ * R262: series `p1`'s score once the series is over — 1 for a series win, 0 for a loss, 0.5
  * for a series draw — or null while it is not over and when it was abandoned (unrated, R333).
  */
 export function seriesScore(series: SeriesRow): 0 | 0.5 | 1 | null {
@@ -332,6 +334,8 @@ export type NewSeriesInput = {
   /** Each game's seed is `${seedBase}:${gameNo}` (R335). */
   seedBase: string;
   catalogVersion: string;
+  /** R604: true when the queue paired it; a room's series is unranked. */
+  ranked: boolean;
 };
 
 /** R331, R333, R263: a series in game 1's pick phase, its clock running from `now`. */
@@ -346,6 +350,7 @@ export function newSeries(input: NewSeriesInput, now: number): SeriesRow {
     id: input.seriesId,
     sides: [side(input.sides[0]), side(input.sides[1])],
     catalogVersion: input.catalogVersion,
+    ranked: input.ranked,
     seedBase: input.seedBase,
     status: "picking",
     games: [],
@@ -503,21 +508,22 @@ export function forfeitSeries(series: SeriesRow, seat: SeriesSeat, now: number):
 }
 
 /**
- * R262: records the series' one Elo move on a row that has just ended, from `before` (series p1's
- * rating, then p2's). Not a transition — it rides on the ending's own write, so the version is left
- * alone. An abandoned series is unrated and keeps both fields null.
+ * R262: records the series' one rating move on a row that has just ended: series p1's rating, then
+ * p2's, before and after (`series.ts` rates it, R603). Not a transition — it rides on the ending's
+ * own write, so the version is left alone. An abandoned or unranked series keeps both fields null.
  */
-export function rateSeries(series: SeriesRow, before: readonly [number, number]): SeriesRow {
-  const score = seriesScore(series);
+export function rateSeries(
+  series: SeriesRow,
+  move: { before: readonly [number, number]; after: readonly [number, number] } | null,
+): SeriesRow {
   const next = copy(series);
-  if (score === null) {
+  if (move === null || seriesScore(series) === null) {
     next.ratingBefore = null;
     next.ratingAfter = null;
     return next;
   }
-  const after = eloUpdate(before[0], before[1], score);
-  next.ratingBefore = [before[0], before[1]];
-  next.ratingAfter = [after.a, after.b];
+  next.ratingBefore = [move.before[0], move.before[1]];
+  next.ratingAfter = [move.after[0], move.after[1]];
   return next;
 }
 
@@ -603,6 +609,7 @@ export function projectSeries(series: SeriesRow, viewerProfileId: string, now: n
     pickDeadline: picking ? series.pickDeadline : null,
     now,
     currentMatchId: series.status === "playing" ? series.nextMatchId : null,
+    ranked: series.ranked ?? false,
     you: {
       seat,
       wins: you.wins,
@@ -640,8 +647,7 @@ export function projectSeries(series: SeriesRow, viewerProfileId: string, now: n
                 ? "abandoned"
                 : outcomeOf(series.winner),
             endReason: series.endReason,
-            ratingBefore: series.ratingBefore?.[mine] ?? null,
-            ratingAfter: series.ratingAfter?.[mine] ?? null,
+            ranked: (series.ranked ?? false) && series.ratingAfter !== null,
           },
   };
 }

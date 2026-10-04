@@ -8,7 +8,7 @@
 // Nothing here computes legality; that is the engine's (BUILD M5-T2, CLAUDE.md rule 7).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { ActionBody } from "@jackioh/shared";
 
@@ -236,6 +236,7 @@ describe("the series banner on a series game (R259)", () => {
         pickDeadline: null,
         now: 0,
         currentMatchId: over ? null : "m-1",
+        ranked: true,
         you: { seat: "p1", wins: over ? 1 : 0, trioName: "Main trio", decks, pick: null, autoPick: false },
         opponent: { wins: 0, decks: decks.map(({ slot }) => ({ slot, won: false })), picked: false },
         games: [],
@@ -554,6 +555,62 @@ describe("the match screen in a player's words", () => {
       });
     });
     expect(document.title).toBe("Match · JackiOh");
+  });
+});
+
+describe("the match screen's ranks (R604, R612)", () => {
+  const ranksBody = {
+    ranked: true,
+    seats: {
+      p1: { tag: "ABC123", rank: { tier: "normal", division: 3, pips: 1, pipsPerDivision: 3, floor: "rotten" }, you: true },
+      p2: { tag: "XYZ999", rank: { tier: "raisin", placementsPlayed: 2, placementGames: 5 }, you: false },
+    },
+  };
+
+  function stubFetch(ranks: unknown): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            JSON.stringify(String(url).includes("/ranks") ? ranks : { version: "v1", defs: {} }),
+          ),
+      } as unknown as Response),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("names both seats' ranks and whether the game moves them", async () => {
+    stubFetch(ranksBody);
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach({ legal: [{ type: "endTurn" }] });
+
+    const banner = await screen.findByTestId("match-ranks");
+    expect(banner).toHaveTextContent("Ranked match");
+    expect(banner).toHaveTextContent("ABC123 (you) Normal Grape III");
+    expect(banner).toHaveTextContent("XYZ999 Raisin");
+  });
+
+  it("says an unranked match moves nothing, and stays silent when the read is not a ranks body", async () => {
+    stubFetch({ ...ranksBody, ranked: false });
+    render(<MatchRoute matchId="m-1" token="tok" socketFactory={socketFactory} />);
+    attach({ legal: [{ type: "endTurn" }] });
+
+    expect(await screen.findByTestId("match-ranks")).toHaveTextContent("Unranked match");
+
+    cleanup();
+    const fetchMock = stubFetch({ version: "v1", defs: {} });
+    render(<MatchRoute matchId="m-2" token="tok" socketFactory={socketFactory} />);
+    attach({ legal: [{ type: "endTurn" }] });
+    await screen.findByTestId("hero-you");
+    // The ranks read has answered by now, and its body was not a ranks body: no banner, no crash.
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/ranks"), expect.anything());
+    });
+    await act(async () => {});
+    expect(screen.queryByTestId("match-ranks")).toBeNull();
   });
 });
 

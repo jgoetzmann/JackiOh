@@ -70,7 +70,7 @@ const OTHER = grouped(LETTERS.slice(LETTERS.length - INVITE_CODE_LENGTH));
 
 function meBody(status: "pending" | "active", needsInviteCode: boolean) {
   return {
-    profile: { id: "p", status, rating: 1000 },
+    profile: { id: "p", status },
     needsInviteCode,
     emailVerified: true,
     currentMatchId: null,
@@ -942,7 +942,7 @@ describe("an account whose email is not confirmed yet", () => {
 describe("the code screen's state belongs to one account", () => {
   function me(id: string, email: string) {
     return {
-      profile: { id, status: "pending" as const, rating: 1000 },
+      profile: { id, status: "pending" as const },
       needsInviteCode: true,
       emailVerified: true,
       currentMatchId: null,

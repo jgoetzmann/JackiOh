@@ -97,7 +97,7 @@ function pendingToken(): string {
 }
 
 type MeBody = {
-  profile: { id: string; status: string; rating: number };
+  profile: { id: string; status: string };
   needsInviteCode: boolean;
   emailVerified: boolean;
 };

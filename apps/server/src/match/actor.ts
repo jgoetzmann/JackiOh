@@ -348,7 +348,7 @@ export function createMatchActor(deps: ActorDeps, input: MatchActorInput): Match
     const at = deps.timers.now();
 
     try {
-      // The results row, the Elo update and clearing `inMatchId` are `api/results.ts` (M7-T2)
+      // The results row, the rating move and clearing `inMatchId` are `api/results.ts` (M7-T2)
       // behind the `RecordResult` port; the actor never writes them itself.
       await deps.recordResult({
         matchId: match.id,

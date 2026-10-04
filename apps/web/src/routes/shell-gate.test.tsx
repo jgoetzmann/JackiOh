@@ -55,7 +55,7 @@ function json(status: number, body?: unknown): Response {
 
 function me(status: "pending" | "active") {
   return {
-    profile: { id: "p1", status, rating: 1000 },
+    profile: { id: "p1", status },
     needsInviteCode: status === "pending",
     emailVerified: true,
     currentMatchId: null,
@@ -514,7 +514,7 @@ describe("the code screen when the device moves to another account", () => {
       vi.fn((input: unknown, init?: RequestInit) => {
         const url = String(input);
         const isA = (new Headers(init?.headers).get("authorization") ?? "") === `Bearer ${a}`;
-        const account = (id: string, email: string) => ({ ...me("pending"), profile: { id, status: "pending", rating: 1000 }, email });
+        const account = (id: string, email: string) => ({ ...me("pending"), profile: { id, status: "pending" }, email });
         if (url === `${API}/api/auth/me`) {
           return Promise.resolve(json(200, isA ? account("a", "a@example.test") : account("b", "b@example.test")));
         }

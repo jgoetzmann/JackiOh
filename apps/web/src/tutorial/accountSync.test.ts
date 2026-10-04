@@ -85,7 +85,7 @@ function activeAccount(status: "active" | "pending" | "banned" = "active", id = 
     kind: "ready",
     token: `tok-${id}`,
     me: {
-      profile: { id, status, rating: 1000 },
+      profile: { id, status },
       needsInviteCode: status === "pending",
       emailVerified: true,
       currentMatchId: null,

@@ -42,6 +42,7 @@ function view(overrides: Partial<SeriesView> = {}): SeriesView {
     pickDeadline: SERVER_NOW + SERIES_PICK_SECONDS * MS_PER_SECOND,
     now: SERVER_NOW,
     currentMatchId: null,
+    ranked: true,
     you: {
       seat: "p1",
       wins: 0,
@@ -284,13 +285,15 @@ describe("the series screen", () => {
         status: "over",
         pickDeadline: null,
         opponent: { ...view().opponent, wins: 0 },
-        result: { outcome: "loss", endReason: "forfeit", ratingBefore: 1000, ratingAfter: 984 },
+        result: { outcome: "loss", endReason: "forfeit", ranked: true },
       }),
     );
     await renderSeries();
 
     fireEvent.click(screen.getByTestId(seriesTestid.forfeit));
     expect(screen.getByTestId(seriesTestid.forfeitConfirm)).toBeInTheDocument();
+    // R604: a ranked series' forfeit is a rated loss, and the confirm says so.
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("your rating moves as for a loss");
     fireEvent.click(screen.getByTestId(seriesTestid.forfeitCancel));
     expect(screen.queryByTestId(seriesTestid.forfeitConfirm)).toBeNull();
     expect(vi.mocked(forfeitSeries)).not.toHaveBeenCalled();
@@ -304,6 +307,14 @@ describe("the series screen", () => {
     expect(screen.queryByTestId(seriesTestid.forfeit)).toBeNull();
     cleanup();
 
+    // R604: a room's series is unranked, so the confirm makes no rating claim.
+    vi.mocked(getSeries).mockResolvedValue(view({ ranked: false }));
+    await renderSeries();
+    fireEvent.click(screen.getByTestId(seriesTestid.forfeit));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Your opponent wins it.");
+    expect(screen.getByRole("alertdialog")).not.toHaveTextContent("rating");
+    cleanup();
+
     // During a game there is no forfeit: the game is conceded on the board.
     vi.mocked(getSeries).mockResolvedValue(view({ status: "playing", pickDeadline: null, currentMatchId: "m-1" }));
     await renderSeries();
@@ -311,13 +322,13 @@ describe("the series screen", () => {
     expect(screen.getByText(/concede it on the board/)).toBeInTheDocument();
   });
 
-  it("R262 a finished series shows the result, why it ended and the rating before and after", async () => {
+  it("R262 a finished ranked series shows the result, why it ended and that it counted as one rated game", async () => {
     vi.mocked(getSeries).mockResolvedValue(
       game2({
         status: "over",
         pickDeadline: null,
         you: { ...game2().you, wins: SERIES_WINS_NEEDED },
-        result: { outcome: "win", endReason: "decided", ratingBefore: 1000, ratingAfter: 1016 },
+        result: { outcome: "win", endReason: "decided", ranked: true },
       }),
     );
     await renderSeries();
@@ -326,7 +337,7 @@ describe("the series screen", () => {
     expect(result).toHaveAttribute("data-outcome", "win");
     expect(result).toHaveTextContent("You won the series");
     expect(result).toHaveTextContent(`You won a game with each of your ${String(SERIES_WINS_NEEDED)} decks.`);
-    expect(result).toHaveTextContent("Rating 1000 → 1016");
+    expect(result).toHaveTextContent("Ranked series: counted as one rated game.");
     expect(screen.getByTestId(seriesTestid.backToPlay)).toHaveAttribute("href", "/play");
     expect(screen.queryByTestId(seriesTestid.pick(1))).toBeNull();
     expect(screen.queryByTestId(seriesTestid.clock)).toBeNull();
@@ -337,7 +348,7 @@ describe("the series screen", () => {
       view({
         status: "over",
         pickDeadline: null,
-        result: { outcome: "abandoned", endReason: "abandoned", ratingBefore: null, ratingAfter: null },
+        result: { outcome: "abandoned", endReason: "abandoned", ranked: false },
       }),
     );
     await renderSeries();
@@ -348,7 +359,7 @@ describe("the series screen", () => {
   });
 
   it("R337 a series Best of 3 decided before Conquest says so, not that every deck won", () => {
-    const result = { outcome: "win" as const, endReason: "decided" as const, ratingBefore: null, ratingAfter: null };
+    const result = { outcome: "win" as const, endReason: "decided" as const, ranked: false };
     expect(endReasonWords(result, SERIES_WINS_NEEDED, SERIES_MAX_GAMES, { you: 2, opponent: 0 })).toBe(
       "You reached 2 game wins, which took the series under the Best-of-3 rules it began with.",
     );
@@ -362,7 +373,7 @@ describe("the series screen", () => {
     const maxGames = SERIES_MAX_GAMES;
     for (const outcome of ["win", "loss", "draw", "abandoned"] as const) {
       for (const endReason of ["decided", "exhausted", "forfeit", "abandoned"] as const) {
-        const words = endReasonWords({ outcome, endReason, ratingBefore: null, ratingAfter: null }, winsNeeded, maxGames);
+        const words = endReasonWords({ outcome, endReason, ranked: false }, winsNeeded, maxGames);
         expect(words.length).toBeGreaterThan(0);
       }
     }

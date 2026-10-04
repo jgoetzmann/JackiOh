@@ -36,7 +36,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 function meBody(status: Status) {
   return {
-    profile: { id: "profile-1", status, rating: 1000 },
+    profile: { id: "profile-1", status },
     needsInviteCode: status === "pending",
     emailVerified: true,
     currentMatchId: null,

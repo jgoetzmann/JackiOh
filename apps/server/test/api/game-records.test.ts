@@ -78,6 +78,7 @@ async function liveMatch(mode: QueueMode | null, options: { recorder?: boolean }
     matchId: MATCH_ID,
     seed: "seed-records",
     catalogVersion: TEST_CATALOG_VERSION,
+    ranked: false,
     seats: [
       { profileId: "profile-1", player: "p1", deck: P1_DECK },
       { profileId: "profile-2", player: "p2", deck: P2_DECK },

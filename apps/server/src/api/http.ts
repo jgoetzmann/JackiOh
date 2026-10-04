@@ -445,7 +445,7 @@ export async function resolveCaller(
   const profile = await deps.store.profiles.create({
     userId: user.userId,
     email: user.email ?? "",
-    rating: deps.config.eloStart,
+    rating: deps.config.ratingStart,
     at: deps.timers.now(),
   });
   return { user, profile };

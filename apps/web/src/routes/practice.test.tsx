@@ -109,7 +109,7 @@ function signedIn(status: "active" | "pending" | "banned"): Account {
     kind: "ready",
     token: "tok-1",
     me: {
-      profile: { id: "u1", status, rating: 1000 },
+      profile: { id: "u1", status },
       needsInviteCode: status === "pending",
       emailVerified: true,
       currentMatchId: null,

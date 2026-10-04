@@ -14,10 +14,11 @@ import { createRecordResult, reapStuckMatches } from "../../src/api/results";
 import { ensureSeriesGame, startSeries } from "../../src/api/series";
 import { pickDeck } from "../../src/api/series-rules";
 import { initialClocks, matchCeilingAt } from "../../src/match/clock";
-import { eloUpdate } from "../../src/config";
+import { RATING_DEVIATION_START, RATING_VOLATILITY_START } from "../../src/config";
+import { rateGame, type Score } from "../../src/ranked/glicko2";
 import type { FrozenTrio, MatchSeat, ResultRow, SeriesRow } from "../../src/api/ports";
 import type { TerminalOutcome } from "../../src/match/contracts";
-import { createFakeMatchDirectory, createTestDeps, testConfig, type TestDeps } from "../fakes/deps";
+import { TEST_PATCH_VERSION, createFakeMatchDirectory, createTestDeps, testConfig, type TestDeps } from "../fakes/deps";
 import { createFakeEngine, fakeDeck } from "../fakes/engine";
 
 const MINUTE = 60 * 1000;
@@ -57,6 +58,16 @@ function play(inputs: readonly ActionInput[]): { outcome: TerminalOutcome; turns
   return { outcome: snapshot.result, turns: snapshot.turn };
 }
 
+/**
+ * R603: the Glicko-2 move one ranked game makes between two players new to it (each at a new
+ * player's deviation and volatility), `scoreA` being the first one's score.
+ */
+function move(ratingA: number, ratingB: number, scoreA: Score): { a: number; b: number } {
+  const fresh = (rating: number) => ({ rating, deviation: RATING_DEVIATION_START, volatility: RATING_VOLATILITY_START });
+  const next = rateGame(fresh(ratingA), fresh(ratingB), scoreA);
+  return { a: next.a.rating, b: next.b.rating };
+}
+
 /** Thirty player-turns ends the match in a draw (§2.5, `FAKE_TURN_CAP`). */
 function toTheTurnCap(): ActionInput[] {
   return Array.from({ length: 30 }, (_, i) => ({
@@ -65,9 +76,11 @@ function toTheTurnCap(): ActionInput[] {
   }));
 }
 
+/** A ranked match `MATCH_ID` between A and B, unless `ranked: false` makes it a room's (R604). */
 async function scenario(
-  options: { ratings?: [number, number]; startedOffsetMs?: number } = {},
+  options: { ratings?: [number, number]; startedOffsetMs?: number; ranked?: boolean } = {},
 ): Promise<TestDeps> {
+  const ranked = options.ranked ?? true;
   const deps = createTestDeps();
   const [ratingA, ratingB] = options.ratings ?? [1000, 1000];
   deps.store.seedProfile({ id: A, rating: ratingA, inMatchId: MATCH_ID });
@@ -79,6 +92,7 @@ async function scenario(
     players: [A, B],
     decks: [[...seats[0].deck], [...seats[1].deck]],
     catalogVersion: deps.catalog.version,
+    ranked,
     status: "live",
     createdAt: startedAt,
     finishedAt: null,
@@ -88,6 +102,7 @@ async function scenario(
     matchId: MATCH_ID,
     seed: "seed-1",
     catalogVersion: deps.catalog.version,
+    ranked,
     seats: [seats[0], seats[1]],
   });
   return deps;
@@ -128,10 +143,8 @@ async function expectOneEnding(
 }
 
 describe("results (M7-T2)", () => {
-  // K = 32 from 1000 against an equally rated opponent: the expected score is 0.5, so the winner
-  // takes 16 and the loser gives 16 (R79).
-  const WIN = 1016;
-  const LOSS = 984;
+  // R603: two new players at 1000, equally rated, so the winner gains exactly what the loser gives.
+  const { a: WIN, b: LOSS } = move(1000, 1000, 1);
 
   it("hero-death: the winner is rated up and the loser down", async () => {
     const deps = await scenario();
@@ -157,8 +170,8 @@ describe("results (M7-T2)", () => {
     expect(row.turns).toBe(1);
     expect(row.ratingBefore).toEqual([1200, 1000]);
 
-    // The same Elo move a draw gets anywhere else (R79): the favourite gives, the underdog takes.
-    const expected = eloUpdate(1200, 1000, 0.5);
+    // The same move a draw gets anywhere else (R603): the favourite gives, the underdog takes.
+    const expected = move(1200, 1000, 0.5);
     expect(expected.a).toBeLessThan(1200);
     expect(expected.b).toBeGreaterThan(1000);
     await expectOneEnding(deps, {
@@ -180,7 +193,7 @@ describe("results (M7-T2)", () => {
       { type: "offerDraw", playerId: "p1" },
       { type: "answerDraw", accept: true, playerId: "p2" },
     ]);
-    const expected = eloUpdate(1200, 1000, 0.5);
+    const expected = move(1200, 1000, 0.5);
     expect(row.ratingBefore).toEqual([1200, 1000]);
     // The favourite gives points away on a draw; the underdog takes them.
     expect(expected.a).toBeLessThan(1200);
@@ -209,10 +222,10 @@ describe("results (M7-T2)", () => {
     await expectOneEnding(deps, { winner: B, reason: "disconnect", ratingAfter: [LOSS, WIN] });
   });
 
-  it("match-ceiling: an actor-resolved ceiling is a draw with the ordinary Elo move (R112)", async () => {
+  it("match-ceiling: an actor-resolved ceiling is a draw with the ordinary rating move (R112)", async () => {
     const deps = await scenario({ ratings: [1200, 1000] });
     const row = await record(deps, [{ type: "ceilingReached", playerId: "p1" }]);
-    const expected = eloUpdate(1200, 1000, 0.5);
+    const expected = move(1200, 1000, 0.5);
     expect(row.turns).toBe(1);
     await expectOneEnding(deps, {
       winner: null,
@@ -252,6 +265,57 @@ describe("results (M7-T2)", () => {
     });
     await record(deps, [{ type: "concede", playerId: "p2" }]);
     expect(await deps.store.tickets.openForProfile(A)).toBeNull();
+  });
+
+  describe("ranked and unranked (R604, R611)", () => {
+    it("R604 a room challenge moves neither rating nor rank, and records both ratings unchanged", async () => {
+      const deps = await scenario({ ratings: [1200, 1000], ranked: false });
+      const row = await record(deps, [{ type: "concede", playerId: "p2" }]);
+      expect(row).toMatchObject({ winnerProfileId: A, ratingBefore: [1200, 1000], ratingAfter: [1200, 1000] });
+      await expectOneEnding(deps, { winner: A, reason: "concede", ratingAfter: [1200, 1000] });
+      expect(deps.store.tables.seasonRanks).toEqual([]);
+      expect(deps.store.tables.ratedGames).toEqual([]);
+      // Deviation and volatility do not move either.
+      expect((await deps.store.profiles.getById(A))?.ratingDeviation).toBe(RATING_DEVIATION_START);
+    });
+
+    it("R604 a ranked match moves both hidden ratings, their deviations and both players' seasons", async () => {
+      const deps = await scenario();
+      await record(deps, [{ type: "concede", playerId: "p2" }]);
+      const profileA = await deps.store.profiles.getById(A);
+      expect(profileA?.ratingDeviation).toBeLessThan(RATING_DEVIATION_START);
+      expect(deps.store.tables.seasonRanks.map((rank) => [rank.profileId, rank.games, rank.wins, rank.losses])).toEqual([
+        [A, 1, 1, 0],
+        [B, 1, 0, 1],
+      ]);
+    });
+
+    it("R611 records the rated game: version, pilots, result, and both ratings and ranks before and after", async () => {
+      const deps = await scenario({ ratings: [1200, 1000] });
+      await record(deps, [{ type: "disconnectExpired", player: "p1", playerId: "p1" }]);
+      const expected = move(1200, 1000, 0);
+      expect(deps.store.tables.ratedGames).toHaveLength(1);
+      const game = deps.store.tables.ratedGames[0];
+      expect(game).toMatchObject({
+        id: MATCH_ID,
+        kind: "match",
+        seasonId: "v0.1",
+        patchVersion: TEST_PATCH_VERSION,
+        catalogVersion: deps.catalog.version,
+        // R603: a disconnect is a loss like any other.
+        winnerSide: 1,
+        reason: "disconnect",
+      });
+      expect(game?.sides.map((side) => [side.profileId, side.botId, side.pilot])).toEqual([
+        [A, null, "human"],
+        [B, null, "human"],
+      ]);
+      expect(game?.sides.map((side) => [side.before.rating, side.after.rating])).toEqual([
+        [1200, expected.a],
+        [1000, expected.b],
+      ]);
+      expect(game?.sides.map((side) => side.rankAfter?.tier)).toEqual(["raisin", "raisin"]);
+    });
   });
 
   describe("the reaper (§9.5, R112)", () => {
@@ -363,6 +427,7 @@ describe("results (M7-T2)", () => {
         ],
         seedBase: "seed",
         catalogVersion: deps.catalog.version,
+        ranked: true,
       });
       await playNext(deps, [0, 0]);
       return deps;
@@ -439,7 +504,7 @@ describe("results (M7-T2)", () => {
       const game3 = await playNext(deps, [2, 2]);
       expect(game3.games[2]?.slots).toEqual([2, 2]);
       await finish(deps, A);
-      const expected = eloUpdate(1200, 1000, 1);
+      const expected = move(1200, 1000, 1);
       expect([(await deps.store.profiles.getById(A))?.rating, (await deps.store.profiles.getById(B))?.rating]).toEqual([
         expected.a,
         expected.b,

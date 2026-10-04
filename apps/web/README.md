@@ -281,6 +281,9 @@ routes/SeriesPicker.tsx the deck-selection phase before each game, laid out as t
                         R338): choose a deck that has not won, lock it in, wait sealed; one clock
 routes/SeriesBanner.tsx the board's banner for a series game, each side's won decks as pips, and its
                         "Continue" once the game is over
+routes/leaderboard.tsx  /leaderboard: the global ranked ladder (R608, R612) — Jlorious #1–#100, the
+                        Grape tiers, the Raisins — and the caller's own standing; rank/rank.ts says
+                        a visible rank in a player's words for this screen, the account and the board
 routes/lobby.css        the lobby's, the series screen's and its picker's tavern look, and the banner's pips
 ```
 

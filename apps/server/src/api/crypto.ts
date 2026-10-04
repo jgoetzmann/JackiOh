@@ -6,13 +6,14 @@
  * `randomCode`: 16 characters for an invite code (80 bits), `ROOM_CODE_LENGTH` for a room code.
  */
 
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { canonicalCode, normalizeCodeText } from "@jackioh/shared";
 import {
   CODE_ALPHABET,
   INVITE_CODE_FORMAT,
   INVITE_CODE_GROUP_SIZE,
   INVITE_CODE_SEPARATOR,
+  PLAYER_TAG_LENGTH,
 } from "../config";
 import type { Hashes, Ids } from "./ports";
 
@@ -78,6 +79,16 @@ export function createHashes(peppers: { code: string; ip: string }): Hashes {
     code: (plain) => digest(peppers.code, normalizeCode(plain)),
     ip: (raw) => digest(peppers.ip, raw.trim().toLowerCase()),
   };
+}
+
+/**
+ * SPEC §11 R612: a player's public tag on the leaderboard and the match screen, `PLAYER_TAG_LENGTH`
+ * symbols of the code alphabet read off the SHA-256 of the profile id. Players have no public name,
+ * and the profile id is never sent to anyone but its owner, so the tag stands in for both: stable,
+ * the same on every screen, and no way back to the id or the account's email.
+ */
+export function playerTag(profileId: string): string {
+  return codeFromBytes(createHash("sha256").update(profileId).digest().subarray(0, PLAYER_TAG_LENGTH));
 }
 
 /** Constant-time compare, for a secret that is not looked up by hash. */

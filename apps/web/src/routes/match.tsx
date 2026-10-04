@@ -40,8 +40,9 @@ import {
   type SocketFactory,
 } from "../game/net.ts";
 import { Loading, SITE_NAME, ShellPanel, documentTitleFor } from "../main.tsx";
-import { getCatalog } from "../net/api.ts";
+import { getCatalog, getMatchRanks, type MatchRanksResponse } from "../net/api.ts";
 import { navigate, paths } from "../net/navigate.ts";
+import { rankWords } from "../rank/rank.ts";
 import { BackLink, followInApp } from "./nav.tsx";
 import { SeriesBanner, SeriesContinue, useMatchSeries } from "./SeriesBanner.tsx";
 
@@ -66,6 +67,8 @@ export const matchTestid = {
   connecting: "match-connecting",
   /** The sentence that stands in for a refused socket. */
   refused: "match-refused",
+  /** Both seats' visible ranks and whether this game moves them (R604, R612). */
+  ranks: "match-ranks",
 } as const;
 
 /** A connection state in a player's words, for the match bar and the wait before the board. */
@@ -146,6 +149,43 @@ export function withoutToken(raw: string): string {
   }
 }
 
+/** A `GET /api/matches/:id/ranks` body, or null when the answer is not one. */
+function asMatchRanks(value: unknown): MatchRanksResponse | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { ranked, seats } = value as { ranked?: unknown; seats?: unknown };
+  if (typeof ranked !== "boolean" || typeof seats !== "object" || seats === null) return null;
+  for (const side of ["p1", "p2"] as const) {
+    const seat = (seats as Record<string, unknown>)[side];
+    if (typeof seat !== "object" || seat === null) return null;
+    const { tag, rank } = seat as { tag?: unknown; rank?: unknown };
+    if (typeof tag !== "string" || typeof rank !== "object" || rank === null) return null;
+    if (typeof (rank as { tier?: unknown }).tier !== "string") return null;
+  }
+  return value as MatchRanksResponse;
+}
+
+/**
+ * Both seats' ranks for the match bar (R604, R612): whether this game moves the rating, and each
+ * seat's visible rank. Read once: a promotion mid-match shows on the next one. An answer that is
+ * not a ranks body — or no answer — leaves no banner rather than breaking the board.
+ */
+function useMatchRanks(token: string, matchId: string): MatchRanksResponse | null {
+  const [ranks, setRanks] = useState<MatchRanksResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getMatchRanks(token, matchId).then(
+      (answer) => {
+        if (!cancelled) setRanks(asMatchRanks(answer));
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [token, matchId]);
+  return ranks;
+}
+
 export default function MatchRoute({ matchId, token, socketFactory }: MatchRouteProps): ReactElement {
   const match = useMatch({
     matchId,
@@ -153,6 +193,7 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
     ...(socketFactory === undefined ? {} : { socketFactory }),
   });
   const defs = useCatalog();
+  const ranks = useMatchRanks(token, matchId);
   // R336: a Conquest game shows its series' score and won decks, and once it is over the way to the next game.
   const series = useMatchSeries(token, matchId, match.view?.result != null);
   const lookup = useMemo(() => (defs === null ? null : lookupFromDefs(defs)), [defs]);
@@ -320,6 +361,13 @@ export default function MatchRoute({ matchId, token, socketFactory }: MatchRoute
         />
       </header>
       <SeriesBanner series={series} matchId={matchId} gameOver={view.result !== null} />
+      {ranks !== null ? (
+        <p className="match-ranks" data-testid={matchTestid.ranks}>
+          {ranks.ranked ? "Ranked match" : "Unranked match"} · {ranks.seats.p1.tag}
+          {ranks.seats.p1.you ? " (you)" : ""} {rankWords(ranks.seats.p1.rank)} vs {ranks.seats.p2.tag}
+          {ranks.seats.p2.you ? " (you)" : ""} {rankWords(ranks.seats.p2.rank)}
+        </p>
+      ) : null}
 
       {readOnly ? (
         <p className="notice" data-testid={matchTestid.missingLegal} role="alert">

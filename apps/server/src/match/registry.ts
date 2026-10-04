@@ -63,6 +63,7 @@ export function createMatchRegistry(deps: ActorDeps): MatchRegistry {
       players: [first.profileId, second.profileId],
       decks: [[...first.deck], [...second.deck]],
       catalogVersion: input.catalogVersion,
+      ranked: input.ranked,
       status: "live",
       createdAt: now,
       finishedAt: null,

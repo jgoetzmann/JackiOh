@@ -130,6 +130,14 @@ const SERVER_CODES_TEST = "../../../apps/server/test/api/codes.test.ts";
 const SERVER_CORS_TEST = "../../../apps/server/test/api/cors.test.ts";
 const SERVER_CATALOG_TEST = "../../../apps/server/test/api/catalog.test.ts";
 const SERVER_QUEUE_TEST = "../../../apps/server/test/api/queue.test.ts";
+/** The ranked ladder's proofs (issue #49, SPEC §9.12, R603–R612). */
+const SERVER_GLICKO_TEST = "../../../apps/server/test/ranked/glicko2.test.ts";
+const SERVER_LADDER_TEST = "../../../apps/server/test/ranked/ladder.test.ts";
+const SERVER_SEASON_TEST = "../../../apps/server/test/ranked/season.test.ts";
+const SERVER_RANKED_TEST = "../../../apps/server/test/api/ranked.test.ts";
+const SERVER_RANKED_RESULTS_TEST = "../../../apps/server/test/api/results.test.ts";
+const SERVER_RANKED_SQL = "../../../apps/server/test/sql/12_ranked.sql";
+const SERVER_RANKED_CONTRACT = "../../../apps/server/test/db/contract.ts";
 
 /** R169's card-side proofs: the two §8 cards a missing badge list made invisible. */
 const CARDS_CURVATURE_TEST = "../../cards/test/077-professor-curvature.test.ts";
@@ -1000,7 +1008,7 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
     provenIn(78, "rulings-b.test.ts", "statecheck.test.ts", "effects-move.test.ts");
   });
 
-  // M7 owns apps/server/src/config.ts: the server test proves the clocks, the Elo and the room codes.
+  // M7 owns apps/server/src/config.ts: the server test proves the clocks, the rating and the room codes.
   // Proved by rulings-b.test.ts "R79 answers only the timed-out player's prompt, loses on a disconnect, draws
   // at the ceiling, and leaves the clocks to the server".
   it("R79 leaves the match-lifecycle defaults to the server config", () => {
@@ -1272,7 +1280,7 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // Proved by 03_match_lifecycle.sql "### R112: a reaper-resolved ceiling draw records turns 0 and
   // moves no rating ###"; results.test.ts "resolves a match past its ceiling as a draw and leaves
   // both ratings unchanged (R112)", "match-ceiling: an actor-resolved ceiling is a draw with the
-  // ordinary Elo move (R112)".
+  // ordinary rating move (R112)".
   it("R112 has the reaper resolve a stuck match itself, recording turns 0 and no rating move", () => {
     provenIn(112, SERVER_SQL, "../../../apps/server/test/api/results.test.ts");
   });
@@ -1537,10 +1545,13 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   });
 
   // NOTE: no server test names this row; the index asserts the attribution against the result path.
+  // Since the ranked ladder (R603) the attribution names the side, not the score: `winnerSideOf`
+  // is `scoreForSeat`'s successor, and the assertion is the same — the winner is read off the seat,
+  // never off whoever was active.
   it("R146 stamps a lifecycle result with the seat it belongs to, not with whoever was active", () => {
     const source = sourceOf(SERVER_RESULTS);
-    expect(source).toMatch(/function scoreForSeat\(outcome: TerminalOutcome, seat: MatchSeat\)/);
-    expect(source).toMatch(/outcome\.winner === seat\.player/);
+    expect(source).toMatch(/function winnerSideOf\(outcome: TerminalOutcome, seats: readonly \[MatchSeat, MatchSeat\]\)/);
+    expect(source).toMatch(/outcome\.winner === seats\[0\]\.player/);
   });
 
   // NOTE: no server test names this row; the index asserts the guard against the clock.
@@ -3680,6 +3691,74 @@ describe("SPEC §11 rulings, every row (BUILD M3 gate, REVIEW B4)", () => {
   // determinizations offer is legal on the true board).
   it("R602 keeps in the AI's view what a live face-down card visibly does", () => {
     provenIn(602, "../../ai/test/redact-live-face-down.test.ts");
+  });
+
+  // The ranked ladder's rows (issue #49, SPEC §9.12).
+
+  // Proved by apps/server test/ranked/glicko2.test.ts "R603 …" (Glickman's worked example, draws as
+  // half-wins against reference values, and one rated game as one rating period) and
+  // test/api/ranked.test.ts "R603 rating the same game twice changes nothing" (idempotent rating).
+  it("R603 rates every player with a hidden, deterministic Glicko-2 rating", () => {
+    provenIn(603, SERVER_GLICKO_TEST, SERVER_RANKED_TEST, SERVER_RANKED_SQL, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/api/ranked.test.ts "R604 a ranked series through the results writer" (a room's
+  // series moves nothing, a queue's moves it once) and test/api/results.test.ts "ranked and
+  // unranked (R604, R611)" (a room challenge records both ratings unchanged; a ranked match moves
+  // both hidden ratings, their deviations and both seasons).
+  it("R604 moves a rating or a rank only for the ranked match type", () => {
+    provenIn(604, SERVER_RANKED_TEST, SERVER_RANKED_RESULTS_TEST, SERVER_RANKED_SQL, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/ranked/ladder.test.ts "R605 the ladder's shape" (five Grape tiers of three
+  // divisions, Raisin until placements are played) and test/api/ranked.test.ts "R605 placements
+  // through rated games".
+  it("R605 shows Raisin placements, then five Grape tiers of three divisions", () => {
+    provenIn(605, SERVER_LADDER_TEST, SERVER_RANKED_TEST, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/ranked/ladder.test.ts "R606 …" (the mid-rank percentile, the tier spread, the
+  // one-pip lean, convergence, the streak bonus below Mythic Grape, holding the top).
+  it("R606 leans pips gently toward the hidden rating and bonuses win streaks", () => {
+    provenIn(606, SERVER_LADDER_TEST);
+  });
+
+  // Proved by test/ranked/ladder.test.ts "R607 the tier floor and the season's peak" (no drop below
+  // the reached Grape tier; the season's best as the profile's badge).
+  it("R607 floors each season's Grape tier and keeps its peak as a badge", () => {
+    provenIn(607, SERVER_LADDER_TEST, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/ranked/ladder.test.ts "R608 Jlorious" (top JLORIOUS_SIZE Mythic players by
+  // rating; every Mythic player when fewer qualify; numbered positions; falling out returns to
+  // Mythic) and test/api/ranked.test.ts "R608 Jlorious through the server".
+  it("R608 ranks the top 100 Mythic players by rating as numbered Jlorious", () => {
+    provenIn(608, SERVER_LADDER_TEST, SERVER_RANKED_TEST, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/ranked/season.test.ts "R609 …" (season per minor version; the soft reset's pull,
+  // deviation widening, order-independence, nobody to reset) and test/api/ranked.test.ts "R609
+  // seasons on the server".
+  it("R609 opens a season per minor version with a soft reset", () => {
+    provenIn(609, SERVER_SEASON_TEST, SERVER_RANKED_TEST, SERVER_RANKED_SQL, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/api/ranked.test.ts "R610 bots" (a bot rated like a player from its own rating,
+  // with no rank, season row or leaderboard place, and outside the percentiles).
+  it("R610 keeps each AI bot's own rating, off the player leaderboard", () => {
+    provenIn(610, SERVER_RANKED_TEST, SERVER_RANKED_SQL, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/api/results.test.ts "R611 records the rated game …" (version, pilots, result,
+  // both ratings and ranks before and after).
+  it("R611 records every rated game with versions, pilots, result and before/after", () => {
+    provenIn(611, SERVER_RANKED_RESULTS_TEST, SERVER_RANKED_SQL, SERVER_RANKED_CONTRACT);
+  });
+
+  // Proved by test/api/ranked.test.ts "R612 what the client reads" (own rank, leaderboard, match
+  // ranks, never a rating) and test/api/auth.test.ts "R612 sends no rating …".
+  it("R612 reads the rank everywhere and the hidden rating nowhere", () => {
+    provenIn(612, SERVER_RANKED_TEST, SERVER_AUTH_TEST, SERVER_RANKED_SQL);
   });
 
   // Proved by apps/web routes/almanac.test.tsx "R630 …" (the public route, its footer link and sitemap
